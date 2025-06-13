@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
+import { DndProvider } from 'react-dnd';
+import { TouchBackend } from 'react-dnd-touch-backend';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -13,6 +17,9 @@ import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
 import DefenseScreen from "./DefenseScreen";
 import DefenseChange from './DefenseChange';
+
+// バージョン番号を定数で管理
+const APP_VERSION = "0.0.1";
 
 // 画面の種類を列挙した型
 type ScreenType =
@@ -60,6 +67,10 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => (
           </button>
         );
       })}
+    </div>
+    {/* ここにバージョン表示を追加 */}
+    <div className="mt-12 text-white text-sm opacity-70 select-none">
+      バージョン: {APP_VERSION}
     </div>
   </div>
 );
