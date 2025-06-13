@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "774139843826",
+    "project_id": "easyannounce-37b12",
+    "storage_bucket": "easyannounce-37b12.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:774139843826:android:3a1045d2190a93cdb0ec6b",
+        "android_client_info": {
+          "package_name": "com.tokai.announce"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyADgXaSvjd-OgHXozgIj2JCQOtOBVcEbK0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
