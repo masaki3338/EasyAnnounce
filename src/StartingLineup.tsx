@@ -5,7 +5,6 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { MultiBackend, TouchTransition } from "dnd-multi-backend";
 
-
 const HTML5toTouch = {
   backends: [
     {
@@ -77,6 +76,7 @@ const DraggablePlayer = ({ player, from }: { player: Player; from?: string }) =>
       ref={drag}
       className="cursor-move"
       style={{
+        touchAction: "none", // ✅ 追加
         opacity: isDragging ? 0.5 : 1,
         userSelect: "none",
         padding: "4px",
@@ -120,6 +120,7 @@ const DroppablePosition = ({
     <div
       ref={drop}
       style={{
+        touchAction: "none", // ✅ 追加
         ...positionStyles[pos],
         position: "absolute",
         transform: "translate(-50%, -50%)",
@@ -234,7 +235,11 @@ const StartingLineup = () => {
       <div
         ref={(node) => drag(drop(node))}
         className="mb-2 border p-2 bg-blue-100 cursor-move"
-        style={{ opacity: isDragging ? 0.5 : 1, userSelect: "none" }}
+        style={{
+          touchAction: "none", // ✅ 追加
+          opacity: isDragging ? 0.5 : 1,
+          userSelect: "none",
+        }}
       >
         <strong className="mr-2">{index + 1}番</strong>
         {pos ? `${positionNames[pos]} ` : "控え "}

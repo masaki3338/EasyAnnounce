@@ -171,10 +171,10 @@ const App = () => {
           <StartGame
             onStart={async () => {
               const match = await localForage.getItem("matchInfo");
+              console.log("matchInfo:", match);
               if (match && typeof match === "object" && "isHome" in match) {
-                const isHome = (match as { isHome: boolean }).isHome;
-                //setScreen(match.isHome ? "offense" : "defense");
-                setScreen(match.isHome ? "defense" : "offense");
+                const isHome = (match as { isHome: string }).isHome;
+                setScreen(isHome === "後攻" ? "defense" : "offense");           
               } else {
                 alert("試合情報が見つかりません。試合作成画面で設定してください。");
               }
@@ -183,7 +183,6 @@ const App = () => {
           />
         </>
       )}
-
       {screen === "announcement" && (
         <>
           <button

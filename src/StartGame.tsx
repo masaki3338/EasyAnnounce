@@ -33,9 +33,14 @@ const StartGame = ({
 
       if (matchInfo && typeof matchInfo === "object") {
         const mi = matchInfo as any;
+
         setOpponentName(mi.opponentTeam || "");
         setFirstBaseSide(mi.benchSide === "3塁側" ? "3塁側" : "1塁側");
-        setIsFirstAttack(mi.isHome === "先攻");
+
+        //console.log("matchInfo.isHome:", mi.isHome);  // ← ここを追加
+        // isHome は "先攻" または "後攻" の文字列なので boolean に変換
+        const isFirstAttack = mi.isHome === "後攻" ? false : true;
+        setIsFirstAttack(isFirstAttack);
 
         if (Array.isArray(mi.umpires)) {
           const umpireMap: { [key: string]: string } = {};
