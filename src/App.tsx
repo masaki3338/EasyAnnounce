@@ -19,7 +19,7 @@ import DefenseScreen from "./DefenseScreen";
 import DefenseChange from './DefenseChange';
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.1";
+const APP_VERSION = "0.0.2";
 
 // 画面の種類を列挙した型
 type ScreenType =
