@@ -13,9 +13,7 @@ const StartGame = ({
   const [firstBaseSide, setFirstBaseSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [isFirstAttack, setIsFirstAttack] = useState(true);
   const [umpires, setUmpires] = useState<{ [key: string]: string }>({});
-  const [players, setPlayers] = useState<
-    { id: number; number: string | number; name: string }[]
-  >([]);
+  const [players, setPlayers] = useState<{ id: number; number: string | number; name: string }[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [battingOrder, setBattingOrder] = useState<number[]>([]);
 
@@ -26,11 +24,8 @@ const StartGame = ({
       const order = await localForage.getItem("battingOrder");
       const team = await localForage.getItem("team");
 
-      // チーム情報
       if (team && typeof team === "object") {
         setTeamName((team as any).name || "");
-
-        // 選手情報を team.players から取得
         const playersWithName = (team as any).players.map((p: any) => ({
           id: Number(p.id),
           number: p.number,
@@ -39,13 +34,11 @@ const StartGame = ({
         setPlayers(playersWithName);
       }
 
-      // 試合情報
       if (matchInfo && typeof matchInfo === "object") {
         const mi = matchInfo as any;
         setOpponentName(mi.opponentTeam || "");
         setFirstBaseSide(mi.benchSide === "3塁側" ? "3塁側" : "1塁側");
-        const isFirstAttack = mi.isHome === "後攻" ? false : true;
-        setIsFirstAttack(isFirstAttack);
+        setIsFirstAttack(mi.isHome === "後攻" ? false : true);
 
         if (Array.isArray(mi.umpires)) {
           const umpireMap: { [key: string]: string } = {};
@@ -56,7 +49,6 @@ const StartGame = ({
         }
       }
 
-      // 守備位置
       if (assign && typeof assign === "object") {
         const normalizedAssign: { [pos: string]: number | null } = {};
         Object.entries(assign).forEach(([pos, id]) => {
@@ -65,7 +57,6 @@ const StartGame = ({
         setAssignments(normalizedAssign);
       }
 
-      // 打順
       if (Array.isArray(order)) {
         const orderNum = (order as any[]).map((id) => Number(id));
         setBattingOrder(orderNum);
@@ -85,73 +76,100 @@ const StartGame = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">試合開始画面</h1>
+    <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 bg-gradient-to-b from-blue-50 via-white to-gray-50 min-h-screen">
+      <h1 className="text-2xl sm:text-3xl font-bold text-center text-blue-800 mb-6 flex items-center justify-center gap-2">
+        <span>⚾</span> <span>試合開始</span>
+      </h1>
 
       {/* 試合情報 */}
       <section className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">試合情報</h2>
-        <p className="mb-1">
-          {teamName} vs {opponentName}
-        </p>
-        <p className="mb-1">
-          {firstBaseSide}（{isFirstAttack ? "先攻" : "後攻"}）
-        </p>
+        <h2 className="text-lg font-semibold text-blue-700 mb-2 flex items-center gap-2">
+          <span>📋</span> <span>試合情報</span>
+        </h2>
+        <div className="bg-white rounded-xl shadow-md px-4 py-3 text-gray-700">
+          <p className="text-lg font-medium">{teamName} vs {opponentName}</p>
+          <p className="text-sm text-gray-600 mt-1">
+            ベンチ位置：{firstBaseSide}　（{isFirstAttack ? "先攻" : "後攻"}）
+          </p>
+        </div>
       </section>
 
       {/* 審判情報 */}
       <section className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">審判情報</h2>
-        <ul className="list-disc list-inside space-y-1">
-          <li>球審: {umpires["球審"] || "未設定"}</li>
-          <li>1塁審: {umpires["1塁審"] || "未設定"}</li>
-          <li>2塁審: {umpires["2塁審"] || "未設定"}</li>
-          <li>3塁審: {umpires["3塁審"] || "未設定"}</li>
-        </ul>
+        <h2 className="text-lg font-semibold text-blue-700 mb-2 flex items-center gap-2">
+          <span>🧑‍⚖️</span> <span>審判</span>
+        </h2>
+        <div className="bg-white rounded-xl shadow-md px-4 py-3 text-sm text-gray-700 space-y-1">
+          <p>球審：{umpires["球審"] || "未設定"}</p>
+          <p>1塁審：{umpires["1塁審"] || "未設定"}</p>
+          <p>2塁審：{umpires["2塁審"] || "未設定"}</p>
+          <p>3塁審：{umpires["3塁審"] || "未設定"}</p>
+        </div>
       </section>
 
-      {/* スタメン一覧 */}
-      <section className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">スタメン一覧</h2>
-        <table className="w-full table-auto border border-gray-300">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-2 py-1">打順</th>
-              <th className="border px-2 py-1">守備</th>
-              <th className="border px-2 py-1">背番号</th>
-              <th className="border px-2 py-1">名前</th>
-            </tr>
-          </thead>
-          <tbody>
-            {battingOrder.slice(0, 9).map((id, i) => {
-              const pos = Object.keys(assignments).find((p) => assignments[p] === id);
-              const player = getPlayer(id);
-              return (
-                <tr key={id ?? i}>
-                  <td className="border px-2 py-1 text-center">{i + 1}</td>
-                  <td className="border px-2 py-1 text-center">{pos ?? "-"}</td>
-                  <td className="border px-2 py-1 text-center">{player?.number ?? "-"}</td>
-                  <td className="border px-2 py-1">{player?.name ?? "未設定"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* スタメン・控え表示 */}
+      <section className="mb-10">
+        <h2 className="text-lg font-semibold text-blue-700 mb-3 flex items-center gap-2">
+          <span>👥</span> <span>スターティングメンバー</span>
+        </h2>
+        <div className="grid sm:grid-cols-2 gap-6">
+          {/* 左：スタメン */}
+          <div>
+            <h3 className="text-base font-semibold mb-2">スタメン</h3>
+            <div className="space-y-2">
+              {battingOrder.slice(0, 9).map((id, index) => {
+                const pos = Object.keys(assignments).find((p) => assignments[p] === id);
+                const player = getPlayer(id);
+                return (
+                  <div
+                    key={id ?? index}
+                    className="bg-white rounded-lg shadow p-3"
+                  >
+                    <div className="flex justify-between text-sm text-gray-500">
+                      <span>{index + 1}番</span>
+                      <span>守備：{pos ?? "未設定"}</span>
+                    </div>
+                    <div className="text-gray-800 font-medium text-base">
+                      {player?.name ?? "未設定"}　#{player?.number ?? "-"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 右：控え選手 */}
+          <div>
+            <h3 className="text-base font-semibold mb-2">控え選手</h3>
+            <div className="space-y-2">
+              {players
+                .filter((p) => !battingOrder.includes(p.id))
+                .map((player) => (
+                  <div
+                    key={player.id}
+                    className="bg-white rounded-lg shadow p-3 text-gray-800"
+                  >
+                    {player.name}　#{player.number}
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 操作ボタン */}
-      <div className="flex justify-center space-x-4 mt-8">
+      <div className="grid gap-4">
         <button
-          className="bg-blue-600 text-white px-6 py-3 rounded text-lg hover:bg-blue-700"
           onClick={handleStart}
+          className="bg-green-600 hover:bg-green-700 text-white text-lg font-semibold py-4 rounded-xl shadow-md transition"
         >
-          試合を開始する
+          🟢 試合を開始する
         </button>
         <button
-          className="bg-gray-600 text-white px-6 py-3 rounded text-lg hover:bg-gray-700"
           onClick={onShowAnnouncement}
+          className="bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold py-4 rounded-xl shadow-md transition"
         >
-          試合前アナウンス
+          📣 試合前アナウンス
         </button>
       </div>
     </div>
