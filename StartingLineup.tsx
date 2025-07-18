@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
+import { TouchBackend } from "react-dnd-touch-backend";
+const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
 import localForage from "localforage";
 
 
@@ -217,6 +221,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   const benchOutPlayers = teamPlayers.filter((p) => benchOutIds.includes(p.id));
 
   return (
+    <DndProvider backend={isTouchDevice() ? TouchBackend : HTML5Backend} options={{ enableMouseEvents: true }}>
     <div className="p-4 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">スタメン設定（守備配置）</h1>
 
@@ -353,6 +358,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
         保存する
       </button>
     </div>
+    </DndProvider>
   );
 };
 
