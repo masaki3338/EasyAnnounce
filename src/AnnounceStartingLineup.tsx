@@ -1,134 +1,154 @@
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
+import { ScreenType } from "./App"; // ✅ 追加
 
-// 守備位置略称（日本語）→正式守備名マップ
 const positionMapJP: Record<string, string> = {
-  投: "ピッチャー",
-  捕: "キャッチャー",
-  一: "ファースト",
-  二: "セカンド",
-  三: "サード",
-  遊: "ショート",
-  左: "レフト",
-  中: "センター",
-  右: "ライト",
+  "投": "ピッチャー",
+  "捕": "キャッチャー",
+  "一": "ファースト",
+  "二": "セカンド",
+  "三": "サード",
+  "遊": "ショート",
+  "左": "レフト",
+  "中": "センター",
+  "右": "ライト",
   "-": "ー",
 };
 
 type Player = {
   id: number;
-  lastName: string;      // 漢字姓
-  firstName: string;     // 漢字名
-  lastNameKana: string;  // ふりがな（姓）
-  firstNameKana: string; // ふりがな（名）
+  lastName: string;
+  firstName: string;
+  lastNameKana: string;
+  firstNameKana: string;
   number: string;
-  isFemale?: boolean;    // 女子選手フラグ
+  isFemale?: boolean;
 };
 
-const AnnounceStartingLineup: React.FC = () => {
+type Umpire = {
+  role: string;
+  name: string;
+  furigana: string;
+};
+
+const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => void }> = ({ onNavigate }) => {
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
-  const [battingOrder, setBattingOrder] = useState<number[]>([]);
-  const [firstBaseTeamName, setFirstBaseTeamName] = useState<string>("");
-  const [thirdBaseTeamName, setThirdBaseTeamName] = useState<string>("");
-  const [isTopTeamFirstBase, setIsTopTeamFirstBase] = useState<boolean>(true);
+  const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
+  const [homeTeamName, setHomeTeamName] = useState<string>("");
+  const [awayTeamName, setAwayTeamName] = useState<string>("");
+  const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
+  const [umpires, setUmpires] = useState<Umpire[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const startingIds = battingOrder.map((e) => e.id);
+  const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
   useEffect(() => {
-    Promise.all([
-      localForage.getItem<{ players: Player[] }>("team"),
-      localForage.getItem("lineupAssignments"),
-      localForage.getItem("battingOrder"),
-      localForage.getItem<string>("firstBaseTeamName"),
-      localForage.getItem<string>("thirdBaseTeamName"),
-      localForage.getItem<boolean>("isTopTeamFirstBase"),
-    ]).then(([team, savedAssignments, savedBattingOrder, firstName, thirdName, isTopFirst]) => {
-      setTeamPlayers(team?.players || []);
-      setAssignments(savedAssignments as { [pos: string]: number | null } || {});
-      setBattingOrder(savedBattingOrder as number[] || []);
-      setFirstBaseTeamName(firstName || "");
-      setThirdBaseTeamName(thirdName || "");
-      setIsTopTeamFirstBase(isTopFirst === null || isTopFirst === undefined ? true : isTopFirst);
-    });
+    const loadData = async () => {
+      const benchOut = await localForage.getItem<number[]>("benchOutIds");
+      if (Array.isArray(benchOut)) {
+        setBenchOutIds(benchOut);
+      }
+    };
+    loadData();
   }, []);
 
-  // ふりがな付き名前表示
+  useEffect(() => {
+    const loadData = async () => {
+      const [team, assign, order, matchInfo] = await Promise.all([
+        localForage.getItem<{ name: string; players: Player[] }>("team"),
+        localForage.getItem("lineupAssignments"),
+        localForage.getItem("battingOrder"),
+        localForage.getItem("matchInfo"),
+      ]);
+
+      if (team) {
+        setTeamPlayers(team.players || []);
+        setHomeTeamName(team.name || "");
+      }
+
+      if (assign && typeof assign === "object") {
+        setAssignments(assign as { [pos: string]: number | null });
+      }
+
+      if (Array.isArray(order) && order.every(o => typeof o === "object" && "id" in o)) {
+        setBattingOrder(order as { id: number; reason: string }[]);
+      }
+
+      if (matchInfo && typeof matchInfo === "object") {
+        const mi = matchInfo as any;
+        setAwayTeamName(mi.opponentTeam || "");
+        setIsHomeTeamFirstAttack(mi.isHome !== "後攻");
+        if (Array.isArray(mi.umpires)) {
+          setUmpires(mi.umpires);
+        }
+      }
+    };
+    loadData();
+  }, []);
+
+  const getPositionName = (pos: string) => positionMapJP[pos] || pos;
+  const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
+
   const renderFurigana = (kanji: string, kana: string) => (
-    <ruby>
+    <ruby className="ruby-text">
       {kanji}
-      <rt style={{ fontSize: "0.6em" }}>{kana}</rt>
+      <rt className="ruby-reading">{kana}</rt>
     </ruby>
   );
 
-  // 敬称を選択（女子は「さん」、それ以外は「くん」）
-  const getHonorific = (player: Player) => (player.isFemale ? "さん" : "くん");
-
-  // 表示用守備位置名を略称から変換
-  const getPositionName = (pos: string) => {
-    return positionMapJP[pos] || pos;
-  };
-
-  // フルネーム（姓＋名）のふりがな付き表示
-  const renderFullName = (player: Player) => (
+  const renderFullName = (p: Player) => (
     <>
-      {renderFurigana(player.lastName, player.lastNameKana)}
-      {renderFurigana(player.firstName, player.firstNameKana)}
+      {renderFurigana(p.lastName, p.lastNameKana)}
+      {renderFurigana(p.firstName, p.firstNameKana)}
     </>
   );
 
-  // 名字のみのふりがな付き表示
-  const renderLastName = (player: Player) => renderFurigana(player.lastName, player.lastNameKana);
+  const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
 
-  // スターティングラインナップの読み上げテキスト生成（ふりがな＋敬称＋背番号）
-  const createStartingLineupText = () => {
-    const topTeamName = isTopTeamFirstBase ? firstBaseTeamName : thirdBaseTeamName;
+  const createSpeechText = () => {
+    const selfTeamName = homeTeamName;
+    const header = isHomeTeamFirstAttack
+      ? `お待たせいたしました、${selfTeamName}対${awayTeamName}のスターティングラインナップ並びに審判員をお知らせいたします。`
+      : "";
 
-    const topOrderLines = battingOrder
-      .map((playerId, index) => {
-        const player = teamPlayers.find((p) => p.id === playerId);
-        if (!player) return null;
-        const pos = Object.entries(assignments).find(([_, id]) => id === playerId)?.[0] || "-";
+    const lineupLabel = isHomeTeamFirstAttack
+      ? `先攻（${selfTeamName}）`
+      : `続きまして後攻（${selfTeamName}）`;
+
+    const lineupText = battingOrder
+      .map((entry, idx) => {
+        const p = teamPlayers.find((pl) => pl.id === entry.id);
+        if (!p) return null;
+        const pos = Object.entries(assignments).find(([_, pid]) => pid === entry.id)?.[0] || "-";
         const posName = getPositionName(pos);
-        const honorific = getHonorific(player);
-
-        // ふりがな読み上げ用フルネーム
-        const fullKanaName = `${player.lastNameKana}${player.firstNameKana}`;
-
-        return `${index + 1}番　${posName}　${fullKanaName}${honorific}、背番号${player.number}、`;
+        const honorific = getHonorific(p);
+        return `${idx + 1}番　[${posName}]　${p.lastNameKana}${p.firstNameKana}${honorific}、　[${posName}]　${p.lastNameKana}${honorific}、背番号${p.number}、`;
       })
       .filter(Boolean)
       .join("\n");
 
-    const benchPlayers = teamPlayers.filter((p) => !battingOrder.includes(p.id));
-    const benchLines = benchPlayers
-      .map((p) => {
-        const honorific = getHonorific(p);
-        const kanaName = `${p.lastNameKana}${p.firstNameKana}`;
-        return `${kanaName}${honorific}、背番号${p.number}、`;
-      })
+    const benchText = teamPlayers
+      .filter((p) => !battingOrder.includes(p.id))
+      .map((p) => `${p.lastNameKana}${p.firstNameKana}${getHonorific(p)}、背番号${p.number}、`)
       .join("\n");
 
-    return `
-お待たせいたしました、${firstBaseTeamName}対${thirdBaseTeamName}の
-スターティングラインナップ並びに審判員をお知らせいたします。
+    const umpireText =
+      umpires.length === 4
+        ? `なお、この試合の審判は球審（${umpires[0].name}）、塁審は1塁（${umpires[1].name}）、2塁（${umpires[2].name}）、3塁（${umpires[3].name}）以上4氏でございます。試合開始まで今しばらくお待ちください。`
+        : "";
 
-先攻（${topTeamName}）
-${topOrderLines}
-
-ベンチ入りの選手をお知らせいたします。
-${benchLines}
-`;
+    return `${header}\n${lineupLabel}\n${lineupText}\nベンチ入りの選手をお知らせいたします。\n${benchText}\n${umpireText}`;
   };
 
   const handleSpeak = () => {
     if (speaking) return;
-    const text = createStartingLineupText();
+    const text = createSpeechText();
     if (!text) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "ja-JP";
-
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
@@ -142,82 +162,86 @@ ${benchLines}
     setSpeaking(false);
   };
 
-  // 表示部分
-  const renderStartingLineup = () => {
-    const topTeamName = isTopTeamFirstBase ? firstBaseTeamName : thirdBaseTeamName;
-
-    return (
-      <div style={{ whiteSpace: "pre-line", fontFamily: "Yu Gothic, Meiryo, sans-serif" }}>
-        <p>先攻（{topTeamName}）</p>
-        {battingOrder.map((playerId, index) => {
-          const player = teamPlayers.find((p) => p.id === playerId);
-          if (!player) return null;
-          const pos = Object.entries(assignments).find(([_, id]) => id === playerId)?.[0] || "-";
-          const posName = getPositionName(pos);
-          const honorific = getHonorific(player);
-
-          return (
-            <div key={playerId} style={{ marginBottom: "0.5em" }}>
-              <span>{index + 1}番　</span>
-              <span>{posName}　</span>
-              <span>
-                {renderFullName(player)}
-                {honorific}、
-              </span>
-              <span>{posName}　</span>
-              <span>
-                {renderLastName(player)}
-                {honorific}、背番号{player.number}、
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderBenchPlayers = () => {
-    const benchPlayers = teamPlayers.filter((p) => !battingOrder.includes(p.id));
-    return (
-      <div style={{ whiteSpace: "pre-line", marginTop: "1em" }}>
-        <p>ベンチ入りの選手をお知らせいたします。</p>
-        {benchPlayers.map((p) => (
-          <div key={p.id} style={{ marginBottom: "0.3em" }}>
-            {renderFullName(p)}
-            {getHonorific(p)}、背番号{p.number}、
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   return (
-    <div className="p-4 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">スタメン発表画面</h1>
-      <p>
-        お待たせいたしました、{firstBaseTeamName}対{thirdBaseTeamName}の
-        <br />
-        スターティングラインナップ並びに審判員をお知らせいたします。
-      </p>
+    <div className="p-6 max-w-4xl mx-auto bg-white border rounded-xl shadow">
+      <button
+        onClick={() => onNavigate("announcement")}
+        className="text-sm text-gray-700 hover:underline mb-4"
+      >
+        ← 試合前アナウンスメニューに戻る
+      </button>
 
-      {renderStartingLineup()}
+      <h1 className="text-2xl font-bold text-center mb-4">スタメン発表</h1>
 
-      {renderBenchPlayers()}
+      {!isHomeTeamFirstAttack && (
+        <div className="flex items-center text-blue-800 mb-2">
+          <img src="/icons/warning-icon.png" className="w-5 h-5 mr-2" alt="注意" />
+          <span className="text-sm font-semibold">先攻チームのアナウンスが終わったタイミング</span>
+        </div>
+      )}
 
-      <div className="mt-6 space-x-4">
+      <div className="border border-black p-4 bg-red-50 text-red-600">
+        <div className="flex flex-col items-start">
+          <img src="/icons/mic-red.png" className="w-6 h-6 mb-2" alt="Mic" />
+          <div>
+            {isHomeTeamFirstAttack && (
+              <p>
+                お待たせいたしました、（{homeTeamName}）対（{awayTeamName}）のスターティングラインナップ並びに審判員をお知らせいたします。
+              </p>
+            )}
+            <p className="mt-2 font-bold">
+              {isHomeTeamFirstAttack ? `先攻（${homeTeamName}）` : `続きまして後攻（${homeTeamName}）`}
+            </p>
+
+            {battingOrder.map((entry, idx) => {
+              const p = teamPlayers.find((pl) => pl.id === entry.id);
+              if (!p) return null;
+              const pos = Object.entries(assignments).find(([_, pid]) => pid === p.id)?.[0] || "-";
+              const posName = getPositionName(pos);
+              const honorific = getHonorific(p);
+              return (
+                <p key={entry.id}>
+                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、{posName} {renderLastName(p)}{honorific}、背番号{p.number}、
+                </p>
+              );
+            })}
+
+            <p className="mt-4">ベンチ入りの選手をお知らせいたします。</p>
+            {teamPlayers
+              .filter((p) => !startingIds.includes(p.id) && !benchOutIds.includes(p.id)) // ✅ 控えのみ
+              .map((p) => (
+                <p key={p.id}>
+                  {renderFullName(p)}{getHonorific(p)}、背番号{p.number}、
+                </p>
+              ))}
+
+            {!isHomeTeamFirstAttack && umpires.length === 4 && (
+              <p className="mt-4">
+                なお、この試合の審判は 球審（{renderFurigana(umpires[0].name, umpires[0].furigana)}）、
+                塁審は1塁（{renderFurigana(umpires[1].name, umpires[1].furigana)}）、
+                2塁（{renderFurigana(umpires[2].name, umpires[2].furigana)}）、
+                3塁（{renderFurigana(umpires[3].name, umpires[3].furigana)}）以上4氏でございます。
+                試合開始まで今しばらくお待ちください。
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-center gap-4">
         <button
           onClick={handleSpeak}
           disabled={speaking}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:bg-gray-400"
+          className="bg-blue-600 text-white px-4 py-2 rounded shadow disabled:bg-gray-400"
         >
-          読み上げ開始
+          読み上げ
         </button>
         <button
           onClick={handleStop}
           disabled={!speaking}
-          className="bg-red-600 text-white px-4 py-2 rounded disabled:bg-gray-400"
+          className="bg-red-600 text-white px-4 py-2 rounded shadow disabled:bg-gray-400"
         >
-          読み上げ停止
+          停止
         </button>
       </div>
     </div>

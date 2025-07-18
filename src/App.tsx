@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
+import Gather from "./Gather";
+import StartGreeting from "./StartGreeting";  // 追加
+import SeatIntroduction from "./SeatIntroduction";
+
 import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -19,10 +23,10 @@ import DefenseScreen from "./DefenseScreen";
 import DefenseChange from './DefenseChange';
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.1";
+const APP_VERSION = "0.0.2";
 
 // 画面の種類を列挙した型
-type ScreenType =
+export type ScreenType =
   | "menu"
   | "teamRegister"
   | "matchCreate"
@@ -35,7 +39,10 @@ type ScreenType =
   | "templateEdit"
   | "offense"
   | "defense"
-  | "defenseChange";  // ← 追加
+  | "defenseChange"
+  | "gather"
+  | "startGreeting"
+  | "seatIntroduction";  // ← 新規追加
 
 const screenMap: { [key: string]: ScreenType } = {
   "チーム・選手登録": "teamRegister",
@@ -95,8 +102,8 @@ const App = () => {
       const exists = await localForage.getItem("initialized");
       if (!exists) {
         await localForage.setItem("team", {
-          name: "東京タイガース",
-          furigana: "とうきょうたいがーす",
+          name: "東京武蔵ポニー",
+          furigana: "とうきょうむさしぽにー",
           players: [
             {
               id: 1,
@@ -168,19 +175,23 @@ const App = () => {
           >
             ← メニューに戻る
           </button>
-          <StartGame
-            onStart={async () => {
-              const match = await localForage.getItem("matchInfo");
-              console.log("matchInfo:", match);
-              if (match && typeof match === "object" && "isHome" in match) {
-                const isHome = (match as { isHome: string }).isHome;
-                setScreen(isHome === "後攻" ? "defense" : "offense");           
-              } else {
-                alert("試合情報が見つかりません。試合作成画面で設定してください。");
-              }
-            }}
-            onShowAnnouncement={() => setScreen("announcement")}
-          />
+            <StartGame
+                onStart={async () => {
+                  const match = await localForage.getItem("matchInfo");
+                  if (match && typeof match === "object" && "isHome" in match) {
+                    const { isHome } = match as { isHome: boolean };
+
+                    const isTop = true; // 試合開始は必ず「1回表」
+                    // 自チームが先攻なら攻撃からスタート、後攻なら守備から
+                    const isOffense = isHome === false;
+
+                    setScreen(isOffense ? "offense" : "defense");
+                  } else {
+                    alert("試合情報が見つかりません。試合作成画面で設定してください。");
+                  }
+                }}
+                onShowAnnouncement={() => setScreen("announcement")}
+              />
         </>
       )}
       {screen === "announcement" && (
@@ -206,20 +217,14 @@ const App = () => {
           >
             ← 試合前アナウンスメニューに戻る
           </button>
-          <Warmup />
+          {screen === "warmup" && (
+          <Warmup onBack={() => setScreen("announcement")} />
+        )}
         </>
       )}
 
       {screen === "sheetKnock" && (
-        <>
-          <button
-            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")}
-          >
-            ← 試合前アナウンスメニューに戻る
-          </button>
-          <SheetKnock />
-        </>
+        <SheetKnock onBack={() => setScreen("announcement")} />
       )}
 
       {screen === "announceStartingLineup" && (
@@ -230,7 +235,46 @@ const App = () => {
           >
             ← 試合前アナウンスメニューに戻る
           </button>
-          <AnnounceStartingLineup />
+          <AnnounceStartingLineup onNavigate={setScreen} />
+        </>
+      )}
+
+      {screen === "gather" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("announcement")} // 適宜戻る先の画面を調整してください
+          >
+            ← 試合前アナウンスメニューに戻る
+          </button>
+          <StartGreeting onBack={() => setScreen("announcement")} />
+        </>
+      )}
+
+      {screen === "startGreeting" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("announcement")} // 適宜戻る先の画面を調整してください
+          >
+            ← 試合前アナウンスメニューに戻る
+          </button>
+          <StartGreeting onBack={() => setScreen("announcement")} />
+        </>
+      )}
+
+      {screen === "seatIntroduction" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("announcement")}
+          >
+            ← 試合前アナウンスメニューに戻る
+          </button>
+          <SeatIntroduction
+            onNavigate={setScreen} // ✅ 追加
+            onBack={() => setScreen("announcement")}
+          />
         </>
       )}
 
@@ -244,7 +288,7 @@ const App = () => {
           >
             ← メニューに戻る
           </button>
-          <OffenseScreen />
+          <OffenseScreen onSwitchToDefense={() => setScreen("defense")} />
         </>
       )}
 
@@ -256,7 +300,10 @@ const App = () => {
           >
             ← メニューに戻る
           </button>
-          <DefenseScreen onChangeDefense={() => setScreen("defenseChange")} />
+          <DefenseScreen
+            onChangeDefense={() => setScreen("defenseChange")}
+            onSwitchToOffense={() => setScreen("offense")}
+          />
         </>
       )}
 
