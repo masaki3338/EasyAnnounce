@@ -712,7 +712,7 @@ useEffect(() => {
         isCurrent ? "bg-yellow-200" : ""
       }`}
     >
-<div className="grid grid-cols-[50px_80px_150px_60px] items-center gap-2">
+<div className="grid grid-cols-[50px_100px_150px_60px] items-center gap-2">
   <div>{idx + 1}番</div>
   <div>{positionLabel}</div>
   <div className="flex items-center gap-1">
