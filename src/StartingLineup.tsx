@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { TouchBackend } from 'react-dnd-touch-backend';
 
 
 
@@ -121,6 +124,18 @@ useEffect(() => {
     alert("守備配置と打順を保存しました！");
   };
 
+  const clearAssignments = async () => {
+    const emptyAssignments = Object.fromEntries(positions.map((p) => [p, null]));
+    setAssignments(emptyAssignments);
+    setBattingOrder([]);
+    setBenchOutIds([]);
+    await localForage.removeItem("lineupAssignments");
+    await localForage.removeItem("battingOrder");
+    await localForage.removeItem("initialBattingOrder");
+    await localForage.removeItem("benchOutIds");
+    alert("スタメンと守備位置をクリアしました！");
+  };
+
   const allowDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   };
@@ -131,21 +146,30 @@ useEffect(() => {
     fromPos?: string
   ) => {
     e.dataTransfer.setData("playerId", String(playerId));
+    e.dataTransfer.setData("text/plain", String(playerId));   // ←★ Android 用
     if (fromPos) e.dataTransfer.setData("fromPosition", fromPos);
+    e.dataTransfer.effectAllowed = "move"
   };
 
   const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
     e.preventDefault();
-    const playerId = Number(e.dataTransfer.getData("playerId"));
-    const fromPos = e.dataTransfer.getData("fromPosition");
+    
+    const playerIdStr =
+    e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
+    const playerId = Number(playerIdStr);
+
+    // ── Android だと custom MIME が取れない事があるので補完 ──
+    let fromPos = e.dataTransfer.getData("fromPosition");
+    if (!fromPos) {
+      fromPos = Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "";
+    }
     const prevPlayerId = assignments[toPos];
 
     setAssignments((prev) => {
       const updated = { ...prev };
 
       if (fromPos && fromPos !== toPos) {
-        // 守備間の交換
-        updated[fromPos] = prevPlayerId ?? null;
+        updated[fromPos] = prevPlayerId ?? null;  // 交換
       }
 
       updated[toPos] = playerId;
@@ -176,11 +200,14 @@ useEffect(() => {
     playerId: number
   ) => {
     e.dataTransfer.setData("battingPlayerId", String(playerId));
+    e.dataTransfer.setData("text/plain", String(playerId));
   };
 
   const handleDropToBenchOut = (e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault();
-  const playerId = Number(e.dataTransfer.getData("playerId"));
+  const playerIdStr =
+    e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
+  const playerId = Number(playerIdStr);
   setBenchOutIds((prev) => {
     if (!prev.includes(playerId)) return [...prev, playerId];
     return prev;
@@ -199,7 +226,9 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
     targetPlayerId: number
   ) => {
     e.preventDefault();
-    const draggedPlayerId = Number(e.dataTransfer.getData("battingPlayerId"));
+    const draggedStr =
+      e.dataTransfer.getData("battingPlayerId") || e.dataTransfer.getData("text/plain");
+    const draggedPlayerId = Number(draggedStr);
 
     setBattingOrder((prev) => {
       const fromIndex = prev.findIndex((entry) => entry.id === draggedPlayerId);
@@ -222,43 +251,46 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
       {/* フィールド配置 */}
             <div className="relative w-full max-w-2xl mx-auto mb-6">
-        <img src="/field.jpg" alt="フィールド図" className="w-full rounded shadow" />
-        {positions.map((pos) => {
-          const playerId = assignments[pos];
-          const player = teamPlayers.find((p) => p.id === playerId);
-          return (
-            <div
-              key={pos}
-              onDragOver={allowDrop}
-              onDrop={(e) => handleDropToPosition(e, pos)}
-              style={{
-                ...positionStyles[pos],
-                position: "absolute",
-                transform: "translate(-50%, -50%)",
-                backgroundColor: "rgba(255,255,255,0.85)",
-                padding: "4px 8px",
-                borderRadius: "8px",
-                minWidth: "80px",
-                textAlign: "center",
-                cursor: player ? "move" : "default",
-              }}
-            >
-              <div className="text-xs font-bold mb-1">
-                {pos} ({positionNames[pos]})
+          <img
+            src="/field.jpg"
+            alt="フィールド図"
+            className="w-full rounded shadow select-none pointer-events-none"
+          />
+          {positions.map((pos) => {
+            const playerId = assignments[pos];
+            const player = teamPlayers.find((p) => p.id === playerId);
+            return (
+              <div
+                key={pos}
+                onDragOver={allowDrop}
+                onDrop={(e) => handleDropToPosition(e, pos)}
+                style={{
+                  ...positionStyles[pos],
+                  position: "absolute",
+                  transform: "translate(-50%, -50%)",
+                  backgroundColor: "rgba(255,255,255,0.85)",
+                  padding: "4px 8px",
+                  borderRadius: "8px",
+                  minWidth: "80px",
+                  textAlign: "center",
+                  cursor: player ? "move" : "default",
+                }}
+              >
+                {player ? (
+                  <div
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, player.id, pos)}
+                    className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis touch-draggable"
+                  >
+                    {player.lastName}{player.firstName} #{player.number}
+                  </div>
+                ) : (
+                  <div className="text-gray-400">空き</div>
+                )}
+
               </div>
-              {player ? (
-                <div
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, player.id, pos)}
-                >
-                  {player.lastName}{player.firstName} ({player.number})
-                </div>
-              ) : (
-                <div className="text-gray-400">空き</div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* 打順と控えを横並びに表示 */}
@@ -283,7 +315,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
             className="px-2 py-1 bg-gray-200 rounded cursor-move select-none"
           >
             {p.lastName}
-            {p.firstName}（{p.number}）
+            {p.firstName} #{p.number}
           </div>
         ))}
     </div>
@@ -307,7 +339,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
           onDragStart={(e) => handleDragStart(e, p.id)}
           className="px-2 py-1 bg-gray-100 text-gray-500 border rounded cursor-move select-none"
         >
-          {p.lastName}{p.firstName}（{p.number}）
+          {p.lastName}{p.firstName} #{p.number}
         </div>
       ))
     )}
@@ -316,44 +348,72 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
 
 
-  {/* 🔽 打順（下段） */}
-  <div>
-    <h2 className="text-xl font-semibold mb-2">打順（1～9番）</h2>
-    <div className="space-y-2">
-      {battingOrder.map((entry, i) => {
-        const player = teamPlayers.find((p) => p.id === entry.id);
-        if (!player) return null;
-        const pos = getPositionOfPlayer(entry.id);
-        return (
-          <div
-            key={entry.id}
-            className="border p-2 bg-blue-100 rounded cursor-move"
-            draggable
-            onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
-            onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
-            onDragOver={allowDrop}
-          >
-            <strong className="mr-2">{i + 1}番</strong>
-            {pos ? `${positionNames[pos]} ` : "控え "}
-            {player.lastName}{player.firstName}（{player.number}）
+<div>
+  <h2 className="text-xl font-semibold mb-2">打順（1～9番）</h2>
+  <div className="space-y-2">
+    {battingOrder.map((entry, i) => {
+      const player = teamPlayers.find((p) => p.id === entry.id);
+      if (!player) return null;
+      const pos = getPositionOfPlayer(entry.id);
+
+      return (
+        <div
+          key={entry.id}
+          className="border p-2 bg-blue-100 rounded cursor-move"
+          draggable
+          onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
+          onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
+          onDragOver={allowDrop}
+        >
+          <div className="flex gap-2">
+            <span className="w-10 font-bold">{i + 1}番</span>
+            <span className="w-24">{pos ? positionNames[pos] : "控え"}</span>
+            <span className="w-28">{player.lastName}{player.firstName}</span>
+            <span className="w-12">#{player.number}</span>
           </div>
-        );
-      })}
-    </div>
+        </div>
+      );
+    })}
   </div>
+</div>
+
 
 </div>
 
 
-
-      <button
-        className="mt-6 bg-blue-600 text-white px-4 py-2 rounded"
-        onClick={saveAssignments}
-      >
-        保存する
-      </button>
-    </div>
+<div className="mt-6 flex gap-6">
+  <button
+    className="bg-blue-600 text-white px-4 py-2 rounded"
+    onClick={saveAssignments}
+  >
+    保存する
+  </button>
+  <button
+    className="bg-red-500 text-white px-4 py-2 rounded"
+    onClick={clearAssignments}
+  >
+    クリア
+  </button>
+</div>
+      
+      </div>
   );
 };
 
-export default StartingLineup;
+const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
+const StartingLineupWrapped = () => {
+  return (
+    <DndProvider
+      backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+      options={isTouchDevice() ? {
+        enableTouchEvents: true,
+        enableMouseEvents: true,
+        touchSlop: 10,
+      } : undefined}
+    >
+      <StartingLineup />
+    </DndProvider>
+  );
+};
+
+export default StartingLineupWrapped;

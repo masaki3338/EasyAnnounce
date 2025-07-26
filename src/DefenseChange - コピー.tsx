@@ -65,7 +65,7 @@ const posNameToSymbol: Record<string, string> = {
 
 
 
-const generateAnnouncementText = (
+const generateAnnouncementText = (  
   records: ChangeRecord[],
   teamName: string,
   battingOrder?: { id: number; reason: string }[],
@@ -78,7 +78,7 @@ const generateAnnouncementText = (
     "投": "ピッチャー", "捕": "キャッチャー", "一": "ファースト", "二": "セカンド",
     "三": "サード", "遊": "ショート", "左": "レフト", "中": "センター", "右": "ライト"
   };
-
+  const jpPos = (sym: string) => posJP[sym] ?? posJP[posNameToSymbol[sym] ?? ""] ?? sym;
  
 
   const mixed = records.filter(r => r.type === "mixed") as Extract<ChangeRecord, { type: "mixed" }>[];
@@ -126,16 +126,16 @@ const generateAnnouncementText = (
       // ✅ 分岐1: そのまま守備入り（交代なし＋同一守備位置）
       if (!isReplaced && currentId === entry.id && currentId === initialId) {
         samePosPinch.push(
-          `<ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific} がそのまま ${posName} に入`
+           `<ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific} がそのまま ${posName} に`
         );
 
         // 打順 1 行は従来どおり result に貯めて OK
         result.push(`${index + 1}番 ${posName} <ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific}。`);
 
         // 先に交代系を無効化する処理はそのまま
-        replace.length = 0;
-        mixed.length   = 0;
-        shift.length   = 0;
+        //replace.length = 0;
+        //mixed.length   = 0;
+        //shift.length   = 0;
       }
       // ✅ 分岐2: 守備位置が変わって入った（交代なし＋違う守備位置）
       /* ───── 代打した選手が “別の守備位置” に入るパターン ───── */
@@ -158,7 +158,7 @@ const generateAnnouncementText = (
         const shiftRecord = shift.find(s => s.fromPos === pos);
         const shiftPlayer = shiftRecord?.player;
         const shiftToPos   = shiftRecord?.toPos;
-        const shiftToPosName = shiftToPos ? posJP[shiftToPos] : "";
+        const shiftToPosName = shiftToPos ? jpPos(shiftToPos) : "";
 
         /* ★ ② “移動させられた選手” もフレーズに追加 */
         if (shiftRecord && shiftPlayer && shiftToPos) {
@@ -187,7 +187,7 @@ const generateAnnouncementText = (
           announceOrderList.push(
             `${index + 1}番 ${posName} <ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific}`
           );
-          handledShift.add(player.id);   // 登録
+          //handledShift.add(player.id);   // 登録
         }
 
         // 移動した選手の打順（存在する場合）
@@ -200,7 +200,7 @@ const generateAnnouncementText = (
               announceOrderList.push(
                 `${shiftOrder + 1}番 ${shiftToPosName} <ruby>${shiftPlayer.lastName}<rt>${shiftPlayer.lastNameKana}</rt></ruby>${shiftH}`
               );
-              handledShift.add(shiftPlayer.id);
+              //handledShift.add(shiftPlayer.id);
             }
           }
         }
@@ -237,11 +237,14 @@ const generateAnnouncementText = (
   });
 
   if (samePosPinch.length > 0) {
-  const joined = samePosPinch
+ const hasMore = replace.length > 0 || mixed.length > 0 || shift.length > 0;
+ const joined = samePosPinch
     .map((txt, i) => (i === 0
       ? `先ほど代打致しました${txt}`
       : `同じく先ほど代打致しました${txt}`) +
-      (i === samePosPinch.length - 1 ? "ります。" : "り、"))
+      (i === samePosPinch.length - 1
+        ? hasMore ? "入り、" : "入ります。"
+        : "り、"))
     .join("");
   result.unshift(joined);
 }
@@ -256,7 +259,7 @@ if (shiftPosPinch.length > 0) {
   result.unshift(joinedShift);
 }
 /*  代打/代走が守備に入るケースでは冒頭にヘッダーを付ける */
-if (shiftPosPinch.length > 0 && teamName) {
+if (shiftPosPinch.length > 0 && samePosPinch.length === 0 && teamName) {
   result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
 }
 
@@ -323,8 +326,8 @@ if (shiftPosPinch.length > 0 && teamName) {
       const toH = to.isFemale ? "さん" : "くん";
       if((ChangeFlg === 1)||(ChangeFlg === 10)) {  //代打時の表示
          if(ChangeFlg === 1){
-          result.push(
-            `先ほど代打致しました ${from.lastName}${fromH} に代わりまして、${to.lastName}${toH} がそのまま入り${posJP[r.pos]}、`);
+            const posName = jpPos(r.pos);            // ← "ピッチャー" 等
+            result.push(`${posName} ${from.lastName}${fromH} に代わりまして、${to.lastName}${toH} がそのまま入り${posName}、`);
          }
          else{
             result.push(

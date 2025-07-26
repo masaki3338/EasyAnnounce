@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect ,useRef} from "react";
 import localForage from "localforage";
 
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
+import { useNavigate } from "react-router-dom";
 
 type OffenseScreenProps = {
   onSwitchToDefense: () => void;
+  onGoToSeatIntroduction: () => void;
   onBack?: () => void;
 };
 
@@ -17,6 +19,8 @@ type MatchInfo = {
   isDefense?: boolean;
   isHome?: boolean; // ✅ ←追加
 };
+
+
 
 const DraggablePlayer = ({ player }: { player: any }) => {
   const [, drag] = useDrag({
@@ -76,7 +80,13 @@ const positionNames: { [key: string]: string } = {
   "右": "ライト",
 };
 
-const OffenseScreen: React.FC<OffenseScreenProps> = ({ onSwitchToDefense, onBack }) => {
+
+
+//const OffenseScreen: React.FC<OffenseScreenProps> = ({ onSwitchToDefense, onBack }) => {
+const OffenseScreen: React.FC<OffenseScreenProps> = ({
+  onSwitchToDefense,
+  onGoToSeatIntroduction, // ← 追加！！
+}) => {  
   const [players, setPlayers] = useState<any[]>([]);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
   const [battingOrder, setBattingOrder] = useState<
@@ -97,6 +107,87 @@ const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
+const [showGroundPopup, setShowGroundPopup] = useState(false);
+const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
+
+  const [startTime, setStartTime] = useState<string | null>(null);
+
+  const handleStartGame = () => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
+    setStartTime(timeString);
+    localForage.setItem("startTime", timeString);
+    setGameStartTime(timeString);
+    alert(`試合開始時間を記録しました: ${timeString}`);
+  };
+  const handleGameStart = () => {
+    const now = new Date();
+    const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+    setGameStartTime(formatted);
+    localForage.setItem("gameStartTime", formatted);
+  };
+  const hasShownStartTimePopup = useRef(false);
+
+  const [gameStartTime, setGameStartTime] = useState<string | null>(null);
+  const [showStartTimePopup, setShowStartTimePopup] = useState(false);
+
+  const [announcedIds, setAnnouncedIds] = useState<number[]>([]);
+
+// 初期読み込み（初回レンダリング時）
+useEffect(() => {
+  localForage.getItem<number[]>("announcedIds").then((saved) => {
+    if (Array.isArray(saved)) {
+      setAnnouncedIds(saved);
+    }
+  });
+}, []);
+
+const toggleAnnounced = (id: number) => {
+  setAnnouncedIds((prev) => {
+    const updated = prev.includes(id)
+      ? prev.filter((i) => i !== id)
+      : [...prev, id];
+    localForage.setItem("announcedIds", updated); // 永続化
+    return updated;
+  });
+};
+const [checkedIds, setCheckedIds] = useState<number[]>([]);
+// ✅ チェック状態を初期読み込み
+useEffect(() => {
+  localForage.getItem<number[]>("checkedIds").then((saved) => {
+    if (Array.isArray(saved)) {
+      setCheckedIds(saved);
+    }
+  });
+}, []);
+
+// ✅ チェック状態を切り替えて永続化
+const toggleChecked = (id: number) => {
+  setCheckedIds((prev) => {
+    const updated = prev.includes(id)
+      ? prev.filter((x) => x !== id)
+      : [...prev, id];
+    localForage.setItem("checkedIds", updated); // 永続化
+    return updated;
+  });
+};
+
+
+// コンポーネント関数内に以下を追加
+const foulRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+const handleFoulRead = () => {
+  if (!window.speechSynthesis) return;
+  const text = "ファウルボールの行方には十分ご注意ください。";
+  const utterance = new SpeechSynthesisUtterance(text);
+  foulRef.current = utterance;
+  window.speechSynthesis.speak(utterance);
+};
+
+const handleFoulStop = () => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+};
 
   const [usedPlayerInfo, setUsedPlayerInfo] = useState<Record<number, any>>({});
     useEffect(() => {
@@ -113,6 +204,7 @@ const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null
   const [showDefensePrompt, setShowDefensePrompt] = useState(false);
 
   useEffect(() => {
+    localForage.setItem("lastGameScreen", "offense");
     const loadData = async () => {
       const team = await localForage.getItem("team");
       const order = await localForage.getItem("battingOrder");
@@ -123,6 +215,7 @@ const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null
     if (order) setBattingOrder(order);
   };
   //loadBattingOrder();
+
 
 
 if (team && typeof team === "object") {
@@ -148,7 +241,7 @@ if (team && typeof team === "object") {
         // ✅ 前回の打者を取得して次の先頭打者に設定
         const lastBatter = await localForage.getItem<number>("lastBatterIndex");
         if (lastBatter !== null && typeof lastBatter === "number" && order.length > 0) {
-          const nextBatterIndex = (lastBatter + 1) % order.length;
+          const nextBatterIndex = (lastBatter) % order.length;
           setCurrentBatterIndex(nextBatterIndex);
           setIsLeadingBatter(true); // 先頭打者として認識
         }
@@ -174,7 +267,10 @@ if (team && typeof team === "object") {
     loadData();
   }, []);
 
-  const [showModal, setShowModal] = useState(false);
+const [showModal, setShowModal] = useState(false);
+const [showScorePopup, setShowScorePopup] = useState(false);
+const [shouldNavigateAfterPopup, setShouldNavigateAfterPopup] = useState(false);
+const [popupMessage, setPopupMessage] = useState("");
 const [inputScore, setInputScore] = useState("");
 const [showSubModal, setShowSubModal] = useState(false);
 const [selectedSubPlayer, setSelectedSubPlayer] = useState<any | null>(null);
@@ -195,16 +291,17 @@ const handleScoreInput = (digit: string) => {
   }
 };
 
+
 const confirmScore = async () => {
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
   const index = inning - 1;
+  const isFirstTopNow = inning === 1 && isTop;
 
   if (!updatedScores[index]) {
     updatedScores[index] = { top: 0, bottom: 0 };
   }
 
-  // ✅ 自チームの攻撃なので、先攻ならtopに、後攻ならbottomに記録
   if (!isHome) {
     updatedScores[index].top = score;
   } else {
@@ -216,11 +313,8 @@ const confirmScore = async () => {
   setInputScore("");
   setShowModal(false);
 
-  // ✅ この行を追加（打者インデックスを保存）
   await localForage.setItem("lastBatterIndex", currentBatterIndex);
 
-
-  // ✅ イニング進行処理
   if (isTop) {
     setIsTop(false);
     await localForage.setItem("matchInfo", {
@@ -241,9 +335,28 @@ const confirmScore = async () => {
     });
   }
 
-  // 守備画面へ遷移
-  onSwitchToDefense();
+  if (score > 0) {
+    setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
+
+    // ✅ 得点があり、かつ後攻4回裏終了時 → グランド整備は後で
+    if (isHome && inning === 4 && !isTop) {
+      setPendingGroundPopup(true); // ← あとで表示するために記録
+    }
+
+    setShowScorePopup(true); // ← 得点ポップアップを先に表示
+  } else {
+    // 得点なし → 直接処理分岐
+    if (isHome && inning === 4 && !isTop) {
+      setShowGroundPopup(true);
+    } else if (isFirstTopNow) {
+      onGoToSeatIntroduction();
+    } else {
+      onSwitchToDefense();
+    }
+  }
 };
+
+
 
 
 const getPlayer = (id: number) =>
@@ -258,6 +371,15 @@ const getPlayer = (id: number) =>
     return null;
   };
 
+const getFullName = (player: Player) => {
+  return `${player.lastName ?? ""}${player.firstName ?? ""}`;
+};
+
+const getAnnouncementName = (player: Player) => {
+  return announcedIds.includes(player.id)
+    ? player.lastName ?? ""
+    : `${player.lastName ?? ""}${player.firstName ?? ""}`;
+};
 
 const announce = (text: string) => {
   const utter = new SpeechSynthesisUtterance(text);
@@ -265,11 +387,30 @@ const announce = (text: string) => {
   speechSynthesis.speak(utter);
 };
 
-const handleNext = () => {
+const handleNext = () => {  
+
   const next = (currentBatterIndex + 1) % battingOrder.length;
+// ✅ 2人目の打者の前かつ未表示ならポップアップを表示
+  if (next === 1 && gameStartTime && !hasShownStartTimePopup.current) {
+    setShowStartTimePopup(true);
+    hasShownStartTimePopup.current = true; // ✅ 表示済みに設定
+  }
+
   setCurrentBatterIndex(next);
-  setIsLeadingBatter(false); // ⬅ 追加
+  setIsLeadingBatter(false);
+
+  const currentEntry = battingOrder[currentBatterIndex];
+  if (currentEntry) {
+    if (!checkedIds.includes(currentEntry.id)) {
+      toggleChecked(currentEntry.id); // 未チェックの時だけチェックを追加
+    }
+  }
+
+  const nextIndex = (currentBatterIndex + 1) % battingOrder.length;
+  setCurrentBatterIndex(nextIndex);
+  setIsLeadingBatter(false);
 };
+
 
 const handlePrev = () => {
   const prev = (currentBatterIndex - 1 + battingOrder.length) % battingOrder.length;
@@ -278,16 +419,33 @@ const handlePrev = () => {
 };
 
 const updateAnnouncement = () => {
-const entry = battingOrder[currentBatterIndex];
-const player = getPlayer(entry?.id);
-const pos = getPosition(entry?.id);
+  const entry = battingOrder[currentBatterIndex];
+  const player = getPlayer(entry?.id);
+  const pos = getPosition(entry?.id);
 
   if (player && pos) {
     const number = player.number;
     const honorific = player?.isFemale ? "さん" : "くん";
     const posName = pos;
-    const isAnnouncedBefore = announcedPlayerIds.includes(entry.id);
 
+    const isChecked = checkedIds.includes(player.id);
+
+    // 👇 アナウンス用ふりがな（チェック済み → 苗字のみ、未チェック → フルネーム）
+    const displayRuby = isChecked ? (
+      <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+    ) : (
+      <>
+        <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+        <ruby>{player.firstName}<rt>{player.firstNameKana}</rt></ruby>
+      </>
+    );
+    const displayRuby2 = isChecked ? (
+      <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+    ) : (
+      <>
+        <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+      </>
+    );
     let lines: React.ReactNode[] = [];
 
     if (isLeadingBatter) {
@@ -296,22 +454,18 @@ const pos = getPosition(entry?.id);
       );
     }
 
-    if (!isAnnouncedBefore) {
+    if (!isChecked) {
       lines.push(
         <div>
-          {currentBatterIndex + 1}番 {posName}{" "}
-          <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
-          <ruby>{player.firstName}<rt>{player.firstNameKana}</rt></ruby>
-          {honorific}、{posName}{" "}
-          <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+          {currentBatterIndex + 1}番 {posName} {displayRuby}
+          {honorific}、{posName} {displayRuby2}
           {honorific}、背番号{number}。
         </div>
       );
     } else {
       lines.push(
         <div>
-          {currentBatterIndex + 1}番 {posName}{" "}
-          <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
+          {currentBatterIndex + 1}番 {posName} {displayRuby}
           {honorific}、背番号{number}。
         </div>
       );
@@ -360,6 +514,20 @@ const handleRead = async () => {
   }
 };
 
+// 音声読み上げ
+const speakText = (text: string) => {
+  const synth = window.speechSynthesis;
+  if (synth.speaking) synth.cancel(); // 前の音声を止める
+  const utter = new SpeechSynthesisUtterance(text);
+  synth.speak(utter);
+};
+
+// 音声停止
+const stopSpeech = () => {
+  const synth = window.speechSynthesis;
+  if (synth.speaking) synth.cancel();
+};
+
 useEffect(() => {
   updateAnnouncement(); // currentBatterIndexが変わるたびに実行
 }, [currentBatterIndex]);
@@ -378,74 +546,108 @@ useEffect(() => {
 
   return (
 <DndProvider backend={HTML5Backend}>
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-        <span>（{teamName}） VS （{opponentTeam}）</span>
-        <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
-          {[...Array(9)].map((_, i) => (
-            <option key={i + 1} value={i + 1}>{i + 1}</option>
-          ))}
-        </select>
-        <span>回</span>
-        <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-          <option value="表">表</option>
-          <option value="裏">裏</option>
-        </select>
-        <span>{status}</span>
-      </h2>
 
-      <table className="w-full border text-sm">
-        <thead>
-          <tr>
-            <th>　</th>
-            {[...Array(9)].map((_, i) => (
-              <th key={i}>{i + 1}</th>
-            ))}
-            <th>計</th>
-          </tr>
-        </thead>
-       <tbody>
-        {[teamName, opponentTeam].map((name, rowIndex) => {
-          const isMyTeam = rowIndex === (isHome ? 1 : 0); // 自チームが下段（後攻）なら rowIndex === 1
+  <div className="flex justify-end mb-2">
 
-          return (
-            <tr key={rowIndex}>
-              <td>{name || (rowIndex === 0 ? "先攻チーム名" : "後攻チーム名")}</td>
+
+</div>
+    <div className="max-w-4xl mx-auto p-4">
+        <h2 className="text-xl font-bold mb-2">
+          {teamName || '自チーム'} vs {opponentTeam || '対戦相手'}
+        </h2>
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-2">
+            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
               {[...Array(9)].map((_, i) => (
-                <td
-                  key={i}
-                  className={`border-2 text-center ${
-                    inning === i + 1 &&
-                    ((isMyTeam && isTop !== isHome) || (!isMyTeam && isTop === isHome))
-                      ? "bg-yellow-200"
-                      : ""
-                  }`}
-                >
-                  {
-                    isMyTeam
-                      ? (isHome ? scores[i]?.bottom : scores[i]?.top) ?? ""
-                      : (isHome ? scores[i]?.top : scores[i]?.bottom) ?? ""
-                  }
-                </td>
+                <option key={i} value={i + 1}>{i + 1}</option>
               ))}
-              <td>
-                {Object.values(scores).reduce((sum, s) => {
-                  const val = isMyTeam
-                    ? isHome
-                      ? s.bottom ?? 0
-                      : s.top ?? 0
-                    : isHome
-                    ? s.top ?? 0
-                    : s.bottom ?? 0;
-                  return sum + Number(val);
-                }, 0)}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
+            </select>
+            <span>回</span>
+            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
+              <option value="表">表</option>
+              <option value="裏">裏</option>
+            </select>
 
-      </table>
+          </div>
+          <button
+            className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
+            onClick={handleStartGame}
+          >
+            試合開始
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-3 py-1 bg-orange-700 text-white rounded"
+          >
+            イニング終了
+          </button>
+        </div>
+
+
+ <table className="w-full border border-gray-400 text-center text-sm mb-6"> 
+  <thead>
+    <tr>
+      <th className="border">回</th>
+      {[...Array(9).keys()].map(i => (
+        <th key={i} className="border">{i + 1}</th>
+      ))}
+      <th className="border">計</th>
+    </tr>
+  </thead>
+  <tbody>
+    {[
+      { name: teamName || "自チーム", isMyTeam: true },
+      { name: opponentTeam || "対戦相手", isMyTeam: false },
+    ]
+      /* 先攻／後攻で並び順を統一 */
+      .sort((a, b) => {
+        if (isHome) return a.isMyTeam ? 1 : -1;   // 後攻なら自チームを下段
+        else        return a.isMyTeam ? -1 : 1;   // 先攻なら上段
+      })
+      .map((row, rowIdx) => (
+        <tr key={rowIdx} className={row.isMyTeam ? "bg-gray-100" : ""}>
+          <td className="border">{row.name}</td>
+          {[...Array(9).keys()].map(i => {
+            /* 表裏に応じてスコアを取り出す */
+            const val = row.isMyTeam
+              ? isHome ? scores[i]?.bottom : scores[i]?.top
+              : isHome ? scores[i]?.top    : scores[i]?.bottom;
+
+            /* 現在の回＋攻撃側セルをハイライト */
+            const target = row.isMyTeam
+              ? isHome ? "bottom" : "top"
+              : isHome ? "top"    : "bottom";
+            const isNow =
+              i + 1 === inning && target === (isTop ? "top" : "bottom");
+
+            return (
+              <td
+                key={i}
+                className={`border text-center cursor-pointer hover:bg-gray-200 ${
+                  isNow
+                    ? "bg-yellow-300 font-bold border-2 border-yellow-500"
+                    : ""
+                }`}
+              >
+                {isNow ? "" : (i + 1 > inning ? "" : val ?? "")}
+              </td>
+            );
+          })}
+          {/* ── 計 ── */}
+          <td className="border font-bold">
+            {Object.values(scores).reduce((sum, s) => {
+              const v = row.isMyTeam
+                ? isHome ? s.bottom ?? 0 : s.top ?? 0
+                : isHome ? s.top ?? 0    : s.bottom ?? 0;
+              return sum + v;
+            }, 0)}
+          </td>
+        </tr>
+      ))}
+  </tbody>
+</table>
+
+
 
 {showModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -485,40 +687,55 @@ useEffect(() => {
   </div>
 )}
 
+    
+<div className="space-y-1 text-sm font-bold text-gray-800">
+{battingOrder.map((entry, idx) => {
+  const player = getPlayer(entry.id);
+  const isCurrent = idx === currentBatterIndex;
+  const position = getPosition(entry.id);
+  const positionLabel = entry.reason === "代走" ? "代走" : position ?? "";
+<input
+  type="checkbox"
+  checked={checkedIds.includes(entry.id)}
+  onChange={() => toggleChecked(entry.id)}
+  className="mr-2"
+/>
 
-      <div className="space-y-2 text-lg">
-    {battingOrder.map((entry, idx) => {
-      const player = getPlayer(entry.id);
-      const isCurrent = idx === currentBatterIndex;
-      const isSubstituted = substitutedIndices.includes(idx);
-      const position = getPosition(entry.id); // ✅ 修正
-
-      return (
-        <div
-          key={entry.id}
-          onClick={() => {
-            setCurrentBatterIndex(idx);
-            setIsLeadingBatter(true);
-          }}
-          className={`px-2 py-1 border-b cursor-pointer ${
-            isCurrent ? "bg-yellow-200" : ""
-          }`}
-        >
-          {idx + 1}　{position ?? "　"}　
-          <ruby>
-            {player?.lastName ?? "苗字"}
-            {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
-          </ruby>
-          <ruby>
-            {player?.firstName ?? "名前"}
-            {player?.firstNameKana && <rt>{player.firstNameKana}</rt>}
-          </ruby>
-          &nbsp;#{player?.number ?? "番号"}
-        </div>
-      );
-    })}
-
-
+  return (
+    <div
+      key={entry.id}
+      onClick={() => {
+        setCurrentBatterIndex(idx);
+        setIsLeadingBatter(true);
+      }}
+      className={`px-2 py-0.5 border-b cursor-pointer ${
+        isCurrent ? "bg-yellow-200" : ""
+      }`}
+    >
+<div className="grid grid-cols-[50px_80px_150px_60px] items-center gap-2">
+  <div>{idx + 1}番</div>
+  <div>{positionLabel}</div>
+  <div className="flex items-center gap-1">
+    <input
+      type="checkbox"
+      checked={checkedIds.includes(entry.id)}
+      onChange={() => toggleChecked(entry.id)}
+      className="mr-2"
+    />
+    <ruby>
+      {player?.lastName ?? "苗字"}
+      {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
+    </ruby>
+    <ruby>
+      {player?.firstName ?? "名前"}
+      {player?.firstNameKana && <rt>{player.firstNameKana}</rt>}
+    </ruby>
+  </div>
+  <div>#{player?.number ?? "番号"}</div>
+</div>
+    </div>
+  );
+})}
 
 </div>
 
@@ -531,14 +748,44 @@ useEffect(() => {
         </button>
       </div>
 
+
+{/* ⚠️ ファウルボール注意文（常時表示） */}
+
+<div className="border p-4 bg-red-200">
+  <div className="flex items-center mb-2">
+    <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+    <span className="text-red-600 font-bold whitespace-pre-line">
+      ファウルボールの行方には十分ご注意ください。
+    </span>
+  </div>
+
+  {/* ボタンを左寄せ */}
+  <div className="mt-2 flex justify-start gap-4">
+    <button
+      onClick={handleFoulRead}
+      className="bg-blue-600 text-white px-4 py-2 rounded"
+    >
+      読み上げ
+    </button>
+    <button
+      onClick={handleFoulStop}
+      className="bg-red-600 text-white px-4 py-2 rounded"
+    >
+      停止
+    </button>
+  </div>
+</div>
+
+
       {isLeadingBatter && (
         <div className="flex items-center text-blue-600 font-bold mb-2">
-          <img src="/icons/warning-icon.png" alt="注意" className="w-5 h-5 mr-2" />
-          <span>攻撃回1人目のバッター紹介は、キャッチャーが2塁に送球後にアナウンス</span>
+          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+            <span className="mr-2 text-2xl">⚠️</span> 攻撃回1人目のバッター紹介は、キャッチャーが2塁に送球後に🎤 
+          </div>
         </div>
       )}
 
-      <div className="border p-4 bg-red-50">
+      <div className="border p-4 bg-red-200">
         <div className="flex items-center mb-2">
           <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
           <span className="text-red-600 font-bold whitespace-pre-line">
@@ -571,15 +818,53 @@ useEffect(() => {
   >
     代打
   </button>
-  <button
-    onClick={() => setShowModal(true)}
-    className="bg-orange-600 text-white px-6 py-2 rounded"
-  >
-    イニング終了
-  </button>
+
 </div>
 
-
+ {/* ✅ 得点ポップアップここに挿入 */}
+{showScorePopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
+      <div className="flex items-center mb-4">
+        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />        
+      </div>
+      <p>{popupMessage}</p>
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => {
+            const uttr = new SpeechSynthesisUtterance(popupMessage);
+            speechSynthesis.speak(uttr);
+          }}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={() => speechSynthesis.cancel()}
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+        >
+          停止
+        </button>
+<button
+  onClick={() => {
+    setShowScorePopup(false);
+    if (pendingGroundPopup) {
+      setPendingGroundPopup(false);
+      setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
+    } else if (inning === 1 && isTop) {
+      onGoToSeatIntroduction();
+    } else {
+      onSwitchToDefense();
+    }
+  }}
+  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+>
+  OK
+</button>
+      </div>
+    </div>
+  </div>
+)}
 
 {showDefensePrompt && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -650,7 +935,7 @@ useEffect(() => {
       </div>
 
       {/* アナウンス文（赤枠・マイク付き） */}
-      <div className="border border-red-500 bg-red-100 text-red-700 p-4 rounded relative text-left">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <div className="absolute -top-4 left-4 text-2xl">📢</div>
         <span className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6">
           {currentBatterIndex + 1}番{" "}
@@ -799,238 +1084,381 @@ useEffect(() => {
 
 
 
+
 {showRunnerModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl w-[90%] max-w-4xl space-y-4">
-      <h2 className="text-2xl font-bold">代走</h2>
-      {/* ランナー表示（ドロップ先） */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <DropTarget
-          base="1塁"
-          runnerAssignments={runnerAssignments}
-          replacedRunners={replacedRunners}
-          setRunnerAssignments={setRunnerAssignments}
-          setReplacedRunners={setReplacedRunners}
-        />
-        <DropTarget
-          base="2塁"
-          runnerAssignments={runnerAssignments}
-          replacedRunners={replacedRunners}
-          setRunnerAssignments={setRunnerAssignments}
-          setReplacedRunners={setReplacedRunners}
-        />
-        <DropTarget
-          base="3塁"
-          runnerAssignments={runnerAssignments}
-          replacedRunners={replacedRunners}
-          setRunnerAssignments={setRunnerAssignments}
-          setReplacedRunners={setReplacedRunners}
-        />
-      </div>
-      {/* Step 1: 打順からランナー選択 */}
-      {selectedRunnerIndex === null && (
-  <div>
-    <h3 className="text-lg font-bold mb-2">ランナーとして交代させたい選手を選択</h3>
-      <div className="w-1/2 space-y-2">
-        <h3 className="text-xl font-bold mb-2">ランナーを選択</h3>
-        {battingOrder.map((entry, index) => {
-          const player = getPlayer(entry.id); // ← id から teamPlayers を取得
-          if (!player) return null;
-          return (
-            <div
-              key={entry.id}
-              className={`border p-2 rounded cursor-pointer ${
-                selectedRunnerIndex === index ? "bg-yellow-100" : ""
-              }`}
-              onClick={() => setSelectedRunnerIndex(index)}
-            >
-              {index + 1}番 {player.lastName} {player.firstName} #{player.number}
-            </div>
-          );
-        })}
-      </div>
-  </div>
-)}
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center overflow-y-auto p-2">
+    <div className="bg-white p-4 rounded-xl shadow-xl w-full max-w-md space-y-4">
+      <h2 className="text-2xl font-bold text-center">代走</h2>
 
-
-      {/* Step 2: ベンチから代走者選択 */}
-      {selectedRunnerIndex !== null && selectedBase === null && (
-        <div>
-          <h3 className="text-lg font-bold mb-2">このランナーはどの塁にいますか？</h3>
-          <div className="flex gap-4">
-            {["1塁", "2塁", "3塁"].map((base) => (
-              <button
-                key={base}
-                disabled={runnerAssignments[base] !== null}
-                onClick={() => setSelectedBase(base as "1塁" | "2塁" | "3塁")}
-                className={`px-4 py-2 border rounded ${
-                  runnerAssignments[base] !== null ? "bg-gray-300 cursor-not-allowed" : "bg-white"
-                }`}
-              >
-                {base}ランナー
-              </button>
-            ))}
+{/* === STEP 1 === */}
+{selectedRunnerIndex === null && (
+  <div className="space-y-4">
+    <h3 className="text-base font-semibold mb-2 text-center">代走対象のランナーを選択</h3>
+    <div className="space-y-2">
+      {battingOrder.map((entry, index) => {
+        const player = getPlayer(entry.id);
+        const isUsed = Object.values(replacedRunners).some(r => r?.id === player?.id);
+        if (!player) return null;
+        return (
+          <div
+            key={entry.id}
+            className={`border p-2 rounded cursor-pointer ${
+              selectedRunnerIndex === index ? "bg-yellow-100" : ""
+            } ${isUsed ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "hover:bg-gray-100"}`}
+            onClick={() => !isUsed && setSelectedRunnerIndex(index)}
+          >
+            {index + 1}番 {player.lastName} {player.firstName} #{player.number}
           </div>
-        </div>
-      )}
+        );
+      })}
+    </div>
 
-      {/* Step 3: 代走選手を選択して交代 */} 
-      {selectedRunnerIndex !== null && selectedBase !== null && (
-        <div>
-          <h3 className="text-lg font-bold mb-2">代走として出す選手を選択</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {benchPlayers.map((player) => (
-              <button
-                key={player.id}
-                onClick={() => {
-  if (selectedRunnerIndex === null || !selectedBase || !selectedSubRunner) return;
-
-  const runnerId = battingOrder[selectedRunnerIndex]?.id;
-  if (!runnerId) return;
-  const replaced = getPlayer(runnerId);
-  const player = selectedSubRunner;
-
-  const baseLabel = selectedBase;
-  const honorific = player.isFemale ? "さん" : "くん";
-
-  setRunnerAssignments((prev) => ({
-    ...prev,
-    [selectedBase]: player,
-  }));
-  setRunnerAnnouncement((prev) => [
-    ...prev,
-    `${baseLabel}ランナー ${replaced?.lastName}${replaced?.isFemale ? "さん" : "くん"} に代わりまして、` +
-    `${player.lastName}${honorific}、` +
-    `${baseLabel}ランナーは ${player.lastName}${honorific}、背番号 ${player.number}`
-  ]);
-  setReplacedRunners((prev) => ({
-    ...prev,
-    [selectedBase]: replaced,
-  }));
-  setSelectedSubRunner(null);
-}}
-
-                className="p-2 border rounded hover:bg-gray-100"
-              >
-                {player.lastName} {player.firstName} #{player.number}
-              </button>
-            ))}
-          </div>
-
-        <button
-          onClick={() => {
-            setSelectedRunnerIndex(null);
-            setSelectedBase(null);
-            setSelectedSubRunner(null);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          もう1人
-        </button>
-
-        </div>
-      )}
-
-      {/* 🔁 クリアボタン：アナウンス文言の直前に移動 */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => {
-            setSelectedRunnerIndex(null);
-            setSelectedBase(null);
-            setSelectedSubRunner(null);
-            setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
-            setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
-            setRunnerAnnouncement([]);
-          }}
-          className="bg-gray-600 text-white px-4 py-2 rounded"
-        >
-          クリア
-        </button>
-      </div>
-      {/* アナウンス表示（代走） */}
-      {runnerAnnouncement && (
-        <div className="border p-4 bg-red-50">
-          <div className="flex items-center mb-2">
-            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
-              <div className="text-red-600 font-bold space-y-1">
-                {runnerAnnouncement.map((msg, idx) => (
-                  <div key={idx}>{msg}</div>
-                ))}
-              </div>
-          </div>
-          <div className="flex gap-4">
-            <button
-              onClick={() => announce(runnerAnnouncement.join("、"))}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
-              読み上げ
-            </button>
-            <button
-              onClick={() => speechSynthesis.cancel()}
-              className="bg-red-600 text-white px-4 py-2 rounded"
-            >
-              停止
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ 最下部に配置：確定＆キャンセルボタン */}
-      <div className="flex justify-end gap-4 mt-6">
+    {/* ✅ キャンセルボタン追加 */}
+    <div className="flex justify-end">
         <button
           onClick={() => {
             setShowRunnerModal(false);
             setSelectedRunnerIndex(null);
             setSelectedBase(null);
             setSelectedSubRunner(null);
-            setIsRunnerConfirmed(true);
-             // 🟡 ランナー情報から全ての代走を反映
-            const newOrder = [...battingOrder];
-            const newSubstituted: number[] = [...substitutedIndices];
-
-            Object.entries(runnerAssignments).forEach(([base, runner]) => {
-              const replaced = replacedRunners[base];
-              if (runner && replaced) {
-                const replacedIndex = battingOrder.findIndex(id => id === replaced.id);
-                if (replacedIndex !== -1) {
-                  newOrder[replacedIndex] = runner.id;
-                  if (!players.some(p => p.id === runner.id)) {
-                    setPlayers(prev => [...prev, runner]);
-                  }
-                  if (!allPlayers.some(p => p.id === runner.id)) {
-                    setAllPlayers(prev => [...prev, runner]);
-                  }
-                  if (!newSubstituted.includes(replacedIndex)) {
-                    newSubstituted.push(replacedIndex);
-                  }
-                }
-              }
-            });
-
-            setBattingOrder(newOrder);
-            setSubstitutedIndices(newSubstituted);
-          }}
-          className="bg-orange-600 text-white px-4 py-2 rounded"
-        >
-          確定
-        </button>
-        <button
-          onClick={() => {
             setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
             setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
-            setSelectedRunnerIndex(null);
-            setSelectedBase(null);
-            setSelectedSubRunner(null);
             setRunnerAnnouncement([]);
-            setShowRunnerModal(false);
           }}
           className="bg-green-600 text-white px-4 py-2 rounded"
         >
           キャンセル
         </button>
+    </div>
+  </div>
+)}
+
+{/* === STEP 2 === */}
+{selectedRunnerIndex !== null && selectedBase === null && (
+  <div className="space-y-4">
+    <h3 className="text-base font-semibold text-center">ランナーはどの塁にいますか？</h3>
+    <div className="flex justify-center gap-2">
+      {["1塁", "2塁", "3塁"].map((base) => (
+        <button
+          key={base}
+          disabled={runnerAssignments[base] !== null}
+          onClick={() => setSelectedBase(base as "1塁" | "2塁" | "3塁")}
+          className={`px-4 py-2 rounded border ${
+            runnerAssignments[base]
+              ? "bg-gray-300 cursor-not-allowed text-gray-500"
+              : "bg-white hover:bg-gray-100"
+          }`}
+        >
+          {base}
+        </button>
+      ))}
+    </div>
+    <div className="flex justify-center">
+        <button
+          onClick={() => {
+            setShowRunnerModal(false);
+            setSelectedRunnerIndex(null);
+            setSelectedBase(null);
+            setSelectedSubRunner(null);
+            setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+            setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+            setRunnerAnnouncement([]);
+          }}
+          className="bg-green-600 text-white px-4 py-2 rounded"
+        >
+          キャンセル
+        </button>
+    </div>
+  </div>
+)}
+
+{/* STEP3: 代走選手選択 */}
+{selectedRunnerIndex !== null && selectedBase !== null && (
+  <div>
+    {/* 🔹 選択内容表示 */}
+    <h3 className="text-lg font-bold mb-2">代走設定内容</h3>
+    <div className="text-md mb-4">
+      {(() => {
+        const runner = getPlayer(battingOrder[selectedRunnerIndex].id);
+        const sub = runnerAssignments[selectedBase];
+        const fromText = runner ? `${runner.lastName}${runner.firstName} #${runner.number}` : "";
+        const toText = sub ? `➡ ${sub.lastName}${sub.firstName} #${sub.number}` : "➡";
+        return <p>{selectedBase}：{fromText} {toText}</p>;
+      })()}
+    </div>
+
+    {/* 🔹 選手選択 */}
+    <h3 className="text-lg font-bold mb-2">代走として出す選手を選択</h3>
+    <div className="grid grid-cols-2 gap-2 mb-4">
+      {benchPlayers.map((player) => {
+        const isUsed = Object.values(runnerAssignments).some(p => p?.id === player.id);
+        const isSelected = runnerAssignments[selectedBase]?.id === player.id;
+
+        return (
+          <button
+            key={player.id}
+            disabled={isUsed && !isSelected}
+            onClick={() => {
+              const runnerId = battingOrder[selectedRunnerIndex]?.id;
+              const replaced = getPlayer(runnerId);
+              const honorific = player.isFemale ? "さん" : "くん";
+
+              setRunnerAnnouncement((prev) => {
+                const updated = prev.filter(msg => !msg.startsWith(`${selectedBase}ランナー`));
+                return [
+                  ...updated,
+                  `${selectedBase}ランナー ${replaced?.lastName}${replaced?.isFemale ? "さん" : "くん"} に代わりまして、` +
+                  `${player.lastName}${honorific}、${selectedBase}ランナーは ${player.lastName}${honorific}、背番号 ${player.number}`
+                ];
+              });
+
+              setRunnerAssignments(prev => ({ ...prev, [selectedBase]: player }));
+              setReplacedRunners(prev => ({ ...prev, [selectedBase]: replaced }));
+              setSelectedSubRunner(player);
+            }}
+            className={`p-2 border rounded font-semibold text-center ${
+              isSelected
+                ? "bg-yellow-300 border-yellow-600 text-black"
+                : isUsed
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-white hover:bg-gray-100"
+            }`}
+          >
+            {player.lastName} {player.firstName} #{player.number}
+          </button>
+        );
+      })}
+    </div>
+
+    {/* 🔹 アナウンス文言エリア */}
+    {runnerAnnouncement && runnerAnnouncement.length > 0 && (
+      <div className="border p-4 bg-red-200 mb-4">
+        <div className="flex items-center mb-2">
+          <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+          <div className="text-red-600 font-bold space-y-1">
+            {["1塁", "2塁", "3塁"].map(base =>
+              runnerAnnouncement
+                .filter(msg => msg.startsWith(`${base}ランナー`))
+                .map((msg, idx) => <div key={`${base}-${idx}`}>{msg}</div>)
+            )}
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <button
+            onClick={() =>
+              announce(
+                ["1塁", "2塁", "3塁"]
+                  .map(base => runnerAnnouncement.find(msg => msg.startsWith(`${base}ランナー`)))
+                  .filter(Boolean)
+                  .join("、")
+              )
+            }
+            className="bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            読み上げ
+          </button>
+          <button
+            onClick={() => speechSynthesis.cancel()}
+            className="bg-red-600 text-white px-4 py-2 rounded"
+          >
+            停止
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* 🔹 操作ボタン */}
+    <div className="flex justify-between gap-4">
+      <button
+        onClick={() => {
+          setSelectedSubRunner(null);
+          setSelectedRunnerIndex(null);
+          setSelectedBase(null);
+        }}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+      >
+        もう1人
+      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => {
+            setShowRunnerModal(false);
+            setSelectedRunnerIndex(null);
+            setSelectedBase(null);
+            setSelectedSubRunner(null);
+            setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+            setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+            setRunnerAnnouncement([]);
+          }}
+          className="bg-green-600 text-white px-4 py-2 rounded"
+        >
+          キャンセル
+        </button>
+<button
+  onClick={async () => {
+    const newOrder = [...battingOrder];
+    const newUsed = { ...usedPlayerInfo };
+
+    const assignments = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+    const wasStarterMap = await localForage.getItem<Record<number, boolean>>("wasStarterMap");
+    const updatedAssignments = { ...(assignments || {}) };
+    let teamPlayerList = [...players];
+
+    Object.entries(runnerAssignments).forEach(([base, sub]) => {
+      const replaced = replacedRunners[base];
+      if (!sub || !replaced) return;
+
+      const index = battingOrder.findIndex(entry => entry.id === replaced.id);
+      if (index === -1) return;
+
+      // ✅ 打順更新（代走）
+      newOrder[index] = { id: sub.id, reason: "代走" };
+
+      // ✅ UsedPlayerInfo 登録
+      const fromPos = Object.entries(assignments || {}).find(([_, id]) => id === replaced.id)?.[0] ?? "";
+      newUsed[replaced.id] = {
+        fromPos,
+        subId: sub.id,
+        reason: "代走",
+        order: index,
+        wasStarter: wasStarterMap?.[replaced.id] ?? true,
+        replacedId: replaced.id,
+      };
+
+      // ✅ 守備位置更新（代走選手に引き継ぐ）
+      if (fromPos) {
+        updatedAssignments[fromPos] = sub.id;
+      }
+
+      // ✅ teamPlayers に代走選手がいなければ追加
+      if (!teamPlayerList.some(p => p.id === sub.id)) {
+        teamPlayerList.push(sub);
+      }
+    });
+
+    // ✅ 保存と更新
+    setBattingOrder(newOrder);
+    setUsedPlayerInfo(newUsed);
+    
+    await localForage.setItem("lineupAssignments", updatedAssignments);
+    await localForage.setItem("battingOrder", newOrder); 
+    setPlayers(teamPlayerList);
+
+
+    // ✅ モーダルと状態をリセット
+    setShowRunnerModal(false);
+    setSelectedRunnerIndex(null);
+    setSelectedBase(null);
+    setSelectedSubRunner(null);
+    setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+    setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+    setRunnerAnnouncement([]);
+  }}
+  className="bg-red-600 text-white px-4 py-2 rounded"
+>
+  確定
+</button>
+      </div>
+    </div>
+  </div>
+)}
+
+    </div>
+  </div>
+)}
+
+{showGroundPopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-6 border-4 border-red-500 max-w-md w-full">
+      {/* 上段：お願い */}
+      <div className="flex items-center justify-center gap-4">
+        <img src="icons/mic-red.png" alt="マイク" className="w-10 h-10" />
+        <h2 className="text-lg font-bold text-red-600">両チームはグランド整備をお願いします。</h2>
+      </div>
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => speakText("両チームはグランド整備をお願いします。")}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={stopSpeech}
+          className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-1 rounded"
+        >
+          停止
+        </button>
       </div>
 
+      <hr />
 
+      {/* 下段：お礼 */}
+      <div>
+        <h2 className="text-lg font-bold text-red-600">グランド整備、ありがとうございました。</h2>
+        <div className="flex justify-center gap-4 mt-2">
+          <button
+            onClick={() => speakText("グランド整備、ありがとうございました。")}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded"
+          >
+            読み上げ
+          </button>
+          <button
+            onClick={stopSpeech}
+            className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-1 rounded"
+          >
+            停止
+          </button>
+        </div>
+      </div>
+
+      {/* OKボタン */}
+      <div className="pt-2">
+        <button
+          onClick={() => {
+            stopSpeech();
+            setShowGroundPopup(false);
+            onSwitchToDefense(); // ✅ 守備画面に遷移！
+          }}
+          className="bg-green-500 hover:bg-green-600 text-white px-6 py-1.5 rounded font-bold"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+{showStartTimePopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-pink-200 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-md w-full">
+      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2">
+        <span className="text-2xl">🎤</span>
+        この試合の開始時刻は {gameStartTime} です。
+      </div>
+      <div className="flex justify-center gap-4">
+        <button
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+          onClick={() => {
+            const msg = new SpeechSynthesisUtterance(`この試合の開始時刻は${gameStartTime}です`);
+            speechSynthesis.speak(msg);
+          }}
+        >
+          読み上げ
+        </button>
+        <button
+          className="bg-gray-500 text-white px-4 py-2 rounded"
+          onClick={() => speechSynthesis.cancel()}
+        >
+          停止
+        </button>
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={() => setShowStartTimePopup(false)}
+        >
+          OK
+        </button>
+      </div>
     </div>
   </div>
 )}

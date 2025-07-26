@@ -79,7 +79,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       if (matchInfo && typeof matchInfo === "object") {
         const mi = matchInfo as any;
         setAwayTeamName(mi.opponentTeam || "");
-        setIsHomeTeamFirstAttack(mi.isHome !== "後攻");
+        setIsHomeTeamFirstAttack(!mi.isHome);
         if (Array.isArray(mi.umpires)) {
           setUmpires(mi.umpires);
         }
@@ -164,21 +164,21 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
   return (
     <div className="p-6 max-w-4xl mx-auto bg-white border rounded-xl shadow">
-      <button
-        onClick={() => onNavigate("announcement")}
-        className="text-sm text-gray-700 hover:underline mb-4"
-      >
-        ← 試合前アナウンスメニューに戻る
-      </button>
+
 
       <h1 className="text-2xl font-bold text-center mb-4">スタメン発表</h1>
 
-      {!isHomeTeamFirstAttack && (
-        <div className="flex items-center text-blue-800 mb-2">
-          <img src="/icons/warning-icon.png" className="w-5 h-5 mr-2" alt="注意" />
-          <span className="text-sm font-semibold">先攻チームのアナウンスが終わったタイミング</span>
+      {isHomeTeamFirstAttack && (
+       <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span> シートノック後、グラウンド整備中に読み上げ  ※先攻チーム🎤
         </div>
       )}
+      {!isHomeTeamFirstAttack && (
+       <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span> 先攻チームのアナウンスが終わったタイミング  ※後攻チーム🎤
+        </div>
+      )}
+    
 
       <div className="border border-black p-4 bg-red-50 text-red-600">
         <div className="flex flex-col items-start">
@@ -186,11 +186,11 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           <div>
             {isHomeTeamFirstAttack && (
               <p>
-                お待たせいたしました、（{homeTeamName}）対（{awayTeamName}）のスターティングラインナップ並びに審判員をお知らせいたします。
+                お待たせいたしました、{homeTeamName} 対 {awayTeamName} のスターティングラインナップ並びに審判員をお知らせいたします。
               </p>
             )}
             <p className="mt-2 font-bold">
-              {isHomeTeamFirstAttack ? `先攻（${homeTeamName}）` : `続きまして後攻（${homeTeamName}）`}
+              {isHomeTeamFirstAttack ? `先攻 ${homeTeamName} ` : `続きまして後攻 ${homeTeamName} `}
             </p>
 
             {battingOrder.map((entry, idx) => {

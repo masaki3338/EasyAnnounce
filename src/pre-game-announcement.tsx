@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
+
 export type ScreenType =
   | "menu"
   | "teamRegister"
@@ -52,7 +53,7 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
           className={`w-full py-4 rounded-lg text-lg font-semibold ${!isFirst ? greenClass : grayClass}`}
           onClick={() => onNavigate("warmup")}
         >
-          ウォーミングアップ（後攻チームアナウンス）
+          ウォーミングアップ（後攻チーム🎤）
         </button>
 
         <button
@@ -73,21 +74,21 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
           className={`w-full px-4 py-3 rounded-lg text-lg font-semibold ${isFirst ? greenClass : grayClass}`}
           onClick={() => onNavigate("gather")}
         >
-          集合（先攻チームアナウンス）
+          集合（先攻チーム🎤）
         </button>
 
         <button
           className={`w-full px-4 py-3 rounded-lg text-lg font-semibold ${isFirst ? greenClass : grayClass}`}
           onClick={() => onNavigate("startGreeting")}
         >
-          試合開始挨拶（先攻チームアナウンス）
+          試合開始挨拶（先攻チーム🎤）
         </button>
 
         <button
          className={`w-full px-4 py-3 rounded-lg text-lg font-semibold ${!isFirst ? greenClass : grayClass}`}
          onClick={() => onNavigate("seatIntroduction")}
         >
-          シート紹介（後攻チームアナウンス）
+          シート紹介（後攻チーム🎤）
         </button>
 
         <button

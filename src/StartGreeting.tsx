@@ -33,7 +33,7 @@ interface Props {
   const team1st = benchSide === "1塁側" ? teamName : opponentName;
   const team3rd = benchSide === "3塁側" ? teamName : opponentName;
 
-  const message = `お待たせいたしました。${tournamentName}、\n本日の第${matchNumber}試合、\n一塁側：${team1st}　対　三塁側：${team3rd} の試合、\nまもなく開始でございます。`;
+  const message = `お待たせいたしました。${tournamentName} \n本日の第${matchNumber}試合、\n一塁側：${team1st}　対　三塁側：${team3rd} の試合、\nまもなく開始でございます。`;
  
   const handleSpeak = () => {
     const utter = new SpeechSynthesisUtterance(message);
@@ -52,26 +52,14 @@ interface Props {
 
   return (
     <div className="min-h-screen bg-white p-6 flex flex-col items-center space-y-6">
-    <button
-      className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 py-3 rounded-lg text-base mt-8"
-      onClick={() => {
-        if (typeof onBack === "function") {
-          onBack(); // App.tsx から渡された場合はこちらを優先
-        } else {
-          onNavigate("startGame"); // fallback
-        }
-      }}
-    >
-      ← 試合開始画面に戻る
-    </button>
+
 
       <h1 className="text-2xl font-bold text-gray-800">試合開始挨拶</h1>
 
       <div className="flex items-center space-x-2">
-        <img src="/icons/warning-icon.png" alt="注意" className="w-5 h-5" />
-        <p className="text-blue-900 text-sm font-semibold">
-          後攻チームが守備につくタイミング
-        </p>
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span> 後攻チームが守備につくタイミング  ※先攻チーム🎤
+        </div>
       </div>
 
       <div className="border border-black bg-red-50 p-4 rounded-md flex items-start space-x-4 max-w-xl">

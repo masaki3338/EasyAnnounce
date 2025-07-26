@@ -11,7 +11,7 @@ const handleStart = async () => {
   await localForage.removeItem("nextBatterIndex");    // 次の打者（任意）
   await localForage.removeItem("usedBatterIds");      // 簡略アナウンスに使う履歴（必要なら）
   await localForage.removeItem("scores"); // スコアを完全に削除して空状態に
-  
+
   // 🧹 イニングと攻守情報の初期化
   const isHome = !isFirstAttack; // 自チームが後攻ならホーム
   const initialMatchInfo = {
@@ -22,6 +22,11 @@ const handleStart = async () => {
     isHome: isHome,
   };
   await localForage.setItem("matchInfo", initialMatchInfo);
+};
+
+const resetAnnouncedIds = () => {
+  setAnnouncedIds([]);
+  localForage.removeItem("announcedIds");
 };
 
 const StartGame = ({
@@ -114,6 +119,7 @@ const StartGame = ({
     await localForage.removeItem("nextBatterIndex");
     await localForage.removeItem("usedBatterIds");
     await localForage.setItem("battingOrder", battingOrder); // 🆕 打順保存
+    await localForage.removeItem("checkedIds"); // 🔄 チェック状態を初期化
 
     // 🧼 空の得点データを保存（全て空白にするため）
     await localForage.setItem("scores", {});             // ← 🆕
@@ -173,60 +179,52 @@ const StartGame = ({
         </div>
       </section>
 
-      {/* スタメン・控え表示 */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-blue-700 mb-3 flex items-center gap-2">
-          <span>👥</span> <span>スターティングメンバー</span>
-        </h2>
-        <div className="grid sm:grid-cols-2 gap-6">
-          {/* 左：スタメン */}
-          <div>
-            <h3 className="text-base font-semibold mb-2">スタメン</h3>
-            <div className="space-y-2">
-              {/* スタメン */}
-              {battingOrder.slice(0, 9).map((entry, index) => {
-                const pos = Object.keys(assignments).find((p) => assignments[p] === entry.id);
-                const player = getPlayer(entry.id);
-                return (
-                  <div
-                    key={entry.id ?? index}
-                    className="bg-white rounded-lg shadow p-3"
-                  >
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>{index + 1}番</span>
-                      <span>守備：{pos ?? "未設定"}</span>
-                    </div>
-                    <div className="text-gray-800 font-medium text-base">
-                      {player?.name ?? "未設定"}　#{player?.number ?? "-"}
-                    </div>
-                  </div>
-                );
-              })}
+{/* スタメン・控え表示 */}
+<section className="mb-10">
+  <h2 className="text-lg font-semibold text-blue-700 mb-3 flex items-center gap-2">
+    <span>👥</span> <span>スターティングメンバー</span>
+  </h2>
+  <div className="grid sm:grid-cols-2 gap-6">
+    {/* 左：スタメン */}
+    <div>
+      <div className="text-sm text-gray-800 space-y-0 leading-tight">
+        {battingOrder.slice(0, 9).map((entry, index) => {
+          const pos = Object.keys(assignments).find((p) => assignments[p] === entry.id);
+          const player = getPlayer(entry.id);
+          return (
+            <div key={entry.id ?? index} className="flex gap-2">
+              <span className="w-8">{index + 1}番</span>
+              <span className="w-10">{pos ?? "未設定"}</span>
+              <span className="w-24">{player?.name ?? "未設定"}</span>
+              <span>#{player?.number ?? "-"}</span>
             </div>
-          </div>
+          );
+        })}
+      </div>
+    </div>
 
-          {/* 右：控え選手 */}
-          <div>
-            <h3 className="text-base font-semibold mb-2">控え選手</h3>
-            <div className="space-y-2">
-              {players
-                .filter(
-                  (p) =>
-                    !battingOrder.some((entry) => entry.id === p.id) &&
-                    !benchOutIds.includes(p.id)
-                )
-                .map((player) => (
-                  <div
-                    key={player.id}
-                    className="bg-white rounded-lg shadow p-3 text-gray-800"
-                  >
-                    {player.name}　#{player.number}
-                  </div>
-                ))}
+    {/* 右：控え選手 */}
+    <div>
+      <h3 className="text-base font-semibold mb-1">控え選手</h3>
+      <div className="text-sm text-gray-800 space-y-0 leading-tight">
+        {players
+          .filter(
+            (p) =>
+              !battingOrder.some((entry) => entry.id === p.id) &&
+              !benchOutIds.includes(p.id)
+          )
+          .map((player) => (
+            <div key={player.id} className="flex gap-2">
+              <span className="w-28">{player.name}</span>
+              <span>#{player.number}</span>
             </div>
-          </div>
-        </div>
-      </section>
+          ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+
 
       {/* 操作ボタン */}
       <div className="grid gap-4">

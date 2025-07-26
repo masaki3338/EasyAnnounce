@@ -17,6 +17,11 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
 const timer1Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+const [timer1Setting, setTimer1Setting] = useState(300); // 秒数（5分）
+const [timer2Setting, setTimer2Setting] = useState(300);
+
+
+
   useEffect(() => {
     const load = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
@@ -51,13 +56,13 @@ const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
     window.speechSynthesis.cancel();
     setReadingKey(null);
   };
-
+  
   const startTimer = (num: 1 | 2) => {
     if (num === 1) {
-      setTimer1TimeLeft(300);
+      setTimer1TimeLeft(timer1Setting);
       setTimer1Active(true);
     } else {
-      setTimer2TimeLeft(300);
+      setTimer2TimeLeft(timer2Setting);
       setTimer2Active(true);
     }
   };
@@ -126,29 +131,29 @@ const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
     return `${m}分${s.toString().padStart(2, "0")}秒`;
   };
 
-  const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
-    <div className="border border-black p-4 my-3 bg-white rounded-md">
-      <div className="flex items-start gap-2 mb-2">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
-        <p className="text-red-600 font-bold whitespace-pre-wrap">{text}</p>
-      </div>
-      <div className="flex gap-2">
-        <button
-          className={`px-4 py-1 text-white rounded ${readingKey === keyName ? "bg-green-600" : "bg-blue-600"}`}
-          onClick={() => speak(text, keyName)}
-        >
-          読み上げ
-        </button>
-        <button
-          className="px-4 py-1 text-white bg-red-600 rounded"
-          onClick={stopSpeak}
-          disabled={readingKey !== keyName}
-        >
-          停止
-        </button>
-      </div>
+const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
+  <div className="border border-black p-4 my-3 bg-white rounded-md">
+    <div className="flex items-start gap-2 mb-2">
+      <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+      <p className="text-left text-red-600 font-bold whitespace-pre-wrap">{text}</p>
     </div>
-  );
+    <div className="flex gap-2">
+      <button
+        className={`px-4 py-1 text-white rounded ${readingKey === keyName ? "bg-green-600" : "bg-blue-600"}`}
+        onClick={() => speak(text, keyName)}
+      >
+        読み上げ
+      </button>
+      <button
+        className="px-4 py-1 text-white bg-red-600 rounded"
+        onClick={stopSpeak}
+        disabled={readingKey !== keyName}
+      >
+        停止
+      </button>
+    </div>
+  </div>
+);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 text-center">
@@ -176,30 +181,45 @@ const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
         </div>
       )}
 
-      <button onClick={onBack} className="mb-4 px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-sm">
-        ← 試合前アナウンスメニューに戻る
-      </button>
 
-      <div className="flex justify-end mb-4">
-        <button className="border px-4 py-1 rounded-full text-sm">後攻チーム読み上げ</button>
-      </div>
+
 
       <h1 className="text-2xl font-bold mb-4">ウォーミングアップ</h1>
 
       <div className="flex items-center justify-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold">
-        <span className="mr-2 text-2xl">⚠️</span> 試合開始30分前にアナウンス
+        <span className="mr-2 text-2xl">⚠️</span> 試合開始30分前にアナウンス     ※後攻チーム🎤
       </div>
 
+
       <MessageBlock
-        text={`両チームはウォーミングアップに入って下さい。\n（1塁側　${team1}）はトスバッティング、\n（3塁側　${team3}）はキャッチボールを開始してください。`}
+        text={`両チームはウォーミングアップに入って下さい。\n 1塁側 ${team1} はトスバッティング、\n 3塁側 ${team3} はキャッチボールを開始してください。`}
         keyName="start"
       />
 
+
       <div className="flex justify-center items-center gap-4 mt-2 font-bold">
         {timer1TimeLeft === 0 && !timer1Active ? (
-          <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={() => startTimer(1)}>
-            5分間タイマー開始
-          </button>
+         <div className="flex flex-col items-center gap-2">
+  <div className="flex items-center gap-2">
+    <button
+      className="bg-gray-400 text-white px-2 rounded"
+      onClick={() => setTimer1Setting(Math.max(60, timer1Setting - 60))}
+    >
+      −
+    </button>
+    <span>{Math.floor(timer1Setting / 60)}分間</span>
+    <button
+      className="bg-gray-400 text-white px-2 rounded"
+      onClick={() => setTimer1Setting(timer1Setting + 60)}
+    >
+      ＋
+    </button>
+  </div>
+  <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={() => startTimer(1)}>
+    タイマー開始
+  </button>
+</div>
+
         ) : (
           <>
             <span>残り時間　{formatTime(timer1TimeLeft)}</span>
@@ -223,9 +243,26 @@ const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 
       <div className="flex justify-center items-center gap-4 mt-2 font-bold">
         {timer2TimeLeft === 0 && !timer2Active ? (
-          <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={() => startTimer(2)}>
-            5分間タイマー開始
-          </button>
+          <div className="flex flex-col items-center gap-2">
+  <div className="flex items-center gap-2">
+    <button
+      className="bg-gray-400 text-white px-2 rounded"
+      onClick={() => setTimer2Setting(Math.max(60, timer2Setting - 60))}
+    >
+      −
+    </button>
+    <span>{Math.floor(timer2Setting / 60)}分間</span>
+    <button
+      className="bg-gray-400 text-white px-2 rounded"
+      onClick={() => setTimer2Setting(timer2Setting + 60)}
+    >
+      ＋
+    </button>
+  </div>
+  <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={() => startTimer(2)}>
+    タイマー開始
+  </button>
+</div>
         ) : (
           <>
             <span>残り時間　{formatTime(timer2TimeLeft)}</span>

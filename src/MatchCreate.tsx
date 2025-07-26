@@ -57,6 +57,7 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   };
 
   const handleSave = async () => {
+    const team = await localForage.getItem<any>("team"); 
     const matchInfo = {
       tournamentName,
       matchNumber,
@@ -65,7 +66,8 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
       benchSide,
       umpires,
       inning: 1,         // ✅ 初期イニングを追加
-      isTop: true        // ✅ 初期は「表」に設定
+      isTop: true,        // ✅ 初期は「表」に設定
+      teamName: team?.name ?? ""
     };
 
     await localForage.setItem("matchInfo", matchInfo);
@@ -192,6 +194,7 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
 
         <button
           onClick={async () => {
+            const team = await localForage.getItem<any>("team");
             const matchInfo = {
               tournamentName,
               matchNumber,
@@ -201,6 +204,7 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
               umpires,
               inning: 1,
               isTop: true,
+              teamName: team?.name ?? "" 
             };
             await localForage.setItem("matchInfo", matchInfo);
             onGoToLineup();

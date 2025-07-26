@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@layer utilities {
+  /* 既存の util クラスがここにあるならその下で OK */
+
+  /* ====== ドラッグ操作をタッチでもスムーズにする ====== */
+  .touch-draggable {
+    touch-action: none;            /* ピンチズーム／スクロールを抑止 */
+    -webkit-user-select: none;     /* iOS/Safari でのテキスト選択防止 */
+    user-select: none;             /* 他ブラウザでのテキスト選択防止 */
+  }
+}

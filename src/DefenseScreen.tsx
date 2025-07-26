@@ -54,130 +54,197 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  useEffect(() => {
-    const resetCurrentPitchCount = async () => {
-      const saved = await localForage.getItem<{ current: number; total: number }>('pitchCounts');
-      const total = saved?.total ?? 0;
-      setCurrentPitchCount(0);
-      await localForage.setItem('pitchCounts', { current: 0, total });
+
+useEffect(() => {
+  localForage.setItem("lastGameScreen", "defense");
+  const loadData = async () => {
+    const savedAssignments = await localForage.getItem<{ [pos: string]: number | null }>('lineupAssignments');
+    const savedTeam = (await localForage.getItem<{ name: string; players: Player[] }>('team')) || { name: '', players: [] };
+    const savedMatchInfo = (await localForage.getItem<{
+      opponentTeam: string;
+      inning?: number;
+      isTop?: boolean;
+      isDefense?: boolean;
+      isHome?: boolean;
+    }>('matchInfo')) || {
+      opponentTeam: '',
+      inning: 1,
+      isTop: true,
+      isDefense: true,
+      isHome: false
     };
-    resetCurrentPitchCount();
-  }, [inning, isTop]);
+    const savedScores = (await localForage.getItem<Scores>('scores')) || {};
+    const savedPitchCount = (await localForage.getItem<{ current: number; total: number; pitcherId?: number }>('pitchCounts')) || { current: 0, total: 0 };
 
-  useEffect(() => {
-    const loadData = async () => {      
-      const savedAssignments = await localForage.getItem<{ [pos: string]: number | null }>('lineupAssignments');
-      const savedTeam = (await localForage.getItem<{ name: string; players: Player[] }>('team')) || { name: '', players: [] };
-      const savedMatchInfo = (await localForage.getItem<{
-          opponentTeam: string;
-          inning?: number;
-          isTop?: boolean;
-          isDefense?: boolean;
-          isHome?: boolean; // ← ✅これを追加
-        }>('matchInfo')) || {
-          opponentTeam: '',
-          inning: 1,
-          isTop: true,
-          isDefense: true,
-          isHome: false // ← 任意（なくても良い）
-        };
-      const savedScores = (await localForage.getItem<Scores>('scores')) || {};
-      const savedPitchCount = (await localForage.getItem<{ current: number; total: number }>('pitchCounts')) || { current: 0, total: 0 };
+    const savedBattingOrder = (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
+    const hasSubPlayers = savedBattingOrder.some(
+      (entry) => entry.reason === "代打" || entry.reason === "代走"
+    );
+    if (hasSubPlayers) {
+      setShowConfirmModal(true);
+      return;
+    }
 
-      // ✅ ここに追記！
-      const savedBattingOrder = (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
-      // ✅ デバッグログ：出場理由一覧
-      console.log("【battingOrder】", savedBattingOrder);
-      console.log("【出場理由一覧】", savedBattingOrder.map(entry => entry.reason));
+    if (savedAssignments) setAssignments(savedAssignments);
+    if (savedTeam.name) setMyTeamName(savedTeam.name);
+    if (savedTeam.players) setTeamPlayers(savedTeam.players);
+    if (savedMatchInfo.opponentTeam) setOpponentTeamName(savedMatchInfo.opponentTeam);
+    if (savedScores) setScores(savedScores);
+    setInning(savedMatchInfo.inning ?? 1);
+    setIsTop(savedMatchInfo.isTop ?? true);
+    setIsDefense(savedMatchInfo.isDefense ?? true);
+    setIsHome(savedMatchInfo.isHome ?? false);
 
-      const hasSubPlayers = savedBattingOrder.some(
-        (entry) => entry.reason === "代打" || entry.reason === "代走"
-      );
-      // ✅ 判定ログ
-      console.log("【代打 or 代走の選手がいるか？】", hasSubPlayers);
-      if (hasSubPlayers) {
-        //onChangeDefense(); // 守備変更画面へ
-        setShowConfirmModal(true); // モーダルを表示
-        return;
-      }
+// 🟡 ピッチャー交代チェック
+const currentPitcherId = savedAssignments?.['投'];
+const previousPitcherId = savedPitchCount.pitcherId;
+const pitcher = savedTeam.players.find(p => p.id === currentPitcherId);
+const pitcherName = pitcher?.lastName ?? "投手";
+
+let current = 0;
+let total = savedPitchCount.total ?? 0;
+
+// ✅ イニングの変化を判定
+const isSameInning = savedMatchInfo.inning === inning && savedMatchInfo.isTop === isTop;
+
+if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
+  // 🟢 同じ投手
+  current = savedPitchCount.current ?? 0;
+  total = savedPitchCount.total ?? 0;
+
+  const msgs = [`ピッチャー${pitcherName}くん、この回の投球数は${current}球です。`];
+  if (!isSameInning) {
+    msgs.push(`トータル${total}球です。`);
+  }
+  setAnnounceMessages(msgs);
+} else {
+  // 🔴 投手交代 → 両方リセット
+  current = 0;
+  total = 0;
+  setAnnounceMessages([
+    `ピッチャー${pitcherName}くんに交代です。`,
+    `この回の投球数は0球です。`,
+    `トータル0球です。`
+  ]);
+}
+
+// 状態更新
+setCurrentPitchCount(current);
+setTotalPitchCount(total);
+await localForage.setItem("pitchCounts", {
+  current,
+  total,
+  pitcherId: currentPitcherId ?? null
+});
 
 
-      if (savedAssignments) setAssignments(savedAssignments);
-      if (savedTeam.name) setMyTeamName(savedTeam.name);
-      if (savedTeam.players) setTeamPlayers(savedTeam.players);
-      if (savedMatchInfo.opponentTeam) setOpponentTeamName(savedMatchInfo.opponentTeam);
-      if (savedScores) setScores(savedScores);
-      setCurrentPitchCount(savedPitchCount.current);
-      setTotalPitchCount(savedPitchCount.total);
-      setInning(savedMatchInfo.inning ?? 1);
-      setIsTop(savedMatchInfo.isTop ?? true);
-      setIsDefense(savedMatchInfo.isDefense ?? true);
-      setIsHome(savedMatchInfo.isHome ?? false); 
-      // 🔽 初期アナウンスメッセージを表示
-      const pitcherId = savedAssignments?.['投'];
-      const pitcher = savedTeam.players.find(p => p.id === pitcherId);
-      const pitcherLastName = pitcher?.lastName ?? '投手';
-      const newMessages = [
-        `ピッチャー${pitcherLastName}くん、この回の投球数は${savedPitchCount.current}球です。`,
-        `トータル${savedPitchCount.total}球です。`
-      ];
-      setAnnounceMessages(newMessages);
-    };
-    loadData();
+    setCurrentPitchCount(current);
+    setTotalPitchCount(total);
 
-  }, []);
+    // 保存
+    await localForage.setItem('pitchCounts', {
+      current,
+      total,
+      pitcherId: currentPitcherId ?? null
+    });
+
+
+  };
+
+  loadData();
+}, []);
 
 
   
   const addPitch = async () => {
-    const newCurrent = currentPitchCount + 1;
-    const newTotal = totalPitchCount + 1;
-    setCurrentPitchCount(newCurrent);
-    setTotalPitchCount(newTotal);
-    await localForage.setItem('pitchCounts', { current: newCurrent, total: newTotal });
+  const newCurrent = currentPitchCount + 1;
+  const newTotal = totalPitchCount + 1;
+  setCurrentPitchCount(newCurrent);
+  setTotalPitchCount(newTotal);
 
-    const pitcherId = assignments['投'];
-    const pitcher = teamPlayers.find(p => p.id === pitcherId);
-    const pitcherLastName = pitcher?.lastName ?? '投手';
+  const pitcherId = assignments['投'];
 
-    const newMessages: string[] = [];
+  // 🔽 matchInfo を取得
+  const savedMatchInfo = await localForage.getItem<{
+    inning?: number;
+    isTop?: boolean;
+  }>('matchInfo');
 
-    // 「この回の投球数」は必ず表示
-    newMessages.push(`ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`);
+  const isSameInning =
+    savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
 
-    // トータルと同じでない場合のみ表示
-    if (newCurrent !== newTotal) {
-      newMessages.push(`トータル${newTotal}球です。`);
-    }
+  // 保存
+  await localForage.setItem('pitchCounts', {
+    current: newCurrent,
+    total: newTotal,
+    pitcherId: pitcherId ?? null
+  });
 
-    // ★ ポップアップ用：40 or 50球ちょうどのとき
-    if (newTotal === 40 || newTotal === 50) {
-      const specialMsg =
-        newTotal === 50
-          ? `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球に到達しました。`
-          : `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球です。`; // ← 累積投球数に変更
-      setPitchLimitMessages([specialMsg]);
-      setShowPitchLimitModal(true);
-    }
+  const pitcher = teamPlayers.find(p => p.id === pitcherId);
+  const pitcherLastName = pitcher?.lastName ?? '投手';
 
-    setAnnounceMessages(newMessages);
-  };
+  const newMessages: string[] = [];
+
+  // ✅ この回の投球数は常に表示
+  newMessages.push(`ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`);
+
+  // ✅ イニングが変わっている時だけトータルも表示
+  if (newCurrent !== newTotal) {
+    newMessages.push(`トータル${newTotal}球です。`);
+  }
+
+  // ★ ポップアップ用：40 or 50球ちょうどのとき
+  if (newTotal === 40 || newTotal === 50) {
+    const specialMsg =
+      newTotal === 50
+        ? `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球に到達しました。`
+        : `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球です。`;
+    setPitchLimitMessages([specialMsg]);
+    setShowPitchLimitModal(true);
+  }
+
+  setAnnounceMessages(newMessages);
+};
 
   const subtractPitch = async () => {
-    const newCurrent = Math.max(currentPitchCount - 1, 0);
-    const newTotal = Math.max(totalPitchCount - 1, 0);
-    setCurrentPitchCount(newCurrent);
-    setTotalPitchCount(newTotal);
-    await localForage.setItem('pitchCounts', { current: newCurrent, total: newTotal });
+  const newCurrent = Math.max(currentPitchCount - 1, 0);
+  const newTotal = Math.max(totalPitchCount - 1, 0);
+  setCurrentPitchCount(newCurrent);
+  setTotalPitchCount(newTotal);
 
-    const pitcherId = assignments['投'];
-    const pitcher = teamPlayers.find(p => p.id === pitcherId);
-    const pitcherLastName = pitcher?.lastName ?? '投手';
+  const pitcherId = assignments['投'];
 
-    const newMessages = [`ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`];
+  // 🔽 matchInfo を取得して現在の回と比較
+  const savedMatchInfo = await localForage.getItem<{
+    inning?: number;
+    isTop?: boolean;
+  }>('matchInfo');
 
-    setAnnounceMessages(newMessages);
-  };
+  const isSameInning =
+    savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
+
+  // 保存
+  await localForage.setItem('pitchCounts', {
+    current: newCurrent,
+    total: newTotal,
+    pitcherId: pitcherId ?? null
+  });
+
+  const pitcher = teamPlayers.find(p => p.id === pitcherId);
+  const pitcherLastName = pitcher?.lastName ?? '投手';
+
+  const newMessages = [
+    `ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`
+  ];
+
+  // ✅ イニングが変わっていたらトータルも表示
+  if (newCurrent !== newTotal) {
+    newMessages.push(`トータル${newTotal}球です。`);
+  }
+
+  setAnnounceMessages(newMessages);
+};
+
 
 
 
@@ -224,6 +291,13 @@ if (isHome) {
     const nextIsTop = false;
     setIsTop(nextIsTop);
 
+      setCurrentPitchCount(0);
+      await localForage.setItem("pitchCounts", {
+        current: 0,
+        total: totalPitchCount,
+        pitcherId: assignments["投"] ?? null
+      });
+
     await localForage.setItem("matchInfo", {
       opponentTeam: opponentTeamName,
       inning,
@@ -243,6 +317,13 @@ if (isHome) {
 
     setIsTop(nextIsTop);
     setInning(nextInning);
+
+    setCurrentPitchCount(0);
+    await localForage.setItem("pitchCounts", {
+      current: 0,
+      total: totalPitchCount,
+      pitcherId: assignments["投"] ?? null
+    });
 
     await localForage.setItem("matchInfo", {
       opponentTeam: opponentTeamName,
@@ -313,27 +394,27 @@ const totalRuns = () => {
         <h2 className="text-xl font-bold mb-2">
           {myTeamName || '自チーム'} vs {opponentTeamName || '対戦相手'}
         </h2>
-<div className="flex justify-between items-center mb-2">
-  <div className="flex items-center gap-2">
-    <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
-      {[...Array(9)].map((_, i) => (
-        <option key={i} value={i + 1}>{i + 1}</option>
-      ))}
-    </select>
-    <span>回</span>
-    <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-      <option value="表">表</option>
-      <option value="裏">裏</option>
-    </select>
-    <span>{isDefense ? "守備中" : "攻撃中"}</span>
-  </div>
-  <button
-    onClick={() => setShowModal(true)}
-    className="px-3 py-1 bg-orange-700 text-white rounded"
-  >
-    イニング終了
-  </button>
-</div>
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-2">
+            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
+              {[...Array(9)].map((_, i) => (
+                <option key={i} value={i + 1}>{i + 1}</option>
+              ))}
+            </select>
+            <span>回</span>
+            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
+              <option value="表">表</option>
+              <option value="裏">裏</option>
+            </select>
+            <span>{isDefense ? "守備中" : "攻撃中"}</span>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-3 py-1 bg-orange-700 text-white rounded"
+          >
+            イニング終了
+          </button>
+        </div>
 
         <table className="w-full border border-gray-400 text-center text-sm">
           <thead>
@@ -346,63 +427,66 @@ const totalRuns = () => {
             </tr>
           </thead>
           <tbody>
-            {[
-              { name: myTeamName || "自チーム", isMyTeam: true },
-              { name: opponentTeamName || "対戦相手", isMyTeam: false },
-            ]
-              .sort((a, b) => {
-                // 先攻（isHome=false）なら自チームを上に、後攻（isHome=true）なら下に
-                if (isHome) return a.isMyTeam ? 1 : -1;
-                else return a.isMyTeam ? -1 : 1;
-              })
-              .map((row, rowIndex) => {
-                return (
-                  <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
-                    <td className="border">{row.name}</td>
-                    {[...Array(9).keys()].map((i) => {
-                      const value = row.isMyTeam
-                        ? isHome
-                          ? scores[i]?.bottom
-                          : scores[i]?.top
-                        : isHome
-                        ? scores[i]?.top
-                        : scores[i]?.bottom;
+  {[
+    { name: myTeamName || "自チーム", isMyTeam: true },
+    { name: opponentTeamName || "対戦相手", isMyTeam: false },
+  ]
+    .sort((a, b) => {
+      // 先攻（isHome=false）なら自チームを上に、後攻（isHome=true）なら下に
+      if (isHome) return a.isMyTeam ? 1 : -1;
+      else return a.isMyTeam ? -1 : 1;
+    })
+    .map((row, rowIndex) => {
+      return (
+        <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
+          <td className="border text-center">{row.name}</td>
+          {[...Array(9).keys()].map((i) => {
+            const value = row.isMyTeam
+              ? isHome
+                ? scores[i]?.bottom
+                : scores[i]?.top
+              : isHome
+              ? scores[i]?.top
+              : scores[i]?.bottom;
 
-                      const target = row.isMyTeam
-                        ? isHome
-                          ? "bottom"
-                          : "top"
-                        : isHome
-                        ? "top"
-                        : "bottom";
+            const target = row.isMyTeam
+              ? isHome
+                ? "bottom"
+                : "top"
+              : isHome
+              ? "top"
+              : "bottom";
 
-                      return (
-                        <td
-                          key={i}
-                          className="border cursor-pointer hover:bg-gray-200"
-                          onClick={() => addScore(i, target as "top" | "bottom")}
-                        >
-                          {i + 1 > inning ? "" : value ?? ""}
-                        </td>
-                      );
-                    })}
-                    <td className="border font-bold">
-                      {Object.values(scores).reduce((sum, s) => {
-                        const v = row.isMyTeam
-                          ? isHome
-                            ? s.bottom ?? 0
-                            : s.top ?? 0
-                          : isHome
-                          ? s.top ?? 0
-                          : s.bottom ?? 0;
-                        return sum + v;
-                      }, 0)}
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
+            const isHighlight = i + 1 === inning && target === (isTop ? "top" : "bottom");
+            const display = isHighlight && value === 0 ? "" : value ?? "";
 
+            return (
+              <td
+                key={i}
+                className={`border cursor-pointer text-center hover:bg-gray-200 ${
+                  isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
+                }`}
+              >
+                {i + 1 > inning ? "" : display}
+              </td>
+            );
+          })}
+          <td className="border font-bold text-center">
+            {Object.values(scores).reduce((sum, s) => {
+              const v = row.isMyTeam
+                ? isHome
+                  ? s.bottom ?? 0
+                  : s.top ?? 0
+                : isHome
+                ? s.top ?? 0
+                : s.bottom ?? 0;
+              return sum + v;
+            }, 0)}
+          </td>
+        </tr>
+      );
+    })}
+</tbody>
         </table>
       </section>
 
@@ -411,15 +495,18 @@ const totalRuns = () => {
         {positions.map(pos => {
           const playerId = assignments[pos];
           const playerNameNum = getPlayerNameNumber(playerId);
-          return (
-            
-            <div
-              key={pos}
-              className="absolute text-xs font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5"
-              style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)' }}
-            >
-              {playerNameNum ?? <span className="text-gray-300">空き</span>}
-            </div>
+          return (            
+          <div
+            key={pos}
+            className="absolute text-base font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5 whitespace-nowrap text-center"
+            style={{ 
+              ...positionStyles[pos], 
+              transform: 'translate(-50%, -50%)', 
+              minWidth: '80px' 
+            }}
+          >
+            {playerNameNum ?? <span className="text-gray-300">空き</span>}
+          </div>
           );
         })}
       </div>
@@ -440,27 +527,41 @@ const totalRuns = () => {
       {/* 🔽 マイクアイコン付きアナウンスエリア */}
       {announceMessages.length > 0 && (
         <div className="border border-red-500 bg-white p-4 my-4 rounded-lg shadow-md">
-          <div className="flex items-start gap-4">
-            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
-            <div className="text-red-600 text-lg font-bold space-y-1">
-              {announceMessages.map((msg, index) => (
-                <p key={index}>{msg}</p>
-              ))}
-            </div>
-            <div className="ml-auto flex flex-col justify-between gap-2">
-              <button onClick={handleSpeak} className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700">
-                読み上げ
-              </button>
-              <button onClick={handleStop} className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700">
-                停止
-              </button>
-            </div>
-          </div>
+<div className="flex items-start gap-4">
+  <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-1" />
+
+  <div className="flex flex-col text-red-600 text-lg font-bold space-y-2 w-full">
+    {/* アナウンスメッセージ */}
+    <div>
+      {announceMessages.map((msg, index) => (
+        <p key={index}>{msg}</p>
+      ))}
+    </div>
+
+    {/* ボタンは下に横並び */}
+    <div className="flex gap-2 mt-2">
+      <button
+        onClick={handleSpeak}
+        className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
+      >
+        読み上げ
+      </button>
+      <button
+        onClick={handleStop}
+        className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
+      >
+        停止
+      </button>
+    </div>
+  </div>
+</div>
 
           {/* ★ ここが追加部分（注意マーク＋説明文） */}
           <div className="mt-2 flex items-center gap-2">
-            <img src="/icons/warning-icon.png" alt="warning" className="w-5 h-5" />
-            <span className="text-blue-600 font-semibold">守備回終了時にアナウンス</span>
+            <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+              <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
+            </div>
+
           </div>
         </div>
       )}

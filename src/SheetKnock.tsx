@@ -26,9 +26,10 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
       if (team && typeof team === "object") {
         setTeamName((team as any).name || "");
       }
+
       if (matchInfo && typeof matchInfo === "object") {
         const info = matchInfo as any;
-        setIsHome(info.isHome || "先攻");
+        setIsHome(info.isHome === true ? "後攻" : "先攻"); //
         setOpponentTeamName(info.opponentTeam || "");
       }
     };
@@ -127,17 +128,17 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
     </div>
   );
 
-  const readingLabel = isHome === "後攻" ? "後攻チーム読み上げ" : "先攻チーム読み上げ";
+  const readingLabel = isHome === "後攻" ? "後攻チーム🎤" : "先攻チーム🎤";
 
   const prepMessage =
     isHome === "後攻"
-      ? `（　${teamName}　）はシートノックの準備に入って下さい。`
+      ? ` ${teamName} はシートノックの準備に入って下さい。`
       : null;
 
   const mainMessage =
     isHome === "後攻"
-      ? `（　${teamName}　）はシートノックに入って下さい。\nノック時間は7分以内です。`
-      : `（　${teamName}　）はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+      ? ` ${teamName} はシートノックに入って下さい。\nノック時間は7分以内です。`
+      : ` ${teamName} はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 text-center">
@@ -172,13 +173,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
         </div>
       )}
 
-      {/* ✅ 残す「戻るボタン」 */}
-      <button
-        onClick={onBack}
-        className="mb-4 px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-sm"
-      >
-        ← 試合前アナウンスメニューに戻る
-      </button>
+
 
       <div className="flex justify-end mb-4">
         <button className="border px-4 py-1 rounded-full text-sm">{readingLabel}</button>
@@ -187,17 +182,23 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
       <h1 className="text-2xl font-bold mb-6">シートノック</h1>
 
       {isHome === "後攻" && (
-        <div className="flex items-center justify-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold">
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
           <span className="mr-2 text-2xl">⚠️</span> ノックの準備ができていない場合のみ
         </div>
       )}
 
       {prepMessage && <MessageBlock text={prepMessage} keyName="prep" />}
 
-      <div className="flex items-center justify-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold">
+      {isHome === "先攻" && (
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span>
+          後攻チームのノック終了後に🎤
+        </div>
+      )}
+      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
         <span className="mr-2 text-2xl">⚠️</span>
-        最初のボールがノッカーの手から離れた時、<br />
-        もしくはボール回しから始まる場合はキャッチャーの手から<br />
+        最初のボールがノッカーの手から離れた時、<br/>
+        もしくはボール回しから始まる場合はキャッチャーの手から<br/>
         ボールが離れてからスタート
       </div>
 

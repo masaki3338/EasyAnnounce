@@ -5,6 +5,7 @@ import { ScreenType } from "./pre-game-announcement";
 interface Props {
   onNavigate: (screen: ScreenType) => void;
   onBack?: () => void; // ← ✅ これを追加
+  fromGame?: boolean; // ✅ 追加
 }
 
 type PositionInfo = {
@@ -38,7 +39,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
     const loadData = async () => {
       const team = await localForage.getItem<any>("team");
       const assignments = await localForage.getItem<{ [pos: string]: number }>("lineupAssignments");
-      const matchInfo = await localForage.getItem<any>("match");
+      const matchInfo = await localForage.getItem<any>("matchInfo");
 
       if (team) setTeamName(team.name || "");
       if (matchInfo) setIsHome(matchInfo.isHome ?? true);
@@ -93,25 +94,22 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
       })
       .join("<br />") + "です。";
 
+      if (!teamName) {
+        return <div className="text-center mt-10 text-gray-500">読み込み中...</div>;
+      }
   return (
     <div className="min-h-screen bg-white flex flex-col items-center p-6 space-y-6">
       {/* 戻るボタン */}
-    <button
-      onClick={() => onNavigate("announcement")} // ← ✅ 正しい値に修正
-      className="mb-4 px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 text-sm text-white"
-    >
-      ← 試合前アナウンスメニューに戻る
-    </button>
+
 
       {/* タイトル */}
       <h1 className="text-2xl font-bold text-center mb-2">シート紹介</h1>
 
       {/* 注意文 */}
       <div className="flex items-center space-x-2 -mt-2 mb-2">
-        <img src="/icons/warning-icon.png" alt="注意" className="w-5 h-5" />
-        <p className="text-blue-900 text-sm font-semibold">
-          ピッチャーが練習球を1球投げてから
-        </p>
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span> ピッチャーが練習球を1球投げてから 
+        </div>
       </div>
 
       {/* アナウンス表示 */}

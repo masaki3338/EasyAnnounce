@@ -28,23 +28,17 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center p-6 space-y-6">
-      {/* 戻るボタン（Warmup.tsxと同じスタイル） */}
-      <button
-        onClick={() => onNavigate("preGameAnnouncement")}
-        className="text-gray-600 hover:underline mb-4 block"
-      >
-        ← 試合前アナウンスメニューに戻る
-      </button>
+
 
       {/* タイトル */}
       <h1 className="text-2xl font-bold text-gray-800">集合アナウンス</h1>
 
       {/* 注意アイコン付き文 */}
       <div className="flex items-center space-x-2 mt-2">
-        <img src="/icons/warning-icon.png" alt="注意" className="w-5 h-5" />
-        <p className="text-blue-900 text-sm font-semibold">
-          グランド整備終了後、選手がベンチ前に待機していない場合のみ
-        </p>
+
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
+          <span className="mr-2 text-2xl">⚠️</span> グランド整備終了後、選手がベンチ前に待機していない場合のみ  ※先攻チーム🎤
+        </div>
       </div>
 
       {/* アナウンス表示 */}
