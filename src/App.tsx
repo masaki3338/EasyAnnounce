@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import Gather from "./Gather";
 import StartGreeting from "./StartGreeting";  // 追加
@@ -8,6 +8,8 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+const manualPdfURL = import.meta.env.BASE_URL + "manual.pdf";
+console.log("📄 manualPdfURL =", manualPdfURL);
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -16,14 +18,18 @@ import StartingLineup from "./StartingLineup";
 import StartGame from "./StartGame";
 import PreGameAnnouncement from "./pre-game-announcement";
 import Warmup from "./Warmup";
+//import SheetKnock from "./SheetKnock";
 import SheetKnock from "./SheetKnock";
 import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
 import DefenseScreen from "./DefenseScreen";
 import DefenseChange from './DefenseChange';
 
+
+
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.2";
+const APP_VERSION = "0.0.5";
+
 
 // 画面の種類を列挙した型
 export type ScreenType =
@@ -51,36 +57,81 @@ const screenMap: { [key: string]: ScreenType } = {
   "テンプレート編集": "templateEdit",
 };
 
-const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => (
-  <div className="min-h-screen bg-gradient-to-b from-indigo-600 via-purple-700 to-pink-600 flex flex-col items-center justify-center px-6 py-10">
-    <h1 className="text-white text-4xl font-extrabold mb-12 tracking-widest text-center drop-shadow-lg">
-      野球アナウンス支援アプリ
-    </h1>
-    <div className="w-full max-w-sm space-y-6">
-      {Object.keys(screenMap).map((label, i) => {
-        const colors = [
-          "bg-pink-600 hover:bg-pink-700",
-          "bg-purple-600 hover:bg-purple-700",
-          "bg-blue-600 hover:bg-blue-700",
-          "bg-green-600 hover:bg-green-700",
+const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
+  const [canContinue, setCanContinue] = useState(false);
+  const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
+  const [showEndGamePopup, setShowEndGamePopup] = useState(false);
+  const [endTime, setEndTime] = useState("");
+
+  useEffect(() => {
+    console.log("📺 screen =", screen);
+    (async () => {
+      const saved = await localForage.getItem("lastGameScreen");
+      if (saved && typeof saved === "string") {
+        const validScreens: ScreenType[] = [
+          "offense",
+          "defense",
+          "defenseChange",
+          "startGame",
+          "announcement"
         ];
-        return (
+        if (validScreens.includes(saved as ScreenType)) {
+          setCanContinue(true);
+          setLastScreen(saved as ScreenType);
+        }
+      }
+    })();
+  }, []);
+
+  return (
+        <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center px-6 py-10">
+          <h1 className="text-white text-4xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
+            ⚾️Easyアナウンス🎤
+          </h1>
+          <h2 className="text-white text-lg font-semibold tracking-wide text-center drop-shadow mt-1 mb-10">
+            ～ Pony League Version ～ 
+          </h2>
+        <div className="w-full max-w-sm space-y-4">
+
+        {/* 通常メニュー */}
+        {Object.keys(screenMap).map((label, i) => {
+          const colors = [
+            "bg-pink-600 hover:bg-pink-700",
+            "bg-purple-600 hover:bg-purple-700",
+            "bg-blue-600 hover:bg-blue-700",
+            "bg-green-600 hover:bg-green-700",
+          ];
+          return (
           <button
             key={label}
-            className={`${colors[i]} w-full py-5 rounded-2xl shadow-lg text-white text-xl font-semibold transition-transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/50`}
+            className={`bg-gray-700 hover:bg-gray-600 w-full py-5 rounded-2xl shadow text-white text-lg font-semibold transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-300`}
             onClick={() => onNavigate(screenMap[label])}
           >
             {label}
           </button>
-        );
-      })}
+
+          );
+        })}
+
+        {/* 試合継続ボタン */}
+        {canContinue && lastScreen && (
+          <button
+            onClick={() => onNavigate(lastScreen)}
+            className="bg-red-400 hover:bg-red-500 w-full py-5 rounded-2xl shadow text-white text-lg font-semibold transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-200"
+
+          >
+            ▶ 試合を継続する
+          </button>
+        )}
+      </div>
+
+      <div className="mt-12 text-white text-sm opacity-70 select-none">
+        バージョン: {APP_VERSION}
+      </div>
     </div>
-    {/* ここにバージョン表示を追加 */}
-    <div className="mt-12 text-white text-sm opacity-70 select-none">
-      バージョン: {APP_VERSION}
-    </div>
-  </div>
-);
+  );
+};
+
 
 const NotImplemented = ({ onBack }: { onBack: () => void }) => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 px-4">
@@ -93,9 +144,19 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
     </button>
   </div>
 );
-
+ 
 const App = () => {
-  const [screen, setScreen] = useState<ScreenType>("menu");
+ const [screen, setScreen] = useState<ScreenType>("menu");
+  const fromGameRef = useRef(false);
+  const lastOffenseRef = useRef(false);
+  const [showEndGamePopup, setShowEndGamePopup] = useState(false);
+  const [endTime, setEndTime] = useState(""); 
+  const [endGameAnnouncement, setEndGameAnnouncement] = useState("");
+  const [showHeatPopup, setShowHeatPopup] = useState(false);
+  const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
+  const [otherOption, setOtherOption] = useState(""); // その他選択状態
+  const [showManualPopup, setShowManualPopup] = useState(false);
+  
 
   useEffect(() => {
     const initializeDatabase = async () => {
@@ -224,7 +285,15 @@ const App = () => {
       )}
 
       {screen === "sheetKnock" && (
-        <SheetKnock onBack={() => setScreen("announcement")} />
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("announcement")}
+          >
+            ← 試合前アナウンスメニューに戻る
+          </button>
+          <SheetKnock onBack={() => setScreen("announcement")} />
+        </>
       )}
 
       {screen === "announceStartingLineup" && (
@@ -247,7 +316,7 @@ const App = () => {
           >
             ← 試合前アナウンスメニューに戻る
           </button>
-          <StartGreeting onBack={() => setScreen("announcement")} />
+         <Gather onNavigate={setScreen} />  
         </>
       )}
 
@@ -267,13 +336,16 @@ const App = () => {
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("announcement")}
+            onClick={() => setScreen(fromGameRef.current ? "defense" : "announcement")}
           >
-            ← 試合前アナウンスメニューに戻る
+            ← {fromGameRef.current ? "試合に戻る" : "試合前アナウンスメニューに戻る"}
           </button>
           <SeatIntroduction
-            onNavigate={setScreen} // ✅ 追加
-            onBack={() => setScreen("announcement")}
+            onNavigate={setScreen}
+            onBack={() =>
+              setScreen(fromGameRef.current ? (lastOffenseRef.current ? "offense" : "defense") : "announcement")
+            }
+            fromGame={fromGameRef.current} // ✅ 追加
           />
         </>
       )}
@@ -282,44 +354,327 @@ const App = () => {
 
       {screen === "offense" && (
         <>
-          <button
-            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("menu")}
-          >
-            ← メニューに戻る
-          </button>
-          <OffenseScreen onSwitchToDefense={() => setScreen("defense")} />
+          <div className="m-4 flex justify-between items-center">
+      {/* 左端のメニューボタン */}
+      <button
+        className="px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+        onClick={() => setScreen("menu")}
+      >
+        ← メニューに戻る
+      </button>
+
+      {/* 右端のドロップダウン */}
+      <select
+        className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
+        value={otherOption} // ← 追加
+        onChange={async (e) => {
+          const value = e.target.value;
+          if (value === "end") {
+            const now = new Date();
+            const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+            setEndTime(formatted);
+            
+            const team = await localForage.getItem("team") as { name: string };
+            const match = await localForage.getItem("matchInfo") as {
+              matchNumber: number;
+              scores: number[];
+              opponentTeam?: string;
+              isHome?: boolean; // ← これを追加
+            };
+            type Scores = {
+              [inning: number]: {
+                top?: number;
+                bottom?: number;
+              };
+            };
+
+            const scores = await localForage.getItem("scores") as {
+              [inning: number]: { top?: number; bottom?: number };
+            };
+
+            const isHome = match?.isHome ?? true;
+
+            const totalMyScore = Object.values(scores).reduce((sum, s) => {
+              const val = isHome ? s.bottom ?? 0 : s.top ?? 0;
+              return sum + Number(val);
+            }, 0);
+            const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
+              const val = isHome ? s.top ?? 0 : s.bottom ?? 0; // 自分がホームなら相手は先攻（top）
+              return sum + Number(val);
+            }, 0);
+            const myTeam = team?.name || "自チーム";
+            const nextGame    = (match?.matchNumber ?? 1) + 1;
+            const currentGame =  match?.matchNumber ?? 1;
+            if (totalMyScore > totalOpponentScore) {
+              setEndGameAnnouncement(
+                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                `審判員の皆様、ありがとうございました。\n` +
+                `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                `尚、この試合の終了時刻は ${formatted} です。\n` +
+                `これより、ピッチングレコードの確認を行います。\n` +
+                `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n` +
+                `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
+              );
+              setShowEndGamePopup(true);
+            }
+            else{
+              alert("試合終了しました");
+            }
+
+          } else if (value === "tiebreak") {
+            alert("タイブレークを選択しました");
+          } else if (value === "continue") {
+            alert("継続試合を選択しました");
+          } else if (value === "heat") {
+            setShowHeatPopup(true);
+          } else if (value === "manual") {
+            //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
+            setShowManualPopup(true);
+          }
+        }}
+        defaultValue=""
+      >
+        <option value="" disabled hidden>
+          その他
+        </option>
+        <option value="end">試合終了</option>
+        <option value="tiebreak">タイブレーク</option>
+        <option value="continue">継続試合</option>
+        <option value="heat">熱中症</option> 
+        <option value="manual">連盟🎤マニュアル</option> 
+      </select>
+    </div>
+          <OffenseScreen
+            onSwitchToDefense={() => setScreen("defense")}
+            onGoToSeatIntroduction={() => {
+              fromGameRef.current = true;       // ✅ 試合中からの遷移であることを記録
+              lastOffenseRef.current = true;    // ✅ 攻撃画面から来たことを記録
+              setScreen("seatIntroduction");
+            }}
+          />
         </>
       )}
 
-      {screen === "defense" && (
+      {screen === "defense" && (        
         <>
-          <button
-            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("menu")}
-          >
-            ← メニューに戻る
-          </button>
-          <DefenseScreen
+          <div className="m-4 flex justify-between items-center">
+      {/* 左端のメニューボタン */}
+      <button
+        className="px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+        onClick={() => setScreen("menu")}
+      >
+        ← メニューに戻る
+      </button>
+
+      {/* 右端のドロップダウン */}
+      <select
+        className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
+        value={otherOption} // ← 追加
+        onChange={async (e) => {
+          const value = e.target.value;
+          if (value === "end") {
+            const now = new Date();
+            const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+            setEndTime(formatted);
+            
+            const team = await localForage.getItem("team") as { name: string };
+            const match = await localForage.getItem("matchInfo") as {
+              matchNumber: number;
+              scores: number[];
+              opponentTeam?: string;
+              isHome?: boolean; // ← これを追加
+            };
+            type Scores = {
+              [inning: number]: {
+                top?: number;
+                bottom?: number;
+              };
+            };
+
+            const scores = await localForage.getItem("scores") as {
+              [inning: number]: { top?: number; bottom?: number };
+            };
+
+            const isHome = match?.isHome ?? true;
+
+            const totalMyScore = Object.values(scores).reduce((sum, s) => {
+              const val = isHome ? s.bottom ?? 0 : s.top ?? 0;
+              return sum + Number(val);
+            }, 0);
+            const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
+              const val = isHome ? s.top ?? 0 : s.bottom ?? 0; // 自分がホームなら相手は先攻（top）
+              return sum + Number(val);
+            }, 0);
+            const myTeam = team?.name || "自チーム";
+            const nextGame    = (match?.matchNumber ?? 1) + 1;
+            const currentGame =  match?.matchNumber ?? 1;
+            if (totalMyScore > totalOpponentScore) {
+              setEndGameAnnouncement(
+                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                `審判員の皆様、ありがとうございました。\n` +
+                `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                `尚、この試合の終了時刻は ${formatted} です。\n` +
+                `これより、ピッチングレコードの確認を行います。\n` +
+                `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n` +
+                `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
+              );
+              setShowEndGamePopup(true);
+            }
+            else{
+              alert("試合終了しました");
+            }
+
+          } else if (value === "tiebreak") {
+            alert("タイブレークを選択しました");
+          } else if (value === "continue") {
+            alert("継続試合を選択しました");
+          } else if (value === "heat") {
+            setShowHeatPopup(true);
+          } else if (value === "manual") {
+            //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
+            setShowManualPopup(true);
+          }
+        }}
+        defaultValue=""
+      >
+        <option value="" disabled hidden>
+          その他
+        </option>
+        <option value="end">試合終了</option>
+        <option value="tiebreak">タイブレーク</option>
+        <option value="continue">継続試合</option>
+        <option value="heat">熱中症</option> 
+        <option value="manual">連盟🎤マニュアル</option> 
+      </select>
+    </div>
+           <DefenseScreen key="defense" 
             onChangeDefense={() => setScreen("defenseChange")}
             onSwitchToOffense={() => setScreen("offense")}
           />
         </>
       )}
 
-     {screen === "defenseChange" && (
-        <>
-          <button
-            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-            onClick={() => setScreen("defense")}
-          >
-            ← 守備画面に戻る
-          </button>
-          <DefenseChange />
-        </>
-      )}
-    </>
+{screen === "defenseChange" && (
+  <>
+    <button
+      className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+      onClick={() => setScreen("defense")}>
+        ← 守備画面に戻る
+     </button>
+    <DefenseChange onConfirmed={() => {
+      console.log("✅ setScreen to defense");
+      setScreen("defense");
+    }} />
+  </>
+)}
+
+{showEndGamePopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-pink-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
+      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
+        <span className="text-2xl">🎤</span>
+        <div className="text-left whitespace-pre-line">{endGameAnnouncement}</div>
+      </div>
+      <div className="flex justify-center gap-4 flex-wrap">
+        <button
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+          onClick={() => {
+            const msg = new SpeechSynthesisUtterance(endGameAnnouncement);
+            speechSynthesis.speak(msg);
+          }}
+        >
+          読み上げ
+        </button>
+        <button
+          className="bg-gray-500 text-white px-4 py-2 rounded"
+          onClick={() => speechSynthesis.cancel()}
+        >
+          停止
+        </button>
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={() => setShowEndGamePopup(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{showHeatPopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-yellow-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
+      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
+        <span className="text-2xl">🎤</span>
+        <div className="text-left whitespace-pre-line">{heatMessage}</div>
+      </div>
+      <div className="flex justify-center gap-4 flex-wrap">
+        <button
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+          onClick={() => {
+            const msg = new SpeechSynthesisUtterance(heatMessage);
+            speechSynthesis.speak(msg);
+          }}
+        >
+          読み上げ
+        </button>
+        <button
+          className="bg-gray-500 text-white px-4 py-2 rounded"
+          onClick={() => speechSynthesis.cancel()}
+        >
+          停止
+        </button>
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={() => setShowHeatPopup(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{showManualPopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-white w-full max-w-3xl h-[80vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
+      <div className="bg-gray-800 text-white px-4 py-2 text-center font-bold">
+        連盟🎤マニュアル
+      </div>
+        <iframe src={manualPdfURL}
+          className="w-full h-full"
+          title="連盟マニュアル" />
+      <button
+        className="bg-green-600 text-white py-2 text-lg"
+        onClick={() => setShowManualPopup(false)}
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
+    </>    
   );
+  
 };
 
-export default App;
+const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
+
+const AppWrapped = () => (
+  <DndProvider
+    backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+    options={
+      isTouchDevice()
+        ? {
+            enableMouseEvents: true, // これを必ず追加！
+          }
+        : undefined
+    }
+  >
+    <App />
+  </DndProvider>
+);
+export default AppWrapped;
