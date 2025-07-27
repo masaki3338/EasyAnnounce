@@ -287,12 +287,10 @@ const confirmScore = async () => {
     updatedScores[index] = { top: 0, bottom: 0 };
   }
 
-  if (isHome) {
-    if (isTop) updatedScores[index].top = score;
-    else updatedScores[index].bottom = score;
+  if (isTop) {
+    updatedScores[index].top = score;
   } else {
-    if (isTop) updatedScores[index].top = score;
-    else updatedScores[index].bottom = score;
+    updatedScores[index].bottom = score;
   }
 
   await localForage.setItem("scores", updatedScores);
@@ -300,34 +298,29 @@ const confirmScore = async () => {
   setInputScore("");
   setShowModal(false);
 
-  if (isTop) {
-    setIsTop(false);
-    await localForage.setItem("matchInfo", {
-      opponentTeam: opponentTeamName,
-      inning,
-      isTop: false,
-      isDefense: true,
-      isHome,
-    });
-    if ((isHome && false) || (!isHome && true)) {
-      onSwitchToOffense();
-    }
-  } else {
-    const nextInning = inning + 1;
-    setIsTop(true);
-    setInning(nextInning);
-    await localForage.setItem("matchInfo", {
-      opponentTeam: opponentTeamName,
-      inning: nextInning,
-      isTop: true,
-      isDefense: true,
-      isHome,
-    });
-    if ((isHome && true) || (!isHome && false)) {
-      onSwitchToOffense();
-    }
+  // 🟡 次の状態を定義
+  const nextIsTop = !isTop;
+  const nextInning = isTop ? inning : inning + 1;
+
+  // 🟡 matchInfo 更新
+  await localForage.setItem("matchInfo", {
+    opponentTeam: opponentTeamName,
+    inning: nextInning,
+    isTop: nextIsTop,
+    isDefense: true,
+    isHome,
+  });
+
+  setIsTop(nextIsTop);
+  if (!isTop) setInning(nextInning);
+
+  // ✅ 攻撃に切り替わるタイミングで攻撃画面に遷移
+  const isNextOffense = (nextIsTop && !isHome) || (!nextIsTop && isHome);
+  if (isNextOffense) {
+    onSwitchToOffense();
   }
 };
+
 
 
 const totalRuns = () => {
