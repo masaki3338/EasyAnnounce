@@ -36,6 +36,8 @@ type DefenseScreenProps = {
 const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense }) => {
   const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
+  const [editInning, setEditInning] = useState<number | null>(null);
+  const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
   const [myTeamName, setMyTeamName] = useState('');
   const [opponentTeamName, setOpponentTeamName] = useState('');
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
@@ -258,29 +260,40 @@ await localForage.setItem("pitchCounts", {
     await localForage.setItem('scores', newScores);
   };
 
-  const confirmScore = async () => {
+const confirmScore = async () => {
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
-  const index = inning - 1;
 
+  // ✅ 編集モード
+  if (editInning !== null && editTopBottom !== null) {
+    const index = editInning - 1;
+    if (!updatedScores[index]) {
+      updatedScores[index] = { top: 0, bottom: 0 };
+    }
+    updatedScores[index][editTopBottom] = score;
+
+    await localForage.setItem("scores", updatedScores);
+    setScores(updatedScores);
+    setInputScore("");
+    setEditInning(null);
+    setEditTopBottom(null);
+    setShowModal(false);
+    return;
+  }
+
+  // ✅ 通常モード（イニング終了）
+  const index = inning - 1;
   if (!updatedScores[index]) {
     updatedScores[index] = { top: 0, bottom: 0 };
   }
 
-// 守備画面：相手の得点を記録
-if (isHome) {
-  if (isTop) {
-    updatedScores[index].top = score; // 相手（先攻）の得点
+  if (isHome) {
+    if (isTop) updatedScores[index].top = score;
+    else updatedScores[index].bottom = score;
   } else {
-    updatedScores[index].bottom = score; // 自チーム（後攻）の守備中＝相手の得点
+    if (isTop) updatedScores[index].top = score;
+    else updatedScores[index].bottom = score;
   }
-} else {
-  if (isTop) {
-    updatedScores[index].top = score; // 自チーム（先攻）の守備中＝相手の得点
-  } else {
-    updatedScores[index].bottom = score; // 相手（後攻）の得点
-  }
-}
 
   await localForage.setItem("scores", updatedScores);
   setScores(updatedScores);
@@ -288,57 +301,34 @@ if (isHome) {
   setShowModal(false);
 
   if (isTop) {
-    const nextIsTop = false;
-    setIsTop(nextIsTop);
-
-      setCurrentPitchCount(0);
-      await localForage.setItem("pitchCounts", {
-        current: 0,
-        total: totalPitchCount,
-        pitcherId: assignments["投"] ?? null
-      });
-
+    setIsTop(false);
     await localForage.setItem("matchInfo", {
       opponentTeam: opponentTeamName,
       inning,
-      isTop: nextIsTop,
+      isTop: false,
       isDefense: true,
       isHome,
     });
-
-    const isMyTeamAttackingNext = (isHome && !nextIsTop) || (!isHome && nextIsTop);
-    if (isMyTeamAttackingNext) {
+    if ((isHome && false) || (!isHome && true)) {
       onSwitchToOffense();
     }
-
   } else {
     const nextInning = inning + 1;
-    const nextIsTop = true; // 新しい回は「表」
-
-    setIsTop(nextIsTop);
+    setIsTop(true);
     setInning(nextInning);
-
-    setCurrentPitchCount(0);
-    await localForage.setItem("pitchCounts", {
-      current: 0,
-      total: totalPitchCount,
-      pitcherId: assignments["投"] ?? null
-    });
-
     await localForage.setItem("matchInfo", {
       opponentTeam: opponentTeamName,
       inning: nextInning,
-      isTop: nextIsTop,
+      isTop: true,
       isDefense: true,
       isHome,
     });
-
-    const isMyTeamAttackingNext = (isHome && !nextIsTop) || (!isHome && nextIsTop);
-    if (isMyTeamAttackingNext) {
+    if ((isHome && true) || (!isHome && false)) {
       onSwitchToOffense();
     }
   }
 };
+
 
 const totalRuns = () => {
   let myTeamTotal = 0;
@@ -461,14 +451,23 @@ const totalRuns = () => {
             const display = isHighlight && value === 0 ? "" : value ?? "";
 
             return (
-              <td
-                key={i}
-                className={`border cursor-pointer text-center hover:bg-gray-200 ${
-                  isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
-                }`}
-              >
-                {i + 1 > inning ? "" : display}
-              </td>
+            <td
+              key={i}
+              className={`border cursor-pointer text-center hover:bg-gray-200 ${
+                isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
+              }`}
+              onClick={() => {
+                // ✅ 現在のイニング（黄色）または未来の回は無効
+                if (isHighlight || i + 1 >= inning) return;
+                setEditInning(i + 1);
+                setEditTopBottom(target);
+                const existing = scores[i]?.[target];
+                setInputScore(existing !== undefined ? String(existing) : "");
+                setShowModal(true);
+              }}
+            >
+              {i + 1 > inning ? "" : display}
+            </td>
             );
           })}
           <td className="border font-bold text-center">
@@ -657,23 +656,31 @@ const totalRuns = () => {
           </button>
         ))}
       </div>
-      <div className="flex justify-center gap-4 mt-4">
-        <button
-          onClick={confirmScore}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
-          OK
-        </button>
-        <button
-          onClick={() => {
-            setInputScore("");
-            setShowModal(false);
-          }}
-          className="bg-gray-600 text-white px-4 py-2 rounded"
-        >
-          キャンセル
-        </button>
-      </div>
+<div className="flex justify-center gap-4 mt-4">
+  <button
+    onClick={confirmScore}
+    className="bg-green-600 text-white px-4 py-2 rounded"
+  >
+    OK
+  </button>
+  <button
+    onClick={() => setInputScore("")}
+    className="bg-yellow-600 text-white px-4 py-2 rounded"
+  >
+    クリア
+  </button>
+  <button
+    onClick={() => {
+      setInputScore("");
+      setShowModal(false);
+      setEditInning(null);
+      setEditTopBottom(null);
+    }}
+    className="bg-gray-600 text-white px-4 py-2 rounded"
+  >
+    キャンセル
+  </button>
+</div>
     </div>
   </div>
 )}

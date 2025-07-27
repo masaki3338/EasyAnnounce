@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
 import * as wanakana from "wanakana";
+
 
 
 type Player = {
@@ -19,6 +20,8 @@ type Team = {
   players: Player[];
 };
 
+
+
 const TeamRegister = () => {
   const [team, setTeam] = useState<Team>({
     name: "",
@@ -26,6 +29,7 @@ const TeamRegister = () => {
     players: [],
   });
 
+  const lastNameInputRef = useRef<HTMLInputElement>(null);
   const [restoreMessage, setRestoreMessage] = useState("");
 
   const handleBackup = () => {
@@ -55,6 +59,15 @@ const TeamRegister = () => {
 
 
   const [editingPlayer, setEditingPlayer] = useState<Partial<Player>>({});
+
+useEffect(() => {
+  if (editingPlayer.id && typeof window !== "undefined") {
+    setTimeout(() => {
+      lastNameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      lastNameInputRef.current?.focus();
+    }, 100);
+  }
+}, [editingPlayer.id]);
 
   useEffect(() => {
     localForage.getItem<Team>("team").then((data) => {
@@ -216,6 +229,7 @@ const TeamRegister = () => {
 
         {[
           { id: "lastName", label: "姓", placeholder: "例：山田" },
+
           { id: "lastNameKana", label: "ふりがな（姓）", placeholder: "やまだ" },
           { id: "firstName", label: "名", placeholder: "例：太郎" },
           { id: "firstNameKana", label: "ふりがな（名）", placeholder: "たろう" },
@@ -228,6 +242,7 @@ const TeamRegister = () => {
             <input
               id={id}
               name={id}
+              ref={id === "lastName" ? lastNameInputRef : undefined} // 
               value={(editingPlayer as any)[id] || ""}
               onChange={handlePlayerChange}
               className="border border-gray-300 rounded px-3 py-2 w-full mt-1"

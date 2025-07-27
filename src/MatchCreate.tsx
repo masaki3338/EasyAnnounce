@@ -12,6 +12,7 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [opponentTeam, setOpponentTeam] = useState("");
   const [isHome, setIsHome] = useState("先攻");
   const [benchSide, setBenchSide] = useState("1塁側");
+  const [showExchangeModal, setShowExchangeModal] = useState(false);
 
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
@@ -45,6 +46,17 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
     };
     loadMatchInfo();
   }, []);
+
+  const speakExchangeMessage = () => {
+  const msg = new SpeechSynthesisUtterance(
+    `${tournamentName} 本日の第一試合、両チームのメンバー交換を行います。両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。メンバーチェックと道具チェックはシートノックの間に行います。`
+  );
+  speechSynthesis.speak(msg);
+};
+
+const stopExchangeMessage = () => {
+  speechSynthesis.cancel();
+};
 
   const handleUmpireChange = (
     index: number,
@@ -149,6 +161,17 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
           </div>
         </div>
 
+{matchNumber === 1 && benchSide === "1塁側" && (
+  <div className="mt-6">
+    <button
+      onClick={() => setShowExchangeModal(true)}
+      className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-base"
+    >
+      メンバー交換
+    </button>
+  </div>
+)}
+
         <div>
           <label className="block font-semibold text-lg mb-3">審判</label>
           <div className="space-y-3">
@@ -214,6 +237,48 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
          スタメン設定
         </button>
       </div>
+
+{showExchangeModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full space-y-4 text-base">
+          <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mx-auto" />
+      <p className="whitespace-pre-line text-red-600 font-bold">
+        <strong>{tournamentName}</strong>{"\n"}
+        本日の第一試合、両チームのメンバー交換を行います。{"\n"}
+        両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
+        ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
+        ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
+        公式記録員、アナウンスもお集まりください。{"\n"}
+        メンバーチェックと道具チェックはシートノックの間に行います。
+      </p>
+      <div className="flex justify-end space-x-3">
+        <button
+          onClick={speakExchangeMessage}
+          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={stopExchangeMessage}
+          className="px-3 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
+        >
+          停止
+        </button>
+        <button
+          onClick={() => {
+            stopExchangeMessage();
+            setShowExchangeModal(false);
+          }}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
     </div>
   );
 };

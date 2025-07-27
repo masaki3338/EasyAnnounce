@@ -272,6 +272,8 @@ const [showScorePopup, setShowScorePopup] = useState(false);
 const [shouldNavigateAfterPopup, setShouldNavigateAfterPopup] = useState(false);
 const [popupMessage, setPopupMessage] = useState("");
 const [inputScore, setInputScore] = useState("");
+const [editInning, setEditInning] = useState<number | null>(null);
+const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
 const [showSubModal, setShowSubModal] = useState(false);
 const [selectedSubPlayer, setSelectedSubPlayer] = useState<any | null>(null);
 const [benchPlayers, setBenchPlayers] = useState<any[]>([]);
@@ -295,9 +297,26 @@ const handleScoreInput = (digit: string) => {
 const confirmScore = async () => {
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
-  const index = inning - 1;
-  const isFirstTopNow = inning === 1 && isTop;
 
+  // ✅ 編集モード時
+  if (editInning !== null && editTopBottom !== null) {
+    const index = editInning - 1;
+    if (!updatedScores[index]) {
+      updatedScores[index] = { top: 0, bottom: 0 };
+    }
+    updatedScores[index][editTopBottom] = score;
+
+    await localForage.setItem("scores", updatedScores);
+    setScores(updatedScores);
+    setInputScore("");
+    setShowModal(false);
+    setEditInning(null);
+    setEditTopBottom(null);
+    return;
+  }
+
+  // ✅ 通常モード（イニング終了処理）
+  const index = inning - 1;
   if (!updatedScores[index]) {
     updatedScores[index] = { top: 0, bottom: 0 };
   }
@@ -312,7 +331,6 @@ const confirmScore = async () => {
   setScores(updatedScores);
   setInputScore("");
   setShowModal(false);
-
   await localForage.setItem("lastBatterIndex", currentBatterIndex);
 
   if (isTop) {
@@ -337,24 +355,19 @@ const confirmScore = async () => {
 
   if (score > 0) {
     setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-
-    // ✅ 得点があり、かつ後攻4回裏終了時 → グランド整備は後で
-    if (isHome && inning === 4 && !isTop) {
-      setPendingGroundPopup(true); // ← あとで表示するために記録
-    }
-
-    setShowScorePopup(true); // ← 得点ポップアップを先に表示
+    if (isHome && inning === 4 && !isTop) setPendingGroundPopup(true);
+    setShowScorePopup(true);
   } else {
-    // 得点なし → 直接処理分岐
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
-    } else if (isFirstTopNow) {
+    } else if (inning === 1 && isTop) {
       onGoToSeatIntroduction();
     } else {
       onSwitchToDefense();
     }
   }
 };
+
 
 
 
@@ -624,10 +637,17 @@ useEffect(() => {
               <td
                 key={i}
                 className={`border text-center cursor-pointer hover:bg-gray-200 ${
-                  isNow
-                    ? "bg-yellow-300 font-bold border-2 border-yellow-500"
-                    : ""
+                  isNow ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
                 }`}
+                onClick={() => {
+                  // ✅ 現在イニングまたは未来の回は編集禁止
+                  if (isNow || i + 1 >= inning) return;
+                  setEditInning(i + 1);
+                  setEditTopBottom(target);
+                  const existing = scores[i]?.[target];
+                  setInputScore(existing !== undefined ? String(existing) : "");
+                  setShowModal(true);
+                }}
               >
                 {isNow ? "" : (i + 1 > inning ? "" : val ?? "")}
               </td>
@@ -665,23 +685,29 @@ useEffect(() => {
           </button>
         ))}
       </div>
-      <div className="flex justify-center gap-4 mt-4">
-        <button
-          onClick={confirmScore}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
-          OK
-        </button>
-        <button
-          onClick={() => {
-            setInputScore("");
-            setShowModal(false);
-          }}
-          className="bg-gray-600 text-white px-4 py-2 rounded"
-        >
-          キャンセル
-        </button>
-      </div>
+    <div className="flex justify-center gap-4 mt-4">
+      <button
+        onClick={confirmScore}
+        className="bg-green-600 text-white px-4 py-2 rounded"
+      >
+        OK
+      </button>
+      <button
+        onClick={() => setInputScore("")}
+        className="bg-yellow-600 text-white px-4 py-2 rounded"
+      >
+        クリア
+      </button>
+      <button
+        onClick={() => {
+          setInputScore("");
+          setShowModal(false);
+        }}
+        className="bg-gray-600 text-white px-4 py-2 rounded"
+      >
+        キャンセル
+      </button>
+    </div>
     </div>
     
   </div>
@@ -909,12 +935,8 @@ useEffect(() => {
 {/* ベンチ選手（退場選手はグレースケール） */}
 <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
   {benchPlayers.map((p) => {
-    const isRetired = p.id in usedPlayerInfo;
+    const isRetired = p.id in usedPlayerInfo;        // ← ★退場判定
 
-    // ✅ ログ出力：選手IDと退場済みかどうか
-  console.log(`選手ID ${p.id} - ${p.lastName}${p.firstName} は退場済み？:`, isRetired);
-  console.log("✅ usedPlayerInfo keys:", Object.keys(usedPlayerInfo));
-  console.log("🔍 checking player:", p.id);
     return (
       <div
         key={p.id}

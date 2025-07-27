@@ -9,7 +9,6 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
-    speakMessage();
     return () => stopSpeaking();
   }, []);
 
