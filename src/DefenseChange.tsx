@@ -87,382 +87,254 @@ const lastWithHonor = (p: Player): string => `${lastRuby(p)}${honor(p)}`;
  /* ================================= */
 
 
+/* =========================================================
+   アナウンス文生成 ― テンプレート完全対応版
+   (打順が欠落しない／一人交代時は「以上に代わります」を付けない)
+========================================================= */
 const generateAnnouncementText = (
   records: ChangeRecord[],
   teamName: string,
-  battingOrder?: { id: number; reason: string }[],
-  assignments?: Record<string, number | null>,
-  teamPlayers?: Player[],
-  initialAssignments?: Record<string, number | null>,
-  usedPlayerInfo?: Record<number, UsedPlayerInfo>
+  battingOrder: { id: number; reason: string }[] = [],
+  assignments: Record<string, number | null> = {},
+  teamPlayers: Player[] = [],
+  initialAssignments: Record<string, number | null> = {},
+  usedPlayerInfo: Record<number, UsedPlayerInfo> = {}
 ): string => {
-   // 🔧 reasonMapを宣言（打順情報から選手IDと出場理由の対応を作る）
-  const reasonMap: Record<number, string> = Object.fromEntries(
-    (battingOrder ?? []).map((entry) => [entry.id, entry.reason])
-  );
-
+  /* ---------- 前処理 ---------- */
   const posJP: Record<string, string> = {
-    "投": "ピッチャー", "捕": "キャッチャー", "一": "ファースト", "二": "セカンド",
-    "三": "サード", "遊": "ショート", "左": "レフト", "中": "センター", "右": "ライト"
+    投: "ピッチャー", 捕: "キャッチャー", 一: "ファースト", 二: "セカンド",
+    三: "サード",   遊: "ショート",     左: "レフト",   中: "センター",  右: "ライト"
   };
+  const reasonMap = Object.fromEntries(
+    battingOrder.map(e => [e.id, e.reason])
+  ) as Record<number, string>;
 
- 
+  // ✅ 無意味な変化（元に戻ったもの）を除外
+const isNoChange = (rec: ChangeRecord): boolean => {
+  if (rec.type === "replace") {
+    const currentId = assignments[rec.pos];
+    const initialId = initialAssignments[rec.pos];
+    return currentId === initialId;
+  }
 
-  const mixed = records.filter(r => r.type === "mixed") as Extract<ChangeRecord, { type: "mixed" }>[];
-  const replace = records.filter(r => r.type === "replace") as Extract<ChangeRecord, { type: "replace" }>[];
-  const shift = records.filter(r => r.type === "shift") as Extract<ChangeRecord, { type: "shift" }>[];
+  if (rec.type === "shift") {
+    const currentPos = Object.entries(assignments).find(([_, id]) => id === rec.player.id)?.[0];
+    const initialPos = Object.entries(initialAssignments).find(([_, id]) => id === rec.player.id)?.[0];
+    // ✅ 選手もポジションも一致している場合のみ除外
+    return currentPos === initialPos;
+  }
 
+  if (rec.type === "mixed") {
+    const currentId = assignments[rec.toPos];
+    const initialId = initialAssignments[rec.fromPos];
+    // ✅ 元いたポジションの選手が元と同じ → 除外（元通り）
+    return currentId === initialId && rec.fromPos === rec.toPos;
+  }
+
+  return false;
+};
+
+
+// ✅ 余計なレコードを除外
+records = records.filter(r => !isNoChange(r));
+
+  /* ---------- レコード分類 ---------- */
+  const replace = records.filter(r => r.type === "replace") as Extract<ChangeRecord, {type:"replace"}>[];
+  const shift    = records.filter(r => r.type === "shift")   as Extract<ChangeRecord, {type:"shift"}>[];
+  const mixed    = records.filter(r => r.type === "mixed")   as Extract<ChangeRecord, {type:"mixed"}>[];
+
+  /* ---------- 文言生成用バッファ ---------- */
   const result: string[] = [];
-  const samePosPinch: { reason: string; text: string }[] = [];   // そのまま同守備位置
-  const shiftPosPinch: string[] = [];  // ② 守備位置が替わったパターン
-  const handledShift = new Set<number>();  // 🆕 二重 push 防止
-  const lineupLines: { order: number; text: string }[] = [];
+  const lineupLines: {order:number; text:string}[] = [];
 
-  // ✅ 代打・代走 → 守備入りパターン専用出力
-  console.log("[DEBUG] 代打/代走のそのまま守備入り判定開始");
-  console.log(`[DEBUG] records.length=${records.length} assignments=${assignments} `);
-  if ( battingOrder && assignments) {
-  const lines: string[] = [];
-  const posEntries = Object.entries(assignments);
+  /* =========================================
+   1) 代打・代走 → そのまま守備へ (samePosPinch)
+========================================= */
+const pinchInSamePos: string[] = [];
 
- 
-  battingOrder.forEach((entry, index) => {
-    if (handledShift.has(entry.id)) return;
-    if (entry.reason === "代打" || entry.reason === "代走") {
-      const pos = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0];
-      const player = teamPlayers?.find(p => p.id === entry.id);
-      if (!pos || !player) {
-        console.warn(`[WARN] posまたはplayerが取得できません: pos=${pos}, player=${player}`);
-      //  return;
-      }
+battingOrder.forEach((entry, idx) => {
+  const player = teamPlayers.find(p => p.id === entry.id);
+  if (!player) return;
 
-      const currentId = assignments[pos];
-      const currentPlayer = teamPlayers?.find(p => p.id === currentId);
-      const initialId = initialAssignments?.[pos];
-      const isReplaced = !!usedPlayerInfo?.[entry.id];
-      const posName = posJP[pos];
-      const honorific = player.isFemale ? "さん" : "くん";
+  const pos = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] as keyof typeof posJP | undefined;
+  if (!pos) return;
 
-      console.log("=== 分岐チェック ===");
-      console.log("entry.id", entry.id, "entry.reason", entry.reason);
-      console.log("pos", pos);
-      console.log("currentId", currentId);
-      console.log("currentPlayer", currentPlayer);
-      console.log("player", player);
-      const isOutOfDefense = !Object.values(assignments).includes(entry.id);
+  const wasReplaced = !!usedPlayerInfo[entry.id];
+  const unchanged   = initialAssignments[pos] === entry.id;
 
-      const playerText = `${player.lastName ?? ""}${player.firstName ?? ""}${player.lastNameKana ?? ""}${player.firstNameKana ?? ""}${player.isFemale ? "さん" : "くん"}`;
+  if ((entry.reason === "代打" || entry.reason === "代走") && !wasReplaced && unchanged) {
+    const honor = player.isFemale ? "さん" : "くん";
+    const ruby   = `<ruby>${player.lastName}${player.firstName}<rt>${player.lastNameKana ?? ""}${player.firstNameKana ?? ""}</rt></ruby>${honor}`;
+    const head   = pinchInSamePos.length === 0 ? "先ほど" : "同じく先ほど";
+    pinchInSamePos.push(`${head}${entry.reason}致しました${ruby} がそのまま入り ${posJP[pos]}`);
 
-      // ✅ 分岐1: そのまま守備入り（交代なし＋同一守備位置）
-      if (!isReplaced && currentId === entry.id && currentId === initialId) {
-      samePosPinch.push({
-        reason: reasonMap[player.id] ?? "代打", // "代走" もここで判別
-        text: `${playerText} がそのまま入り ${posJP[pos]}`
-      });
+    lineupLines.push({
+      order: idx + 1,
+      text : `${idx + 1}番 ${posJP[pos]} ${ruby}`      
+    });
+    
+  }
+});
 
-        // 打順 1 行は従来どおり result に貯めて OK
-        lineupLines.push({
-          order: index + 1,
-          text: `${index + 1}番 ${posName} <ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific}。`
-        });
+if (pinchInSamePos.length === 1) {
+  result.push(pinchInSamePos[0] + "。");
+} else if (pinchInSamePos.length > 1) {
+  result.push(pinchInSamePos.join("、\n") + "。");
 
-        // 先に交代系を無効化する処理はそのまま
+}
 
-      }
-      // ✅ 分岐2: 守備位置が変わって入った（交代なし＋違う守備位置）
-      /* ───── 代打した選手が “別の守備位置” に入るパターン ───── */
-      else if (!isReplaced && currentId === entry.id && currentId !== initialId) {
-        /* ① 代打選手（player）の行をまず追加。重複しないようチェック */
-        if (!handledShift.has(player.id)) {
-          shiftPosPinch.push(
-            `${fullNameHonor(player)} が ${posName} に入`
-          );
-          handledShift.add(player.id);
-        }
+  /* =========================================
+     2) 代打・代走を含まない通常交代ロジック
+  ========================================= */
+  const hasShift     = shift.length   > 0;
+  const hasReplace   = replace.length > 0;
+  const hasMixed     = mixed.length   > 0;
+  const totalMoves   = shift.length + replace.length + mixed.length;
+
+  /* ---- ヘッダー ---- */
+const hasRealReplaceInMixed = mixed.some(r => r.from.id !== r.to.id);
+const hasOnlyShiftInMixed   = mixed.every(r => r.from.id === r.to.id);
+
+if ((hasReplace || hasRealReplaceInMixed) && (hasShift || hasOnlyShiftInMixed)) {
+  result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
+} else if (hasReplace || hasRealReplaceInMixed) {
+  result.push(`${teamName}、選手の交代をお知らせいたします。`);
+} else if (hasShift || hasOnlyShiftInMixed) {
+  result.push(`${teamName}、シートの変更をお知らせいたします。`);
+}
 
 
-        /* ② サブで守備をスライドした選手（shiftRecord）がいる場合は
-              その１行をすぐ result に加える（従来ロジックを維持） */
-        const shiftRecord = shift.find(s => s.fromPos === pos);
-        const shiftPlayer = shiftRecord?.player;
-        const shiftToPos   = shiftRecord?.toPos;
-        const shiftToPosName = shiftToPos ? posJP[shiftToPos] : "";
+  /* ---- 並べ替え：守備位置番号順に ---- */
+const nextPosMap: Record<string, string> = { 二: "中", 中: "左", 左: "遊", 遊: "右" };
 
-          /* ① 文頭用バッファに追加（ここで shiftPlayer が定義済み） */
-          if (
-            shiftPlayer &&
-            shiftToPosName &&
-            !handledShift.has(shiftPlayer.id)
-          ) {
-            shiftPosPinch.push(
-              `${lastWithHonor(shiftPlayer)} が ${shiftToPosName} に入`
-            );
-            handledShift.add(shiftPlayer.id);
-          }
+// 守備位置の表示順序（昇順）
+const posOrder = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+const posIndex = (pos: string) => posOrder.indexOf(pos);
 
-        /* ★ ② “移動させられた選手” もフレーズに追加 */
-        if (shiftRecord && shiftPlayer && shiftToPos) {
-          const shiftH = shiftPlayer.isFemale ? "さん" : "くん";
-          shiftPosPinch.push(
-            `<ruby>${shiftPlayer.lastName}<rt>${shiftPlayer.lastNameKana}</rt></ruby>${shiftH} が ${shiftToPosName} に入`
-          );
-        }
-          /* ── 打順行を作るロジック（announceOrderList…）は既存のまま ── */
+replace.sort((a, b) => posIndex(a.pos) - posIndex(b.pos));
+mixed.sort((a, b) => posIndex(a.fromPos) - posIndex(b.fromPos));
+shift.sort((a, b) => posIndex(a.fromPos) - posIndex(b.fromPos));
+
+  /* ---- replace / mixed ---- */
+  const addReplaceLine = (line: string, isLast: boolean) =>
+    result.push(isLast ? line + "。" : line + "、");
+
+const replaceLines: string[] = [];
+
+replace.forEach((r) => {
+  const line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
+  replaceLines.push(line);
 
   
-        if (shiftRecord && shiftPlayer) {
-
-          /* 🆕 この選手は後続ループで重複しないよう登録 */
-          //handledShift.add(shiftPlayer.id);
-
-          /* shift リストから除いて二重表現を防止 */
-          const i = shift.indexOf(shiftRecord);
-          if (i !== -1) shift.splice(i, 1);
-        }
-
-        // 🔽 打順表示を一時リストに
-        const announceOrderList: string[] = [];
-        // 交代で入った選手の打順
-        if (!handledShift.has(player.id)) {
-          announceOrderList.push(
-            `${index + 1}番 ${posName} <ruby>${player.lastName}<rt>${player.lastNameKana}</rt></ruby>${honorific}`
-          );
-          handledShift.add(player.id);   // 登録
-        }
-
-        // 移動した選手の打順（存在する場合）
-        if (shiftRecord && shiftPlayer && shiftToPos) {
-          const shiftOrder = battingOrder.findIndex(e => e.id === shiftPlayer.id);
-          const shiftToPosJP = posJP[shiftToPos] || shiftToPos;
-          const shiftH = shiftPlayer.isFemale ? "さん" : "くん";
-          if (shiftOrder !== -1) {
-            if (!handledShift.has(shiftPlayer.id)) {
-              announceOrderList.push(
-                `${shiftOrder + 1}番 ${shiftToPosName} <ruby>${shiftPlayer.lastName}<rt>${shiftPlayer.lastNameKana}</rt></ruby>${shiftH}`
-              );
-              handledShift.add(shiftPlayer.id);
-            }
-          }
-        }
-        // 🔽 打順順にソートして追加
-        announceOrderList
-          .sort((a, b) => parseInt(a) - parseInt(b))
-          .forEach(line => lineupLines.push({               // 🆕 lineupLines へ
-            order: Number(line.split("番")[0]),
-            text: line
-          }));
-
-        // 他の分岐を無効化
-
-      } 
-
-      // ✅ 分岐3: 守備から外れており、控え選手が代打の選手と同じ守備位置に入った場合
-      if (replace.length > 0 || mixed.length > 0) {
-        if(entry.reason === "代打"){
-            ChangeFlg = 1; // 値を変更
-        }
-        else{ //代走
-            ChangeFlg = 10; // 値を変更
-        }        
-      }
-      // ✅ 分岐4: 守備位置が変わって入った（交代あり＋違う守備位置）
-      if (mixed.length > 0 || (replace.length > 0 && shift.length > 0)){
-        if(entry.reason === "代打"){
-            ChangeFlg = 2; // 値を変更 
-        }
-        else{ //代走
-            ChangeFlg = 20; // 値を変更 
-        }
-      }
-    }
-  });
-
-if (samePosPinch.length > 0) {
-  const joined = samePosPinch
-    .map((entry, i) => {
-      const prefix = i === 0
-        ? `先ほど${entry.reason}致しました${entry.text}`
-        : `同じく先ほど${entry.reason}致しました${entry.text}`;
-      return i === samePosPinch.length - 1 ? prefix + "。" : prefix + "、";
-    })
-    .join("");
-  result.unshift(joined);
-}
-
-
-/* 🔽 重複を除いた配列に置き換え --------------- */
-const uniqShift = Array.from(new Set(shiftPosPinch));
-if (uniqShift.length > 0) {
-  const joinedShift = uniqShift
-    .map((txt, i) => {
-      const reasonLabel = txt.includes("代走") ? "代走" : "代打";
-      const prefix = i === 0
-        ? `先ほど${reasonLabel}致しました${txt}`
-        : `同じく先ほど${reasonLabel}致しました${txt}`;
-      return i === uniqShift.length - 1 ? prefix + "。" : prefix + "、";
-    })
-    .join("");
-  result.unshift(joinedShift);
-}
-
-/*  代打/代走が守備に入るケースでは冒頭にヘッダーを付ける */
-if (shiftPosPinch.length > 0 && teamName) {
-  result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
-}
-
-}
-  if (
-    result.length > 0 &&
-    replace.length === 0 &&
-    mixed.length === 0 &&
-    shift.length === 0
-  ) {
-    result.push("以上に代わります。");
-    return result.join("\n");
-  }
-
-  // ***************//
-  //  通常の交代文言 //
-  // ***************//
-  if (records.length === 0) return "交代内容はありません。";
-  if (mixed.length > 0 || (replace.length > 0 && shift.length > 0)) {
-    if (ChangeFlg === 0) {
-      result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
-    }
-    else if ((ChangeFlg === 2) || (ChangeFlg === 20)) {//代打or代走の時{
-      result.push(`${teamName}、選手の交代をお知らせいたします。`);
-    }  
-  } else if (replace.length > 0 || mixed.length > 0) {
-    if (ChangeFlg === 0) {//代打の時は非表示
-      result.push(`${teamName}、選手の交代をお知らせいたします。`);
-    }  
-  }  
-  else if (shift.length > 0) {
-    result.push(`${teamName}、シートの変更をお知らせいたします。`);
-  }
-
-  // ✅ 交代パート（replace + mixed）
-  const allReplacements = [...mixed, ...replace];
-  const posOrder = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
-  allReplacements.sort((a, b) => {
-    const aPos = a.type === "mixed" ? a.fromPos : a.pos;
-    const bPos = b.type === "mixed" ? b.fromPos : b.pos;
-    return posOrder.indexOf(aPos) - posOrder.indexOf(bPos);
-  });
-
-  allReplacements.forEach((r, index) => {
-    if (r.type === "mixed") {
-      const fromH = r.from.isFemale ? "さん" : "くん";
-      const toH = r.to.isFemale ? "さん" : "くん";
-      if( (ChangeFlg === 2)||(ChangeFlg === 20) ) {  //代打時の表示          
-            if (ChangeFlg === 2) {
-                result.push(`先ほど代打致しました ${r.from.lastName}${fromH} に代わりまして、${r.to.lastName}${toH} が入り${posJP[r.toPos]}、`); 
-            }
-            else{
-                result.push(`先ほど代走致しました ${r.from.lastName}${fromH} に代わりまして、${r.to.lastName}${toH} が入り${posJP[r.toPos]}、`); 
-            }
-      }
-      else{  
-        const line = `${posJP[r.fromPos]} ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`;
-        result.push(index === allReplacements.length - 1 ? line + "。" : line + "、");
-      }
-    } else {
-      const from = r.from;
-      const to = r.to;
-      const entry         = battingOrder?.find(e => e.id === from.id);
-      const reason        = entry?.reason;        // "代打" | "代走" | "スタメン" | …
-      const isPinch       = reason === "代打" || reason === "代走";
-      const fromH = from.isFemale ? "さん" : "くん";
-      const toH = to.isFemale ? "さん" : "くん";
-      if (isPinch) { //代打時の表示
-         if(ChangeFlg === 1){
-          result.push(
-            `先ほど代打致しました ${fullNameHonor(from)}  に代わりまして、${fullNameHonor(to)} がそのまま入り${posJP[r.pos]}、`);
-         }
-         else{
-            result.push(
-            `先ほど代走致しました ${fullNameHonor(from)}  に代わりまして、${fullNameHonor(to)} がそのまま入り${posJP[r.pos]}、`);        
-         }
-      }
-      else{
-        const line  = `${posJP[r.pos]}の ${lastWithHonor(from)} に代わりまして、${fullNameHonor(to)}`;
-        // shift が後ろに続くかどうかを考慮
-        const hasFollowingShift   = shift.length > 0;
-        const isLastReplacement   = index === allReplacements.length - 1;
-        const ending = isLastReplacement && !hasFollowingShift ? " が入ります。" : " が入り、";
-        result.push(line + ending);
-      }  
-    }
-  });
-
-  // ✅ 守備位置変更パート
-  const buildLinkedShiftOrder = (shifts: typeof shift) => {
-    const fromToMap = new Map<string, typeof shift[0]>();
-    const toSet = new Set<string>();
-    const used = new Set<string>();
-
-    shifts.forEach(r => {
-      fromToMap.set(r.fromPos, r);
-      toSet.add(r.toPos);
+  // lineupLines の重複防止付き追加
+  if (!lineupLines.some(l => l.order === r.order)) {
+    lineupLines.push({
+      order: r.order,
+      text: `${r.order}番 ${posJP[r.pos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
     });
+  }
+});
 
-    const start = posOrder
-      .map(pos => shifts.find(r => r.fromPos === pos))
-      .find(r => r !== undefined) ?? shifts[0];
+if (replaceLines.length === 1) {
+  const sentence = shift.length > 0
+    ? replaceLines[0] + "、"
+    : replaceLines[0] + " が入ります。";
+  result.push(sentence);
+} else if (replaceLines.length > 1) {
+  const last = replaceLines.pop()!;
+  const continuedLines = replaceLines.map(line => line + "、").join("\n");
+  const lastLine = shift.length > 0
+    ? last + "、"
+    : last + " が入ります。";
+  result.push(`${continuedLines}\n${lastLine}`);
+}
+
+
+
+
+mixed.forEach((r, i) => {
+  const isSamePlayer = r.from.id === r.to.id;
+
+  if (isSamePlayer) {
+    // 🟢 守備位置の移動のみ
+    result.push(`${posJP[r.fromPos]}の ${lastWithHonor(r.from)} が ${posJP[r.toPos]} に${i === mixed.length - 1 && !hasShift ? "入ります。" : "、"}`);
+  } else {
+    // 🔴 選手交代＋守備変更
+    addReplaceLine(
+      `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+      i === mixed.length - 1 && !hasShift
+    );
+  }
+
+  lineupLines.push({
+    order: r.order,
+    text: `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+  });
+});
+
+/* ---- shift ---- */
+// 守備変更：連鎖構造に並べ替え
+const buildShiftChain = (shifts: typeof shift): typeof shift[] => {
+  const fromMap = new Map(shifts.map(s => [s.fromPos, s]));
+  const toMap = new Map(shifts.map(s => [s.toPos, s]));
+
+  const used = new Set<string>();
+  const chains: typeof shift[] = [];
+
+  shifts.forEach((s) => {
+    if (used.has(s.fromPos)) return;
 
     const chain: typeof shift = [];
-    let current = start;
+    let current: typeof s | undefined = s;
+
     while (current && !used.has(current.fromPos)) {
       chain.push(current);
       used.add(current.fromPos);
-      current = shifts.find(r => r.fromPos === current.toPos && !used.has(r.fromPos));
+      current = fromMap.get(current.toPos);
     }
 
-    shifts.forEach(r => {
-      if (!used.has(r.fromPos)) chain.push(r);
-    });
-
-    return chain;
-  };
-
-  const sortedShift = buildLinkedShiftOrder(shift);
-
-  sortedShift.forEach((r, index) => {
-    const h = r.player.isFemale ? "さん" : "くん";
-    const line = `${posJP[r.fromPos]}の ${lastWithHonor(r.player)} が ${posJP[r.toPos]} に`;
-    result.push(index === sortedShift.length - 1 ? line + "入ります。" : line + "、");
+    chains.push(...chain);
   });
 
-  /* === 代打が守備に就ったケース用の打順を後ろにまとめて出力 === */
+  return chains;
+};
+
+// チェーン順に並べて表示
+const sortedShift = buildShiftChain(shift);
+
+sortedShift.forEach((s, i) => {
+  const h = s.player.isFemale ? "さん" : "くん";
+  const head = posJP[s.fromPos];
+  const tail = posJP[s.toPos];
+  const ends = i === sortedShift.length - 1 ? "入ります。" : "、";
+  result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} に${ends}`);
+
+  lineupLines.push({
+    order: s.order,
+    text: `${s.order}番 ${tail} ${lastRuby(s.player)}${h}`
+  });
+});
+
+
+
+
+
+  /* ---- 打順行を最後にまとめて追加 ---- */
   lineupLines
     .sort((a, b) => a.order - b.order)
     .forEach(l => result.push(l.text));
-    
-  // ✅ 最終打順一覧
-  const allForDisplay: { order: number, text: string }[] = [];
 
-  allReplacements.forEach(r => {
-    const to = r.type === "mixed" ? r.to : r.to;
-    const pos = r.type === "mixed" ? r.toPos : r.pos;
-    const h = to.isFemale ? "さん" : "くん";
-    allForDisplay.push({
-      order: r.order,
-      text: `${r.order}番 ${posJP[pos]} ${fullNameHonor(to)} 背番号 ${to.number}`
-    });
-  });
-
-  shift.forEach(r => {
-    const h = r.player.isFemale ? "さん" : "くん";
-    allForDisplay.push({
-      order: r.order,
-      text: `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.player)} `
-    });
-  });
-
-  allForDisplay.sort((a, b) => a.order - b.order).forEach(r => result.push(r.text));
-  if (ChangeFlg === 0) {  //代打時は非表示
+      /* ---- 「以上に代わります。」判定 ---- */
+  //if (totalMoves > 1) result.push("以上に代わります。");
+  const total = replace.length + shift.length + mixed.length;
+  if ((total >= 2) || (lineupLines.length >= 2)) {
     result.push("以上に代わります。");
   }
+  // ✅ 最後の文言追加（変更が何もない場合）
+if (result.length === 0) {
+  return `交代はありません。`;
+}
+
   return result.join("\n");
 };
 
@@ -906,6 +778,20 @@ setBenchPlayers((prev) => prev.filter((p) => p.id !== playerId));
     return rebuilt;
   });
 
+  // 一度控えに下がった選手が、元の初期守備位置と違う場所に戻ってきたら“シート変更”扱いにする
+  const originalPosition = Object
+    .entries(initialAssignments)
+    .find(([pos, id]) => id === playerId)?.[0];
+  if (originalPosition && originalPosition !== toPos) {
+    // 打順置き換え情報をクリアして、shift（位置移動）として扱わせる
+    setBattingReplacements(prev => {
+      const copy = { ...prev };
+      const idx = battingOrder.findIndex(entry => entry.id === playerId);
+      if (idx !== -1) delete copy[idx];
+      return copy;
+    });
+  }
+
   updateLog(BENCH, playerId, toPos, replacedId);
   return newAssignments;
 }
@@ -1117,6 +1003,28 @@ Object.entries(initialAssignments).forEach(([pos, initialId]) => {
 
 
   // 🟢 保存処理（守備位置、交代、打順）
+    // ── 重複を除去＆フィールド上の選手を正しい順序で並べるスニペット ──
+  {
+    const seen = new Set<number>();
+    const deduped: { id: number; reason: string }[] = [];
+    for (const entry of updatedOrder) {
+      if (entry.id != null && !seen.has(entry.id)) {
+        seen.add(entry.id);
+        deduped.push(entry);
+      }
+    }
+    Object.values(assignments).forEach(pid => {
+      if (pid != null && !seen.has(pid)) {
+        seen.add(pid);
+        deduped.push({ id: pid, reason: "途中出場" });
+      }
+    });
+    while (deduped.length < 9) {
+      deduped.push({ id: null as any, reason: "" });
+    }
+    // updatedOrder を置き換え
+    updatedOrder.splice(0, updatedOrder.length, ...deduped);
+  }
   await localForage.setItem("lineupAssignments", assignments);
   await localForage.setItem("battingReplacements", battingReplacements);
   await localForage.setItem("battingOrder", updatedOrder);
