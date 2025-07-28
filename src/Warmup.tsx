@@ -132,7 +132,7 @@ const [timer2Setting, setTimer2Setting] = useState(300);
   };
 
 const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
-  <div className="border border-black p-4 my-3 bg-white rounded-md">
+  <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     <div className="flex items-start gap-2 mb-2">
       <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
       <p className="text-left text-red-600 font-bold whitespace-pre-wrap">{text}</p>

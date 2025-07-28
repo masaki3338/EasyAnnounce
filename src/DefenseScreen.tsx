@@ -518,7 +518,7 @@ const totalRuns = () => {
 
       {/* 🔽 マイクアイコン付きアナウンスエリア */}
       {announceMessages.length > 0 && (
-        <div className="border border-red-500 bg-white p-4 my-4 rounded-lg shadow-md">
+       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
 <div className="flex items-start gap-4">
   <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-1" />
 

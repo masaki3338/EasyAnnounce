@@ -576,7 +576,7 @@ const App = () => {
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-pink-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <span className="text-2xl">🎤</span>
+        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
         <div className="text-left whitespace-pre-line">{endGameAnnouncement}</div>
       </div>
       <div className="flex justify-center gap-4 flex-wrap">
@@ -607,9 +607,10 @@ const App = () => {
 )}
 {showHeatPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-yellow-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
+    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <span className="text-2xl">🎤</span>
+
+        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
         <div className="text-left whitespace-pre-line">{heatMessage}</div>
       </div>
       <div className="flex justify-center gap-4 flex-wrap">

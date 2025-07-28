@@ -41,7 +41,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       {/* アナウンス表示 */}
-      <div className="flex items-center border border-black bg-red-50 px-4 py-3 rounded-md">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
         <p className="text-red-600 font-semibold text-lg">{message}</p>
       </div>

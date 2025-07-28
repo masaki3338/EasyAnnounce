@@ -777,7 +777,7 @@ useEffect(() => {
 
 {/* ⚠️ ファウルボール注意文（常時表示） */}
 
-<div className="border p-4 bg-red-200">
+<div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
   <div className="flex items-center mb-2">
     <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
     <span className="text-red-600 font-bold whitespace-pre-line">
@@ -811,7 +811,7 @@ useEffect(() => {
         </div>
       )}
 
-      <div className="border p-4 bg-red-200">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <div className="flex items-center mb-2">
           <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
           <span className="text-red-600 font-bold whitespace-pre-line">
@@ -850,7 +850,7 @@ useEffect(() => {
  {/* ✅ 得点ポップアップここに挿入 */}
 {showScorePopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
+    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
       <div className="flex items-center mb-4">
         <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />        
       </div>
@@ -933,9 +933,18 @@ useEffect(() => {
 
         {/* ベンチ選手（2段表示） */}
 {/* ベンチ選手（退場選手はグレースケール） */}
+
 <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
+  
   {benchPlayers.map((p) => {
-    const isRetired = p.id in usedPlayerInfo;        // ← ★退場判定
+console.log("🪑 benchPlayers", benchPlayers);
+console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
+
+    // 現役選手（battingOrderや守備にいる）以外、かつ退場記録あり→グレー
+    const isRetired =
+      (p.id in usedPlayerInfo) &&
+      !battingOrder.some(e => e.id === p.id) &&
+      !Object.values(assignments).some(id => id === p.id);
 
     return (
       <div
@@ -954,11 +963,13 @@ useEffect(() => {
   })}
 </div>
 
+
       </div>
 
       {/* アナウンス文（赤枠・マイク付き） */}
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <div className="absolute -top-4 left-4 text-2xl">📢</div>
+        <div className="absolute -top-4 left-4 text-2xl">🎤📢</div>
+         
         <span className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6">
           {currentBatterIndex + 1}番{" "}
           <ruby>

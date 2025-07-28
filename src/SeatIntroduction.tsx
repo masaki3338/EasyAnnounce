@@ -113,7 +113,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       {/* アナウンス表示 */}
-      <div className="flex items-start border border-black bg-red-50 p-4 rounded-md mb-6 w-full max-w-lg">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <img src="/icons/mic-red.png" alt="mic" className="w-10 h-10 mr-4" />
         <div
           className="text-red-600 font-semibold text-base whitespace-pre-line"

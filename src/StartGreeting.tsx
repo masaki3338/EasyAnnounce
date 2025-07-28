@@ -62,7 +62,7 @@ interface Props {
         </div>
       </div>
 
-      <div className="border border-black bg-red-50 p-4 rounded-md flex items-start space-x-4 max-w-xl">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10" />
         <p className="text-red-600 font-semibold whitespace-pre-wrap text-sm">
           {message}
