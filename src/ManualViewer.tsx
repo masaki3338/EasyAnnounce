@@ -8,17 +8,14 @@ const ManualViewer = () => {
 
   return (
     <div
-      style={{
+    style={{
         width: "100%",
-        height: "100%", // ←ここを minHeight に変更して対策
-        minHeight: "100vh", // ✅ iPhoneスクロール対策
-        overflowY: "auto", // ✅ スクロールを強制
-        WebkitOverflowScrolling: "touch", // ✅ iOSの慣性スクロール有効
-      }}
+        height: "100vh", // minHeight → height に
+        overflow: "auto", // overflowY ではなく overflow
+        WebkitOverflowScrolling: "touch", // iOSの慣性スクロール
+    }}
     >
-      <Worker
-        workerUrl={`https://unpkg.com/pdfjs-dist@3.12/build/pdf.worker.min.js`}
-      >
+        <Worker workerUrl={`https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js`}>
         <Viewer
           fileUrl="/manual.pdf"
           plugins={[defaultLayoutPluginInstance]}
