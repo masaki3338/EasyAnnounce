@@ -1,5 +1,5 @@
-//import { Worker, Viewer } from "@react-pdf-viewer/core";
-//import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
+import { Worker, Viewer } from "@react-pdf-viewer/core";
+import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 
 const ManualViewer = () => {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
