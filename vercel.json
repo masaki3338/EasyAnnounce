@@ -8,7 +8,8 @@
     }
   ],
   "rewrites": [
-    { "source": "/manual.pdf", "destination": "/manual.pdf" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+    { "source": "/manual", "destination": "/manual.pdf" }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }
