@@ -8,10 +8,13 @@ const ManualViewer: React.FC = () => {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
   return (
-    <div className="w-full h-full overflow-hidden">
-      {/* ✅ ローカルの worker を使う */}
+    <div style={{ width: "100%", height: "100%" }}>
       <Worker workerUrl="/pdf.worker.min.js">
-        <Viewer fileUrl="/manual.pdf" plugins={[defaultLayoutPluginInstance]} />
+        <Viewer
+          fileUrl="/manual.pdf"
+          plugins={[defaultLayoutPluginInstance]}
+          theme="light"
+        />
       </Worker>
     </div>
   );
