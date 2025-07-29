@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'robots.txt', 'manual.pdf'],
       manifest: {
-        name: 'Easy Announce',
-        short_name: 'Announce',
+        name: 'Easy アナウンス PONY',
+        short_name: 'Easy Announce',
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',
