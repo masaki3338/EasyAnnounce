@@ -167,7 +167,6 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
 
       <h1 className="text-2xl font-bold text-center mb-4">スタメン発表</h1>
-
       {isHomeTeamFirstAttack && (
        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
           <span className="mr-2 text-2xl">⚠️</span> シートノック後、グラウンド整備中に読み上げ  ※先攻チーム🎤

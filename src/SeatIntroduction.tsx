@@ -33,7 +33,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
     ["右", "ライト"],
   ];
 
-  const inning = isHome ? "1回の裏" : "1回の表";
+  const inning = isHome ? "1回の表" : "1回の裏";
 
   useEffect(() => {
     const loadData = async () => {
@@ -105,16 +105,22 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
       {/* タイトル */}
       <h1 className="text-2xl font-bold text-center mb-2">シート紹介</h1>
 
-      {/* 注意文 */}
-      <div className="flex items-center space-x-2 -mt-2 mb-2">
-        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> ピッチャーが練習球を1球投げてから 
-        </div>
-      </div>
 
-      {/* アナウンス表示 */}
+
+     {/* アナウンス表示 */}
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <img src="/icons/mic-red.png" alt="mic" className="w-10 h-10 mr-4" />
+        {/* ✅ マイク＋注意文を flex で横並びに */}
+        <div className="flex items-center space-x-4 mb-2">
+          {/* マイクアイコン */}
+          <img src="/icons/mic-red.png" alt="mic" className="w-10 h-10" />
+
+          {/* 注意文 */}
+          <div className="bg-yellow-100 text-yellow-800 px-2 py-1 text-sm font-semibold text-left rounded border-l-4 border-yellow-500">
+            <span className="mr-2 text-2xl">⚠️</span> ピッチャーが練習球を1球投げてから
+          </div>
+        </div>
+
+        {/* アナウンス文 */}
         <div
           className="text-red-600 font-semibold text-base whitespace-pre-line"
           dangerouslySetInnerHTML={{ __html: formattedAnnouncement }}

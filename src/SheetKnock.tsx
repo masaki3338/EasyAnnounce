@@ -175,11 +175,13 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
 
 
 
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
+        <h1 className="text-2xl font-bold">シートノック</h1>
+
+        {/* 右隣ボタン */}
         <button className="border px-4 py-1 rounded-full text-sm">{readingLabel}</button>
       </div>
-
-      <h1 className="text-2xl font-bold mb-6">シートノック</h1>
 
       {isHome === "後攻" && (
         <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
