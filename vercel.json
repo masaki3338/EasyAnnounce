@@ -8,6 +8,7 @@
     }
   ],
   "routes": [
+    { "src": "/field.jpg", "dest": "/field.jpg" },
     { "src": "/manual.pdf", "dest": "/manual.pdf" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
