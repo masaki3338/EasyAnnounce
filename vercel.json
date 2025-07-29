@@ -7,10 +7,8 @@
       ]
     }
   ],
-  "routes": [
-    { "src": "/field.jpg", "dest": "/field.jpg" },
-    { "src": "/manual.pdf", "dest": "/manual.pdf" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/manual.pdf", "destination": "/manual.pdf" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

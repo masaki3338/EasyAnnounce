@@ -1,26 +1,15 @@
-import { Worker, Viewer } from "@react-pdf-viewer/core";
-import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+// ManualViewer.tsx
+import React from "react";
+import { Viewer, Worker } from "@react-pdf-viewer/core";
+import "@react-pdf-viewer/core/lib/styles/index.css";
+import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 
-const ManualViewer = () => {
-  const defaultLayoutPluginInstance = defaultLayoutPlugin();
-
+const ManualViewer: React.FC = () => {
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100vh",
-        overflow: "auto",
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
-      <Worker workerUrl="/pdf.worker.min.js">
-        <Viewer
-          fileUrl="/manual.pdf"
-          plugins={[defaultLayoutPluginInstance]}
-        />
-      </Worker>
+    <div className="w-full h-screen">
+        <Worker workerUrl={`https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`}>
+        <Viewer fileUrl="/manual.pdf" />
+        </Worker>
     </div>
   );
 };
