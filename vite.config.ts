@@ -1,12 +1,12 @@
 // vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa'; // ← 追加
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({  // ← 追加：必要に応じてオプション追加
+    VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'robots.txt', 'manual.pdf'],
       manifest: {
@@ -29,6 +29,15 @@ export default defineConfig({
           },
         ],
       },
-    })
+    }),
   ],
+  build: {
+    rollupOptions: {
+      external: [
+        '@react-pdf-viewer/core',
+        '@react-pdf-viewer/default-layout',
+        'pdfjs-dist',
+      ],
+    },
+  },
 });
