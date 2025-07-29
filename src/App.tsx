@@ -8,8 +8,9 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+import { Worker, Viewer } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
@@ -642,33 +643,24 @@ const App = () => {
     </div>
   </div>
 )}
-
 {showManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg flex flex-col">
+    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
       <div className="bg-gray-800 text-white px-4 py-2 text-center font-bold">
         連盟🎤マニュアル
       </div>
-
-      {/* ✅ PDFエリアはスクロール可能に */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-hidden">
         <ManualViewer />
       </div>
-
-     {/* ✅ OKボタン：中央下配置 */}
-      <div className="bg-gray-100 border-t px-4 py-3 flex justify-center">
-        <button
-          className="bg-green-600 text-white px-6 py-2 rounded-full shadow-md"
-          onClick={() => setShowManualPopup(false)}
-        >
-          OK
-        </button>
-      </div>
+      <button
+        className="bg-green-600 text-white py-2 text-lg"
+        onClick={() => setShowManualPopup(false)}
+      >
+        OK
+      </button>
     </div>
   </div>
 )}
-
-
 
     </>    
   );
