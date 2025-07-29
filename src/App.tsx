@@ -646,25 +646,29 @@ const App = () => {
 
 {showManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
+    <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg flex flex-col">
       <div className="bg-gray-800 text-white px-4 py-2 text-center font-bold">
         連盟🎤マニュアル
       </div>
 
-      {/* ✅ 高さを明示的に指定 */}
-      <div style={{ height: "100%", flex: 1 }}>
+      {/* ✅ PDFエリアはスクロール可能に */}
+      <div className="flex-1 overflow-y-auto">
         <ManualViewer />
       </div>
 
-      <button
-        className="bg-green-600 text-white py-2 text-lg"
-        onClick={() => setShowManualPopup(false)}
-      >
-        OK
-      </button>
+     {/* ✅ OKボタン：中央下配置 */}
+      <div className="bg-gray-100 border-t px-4 py-3 flex justify-center">
+        <button
+          className="bg-green-600 text-white px-6 py-2 rounded-full shadow-md"
+          onClick={() => setShowManualPopup(false)}
+        >
+          OK
+        </button>
+      </div>
     </div>
   </div>
 )}
+
 
 
     </>    
