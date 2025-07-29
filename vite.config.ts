@@ -8,7 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'robots.txt', 'manual.pdf', 'pdf.worker.min.js'],
+      includeAssets: [
+        'favicon.svg',
+        'robots.txt',
+        'manual.pdf',
+        'pdf.worker.min.js',
+        'field.jpg' 
+      ],
       manifest: {
         name: 'Easy アナウンス PONY',
         short_name: 'Easy Announce',
