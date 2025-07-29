@@ -8,8 +8,8 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-const manualPdfURL = import.meta.env.BASE_URL + "manual.pdf";
-console.log("📄 manualPdfURL =", manualPdfURL);
+const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
+
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -23,7 +23,7 @@ import SheetKnock from "./SheetKnock";
 import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
 import DefenseScreen from "./DefenseScreen";
-import DefenseChange from './DefenseChange';
+import DefenseChange from "./DefenseChange";
 
 
 
