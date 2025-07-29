@@ -1,23 +1,17 @@
 // vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa'; // ← 追加
 
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({
+    VitePWA({  // ← 追加：必要に応じてオプション追加
       registerType: 'autoUpdate',
-      includeAssets: [
-        'favicon.svg',
-        'robots.txt',
-        'manual.pdf',
-        'pdf.worker.min.js',
-        'field.jpg' 
-      ],
+      includeAssets: ['favicon.svg', 'robots.txt', 'manual.pdf'],
       manifest: {
-        name: 'Easy アナウンス PONY',
-        short_name: 'Easy Announce',
+        name: 'Easy Announce',
+        short_name: 'Announce',
         start_url: '/',
         display: 'standalone',
         background_color: '#ffffff',
@@ -35,24 +29,6 @@ export default defineConfig({
           },
         ],
       },
-    }),
+    })
   ],
-
-  // ✅ Vercel対策：ビルドエラーを防ぐためCSSを外部扱いに
-  build: {
-    rollupOptions: {
-      external: [
-        '@react-pdf-viewer/core/lib/styles/index.css',
-        '@react-pdf-viewer/default-layout/lib/styles/index.css',
-      ],
-    },
-  },
-
-  // ✅ Viteの依存関係プリバンドル対象に含める
-  optimizeDeps: {
-    include: [
-      '@react-pdf-viewer/core',
-      '@react-pdf-viewer/default-layout',
-    ],
-  },
 });
