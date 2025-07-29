@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate', // 自動更新
-      includeAssets: ['favicon.svg', 'robots.txt'], // 任意
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'robots.txt'],
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
@@ -29,5 +29,8 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ],
+  optimizeDeps: {
+    include: ['@react-pdf-viewer/core/lib/styles/index.css']
+  }
 });
