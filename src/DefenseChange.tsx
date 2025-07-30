@@ -395,6 +395,16 @@ const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
 
+  type TempPlayerState = {
+  id: number;
+  firstPosition: string | "控え";
+  lastPosition: string | "控え";
+  firstBattingIndex: number | null;
+  lastBattingIndex: number | null;
+};
+
+const [tempPlayerStates, setTempPlayerStates] = useState<TempPlayerState[]>([]);
+
 useEffect(() => {
   const setInitialAssignmentsFromSubs = async () => {
     const battingOrder = await localForage.getItem<{ id: number; reason: string }[]>("battingOrder");
@@ -595,6 +605,22 @@ useEffect(() => {
 
   if (changed) {
     setAssignments(updatedAssignments);
+    // 暫定記憶領域に初期と最新情報を保持
+    setTempPlayerStates((prev) => {
+      const existing = prev.find(p => p.id === droppedPlayer.id);
+      const battingIndex = battingOrder.findIndex((entry) => entry.id === droppedPlayer.id);
+
+      const updated: TempPlayerState = {
+        id: droppedPlayer.id,
+        firstPosition: existing?.firstPosition ?? "控え",
+        firstBattingIndex: existing?.firstBattingIndex ?? null,
+        lastPosition: droppedPosition,
+        lastBattingIndex: battingIndex !== -1 ? battingIndex : null,
+      };
+
+      return [...prev.filter(p => p.id !== droppedPlayer.id), updated];
+    });
+
   }
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
@@ -719,6 +745,7 @@ if (replacedId) {
     return [...prev, replacedPlayer];
   });
 }
+
 // 🔴 出た控え選手を控えリストから除去
 setBenchPlayers((prev) => prev.filter((p) => p.id !== playerId));
 

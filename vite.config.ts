@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'robots.txt'],
+      registerType: 'autoUpdate', // 自動更新
+      includeAssets: ['favicon.svg', 'robots.txt'], // 任意
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
