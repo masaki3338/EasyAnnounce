@@ -1403,9 +1403,18 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
 {showGroundPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-6 border-4 border-red-500 max-w-md w-full">
+
+      {/* 🔶 マイク＋注意メッセージ（マイクは外） */}
+      <div className="flex items-center gap-2">
+        <img src="icons/mic-red.png" alt="マイク" className="w-6 h-6" />
+        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left flex items-center gap-2 w-full">
+          <span className="text-2xl">⚠️</span>
+          <span>4回終了後🎤</span>
+        </div>
+      </div>
+
       {/* 上段：お願い */}
       <div className="flex items-center justify-center gap-4">
-        <img src="icons/mic-red.png" alt="マイク" className="w-10 h-10" />
         <h2 className="text-lg font-bold text-red-600">両チームはグランド整備をお願いします。</h2>
       </div>
       <div className="flex justify-center gap-4">
@@ -1417,7 +1426,7 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
         </button>
         <button
           onClick={stopSpeech}
-          className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-1 rounded"
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
         >
           停止
         </button>
@@ -1427,6 +1436,13 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
 
       {/* 下段：お礼 */}
       <div>
+          {/* 🔶 注意メッセージ（終了後） */}
+        <div className="flex items-center gap-2">
+          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-3 py-1 text-sm font-semibold flex items-center gap-2 rounded">
+            <span className="text-xl">⚠️</span>
+            <span>整備終了後🎤</span>
+          </div>
+        </div>
         <h2 className="text-lg font-bold text-red-600">グランド整備、ありがとうございました。</h2>
         <div className="flex justify-center gap-4 mt-2">
           <button
@@ -1437,7 +1453,7 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
           </button>
           <button
             onClick={stopSpeech}
-            className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-1 rounded"
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           >
             停止
           </button>
@@ -1462,11 +1478,18 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
 )}
 
 
+
+
 {showStartTimePopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-pink-200 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-md w-full">
+ <div className="flex items-center gap-2">
+  <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+  <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-3 py-1 text-sm font-semibold inline-flex items-center gap-2 w-fit rounded">
+    <span className="text-2xl">⚠️</span>2番バッター紹介前に🎤
+  </div>
+</div>
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2">
-        <span className="text-2xl">🎤</span>
         この試合の開始時刻は {gameStartTime} です。
       </div>
       <div className="flex justify-center gap-4">
@@ -1480,7 +1503,7 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
           読み上げ
         </button>
         <button
-          className="bg-gray-500 text-white px-4 py-2 rounded"
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           onClick={() => speechSynthesis.cancel()}
         >
           停止
