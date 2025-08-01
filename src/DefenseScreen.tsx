@@ -102,6 +102,7 @@ const currentPitcherId = savedAssignments?.['投'];
 const previousPitcherId = savedPitchCount.pitcherId;
 const pitcher = savedTeam.players.find(p => p.id === currentPitcherId);
 const pitcherName = pitcher?.lastName ?? "投手";
+const pitcherKana = pitcher?.lastNameKana ?? "とうしゅ";
 
 let current = 0;
 let total = savedPitchCount.total ?? 0;
@@ -114,7 +115,11 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   current = savedPitchCount.current ?? 0;
   total = savedPitchCount.total ?? 0;
 
-  const msgs = [`ピッチャー${pitcherName}くん、この回の投球数は${current}球です。`];
+  const msgs = [
+    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>くん、この回の投球数は${current}球です。`
+  ];
+
+ 
   if (!isSameInning) {
     msgs.push(`トータル${total}球です。`);
   }
@@ -182,13 +187,16 @@ await localForage.setItem("pitchCounts", {
     pitcherId: pitcherId ?? null
   });
 
-  const pitcher = teamPlayers.find(p => p.id === pitcherId);
-  const pitcherLastName = pitcher?.lastName ?? '投手';
+const pitcher = teamPlayers.find(p => p.id === pitcherId);
+const pitcherName = pitcher?.lastName ?? '投手';
+const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
 
-  const newMessages: string[] = [];
+const newMessages: string[] = [];
 
-  // ✅ この回の投球数は常に表示
-  newMessages.push(`ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`);
+// ✅ この回の投球数は常に表示（ふりがな付き）
+newMessages.push(
+  `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>くん、この回の投球数は${newCurrent}球です。`
+);
 
   // ✅ イニングが変わっている時だけトータルも表示
   if (newCurrent !== newTotal) {
@@ -313,6 +321,17 @@ const confirmScore = async () => {
 
   setIsTop(nextIsTop);
   if (!isTop) setInning(nextInning);
+
+   // 🟢 イニング変化時に投球数リセット
+  const pitcherId = assignments["投"];
+  const updatedPitchCounts = {
+    current: 0,
+    total: totalPitchCount,
+    pitcherId: pitcherId ?? null,
+  };
+  await localForage.setItem("pitchCounts", updatedPitchCounts);
+  setCurrentPitchCount(0);
+
 
   // ✅ 攻撃に切り替わるタイミングで攻撃画面に遷移
   const isNextOffense = (nextIsTop && !isHome) || (!nextIsTop && isHome);
@@ -503,7 +522,7 @@ const totalRuns = () => {
         })}
       </div>
 
-<div className="flex items-center gap-4">
+<div className="flex items-center justify-center gap-4">
   <button onClick={subtractPitch} className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600">
     投球数－１
   </button>
@@ -517,46 +536,45 @@ const totalRuns = () => {
 </div>
 
       {/* 🔽 マイクアイコン付きアナウンスエリア */}
-      {announceMessages.length > 0 && (
-       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-<div className="flex items-start gap-4">
-  <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-1" />
-
-  <div className="flex flex-col text-red-600 text-lg font-bold space-y-2 w-full">
-    {/* アナウンスメッセージ */}
-    <div>
-      {announceMessages.map((msg, index) => (
-        <p key={index}>{msg}</p>
-      ))}
+{announceMessages.length > 0 && (
+  <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+    {/* 🔴 上段：マイクアイコン + 注意書き */}
+    <div className="flex items-start gap-2">
+      <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
+      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-0.5 text-sm font-semibold whitespace-nowrap leading-tight mt-[-2px]">
+        <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
+      </div>
     </div>
 
-    {/* ボタンは下に横並び */}
-    <div className="flex gap-2 mt-2">
-      <button
-        onClick={handleSpeak}
-        className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
-      >
-        読み上げ
-      </button>
-      <button
-        onClick={handleStop}
-        className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
-      >
-        停止
-      </button>
+    {/* 🔽 下段：アナウンスメッセージとボタン（縦に表示） */}
+    <div className="flex flex-col text-red-600 text-lg font-bold space-y-1 mt-2 leading-tight">
+      {announceMessages.map((msg, index) => (
+        <p
+          key={index}
+          className="leading-tight"
+          dangerouslySetInnerHTML={{ __html: msg }}
+        />
+      ))}
+
+      {/* ボタン（横並び） */}
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={handleSpeak}
+          className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={handleStop}
+          className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
+        >
+          停止
+        </button>
+      </div>
     </div>
   </div>
-</div>
+)}
 
-          {/* ★ ここが追加部分（注意マーク＋説明文） */}
-          <div className="mt-2 flex items-center gap-2">
-            <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-              <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
-            </div>
-
-          </div>
-        </div>
-      )}
       {/* 🔽 守備交代ボタン */}
       <div className="my-6 text-center">
         <button

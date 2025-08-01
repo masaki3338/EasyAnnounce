@@ -581,7 +581,7 @@ const App = () => {
     <div className="bg-pink-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
         <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
-        <div className="text-left whitespace-pre-line">{endGameAnnouncement}</div>
+        <div className="text-left whitespace-pre-line max-h-[60vh] overflow-y-auto pr-2">{endGameAnnouncement}</div>
       </div>
       <div className="flex justify-center gap-4 flex-wrap">
         <button
@@ -594,7 +594,7 @@ const App = () => {
           読み上げ
         </button>
         <button
-          className="bg-gray-500 text-white px-4 py-2 rounded"
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
           onClick={() => speechSynthesis.cancel()}
         >
           停止
@@ -628,7 +628,7 @@ const App = () => {
           読み上げ
         </button>
         <button
-          className="bg-gray-500 text-white px-4 py-2 rounded"
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
           onClick={() => speechSynthesis.cancel()}
         >
           停止
