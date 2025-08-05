@@ -109,35 +109,6 @@ const generateAnnouncementText = (
     battingOrder.map(e => [e.id, e.reason])
   ) as Record<number, string>;
 
-  // ✅ 無意味な変化（元に戻ったもの）を除外
-const isNoChange = (rec: ChangeRecord): boolean => {
-  if (rec.type === "replace") {
-    const currentId = assignments[rec.pos];
-    const initialId = initialAssignments[rec.pos];
-    return currentId === initialId;
-  }
-
-  if (rec.type === "shift") {
-    const currentPos = Object.entries(assignments).find(([_, id]) => id === rec.player.id)?.[0];
-    const initialPos = Object.entries(initialAssignments).find(([_, id]) => id === rec.player.id)?.[0];
-    // ✅ 選手もポジションも一致している場合のみ除外
-    return currentPos === initialPos;
-  }
-
-  if (rec.type === "mixed") {
-    const currentId = assignments[rec.toPos];
-    const initialId = initialAssignments[rec.fromPos];
-    // ✅ 元いたポジションの選手が元と同じ → 除外（元通り）
-    return currentId === initialId && rec.fromPos === rec.toPos;
-  }
-
-  return false;
-};
-
-
-// ✅ 余計なレコードを除外
-records = records.filter(r => !isNoChange(r));
-
   /* ---------- レコード分類 ---------- */
   const replace = records.filter(r => r.type === "replace") as Extract<ChangeRecord, {type:"replace"}>[];
   const shift    = records.filter(r => r.type === "shift")   as Extract<ChangeRecord, {type:"shift"}>[];
@@ -147,9 +118,106 @@ records = records.filter(r => !isNoChange(r));
   const result: string[] = [];
   const lineupLines: {order:number; text:string}[] = [];
 
+   /* =================================================================
+   🆕 特別処理: 代打選手に代わって控えが同じ守備位置に入ったケースを先に処理
+               const handledIds = new Set<number>();
+  ==================================================================== */
+  battingOrder.forEach((entry, idx) => {
+    if (entry.reason !== "代打") return;
+
+    const originalPlayer = teamPlayers.find(p => p.id === entry.id);
+    if (!originalPlayer) return;
+
+    // 元の代打がいた守備位置（initialAssignments 上では "代打" は割り当てなし）
+    const pos = Object.entries(initialAssignments).find(([_, id]) => id === entry.id)?.[0] as keyof typeof posJP;
+    if (!pos) return;
+
+    const currentId = assignments[pos]; // 現在その守備に誰がいるか
+    if (!currentId || currentId === entry.id) return; // 同一人物なら無視
+
+  // ✅ 代打選手が他のポジションに守備で入っている場合はこの処理をスキップする
+  const isNowPlayingElsewhere = Object.entries(assignments).some(
+    ([k, v]) => v === entry.id && k !== pos
+  );
+  if (isNowPlayingElsewhere) return;
+
+    const subPlayer = teamPlayers.find(p => p.id === currentId);
+    if (!subPlayer) return;
+
+    // ➤ 代打選手が守備に入らず、代わりに控え選手が同じ位置に入ったケース
+    result.push(`先ほど代打致しました${lastWithHonor(originalPlayer)} に代わりまして、${fullNameHonor(subPlayer)} がそのまま入り ${posJP[pos]}、`);
+    lineupLines.push({
+      order: idx + 1,
+      text: `${idx + 1}番 ${posJP[pos]} ${fullNameHonor(subPlayer)} 背番号 ${subPlayer.number}`,
+    });
+    
+    replace.length =0;
+    const handledIds = new Set<number>();    
+    handledIds.add(entry.id); // ✅ 通常処理から除外するために記録
+    return; // ✅ この後の通常交代文には進ませない
+  });
+
+/* =================================================================
+✅ 特化ブロック（代打 → 守備入り → 元守備選手が移動）
+  ==================================================================== */
+const pinchShiftLines: string[] = [];
+
+battingOrder.forEach((entry, idx) => {
+  if (entry.reason !== "代打") return;
+
+  const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
+  if (!pinchPlayer) return;
+
+  // 現在その選手が入っている守備位置
+  const pos = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] as keyof typeof posJP;
+  if (!pos) return;
+
+  // 元々その守備位置にいた選手
+  const originalId = initialAssignments[pos];
+  if (!originalId || originalId === entry.id) return;
+
+  const movedPlayer = teamPlayers.find(p => p.id === originalId);
+  if (!movedPlayer) return;
+
+  // 移動後の守備位置
+  const movedToPos = Object.entries(assignments).find(([k, v]) => v === originalId)?.[0] as keyof typeof posJP;
+  if (!movedToPos || movedToPos === pos) return;
+
+  // 文言構築
+  const rubyPinch = `<ruby>${pinchPlayer.lastName}<rt>${pinchPlayer.lastNameKana ?? ""}</rt></ruby>${pinchPlayer.isFemale ? "さん" : "くん"}`;
+  const rubyMoved = `<ruby>${movedPlayer.lastName}<rt>${movedPlayer.lastNameKana ?? ""}</rt></ruby>${movedPlayer.isFemale ? "さん" : "くん"}`;
+
+  pinchShiftLines.push(`先ほど代打致しました${rubyPinch}が${posJP[pos]}、`);
+  pinchShiftLines.push(`${posJP[pos]}の ${rubyMoved} が ${posJP[movedToPos]} に入ります。`);
+
+  // lineupLines
+  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${rubyPinch}` });
+  const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
+  if (movedOrder >= 0) {
+    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[movedToPos]} ${rubyMoved}` });
+  }
+
+  // replace/shift をスキップするために削除
+  replace.length = 0;
+  shift.length = 0;
+  mixed.length = 0;
+});
+
+if (pinchShiftLines.length > 0) {
+  result.push(...pinchShiftLines);
+  // ✅ 打順行の出力を追加
+  lineupLines
+    .sort((a, b) => a.order - b.order)
+    .forEach((l) => result.push(l.text));
+
+  result.push("以上に代わります。");
+  return result.join("\n");
+}
+
+
   /* =========================================
    1) 代打・代走 → そのまま守備へ (samePosPinch)
-========================================= */
+  ========================================= */
 const pinchInSamePos: string[] = [];
 
 battingOrder.forEach((entry, idx) => {
@@ -164,7 +232,7 @@ battingOrder.forEach((entry, idx) => {
 
   if ((entry.reason === "代打" || entry.reason === "代走") && !wasReplaced && unchanged) {
     const honor = player.isFemale ? "さん" : "くん";
-    const ruby   = `<ruby>${player.lastName}${player.firstName}<rt>${player.lastNameKana ?? ""}${player.firstNameKana ?? ""}</rt></ruby>${honor}`;
+    const ruby   = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>${honor}`;
     const head   = pinchInSamePos.length === 0 ? "先ほど" : "同じく先ほど";
     pinchInSamePos.push(`${head}${entry.reason}致しました${ruby} がそのまま入り ${posJP[pos]}`);
 
@@ -183,6 +251,7 @@ if (pinchInSamePos.length === 1) {
 
 }
 
+
   /* =========================================
      2) 代打・代走を含まない通常交代ロジック
   ========================================= */
@@ -192,17 +261,13 @@ if (pinchInSamePos.length === 1) {
   const totalMoves   = shift.length + replace.length + mixed.length;
 
   /* ---- ヘッダー ---- */
-const hasRealReplaceInMixed = mixed.some(r => r.from.id !== r.to.id);
-const hasOnlyShiftInMixed   = mixed.every(r => r.from.id === r.to.id);
-
-if ((hasReplace || hasRealReplaceInMixed) && (hasShift || hasOnlyShiftInMixed)) {
-  result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
-} else if (hasReplace || hasRealReplaceInMixed) {
-  result.push(`${teamName}、選手の交代をお知らせいたします。`);
-} else if (hasShift || hasOnlyShiftInMixed) {
-  result.push(`${teamName}、シートの変更をお知らせいたします。`);
-}
-
+  if (hasMixed || (hasReplace && hasShift)) {
+    result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
+  } else if (hasReplace) {
+    result.push(`${teamName}、選手の交代をお知らせいたします。`);
+  } else if (hasShift) {
+    result.push(`${teamName}、シートの変更をお知らせいたします。`);
+  }
 
   /* ---- 並べ替え：守備位置番号順に ---- */
 const nextPosMap: Record<string, string> = { 二: "中", 中: "左", 左: "遊", 遊: "右" };
@@ -253,19 +318,10 @@ if (replaceLines.length === 1) {
 
 
 mixed.forEach((r, i) => {
-  const isSamePlayer = r.from.id === r.to.id;
-
-  if (isSamePlayer) {
-    // 🟢 守備位置の移動のみ
-    result.push(`${posJP[r.fromPos]}の ${lastWithHonor(r.from)} が ${posJP[r.toPos]} に${i === mixed.length - 1 && !hasShift ? "入ります。" : "、"}`);
-  } else {
-    // 🔴 選手交代＋守備変更
-    addReplaceLine(
-      `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
-      i === mixed.length - 1 && !hasShift
-    );
-  }
-
+  addReplaceLine(
+    `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+    i === mixed.length - 1 && !hasShift
+  );
   lineupLines.push({
     order: r.order,
     text: `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
@@ -330,11 +386,6 @@ sortedShift.forEach((s, i) => {
   if ((total >= 2) || (lineupLines.length >= 2)) {
     result.push("以上に代わります。");
   }
-  // ✅ 最後の文言追加（変更が何もない場合）
-if (result.length === 0) {
-  return `交代はありません。`;
-}
-
   return result.join("\n");
 };
 
@@ -394,16 +445,6 @@ const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
-
-  type TempPlayerState = {
-  id: number;
-  firstPosition: string | "控え";
-  lastPosition: string | "控え";
-  firstBattingIndex: number | null;
-  lastBattingIndex: number | null;
-};
-
-const [tempPlayerStates, setTempPlayerStates] = useState<TempPlayerState[]>([]);
 
 useEffect(() => {
   const setInitialAssignmentsFromSubs = async () => {
@@ -540,6 +581,26 @@ const announcementText = useMemo(() => {
 
     if (replacement) {
       const newPos = getPositionName(assignments, replacement.id);
+
+      // ✅ 同じ選手かどうか
+      if (replacement.id === starter.id) {
+        if (originalPos !== newPos) {
+          // ✅ 同一選手だがポジションが変わっている → shift 扱い
+          changes.push({
+            type: "shift",
+            order: index + 1,
+            player: starter,
+            fromPos: originalPos,
+            toPos: newPos,
+          });
+        } else {
+          // ✅ 同一選手で守備位置も同じ → スキップ
+          console.log(`[SKIP] ${starter.lastName}くん 同一守備位置に戻ったためスキップ`);
+        }
+        return; // これ以上の処理不要
+      }
+
+
       if (originalPos === newPos) {
         changes.push({
           type: "replace",
@@ -605,22 +666,6 @@ useEffect(() => {
 
   if (changed) {
     setAssignments(updatedAssignments);
-    // 暫定記憶領域に初期と最新情報を保持
-    setTempPlayerStates((prev) => {
-      const existing = prev.find(p => p.id === droppedPlayer.id);
-      const battingIndex = battingOrder.findIndex((entry) => entry.id === droppedPlayer.id);
-
-      const updated: TempPlayerState = {
-        id: droppedPlayer.id,
-        firstPosition: existing?.firstPosition ?? "控え",
-        firstBattingIndex: existing?.firstBattingIndex ?? null,
-        lastPosition: droppedPosition,
-        lastBattingIndex: battingIndex !== -1 ? battingIndex : null,
-      };
-
-      return [...prev.filter(p => p.id !== droppedPlayer.id), updated];
-    });
-
   }
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
@@ -745,7 +790,6 @@ if (replacedId) {
     return [...prev, replacedPlayer];
   });
 }
-
 // 🔴 出た控え選手を控えリストから除去
 setBenchPlayers((prev) => prev.filter((p) => p.id !== playerId));
 
@@ -804,20 +848,6 @@ setBenchPlayers((prev) => prev.filter((p) => p.id !== playerId));
 
     return rebuilt;
   });
-
-  // 一度控えに下がった選手が、元の初期守備位置と違う場所に戻ってきたら“シート変更”扱いにする
-  const originalPosition = Object
-    .entries(initialAssignments)
-    .find(([pos, id]) => id === playerId)?.[0];
-  if (originalPosition && originalPosition !== toPos) {
-    // 打順置き換え情報をクリアして、shift（位置移動）として扱わせる
-    setBattingReplacements(prev => {
-      const copy = { ...prev };
-      const idx = battingOrder.findIndex(entry => entry.id === playerId);
-      if (idx !== -1) delete copy[idx];
-      return copy;
-    });
-  }
 
   updateLog(BENCH, playerId, toPos, replacedId);
   return newAssignments;
@@ -1030,28 +1060,6 @@ Object.entries(initialAssignments).forEach(([pos, initialId]) => {
 
 
   // 🟢 保存処理（守備位置、交代、打順）
-    // ── 重複を除去＆フィールド上の選手を正しい順序で並べるスニペット ──
-  {
-    const seen = new Set<number>();
-    const deduped: { id: number; reason: string }[] = [];
-    for (const entry of updatedOrder) {
-      if (entry.id != null && !seen.has(entry.id)) {
-        seen.add(entry.id);
-        deduped.push(entry);
-      }
-    }
-    Object.values(assignments).forEach(pid => {
-      if (pid != null && !seen.has(pid)) {
-        seen.add(pid);
-        deduped.push({ id: pid, reason: "途中出場" });
-      }
-    });
-    while (deduped.length < 9) {
-      deduped.push({ id: null as any, reason: "" });
-    }
-    // updatedOrder を置き換え
-    updatedOrder.splice(0, updatedOrder.length, ...deduped);
-  }
   await localForage.setItem("lineupAssignments", assignments);
   await localForage.setItem("battingReplacements", battingReplacements);
   await localForage.setItem("battingOrder", updatedOrder);
@@ -1334,7 +1342,7 @@ const showAnnouncement = () => {
           pos: currentPos,
           jsx: (
             <li key={`pinch-assigned-${index}`}>
-              代打 ➡ {withMark(currentPos)}：{replaced.lastName}{replaced.firstName} #{replaced.number}
+              代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withMark(currentPos)}
             </li>
           )
         };
@@ -1347,7 +1355,7 @@ const showAnnouncement = () => {
           pos: currentPos,
           jsx: (
             <li key={`runner-${index}`}>
-              代走 ➡ {currentPos ?? "―"}：{replaced.lastName}{replaced.firstName} #{replaced.number}
+              代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withMark(currentPos)}
             </li>
           )
         };
