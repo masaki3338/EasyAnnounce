@@ -7,6 +7,8 @@ type Player = {
   firstName?: string;
   number: string;
   name?: string; // フルネームも可能
+  lastNameKana?: boolean;
+  isFemale?: boolean;
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
@@ -33,7 +35,7 @@ type DefenseScreenProps = {
   onBack?: () => void; // ✅ 任意として追加
 };
 
-const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense }) => {
+const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense }) => {  
   const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
   const [editInning, setEditInning] = useState<number | null>(null);
@@ -58,6 +60,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
 
 
 useEffect(() => {
+
   localForage.setItem("lastGameScreen", "defense");
   const loadData = async () => {
     const savedAssignments = await localForage.getItem<{ [pos: string]: number | null }>('lineupAssignments');
@@ -103,7 +106,7 @@ const previousPitcherId = savedPitchCount.pitcherId;
 const pitcher = savedTeam.players.find(p => p.id === currentPitcherId);
 const pitcherName = pitcher?.lastName ?? "投手";
 const pitcherKana = pitcher?.lastNameKana ?? "とうしゅ";
-
+const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
 let current = 0;
 let total = savedPitchCount.total ?? 0;
 
@@ -116,7 +119,7 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   total = savedPitchCount.total ?? 0;
 
   const msgs = [
-    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>くん、この回の投球数は${current}球です。`
+    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${current}球です。`
   ];
 
  
@@ -190,12 +193,12 @@ await localForage.setItem("pitchCounts", {
 const pitcher = teamPlayers.find(p => p.id === pitcherId);
 const pitcherName = pitcher?.lastName ?? '投手';
 const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
-
+const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
 const newMessages: string[] = [];
 
 // ✅ この回の投球数は常に表示（ふりがな付き）
 newMessages.push(
-  `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>くん、この回の投球数は${newCurrent}球です。`
+  `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
 );
 
   // ✅ イニングが変わっている時だけトータルも表示
@@ -207,8 +210,8 @@ newMessages.push(
   if (newTotal === 40 || newTotal === 50) {
     const specialMsg =
       newTotal === 50
-        ? `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球に到達しました。`
-        : `ピッチャー${pitcherLastName}くん、ただいまの投球で${newTotal}球です。`;
+        ? `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
+        : `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
     setPitchLimitMessages([specialMsg]);
     setShowPitchLimitModal(true);
   }
@@ -242,9 +245,10 @@ newMessages.push(
 
   const pitcher = teamPlayers.find(p => p.id === pitcherId);
   const pitcherLastName = pitcher?.lastName ?? '投手';
+  const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
 
   const newMessages = [
-    `ピッチャー${pitcherLastName}くん、この回の投球数は${newCurrent}球です。`
+    `ピッチャー${pitcherLastName}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
   ];
 
   // ✅ イニングが変わっていたらトータルも表示
@@ -500,7 +504,7 @@ const totalRuns = () => {
 </tbody>
         </table>
       </section>
-
+          console.log("🔁 [DEBUG] 守備画面の assignments:", assignments);
       <div className="relative w-full max-w-2xl mx-auto my-6">
         <img src="/field.jpg" alt="フィールド図" className="w-full rounded shadow" />
         {positions.map(pos => {
@@ -607,8 +611,8 @@ const totalRuns = () => {
 
       {showPitchLimitModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4">
-            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mx-auto" />
+          <div className="bg-red-200 p-6 rounded-xl shadow-xl text-center space-y-4">
+            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
             <div className="text-red-600 text-lg font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
                 <p key={idx}>{msg}</p>
@@ -616,7 +620,7 @@ const totalRuns = () => {
             </div>
 
             {/* ★ 読み上げ／停止ボタンを追加 */}
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center gap-4 mt-4">
               <button
                 onClick={handlePitchLimitSpeak}
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
@@ -629,19 +633,17 @@ const totalRuns = () => {
               >
                 停止
               </button>
-            </div>
-
-            <div className="flex justify-center gap-4 mt-4">
               <button
                 onClick={() => {
                   setShowPitchLimitModal(false);
                   setPitchLimitMessages([]);
                 }}
-                className="bg-green-600 text-white px-4 py-2 rounded"
+                className="bg-green-600 text-white px-4 py-2 rounded ml-16" // ← 停止との間に余白を追加
               >
                 OK
               </button>
             </div>
+
           </div>
         </div>
       )}

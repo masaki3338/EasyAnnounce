@@ -160,7 +160,16 @@ const App = () => {
   const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
   const [showManualPopup, setShowManualPopup] = useState(false);
-  
+  const [showContinuationModal, setShowContinuationModal] = useState(false);
+  const handleSpeak = () => {
+    if ('speechSynthesis' in window) {
+      const msg = new SpeechSynthesisUtterance("この試合は、ただ今で打ち切り、継続試合となります。明日以降に中断した時点から再開いたします。あしからずご了承くださいませ。");
+      window.speechSynthesis.speak(msg);
+    }
+  };
+  const handleStop = () => {
+    window.speechSynthesis.cancel();
+  };
 
   useEffect(() => {
     const initializeDatabase = async () => {
@@ -430,7 +439,7 @@ const App = () => {
           } else if (value === "tiebreak") {
             alert("タイブレークを選択しました");
           } else if (value === "continue") {
-            alert("継続試合を選択しました");
+            setShowContinuationModal(true);
           } else if (value === "heat") {
             setShowHeatPopup(true);
           } else if (value === "manual") {
@@ -473,7 +482,8 @@ const App = () => {
       </button>
 
       {/* 右端のドロップダウン */}
-      <select
+      
+      <select      
         className="px-4 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300"
         value={otherOption} // ← 追加
         onChange={async (e) => {
@@ -535,7 +545,7 @@ const App = () => {
           } else if (value === "tiebreak") {
             alert("タイブレークを選択しました");
           } else if (value === "continue") {
-            alert("継続試合を選択しました");
+            setShowContinuationModal(true);
           } else if (value === "heat") {
             setShowHeatPopup(true);
           } else if (value === "manual") {
@@ -579,6 +589,11 @@ const App = () => {
 {showEndGamePopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-pink-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
+      {/* 🔶 注意表示（ポップアップ内） */}
+      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2 text-left">
+        <span className="text-2xl">⚠️</span>
+        勝利チーム🎤
+      </div>
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
         <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
         <div className="text-left whitespace-pre-line max-h-[60vh] overflow-y-auto pr-2">{endGameAnnouncement}</div>
@@ -613,7 +628,6 @@ const App = () => {
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
       <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-
         <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
         <div className="text-left whitespace-pre-line">{heatMessage}</div>
       </div>
@@ -643,6 +657,48 @@ const App = () => {
     </div>
   </div>
 )}
+
+
+{showContinuationModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
+      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
+        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
+      </div>
+
+      {/* メッセージ本文 */}
+      <p className="text-left text-red-600 font-semibold mb-6 leading-relaxed">
+        この試合は、ただ今で打ち切り、継続試合となります。<br />
+        明日以降に中断した時点から再開いたします。<br />
+        あしからずご了承くださいませ。
+      </p>
+
+      {/* ボタン群 */}
+      <div className="flex justify-center gap-8">
+        <button
+          onClick={handleSpeak}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={handleStop}
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+        >
+          停止
+        </button>
+        <button
+          onClick={() => setShowContinuationModal(false)}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
 {showManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white w-full max-w-4xl h-[90vh] rounded-xl shadow-lg overflow-hidden flex flex-col">
