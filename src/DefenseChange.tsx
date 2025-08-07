@@ -129,59 +129,62 @@ const generateAnnouncementText = (
 ============================================================= */
 const specialResult = (() => {
   for (const [idx, entry] of battingOrder.entries()) {
-    if (entry.reason !== "代打") continue;
+    // ✅ 代打・代走 両方対象にする
+    if (!["代打", "代走"].includes(entry.reason)) continue;
 
-    // --- 代打本人 ---
     const pinch = teamPlayers.find(p => p.id === entry.id);
     if (!pinch) continue;
 
-  // --- usedPlayerInfo から代打 (subId) を検索し、元ポジションを取得 ---
-  const pinchInfoPair = Object.entries(usedPlayerInfo)
-    .find(([, info]) =>
-      info.reason === "代打" && info.subId === entry.id
-    );
-  if (!pinchInfoPair) continue;
-  const [origStarterIdStr, pinchInfo] = pinchInfoPair;
-  const origPos         = pinchInfo.fromPos as keyof typeof posJP;   // "三"
-  const origStarterId   = Number(origStarterIdStr);                  // 元ショート＝佐々木楓
+    // ✅ usedPlayerInfo から subId を元に検索（代打・代走両方）
+    const pinchInfoPair = Object.entries(usedPlayerInfo)
+      .find(([, info]) =>
+        ["代打", "代走"].includes(info.reason) && info.subId === entry.id
+      );
+    if (!pinchInfoPair) continue;
 
-  // --- 退場していなければ対象外 ---
+    const [origStarterIdStr, pinchInfo] = pinchInfoPair;
+    const origPos = pinchInfo.fromPos as keyof typeof posJP;
+    const origStarterId = Number(origStarterIdStr);
+
+    // 現在守備にいない（退場している）ことが条件
     if (Object.values(assignments).includes(entry.id)) continue;
 
-    // --- 控えで現在フィールドにいる選手（加藤）---
+    // 控えで現在フィールドにいる選手（＝subIn）
     const subInPair = Object.entries(assignments)
       .find(([pos, id]) =>
-        !Object.values(initialAssignments).includes(id) &&  // スタメンでない（控え）
-        id !== entry.id                                     // 代打本人でもない
+        !Object.values(initialAssignments).includes(id) &&
+        id !== entry.id
       );
     if (!subInPair) continue;
+
     const [subInPos, subInId] = subInPair;
     const subIn = teamPlayers.find(p => p.id === subInId)!;
 
- const movedPlayerId   = assignments[origPos];              // 例：佐々木 ID
- if (!movedPlayerId || movedPlayerId === entry.id) continue;
- const movedPlayer     = teamPlayers.find(p => p.id === movedPlayerId)!;
+    const movedPlayerId = assignments[origPos];
+    if (!movedPlayerId || movedPlayerId === entry.id) continue;
+    const movedPlayer = teamPlayers.find(p => p.id === movedPlayerId)!;
 
- // その選手の“元ポジション”を初期守備から拾う
- const movedFromPos = Object.entries(initialAssignments)
-   .find(([p, id]) => id === movedPlayerId)?.[0] as keyof typeof posJP;
- if (!movedFromPos || movedFromPos === origPos) continue;
+    const movedFromPos = Object.entries(initialAssignments)
+      .find(([p, id]) => id === movedPlayerId)?.[0] as keyof typeof posJP;
+    if (!movedFromPos || movedFromPos === origPos) continue;
 
- // 出力で使う位置名
- const movedToPos = origPos;    // いま入った先はサード
+    const movedToPos = origPos;
 
-      console.log("✅ 特別処理：代打退場 → 控えが別守備 → 元選手がシフト");
-    // ---------- 🎤 アナウンス ----------
+    console.log("✅ 特別処理：代打／代走 → 控えが別守備 → 元選手がシフト");
+
     const lines: string[] = [];
+
+    // ✅ 文言を切り替える
+    const reasonText = entry.reason === "代打" ? "代打致しました" : "代走に出ました";
+
     lines.push(
-      `先ほど代打致しました${lastWithHonor(pinch)} に代わりまして、` +
+      `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
       `${idx + 1}番に ${fullNameHonor(subIn)} が入り ${posJP[subInPos]}へ、`
     );
     lines.push(
       `${posJP[movedFromPos]}の ${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]} に入ります。`
     );
 
-    // ---------- lineup ----------
     const lineup: { order: number; txt: string }[] = [];
     lineup.push({
       order: idx + 1,
@@ -199,9 +202,9 @@ const specialResult = (() => {
           .forEach(l => lines.push(l.txt));
     lines.push("以上に代わります。");
 
-    return lines;         // ★ 特別シナリオに該当したら即 return
+    return lines;
   }
-  return null;            // ヒットしなければ通常ロジックへ
+  return null;
 })();
 
 if (specialResult) return specialResult.join("\n");
@@ -213,7 +216,7 @@ if (specialResult) return specialResult.join("\n");
                const handledIds = new Set<number>();
   ==================================================================== */
   battingOrder.forEach((entry, idx) => {
-    if (entry.reason !== "代打") return;
+    if (!["代打", "代走"].includes(entry.reason)) return;
 
     const originalPlayer = teamPlayers.find(p => p.id === entry.id);
     if (!originalPlayer) return;
@@ -236,10 +239,11 @@ if (specialResult) return specialResult.join("\n");
  
     if (Object.values(initialAssignments).includes(subPlayer.id)) return;
     
-    console.log("✅ 特別処理: 代打選手に代わって控えが同じ守備位置に入ったケース");
+    console.log("✅ 特別処理: 代打/代走選手に代わって控えが同じ守備位置に入ったケース");
 
     // ➤ 代打選手が守備に入らず、代わりに控え選手が同じ位置に入ったケース
-    result.push(`先ほど代打致しました${lastWithHonor(originalPlayer)} に代わりまして、${fullNameHonor(subPlayer)} がそのまま入り ${posJP[pos]}、`);
+    const reasonText = entry.reason === "代打" ? "代打致しました" : "代走に出ました";
+    result.push(`先ほど${reasonText}${lastWithHonor(originalPlayer)} に代わりまして、${fullNameHonor(subPlayer)} がそのまま入り ${posJP[pos]}、`);
     lineupLines.push({
       order: idx + 1,
       text: `${idx + 1}番 ${posJP[pos]} ${fullNameHonor(subPlayer)} 背番号 ${subPlayer.number}`,
@@ -257,7 +261,7 @@ if (specialResult) return specialResult.join("\n");
 const pinchShiftLines: string[] = [];
 
 battingOrder.forEach((entry, idx) => {
-  if (entry.reason !== "代打") return;
+  if (!["代打", "代走"].includes(entry.reason)) return;
   if (handledIds.has(entry.id)) return;
     
    const pinchAssignedElsewhere = Object.entries(assignments).some(
@@ -296,7 +300,8 @@ battingOrder.forEach((entry, idx) => {
   const rubyPinch = `<ruby>${pinchPlayer.lastName}<rt>${pinchPlayer.lastNameKana ?? ""}</rt></ruby>${pinchPlayer.isFemale ? "さん" : "くん"}`;
   const rubyMoved = `<ruby>${movedPlayer.lastName}<rt>${movedPlayer.lastNameKana ?? ""}</rt></ruby>${movedPlayer.isFemale ? "さん" : "くん"}`;
 
-  pinchShiftLines.push(`先ほど代打致しました${rubyPinch}が${posJP[pos]}、`);
+  const reasonText = entry.reason === "代打" ? "代打致しました" : "代走に出ました";
+  pinchShiftLines.push(`先ほど${reasonText}${rubyPinch}が${posJP[pos]}、`);
   pinchShiftLines.push(`${posJP[pos]}の ${rubyMoved} が ${posJP[movedToPos]} に入ります。`);
   handledPlayerIds.add(pinchPlayer.id);
   handledPlayerIds.add(movedPlayer.id);
