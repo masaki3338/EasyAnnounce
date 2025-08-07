@@ -120,6 +120,8 @@ const generateAnnouncementText = (
   const result: string[] = [];
   const lineupLines: {order:number; text:string}[] = [];
   let skipHeader = false;
+  const handledPlayerIds = new Set<number>();   // 👈 出力済みの選手ID
+  const handledPositions = new Set<string>();   // 👈 出力済みの守備位置
 
 /* ============================================================
    ✅ 特別処理：代打退場 → 控えが別守備 → 元選手がシフト
@@ -296,6 +298,10 @@ battingOrder.forEach((entry, idx) => {
 
   pinchShiftLines.push(`先ほど代打致しました${rubyPinch}が${posJP[pos]}、`);
   pinchShiftLines.push(`${posJP[pos]}の ${rubyMoved} が ${posJP[movedToPos]} に入ります。`);
+  handledPlayerIds.add(pinchPlayer.id);
+  handledPlayerIds.add(movedPlayer.id);
+  handledPositions.add(pos);         // 例: "遊"
+  handledPositions.add(movedToPos);  // 例: "三"
 
   // lineupLines
   lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${rubyPinch}` });
@@ -305,23 +311,25 @@ battingOrder.forEach((entry, idx) => {
   }
 
   // replace/shift をスキップするために削除
-  replace.length = 0;
-  shift.length = 0;
-  mixed.length = 0;
+  //replace.length = 0;
+  //shift.length = 0;
+  //mixed.length = 0;
 });
 
 if (pinchShiftLines.length > 0) {
   result.push(...pinchShiftLines);
-  // ✅ 打順行の出力を追加
-  lineupLines
-    .sort((a, b) => a.order - b.order)
-    .forEach((l) => result.push(l.text));
 
-  result.push("以上に代わります。");
-  skipHeader = true;  // 👈 ヘッダー表示を抑制
-  return result.join("\n");
+  // 通常の交代（replace / mixed / shift）がなければ打順行を出力
+  if (replace.length === 0 && mixed.length === 0 && shift.length === 0) {
+    lineupLines
+      .sort((a, b) => a.order - b.order)
+      .forEach((l) => result.push(l.text));
+  }
+
+  // 「以上に代わります」はあとでまとめて判定されるのでここでは入れない
+  skipHeader = true;
+  // return はしない！
 }
-
 
 /* =========================================
   1) 代打・代走 → そのまま守備へ (samePosPinch)
@@ -393,19 +401,32 @@ shift.sort((a, b) => posIndex(a.fromPos) - posIndex(b.fromPos));
 
 /* ---- replace / mixed ---- */
 const addReplaceLine = (line: string, isLast: boolean) =>
-    result.push(isLast ? line + "。" : line + "、");
+  result.push(isLast ? line + "。" : line + "、");
 
 const replaceLines: string[] = [];
 
-replace = replace.filter(r => !handledIds.has(r.from.id));
+// ✅ 特化ブロックで扱った選手・守備位置を除外
+replace = replace.filter(r =>
+  !handledPlayerIds.has(r.from.id) &&
+  !handledPlayerIds.has(r.to.id) &&
+  !handledPositions.has(r.pos)
+);
 
 replace.forEach((r) => {
   const line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
   replaceLines.push(line);
 
-  
-// lineupLines の重複防止付き追加
-  if (!lineupLines.some(l => l.order === r.order)) {
+  // ✅ 処理済み記録に追加
+  handledPlayerIds.add(r.from.id);
+  handledPlayerIds.add(r.to.id);
+  handledPositions.add(r.pos);
+
+  // ✅ lineupLines 重複防止付き追加
+  if (!lineupLines.some(l =>
+    l.order === r.order &&
+    l.text.includes(posJP[r.pos]) &&
+    l.text.includes(fullNameHonor(r.to))
+  )) {
     lineupLines.push({
       order: r.order,
       text: `${r.order}番 ${posJP[r.pos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
@@ -413,6 +434,7 @@ replace.forEach((r) => {
   }
 });
 
+// ✅ アナウンス出力
 if (replaceLines.length === 1) {
   const sentence = shift.length > 0
     ? replaceLines[0] + "、"
@@ -429,14 +451,37 @@ if (replaceLines.length === 1) {
 
 
 mixed.forEach((r, i) => {
+  // ✅ 重複防止：すでに処理された選手やポジションならスキップ
+  if (
+    handledPlayerIds.has(r.from.id) ||
+    handledPlayerIds.has(r.to.id) ||
+    handledPositions.has(r.fromPos) ||
+    handledPositions.has(r.toPos)
+  ) return;
+
+  // ✅ アナウンス文作成
   addReplaceLine(
     `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
     i === mixed.length - 1 && !hasShift
   );
-  lineupLines.push({
-    order: r.order,
-    text: `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
-  });
+
+  // ✅ lineupLines への重複防止チェック付き追加
+  if (!lineupLines.some(l =>
+    l.order === r.order &&
+    l.text.includes(posJP[r.toPos]) &&
+    l.text.includes(fullNameHonor(r.to))
+  )) {
+    lineupLines.push({
+      order: r.order,
+      text: `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+    });
+  }
+
+  // ✅ 処理済み記録へ
+  handledPlayerIds.add(r.from.id);
+  handledPlayerIds.add(r.to.id);
+  handledPositions.add(r.fromPos);
+  handledPositions.add(r.toPos);
 });
 
 /* ---- shift ---- */
@@ -466,20 +511,40 @@ const buildShiftChain = (shifts: typeof shift): typeof shift[] => {
   return chains;
 };
 
-// チェーン順に並べて表示
+// ✅ 実行して sortedShift を作る
 const sortedShift = buildShiftChain(shift);
 
 sortedShift.forEach((s, i) => {
+  // ✅ すでに処理済みならスキップ
+  if (
+    handledPlayerIds.has(s.player.id) ||
+    handledPositions.has(s.fromPos) ||
+    handledPositions.has(s.toPos)
+  ) return;
+
   const h = s.player.isFemale ? "さん" : "くん";
   const head = posJP[s.fromPos];
   const tail = posJP[s.toPos];
   const ends = i === sortedShift.length - 1 ? "入ります。" : "、";
+
   result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} に${ends}`);
 
-  lineupLines.push({
-    order: s.order,
-    text: `${s.order}番 ${tail} ${lastRuby(s.player)}${h}`
-  });
+  // ✅ lineupLines の重複防止付き追加
+  if (!lineupLines.some(l =>
+    l.order === s.order &&
+    l.text.includes(tail) &&
+    l.text.includes(lastRuby(s.player))
+  )) {
+    lineupLines.push({
+      order: s.order,
+      text: `${s.order}番 ${tail} ${lastRuby(s.player)}${h}`
+    });
+  }
+
+  // ✅ この選手・ポジションを今後の処理から除外
+  handledPlayerIds.add(s.player.id);
+  handledPositions.add(s.fromPos);
+  handledPositions.add(s.toPos);
 });
 
   /* ---- 打順行を最後にまとめて追加 ---- */

@@ -504,7 +504,6 @@ const totalRuns = () => {
 </tbody>
         </table>
       </section>
-          console.log("🔁 [DEBUG] 守備画面の assignments:", assignments);
       <div className="relative w-full max-w-2xl mx-auto my-6">
         <img src="/field.jpg" alt="フィールド図" className="w-full rounded shadow" />
         {positions.map(pos => {
