@@ -986,14 +986,46 @@ useEffect(() => {
   })();
 }, []);
 
-  const handlePositionDragStart = (
-    e: React.DragEvent<HTMLDivElement>,   // ← event を受け取る
-    pos: string
-  ) => {
-    e.dataTransfer.setData("fromPos", pos); // ★必須 – iOS/Android でドラッグを成立させる
-    e.dataTransfer.effectAllowed = "move";
-    setDraggingFrom(pos);
+// iOS Safari の transform 原点ズレ対策用 dragImage ゴースト作成
+const makeDragGhost = (el: HTMLElement) => {
+  const rect = el.getBoundingClientRect();
+  const ghost = el.cloneNode(true) as HTMLElement;
+  ghost.style.position = "fixed";
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.opacity = "0";           // 見えない
+  ghost.style.pointerEvents = "none";
+  ghost.style.transform = "none";      // 親の transform の影響を受けない
+  document.body.appendChild(ghost);
+  return { ghost, rect };
+};
+
+// ② 既存の handlePositionDragStart を差し替え
+const handlePositionDragStart = (
+  e: React.DragEvent<HTMLDivElement>,
+  pos: string
+) => {
+  e.dataTransfer.setData("fromPos", pos);
+  e.dataTransfer.effectAllowed = "move";
+  setDraggingFrom(pos);
+
+  // ★ ゴースト指定：掴んだ内側のプレイヤー要素を dragImage に
+  const target = e.currentTarget.querySelector<HTMLElement>("div[draggable='true']") || (e.currentTarget as HTMLElement);
+  const { ghost, rect } = makeDragGhost(target);
+
+  // 画像の基準位置を中央付近に固定（右端でもズレない）
+  e.dataTransfer.setDragImage(ghost, rect.width / 2, rect.height / 2);
+
+  // cleanup は dragend で
+  const onEnd = () => {
+    ghost.remove();
+    e.currentTarget.removeEventListener("dragend", onEnd as any);
   };
+  e.currentTarget.addEventListener("dragend", onEnd as any);
+};
+
 
   const handleBenchDragStart = (e: React.DragEvent, playerId: number) => {
     e.dataTransfer.setData("playerId", playerId.toString());
