@@ -70,7 +70,7 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [endTime, setEndTime] = useState("");
 
 
-  /*useEffect(() => {
+  useEffect(() => {
     console.log("📺 screen =", screen);
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
@@ -89,7 +89,7 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
       }
     })();
   }, []);
-  */
+  
   return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center px-6 py-10">
           <h1 className="text-white text-4xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
