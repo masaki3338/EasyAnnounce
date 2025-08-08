@@ -241,16 +241,23 @@ const stopExchangeMessage = () => {
 {showExchangeModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full space-y-4 text-base">
-          <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mx-auto" />
-      <p className="whitespace-pre-line text-red-600 font-bold">
-        <strong>{tournamentName}</strong>{"\n"}
-        本日の第一試合、両チームのメンバー交換を行います。{"\n"}
-        両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
-        ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
-        ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
-        公式記録員、アナウンスもお集まりください。{"\n"}
-        メンバーチェックと道具チェックはシートノックの間に行います。
-      </p>
+     {/* ✅ 注意表示ブロック */}
+      <div className="flex items-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 p-3 rounded">
+        <span className="mr-2 text-2xl">⚠️</span>
+        <span className="font-semibold">試合開始45分前に🎤</span>
+      </div>
+      <div className="flex items-start leading-tight">
+        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+        <p className="whitespace-pre-line text-red-600 font-bold">
+          <strong>{tournamentName}</strong>{"\n"}
+          本日の第一試合、両チームのメンバー交換を行います。{"\n"}
+          両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
+          ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
+          ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
+          公式記録員、アナウンスもお集まりください。{"\n"}
+          メンバーチェックと道具チェックはシートノックの間に行います。
+        </p>
+      </div>
       <div className="flex justify-end space-x-3">
         <button
           onClick={speakExchangeMessage}

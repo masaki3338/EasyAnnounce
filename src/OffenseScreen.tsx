@@ -1353,37 +1353,58 @@ setRunnerAnnouncement((prev) => {
     const updatedAssignments = { ...(assignments || {}) };
     let teamPlayerList = [...players];
 
-    Object.entries(runnerAssignments).forEach(([base, sub]) => {
-      const replaced = replacedRunners[base];
-      if (!sub || !replaced) return;
+Object.entries(runnerAssignments).forEach(([base, sub]) => {
+  const replaced = replacedRunners[base]; // ベース上にいた選手（= 代走で置き換える対象）
+  if (!sub || !replaced) return;
 
-      const index = battingOrder.findIndex(entry => entry.id === replaced.id);
-      if (index === -1) return;
+  // 打順の index を取得（代打→代走に置換）
+  const index = battingOrder.findIndex(entry => entry.id === replaced.id);
+  if (index === -1) return;
 
-      // ✅ 打順更新（代走）
-      newOrder[index] = { id: sub.id, reason: "代走" };
+  // ① 既存 used を読み、"代打 → 代走" のチェーンを解決
+  //    先発(=originalId) → 代打(subId=replaced.id) という記録があるはず
+  const chain = Object.entries(newUsed).find(([, info]: any) => info?.subId === replaced.id);
+  const originalId = chain ? Number(chain[0]) : replaced.id;
 
-      // ✅ UsedPlayerInfo 登録
-      const fromPos = Object.entries(assignments || {}).find(([_, id]) => id === replaced.id)?.[0] ?? "";
-      newUsed[replaced.id] = {
-        fromPos,
-        subId: sub.id,
-        reason: "代走",
-        order: index,
-        wasStarter: wasStarterMap?.[replaced.id] ?? true,
-        replacedId: replaced.id,
-      };
+  // ② fromPos を確定（先発の記録があれば継承。なければ assignments から拾う）
+  const chainFromPos = chain ? (chain[1] as any).fromPos : undefined;
+  let fromPos = chainFromPos;
+  if (!fromPos) {
+    // assignments から探す（"投/捕/一/…" のシンボル）
+    const hit = Object.entries(assignments || {}).find(([, id]) => id === originalId || id === replaced.id);
+    fromPos = hit?.[0] ?? ""; // 空のままは避けたいが、なければ空のまま
+  }
 
-      // ✅ 守備位置更新（代走選手に引き継ぐ）
-      if (fromPos) {
-        updatedAssignments[fromPos] = sub.id;
-      }
+  // ③ usedPlayerInfo を「元の先発のキー」で更新
+  newUsed[originalId] = {
+    ...(chain ? chain[1] : {}),
+    fromPos,                 // 例: "一"
+    subId: sub.id,           // 代走のIDに上書き
+    reason: "代走",
+    order: index + 1,
+    wasStarter: wasStarterMap?.[originalId] ?? true,
+  };
 
-      // ✅ teamPlayers に代走選手がいなければ追加
-      if (!teamPlayerList.some(p => p.id === sub.id)) {
-        teamPlayerList.push(sub);
-      }
-    });
+  // ④ もし "代打ID" をキーにした残骸があれば削除（あなたのログの 1752049941486 のようなやつ）
+  if (newUsed[replaced.id] && replaced.id !== originalId) {
+    delete (newUsed as any)[replaced.id];
+  }
+
+  // ⑤ 打順更新（代走）
+  newOrder[index] = { id: sub.id, reason: "代走" };
+
+  // ⑥ 守備も引き継ぎ（fromPos が取れた場合のみ）
+  if (fromPos) {
+    // fromPos は "投/捕/一/…" のどれか想定。もし "ファースト" 等の表記ならシンボル化してから入れてください。
+    updatedAssignments[fromPos] = sub.id;
+  }
+
+  // ⑦ teamPlayers に代走選手がいなければ追加
+  if (!teamPlayerList.some(p => p.id === sub.id)) {
+    teamPlayerList.push(sub);
+  }
+});
+
 
     // ✅ 保存と更新
     setBattingOrder(newOrder);
@@ -1391,6 +1412,7 @@ setRunnerAnnouncement((prev) => {
     
     await localForage.setItem("lineupAssignments", updatedAssignments);
     await localForage.setItem("battingOrder", newOrder); 
+    await localForage.setItem("usedPlayerInfo", newUsed);
     setPlayers(teamPlayerList);
 
 
