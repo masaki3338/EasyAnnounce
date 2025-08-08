@@ -132,7 +132,7 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   current = 0;
   total = 0;
   setAnnounceMessages([
-    `ピッチャー${pitcherName}くんに交代です。`,
+    `ピッチャー${pitcherName}くん、`,
     `この回の投球数は0球です。`,
     `トータル0球です。`
   ]);
@@ -206,10 +206,10 @@ newMessages.push(
     newMessages.push(`トータル${newTotal}球です。`);
   }
 
-  // ★ ポップアップ用：40 or 50球ちょうどのとき
-  if (newTotal === 40 || newTotal === 50) {
+  // ★ ポップアップ用：65 or 75球ちょうどのとき
+  if (newTotal === 65 || newTotal === 75) {
     const specialMsg =
-      newTotal === 50
+      newTotal === 75
         ? `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
         : `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
     setPitchLimitMessages([specialMsg]);

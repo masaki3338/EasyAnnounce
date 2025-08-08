@@ -377,7 +377,12 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
 
 <div>
-  <h2 className="text-xl font-semibold mb-2">打順（1～9番）</h2>
+  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+    打順（1～9番）
+    <span className="text-xs font-bold text-red-500">
+      ※ドラッグ＆ドロップで変更可能
+    </span>
+  </h2>
   <div className="space-y-2">
     {battingOrder.map((entry, i) => {
       const player = teamPlayers.find((p) => p.id === entry.id);

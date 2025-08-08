@@ -33,7 +33,7 @@ import DefenseChange from "./DefenseChange";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.3"
+const APP_VERSION = "0.0.4"
 
 // 画面の種類を列挙した型
 export type ScreenType =
@@ -58,8 +58,10 @@ const screenMap: { [key: string]: ScreenType } = {
   "チーム・選手登録": "teamRegister",
   "試合作成": "matchCreate",
   "試合開始": "startGame",
-  "テンプレート編集": "templateEdit",
+  "運用設定": "templateEdit",
 };
+
+
 
 const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [canContinue, setCanContinue] = useState(false);
@@ -67,7 +69,8 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState("");
 
-  useEffect(() => {
+
+  /*useEffect(() => {
     console.log("📺 screen =", screen);
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
@@ -86,7 +89,7 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
       }
     })();
   }, []);
-
+  */
   return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center px-6 py-10">
           <h1 className="text-white text-4xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
@@ -150,7 +153,7 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
 );
  
 const App = () => {
- const [screen, setScreen] = useState<ScreenType>("menu");
+  const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
@@ -161,6 +164,8 @@ const App = () => {
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
+  const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
+  const [tiebreakMessage, setTiebreakMessage] = useState<string>("");
   const handleSpeak = () => {
     if ('speechSynthesis' in window) {
       const msg = new SpeechSynthesisUtterance("この試合は、ただ今で打ち切り、継続試合となります。明日以降に中断した時点から再開いたします。あしからずご了承くださいませ。");
@@ -437,7 +442,15 @@ const App = () => {
             }
 
           } else if (value === "tiebreak") {
-            alert("タイブレークを選択しました");
+            const msg =
+            "この試合は、◯回終了して同点のため、大会規定により◯死◯塁からのタイブレークに入ります。\n" +
+            "◯回の表（裏）の攻撃は、\n" +
+            "　ファーストランナーは◯◯くん、背番号○、\n" +
+            "　セカンドランナーは◯◯くん、背番号○\n" +
+            "　バッターは◯番、[守備]◯◯くん";          
+            setTiebreakMessage(msg);
+            setShowTiebreakPopup(true);
+
           } else if (value === "continue") {
             setShowContinuationModal(true);
           } else if (value === "heat") {
@@ -541,9 +554,6 @@ const App = () => {
             else{
               alert("試合終了しました");
             }
-
-          } else if (value === "tiebreak") {
-            alert("タイブレークを選択しました");
           } else if (value === "continue") {
             setShowContinuationModal(true);
           } else if (value === "heat") {
@@ -559,7 +569,6 @@ const App = () => {
           その他
         </option>
         <option value="end">試合終了</option>
-        <option value="tiebreak">タイブレーク</option>
         <option value="continue">継続試合</option>
         <option value="heat">熱中症</option> 
         <option value="manual">連盟🎤マニュアル</option> 
@@ -657,6 +666,50 @@ const App = () => {
     </div>
   </div>
 )}
+
+
+{showTiebreakPopup && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4 max-w-2xl w-full">
+      {/* 見出し */}
+      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
+        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-2" />
+        <div>タイブレーク開始</div>
+      </div>
+
+      {/* 本文（改行維持） */}
+      <p className="text-left text-red-600 font-semibold whitespace-pre-line leading-relaxed">
+        {tiebreakMessage}
+      </p>
+
+      {/* ボタン群（継続試合と同じ並び） */}
+      <div className="flex justify-center gap-8">
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          onClick={() => {
+            const msg = new SpeechSynthesisUtterance(tiebreakMessage);
+            speechSynthesis.speak(msg);
+          }}
+        >
+          読み上げ
+        </button>
+        <button
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          onClick={() => speechSynthesis.cancel()}
+        >
+          停止
+        </button>
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          onClick={() => setShowTiebreakPopup(false)}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
 
 {showContinuationModal && (
