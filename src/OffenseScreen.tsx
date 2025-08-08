@@ -1236,14 +1236,25 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
               const replaced = getPlayer(runnerId);
               const honorific = player.isFemale ? "さん" : "くん";
 
-              setRunnerAnnouncement((prev) => {
-                const updated = prev.filter(msg => !msg.startsWith(`${selectedBase}ランナー`));
-                return [
-                  ...updated,
-                  `${selectedBase}ランナー ${replaced?.lastName}${replaced?.isFemale ? "さん" : "くん"} に代わりまして、` +
-                  `${player.lastName}${honorific}、${selectedBase}ランナーは ${player.lastName}${honorific}、背番号 ${player.number}`
-                ];
-              });
+ // ルビ付きフルネーム生成
+const rubyName = (p) =>
+  `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
+  `<ruby>${p.firstName}<rt>${p.firstNameKana || ""}</rt></ruby>`;
+ // ルビ付きファーストネーム生成
+const rubylastName = (p) =>
+  `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`;
+// 敬称
+const honorificFrom = replaced?.isFemale ? "さん" : "くん";
+const honorificTo   = player.isFemale ? "さん" : "くん";
+
+setRunnerAnnouncement((prev) => {
+  const updated = prev.filter(msg => !msg.startsWith(`${selectedBase}ランナー`));
+  return [
+    ...updated,
+    `${selectedBase}ランナー ${rubylastName(replaced)}${honorificFrom} に代わりまして、` +
+    `${rubyName(player)}${honorificTo}、${selectedBase}ランナーは ${rubylastName(player)}${honorificTo}、背番号 ${player.number}`
+  ];
+});
 
               setRunnerAssignments(prev => ({ ...prev, [selectedBase]: player }));
               setReplacedRunners(prev => ({ ...prev, [selectedBase]: replaced }));
@@ -1272,7 +1283,12 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
             {["1塁", "2塁", "3塁"].map(base =>
               runnerAnnouncement
                 .filter(msg => msg.startsWith(`${base}ランナー`))
-                .map((msg, idx) => <div key={`${base}-${idx}`}>{msg}</div>)
+                .map((msg, idx) => (
+                  <div
+                    key={`${base}-${idx}`}
+                    dangerouslySetInnerHTML={{ __html: msg }}
+                  />
+                ))
             )}
           </div>
         </div>

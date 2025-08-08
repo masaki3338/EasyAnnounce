@@ -140,16 +140,44 @@ useEffect(() => {
     e.preventDefault();
   };
 
-  const handleDragStart = (
-    e: React.DragEvent<HTMLDivElement>,
-    playerId: number,
-    fromPos?: string
-  ) => {
-    e.dataTransfer.setData("playerId", String(playerId));
-    e.dataTransfer.setData("text/plain", String(playerId));   // ←★ Android 用
-    if (fromPos) e.dataTransfer.setData("fromPosition", fromPos);
-    e.dataTransfer.effectAllowed = "move"
-  };
+const handleDragStart = (
+  e: React.DragEvent<HTMLDivElement>,
+  playerId: number,
+  fromPos?: string
+) => {
+  e.dataTransfer.setData("playerId", String(playerId));
+  e.dataTransfer.setData("text/plain", String(playerId)); // Android 補完
+  if (fromPos) e.dataTransfer.setData("fromPosition", fromPos);
+  e.dataTransfer.effectAllowed = "move";
+
+  // 👇 iOS 原点ズレ対策：ドラッグ画像の原点を指先に補正
+  try {
+    const target = e.currentTarget as HTMLElement; // ドラッグしている名前ラベル
+    const rect = target.getBoundingClientRect();
+
+    // dragstart 時点のポインタ座標（Reactのラッパ越しもカバー）
+    const clientX = (e as any).clientX ?? (e as any).nativeEvent?.clientX;
+    const clientY = (e as any).clientY ?? (e as any).nativeEvent?.clientY;
+
+    // 取得できない場合の保険：中央
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const offsetX =
+      typeof clientX === "number" ? clientX - rect.left : rect.width / 2;
+    const offsetY =
+      typeof clientY === "number" ? clientY - rect.top : rect.height / 2;
+
+    // iOS でまだブレる場合は、中央固定にするとさらに安定
+    const ox = isIOS ? rect.width / 2 : offsetX;
+    const oy = isIOS ? rect.height / 2 : offsetY;
+
+    if (e.dataTransfer.setDragImage) {
+      e.dataTransfer.setDragImage(target, ox, oy);
+    }
+  } catch {
+    /* no-op */
+  }
+};
+
 
   const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
     e.preventDefault();

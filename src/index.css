@@ -59,6 +59,16 @@
 .btn-primary { background-color: #007bff; }
 .btn-danger { background-color: #dc3545; }
 
+/* iOS Safari のドラッグ原点ズレ・スクロール干渉の緩和 */
+.touch-draggable {
+  -webkit-user-drag: element;
+  touch-action: none;
+  cursor: grab;
+}
+.touch-draggable:active {
+  cursor: grabbing;
+}
+
 /* Modal */
 .modal-backdrop {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
