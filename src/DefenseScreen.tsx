@@ -49,6 +49,24 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [scores, setScores] = useState<Scores>({});
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
+ const handleStartGame = () => {
+      const now = new Date();
+      const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
+      setGameStartTime(timeString);
+      localForage.setItem("startTime", timeString);
+      setGameStartTime(timeString);
+      alert(`試合開始時間を記録しました: ${timeString}`);
+    };
+    const handleGameStart = () => {
+      const now = new Date();
+      const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+      setGameStartTime(formatted);
+      localForage.setItem("gameStartTime", formatted);
+    };
+    const hasShownStartTimePopup = useRef(false);
+
+    const [gameStartTime, setGameStartTime] = useState<string | null>(null);
+    const [showStartTimePopup, setShowStartTimePopup] = useState(false);
   const [isDefense, setIsDefense] = useState(true);
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
   const [announceMessages, setAnnounceMessages] = useState<string[]>([]);
@@ -80,6 +98,8 @@ useEffect(() => {
     };
     const savedScores = (await localForage.getItem<Scores>('scores')) || {};
     const savedPitchCount = (await localForage.getItem<{ current: number; total: number; pitcherId?: number }>('pitchCounts')) || { current: 0, total: 0 };
+
+   
 
     const savedBattingOrder = (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
     const hasSubPlayers = savedBattingOrder.some(
@@ -414,12 +434,23 @@ const totalRuns = () => {
             </select>
             <span>{isDefense ? "守備中" : "攻撃中"}</span>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-3 py-1 bg-orange-700 text-white rounded"
-          >
-            イニング終了
-          </button>
+            {/* 試合開始ボタン */}
+            {inning === 1 && isTop  && (
+              <button
+                className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
+                onClick={handleStartGame}
+              >
+                試合開始
+              </button>
+            )}
+
+            {/* イニング終了ボタン */}
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-3 py-1 bg-orange-700 text-white rounded"
+            >
+              イニング終了
+            </button>
         </div>
 
         <table className="w-full border border-gray-400 text-center text-sm">

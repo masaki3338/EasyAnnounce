@@ -180,7 +180,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
         <h1 className="text-2xl font-bold">シートノック</h1>
 
         {/* 右隣ボタン */}
-        <button className="border px-4 py-1 rounded-full text-sm">{readingLabel}</button>
+        <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
       </div>
 
       {isHome === "後攻" && (

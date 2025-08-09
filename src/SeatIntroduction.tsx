@@ -102,10 +102,16 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate }) => {
       {/* 戻るボタン */}
 
 
-      {/* タイトル */}
-      <h1 className="text-2xl font-bold text-center mb-2">シート紹介</h1>
-
-
+      <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
+        <h1 className="text-2xl font-bold">シート紹介</h1>
+        {!isHome && (
+          <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
+        )}
+        {isHome  && (
+          <button className="border px-4 py-1 rounded-full text-sm">後攻チーム🎤</button>
+        )}
+      </div>
 
      {/* アナウンス表示 */}
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">

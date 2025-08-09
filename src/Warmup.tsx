@@ -182,12 +182,15 @@ const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
       )}
 
 
-
-
+     <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
       <h1 className="text-2xl font-bold mb-4">ウォーミングアップ</h1>
+        {/* 右隣ボタン */}
+        <button className="border px-4 py-1 rounded-full text-sm">後攻チーム🎤</button>
+      </div>
 
       <div className="flex items-center justify-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold">
-        <span className="mr-2 text-2xl">⚠️</span> 試合開始30分前にアナウンス     ※後攻チーム🎤
+        <span className="mr-2 text-2xl">⚠️</span> 試合開始30分前にアナウンス 
       </div>
 
 

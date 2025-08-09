@@ -54,11 +54,16 @@ interface Props {
     <div className="min-h-screen bg-white p-6 flex flex-col items-center space-y-6">
 
 
-      <h1 className="text-2xl font-bold text-gray-800">試合開始挨拶</h1>
+      <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
+        <h1 className="text-2xl font-bold">試合開始挨拶</h1>
+        {/* 右隣ボタン */}
+        <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
+      </div>
 
       <div className="flex items-center space-x-2">
         <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> 後攻チームが守備につくタイミング  ※先攻チーム🎤
+          <span className="mr-2 text-2xl">⚠️</span> 後攻チームが守備につくタイミング 
         </div>
       </div>
 

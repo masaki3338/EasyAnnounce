@@ -86,6 +86,7 @@ const positionNames: { [key: string]: string } = {
 const OffenseScreen: React.FC<OffenseScreenProps> = ({
   onSwitchToDefense,
   onGoToSeatIntroduction, // ← 追加！！
+  matchInfo,
 }) => {  
   const [players, setPlayers] = useState<any[]>([]);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
@@ -582,18 +583,23 @@ useEffect(() => {
             </select>
 
           </div>
-          <button
-            className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
-            onClick={handleStartGame}
-          >
-            試合開始
-          </button>
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-3 py-1 bg-orange-700 text-white rounded"
-          >
-            イニング終了
-          </button>
+            {/* 試合開始ボタン */}
+            {inning === 1 && isTop  && (
+              <button
+                className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
+                onClick={handleStartGame}
+              >
+                試合開始
+              </button>
+            )}
+
+            {/* イニング終了ボタン */}
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-3 py-1 bg-orange-700 text-white rounded"
+            >
+              イニング終了
+            </button>
         </div>
 
 

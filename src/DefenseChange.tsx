@@ -64,6 +64,23 @@ const posNameToSymbol: Record<string, string> = {
   ライト: "右",
 };
 
+// ─────────────────────────────────────────────
+// 代打/代走の“連鎖”を末端まで辿って最終subIdを返す
+// （先発 -> 代打A -> 代打B -> ... 最後のBを返す）
+// ─────────────────────────────────────────────
+const resolveLatestSubId = (
+  startId: number,
+  used: Record<number, { subId?: number }>
+): number => {
+  let cur = used[startId]?.subId;
+  const seen = new Set<number>();
+  while (cur && used[cur]?.subId && !seen.has(cur)) {
+    seen.add(cur);
+    cur = used[cur]!.subId;
+  }
+  // subが無ければ startId のまま（=入替なし）
+  return cur ?? used[startId]?.subId ?? startId;
+};
 
 
 /* ===== 氏名＆敬称ヘルパー ===== */
@@ -739,6 +756,8 @@ const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
+  // 元の選手A -> 許可される相手B（確定まで有効）
+  const [pairLocks, setPairLocks] = useState<Record<number, number>>({});
 
 useEffect(() => {
   const setInitialAssignmentsFromSubs = async () => {
@@ -754,14 +773,20 @@ useEffect(() => {
 
     if (!battingOrder || !assignments || !usedPlayerInfo) return;
 
-    // ⚠️ "代打" or "代走" 選手がいれば initialAssignments にも反映
-    const updatedAssignments = { ...assignments };
-    Object.entries(usedPlayerInfo).forEach(([originalIdStr, info]) => {
-      const { subId, fromPos, reason } = info;
-      if ((reason === "代打" || reason === "代走") && fromPos in updatedAssignments) {
-        updatedAssignments[fromPos] = subId;
-      }
-    });
+// ⚠️ "代打" or "代走" 選手がいれば initialAssignments にも反映（末端まで辿る）
+const updatedAssignments = { ...assignments };
+Object.entries(usedPlayerInfo).forEach(([originalIdStr, info]) => {
+  const { fromPos, reason } = info;
+  if (!(reason === "代打" || reason === "代走")) return;
+  if (!(fromPos in updatedAssignments)) return;
+
+  const latest = resolveLatestSubId(Number(originalIdStr), usedPlayerInfo);
+  if (latest) {
+    // 念のため "ファースト" などが来ても略号に寄せてから反映
+    const sym = (posNameToSymbol as any)[fromPos] ?? fromPos;
+    updatedAssignments[sym] = latest;
+  }
+});
 
     setInitialAssignments(updatedAssignments);
   };
@@ -787,26 +812,22 @@ useEffect(() => {
     // チームプレイヤー取得
     let updatedTeamPlayers = Array.isArray(playersRaw?.players) ? [...playersRaw.players] : [];
 
-    // ✅ 代打・代走の割り当て
-    for (const [originalIdStr, info] of Object.entries(usedInfo)) {
-      const subId = info.subId;
-      const fullNamePos = info.fromPos;
-      const fromPos = posNameToSymbol[fullNamePos ?? ""] ?? fullNamePos ?? "";
 
-      if (subId && fromPos) {
-        newAssignments[fromPos] = subId;
-        console.log(`[DEBUG] 代打/代走 ${subId} を ${fromPos} に配置`);
+// ✅ 代打・代走の割り当て（“連鎖”の末端まで辿る）
+for (const [originalIdStr, info] of Object.entries(usedInfo)) {
+  const { fromPos, reason } = info;
+  if (!(reason === "代打" || reason === "代走")) continue;
 
-        const exists = updatedTeamPlayers.some(p => p.id === subId);
-        if (!exists) {
-          const fallback = updatedTeamPlayers.find(p => p.id === Number(originalIdStr));
-          if (fallback) {
-            updatedTeamPlayers.push({ ...fallback, id: subId });
-            console.log(`[DEBUG] 仮選手追加: ${subId}`);
-          }
-        }
-      }
-    }
+  const sym = posNameToSymbol[fromPos ?? ""] ?? fromPos ?? "";
+  if (!sym) continue;
+
+  const latest = resolveLatestSubId(Number(originalIdStr), usedInfo);
+  if (latest) {
+    newAssignments[sym] = latest;
+    console.log(`[DEBUG] 代打/代走(最終) ${latest} を ${sym} に配置`);
+    // 以降の既存コード（updatedTeamPlayers に仮追加する処理など）は残してOK
+  }
+}
 
     // ステート更新
     setBattingOrder(order);
@@ -1045,12 +1066,49 @@ const handlePositionDragStart = (
       const fromId = prev[draggingFrom];
       const toId = prev[toPos];
 
+// ====== 追加：A↔Bペア制約（守備↔守備） ======
+if (fromId != null) {
+  const expected = pairLocks[fromId];
+  // 元の選手Aにロックがあり、相手がB以外（= 今 toPos にいる toId がBでない）→ 拒否
+  if (expected != null && toId !== expected) {
+    window.alert("この元の選手は、最初に交代した相手以外とは交代できません。");
+    return prev;
+  }
+}
+if (toId != null) {
+  const expected = pairLocks[toId];
+  // 反対側もロック持ちなら、相手が一致しないと拒否
+  if (expected != null && fromId !== expected) {
+    window.alert("この元の選手は、最初に交代した相手以外とは交代できません。");
+    return prev;
+  }
+}
+// ====== 追加：ここまで ======
+
+
       // 🔒 どちらかの位置が空なら交代不可（控え扱いなので）
       if (fromId === null || toId === null) return prev;
 
       const newAssignments = { ...prev };
       newAssignments[draggingFrom] = toId;
       newAssignments[toPos] = fromId;
+
+      // ✅ フィールド同士の A↔B 戻しが成立したら解除
+// （fromId が A で toId が B、または逆）
+if (fromId != null && pairLocks[fromId] === toId) {
+  setPairLocks((m) => {
+    const copy = { ...m };
+    delete copy[fromId]; // A のロック解除
+    return copy;
+  });
+}
+if (toId != null && pairLocks[toId] === fromId) {
+  setPairLocks((m) => {
+    const copy = { ...m };
+    delete copy[toId]; // A のロック解除
+    return copy;
+  });
+}
 
       if (fromId !== null) {
         setPreviousPositions((prevMap) => ({ ...prevMap, [fromId]: draggingFrom }));
@@ -1097,6 +1155,38 @@ if (fromId !== null && toId !== null) {
       return newAssignments;
     }
 
+// 新規追加：守備 → 控え
+if (draggingFrom !== BENCH && toPos === BENCH) {
+  const fromId = prev[draggingFrom];
+  if (fromId == null) return prev;
+
+  const newAssignments = { ...prev, [draggingFrom]: null };
+
+  // ベンチへ戻す（重複防止）
+  setBenchPlayers((prevList) => {
+    if (prevList.some((p) => p.id === fromId)) return prevList;
+    const pl = teamPlayers.find((p) => p.id === fromId);
+    return pl ? [...prevList, pl] : prevList;
+  });
+
+  // この選手がロック相手なら、対応するAのロックを解除
+  setPairLocks((m) => {
+    let changed = false;
+    const copy: Record<number, number> = { ...m };
+    for (const [aStr, partner] of Object.entries(copy)) {
+      if (partner === fromId) {
+        delete copy[Number(aStr)];
+        changed = true;
+      }
+    }
+    return changed ? copy : m;
+  });
+
+  updateLog(draggingFrom, fromId, BENCH, null);
+  return newAssignments;
+}
+
+
 if (draggingFrom === BENCH && toPos !== BENCH) {
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
@@ -1104,8 +1194,60 @@ if (draggingFrom === BENCH && toPos !== BENCH) {
   const playerId = Number(playerIdStr);
 
   const replacedId = newAssignments[toPos];  // 守備位置にいた選手
+
+  // === 追加：Aの位置へCを入れた瞬間、Aのロック相手をB→Cに付け替える ===
+// toPos が「Aの元ポジ」かどうかを initialAssignments で判定
+const aIdAtThisPos = initialAssignments[toPos]; // ← A（元）のID（なければ undefined/ null）
+
+// 直前までその位置にいたのが B（= replacedId）で、A のロック相手が B になっているなら…
+if (aIdAtThisPos != null && pairLocks[aIdAtThisPos] === replacedId) {
+  // A は今後 C としか入れ替え不可に変更（= B のロックは破棄）
+  setPairLocks((m) => ({ ...m, [aIdAtThisPos]: playerId }));
+}
+
+
+// ====== 置き換え：A↔Bペア制約（bench→守備） ======
+// ここでは「ベンチから落とす選手が A 本人かどうか」で判断する
+// ・A を落とす→ その場所にいるのが B 以外なら拒否
+// ・A 以外（Cなど）を落とす→ 制約なし（許可）
+const lockPartner = pairLocks[playerId /* ← A かもしれない */];
+
+// (A本人) A にロックがあるのに、そこ（toPos）にいるのが B ではない → 拒否
+if (lockPartner != null && replacedId !== lockPartner) {
+  window.alert("この元の選手は、最初に交代した相手の位置にしか戻せません。");
+  return prev;
+}
+
+// (新規作成) A→B の最初の交代が「いま成立」するならロック作成
+// ＝ 守備位置に A（元）が居て、ベンチから B を入れる瞬間
+if (replacedId != null && pairLocks[replacedId] == null) {
+  // replacedId = A, playerId = B
+  setPairLocks((m) => ({ ...m, [replacedId]: playerId }));
+}
+
+
   newAssignments[toPos] = playerId;
 
+  // ✅ “B を A の位置へ落として戻した”場合でもロック解除（対称パターン）
+if (replacedId != null && pairLocks[replacedId] === playerId) {
+  // replacedId = A, playerId = B
+  setPairLocks((m) => {
+    const copy = { ...m };
+    delete copy[replacedId]; // A のロック解除
+    return copy;
+  });
+}
+
+
+// ✅ A↔B の戻しが成立したら、その場でロック解除
+if (pairLocks[playerId] != null && replacedId === pairLocks[playerId]) {
+  // playerId = A を B の場所に落とした
+  setPairLocks((m) => {
+    const copy = { ...m };
+    delete copy[playerId]; // A のロック解除
+    return copy;
+  });
+}
 
 // 🟡 元いた選手を控えに戻す（重複防止）
 if (replacedId) {
@@ -1114,6 +1256,19 @@ if (replacedId) {
     const replacedPlayer = teamPlayers.find((p) => p.id === replacedId);
     if (!replacedPlayer) return prev;
     return [...prev, replacedPlayer];
+  });
+}
+if (replacedId != null) {
+  setPairLocks((m) => {
+    let changed = false;
+    const copy = { ...m };
+    for (const [aStr, partner] of Object.entries(copy)) {
+      if (partner === replacedId) {
+        delete copy[Number(aStr)]; // A のロック解除
+        changed = true;
+      }
+    }
+    return changed ? copy : m;
   });
 }
 // 🔴 出た控え選手を控えリストから除去
@@ -1423,6 +1578,8 @@ Object.entries(initialAssignments).forEach(([pos, initialId]) => {
     }
   });
   await localForage.setItem("usedPlayerInfo", newUsedPlayerInfo);
+
+  setPairLocks({});  // 画面を閉じるタイミングでロック全消去（次回はリセット）
   // 🔽 ここで画面遷移
   onConfirmed?.(); // 守備画面へ遷移
   console.log("✅ onConfirmed called"); // ← これが出れば呼ばれてる

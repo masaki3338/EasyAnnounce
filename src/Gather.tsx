@@ -29,14 +29,18 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
     <div className="min-h-screen bg-white flex flex-col items-center p-6 space-y-6">
 
 
-      {/* タイトル */}
-      <h1 className="text-2xl font-bold text-gray-800">集合アナウンス</h1>
+      <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
+        <h1 className="text-2xl font-bold">集合アナウンス</h1>
+        {/* 右隣ボタン */}
+        <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
+      </div>
 
       {/* 注意アイコン付き文 */}
       <div className="flex items-center space-x-2 mt-2">
 
         <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> グランド整備終了後、選手がベンチ前に待機していない場合のみ  ※先攻チーム🎤
+          <span className="mr-2 text-2xl">⚠️</span> グランド整備終了後、選手がベンチ前に待機していない場合のみ
         </div>
       </div>
 

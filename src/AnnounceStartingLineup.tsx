@@ -166,15 +166,27 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
     <div className="p-6 max-w-4xl mx-auto bg-white border rounded-xl shadow">
 
 
-      <h1 className="text-2xl font-bold text-center mb-4">スタメン発表</h1>
+      <div className="flex justify-center items-center mb-6 space-x-2">
+        {/* 中央タイトル */}
+        <h1 className="text-2xl font-bold">スタメン発表</h1>
+        {isHomeTeamFirstAttack && (
+          <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
+        )}
+        {!isHomeTeamFirstAttack && (
+          <button className="border px-4 py-1 rounded-full text-sm">後攻チーム🎤</button>
+        )}
+      </div>
+
+
       {isHomeTeamFirstAttack && (
+        
        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> シートノック後、グラウンド整備中に読み上げ  ※先攻チーム🎤
+          <span className="mr-2 text-2xl">⚠️</span> シートノック後、グラウンド整備中に読み上げ 
         </div>
       )}
       {!isHomeTeamFirstAttack && (
        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> 先攻チームのアナウンスが終わったタイミング  ※後攻チーム🎤
+          <span className="mr-2 text-2xl">⚠️</span> 先攻チームのアナウンスが終わったタイミング 
         </div>
       )}
     
