@@ -726,8 +726,22 @@ const getPositionName = (assignments: Record<string, number | null>, playerId: n
   return entry ? entry[0] : "－";
 };
 
-const formatLog = (pos: string, player?: Player | null): string =>
-  `${pos}：${formatPlayerLabel(player)}`;
+const formatLog = (pos: string, player?: Player | null): string => {
+  const posFull: Record<string, string> = {
+    "投": "ピッチャー",
+    "捕": "キャッチャー",
+    "一": "ファースト",
+    "二": "セカンド",
+    "三": "サード",
+    "遊": "ショート",
+    "左": "レフト",
+    "中": "センター",
+    "右": "ライト",
+    [BENCH]: "控え",
+  };
+  const label = posFull[pos] ?? pos; // マッチしなければそのまま
+  return `${label}：${formatPlayerLabel(player)}`;
+};
 
 type DefenseChangeProps = {
   onConfirmed: () => void;
@@ -758,6 +772,10 @@ const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
   // 元の選手A -> 許可される相手B（確定まで有効）
   const [pairLocks, setPairLocks] = useState<Record<number, number>>({});
+  // 先発（画面オープン時にフィールドにいた）かどうか
+  const isStarter = (playerId?: number | null) =>
+    playerId != null && Object.values(initialAssignments || {}).includes(playerId);
+
 
 useEffect(() => {
   const setInitialAssignmentsFromSubs = async () => {
@@ -867,6 +885,12 @@ let battingLogsBuffer: string[][] = []; // 一時的なログ格納用（map中�
   "左": "レフト",
   "中": "センター",
   "右": "ライト",
+};
+// フル表記（丸数字 + フル名）で表示する
+const withFull = (pos: string) => {
+  const full = defensePositionMap[pos] ?? pos; // 例: "捕" -> "キャッチャー"
+  const mark = posNum[pos] ?? "";              // 例: "捕" -> "②"
+  return `${mark}${full}`;                     // 例: "②キャッチャー"
 };
 
 const posNum: Record<string, string> = {
@@ -1066,24 +1090,21 @@ const handlePositionDragStart = (
       const fromId = prev[draggingFrom];
       const toId = prev[toPos];
 
-// ====== 追加：A↔Bペア制約（守備↔守備） ======
-if (fromId != null) {
+// ▼ A(先発)にしかロックは効かせない
+if (fromId != null && isStarter(fromId)) {
   const expected = pairLocks[fromId];
-  // 元の選手Aにロックがあり、相手がB以外（= 今 toPos にいる toId がBでない）→ 拒否
   if (expected != null && toId !== expected) {
     window.alert("この元の選手は、最初に交代した相手以外とは交代できません。");
     return prev;
   }
 }
-if (toId != null) {
+if (toId != null && isStarter(toId)) {
   const expected = pairLocks[toId];
-  // 反対側もロック持ちなら、相手が一致しないと拒否
   if (expected != null && fromId !== expected) {
     window.alert("この元の選手は、最初に交代した相手以外とは交代できません。");
     return prev;
   }
 }
-// ====== 追加：ここまで ======
 
 
       // 🔒 どちらかの位置が空なら交代不可（控え扱いなので）
@@ -1094,21 +1115,20 @@ if (toId != null) {
       newAssignments[toPos] = fromId;
 
       // ✅ フィールド同士の A↔B 戻しが成立したら解除
-// （fromId が A で toId が B、または逆）
-if (fromId != null && pairLocks[fromId] === toId) {
-  setPairLocks((m) => {
-    const copy = { ...m };
-    delete copy[fromId]; // A のロック解除
-    return copy;
-  });
-}
-if (toId != null && pairLocks[toId] === fromId) {
-  setPairLocks((m) => {
-    const copy = { ...m };
-    delete copy[toId]; // A のロック解除
-    return copy;
-  });
-}
+  if (fromId != null && pairLocks[fromId] === toId ||
+      toId   != null && pairLocks[toId]   === fromId) {
+    setPairLocks((m) => {
+      const copy = { ...m };
+      // A側のロック解除
+      if (fromId != null) delete copy[fromId];
+      if (toId   != null) delete copy[toId];
+      // 念のため：どこかのAが partner=B を参照していたら全消し
+      for (const [aStr, partner] of Object.entries({ ...copy })) {
+        if (partner === fromId || partner === toId) delete copy[Number(aStr)];
+      }
+      return copy;
+    });
+  }
 
       if (fromId !== null) {
         setPreviousPositions((prevMap) => ({ ...prevMap, [fromId]: draggingFrom }));
@@ -1155,36 +1175,6 @@ if (fromId !== null && toId !== null) {
       return newAssignments;
     }
 
-// 新規追加：守備 → 控え
-if (draggingFrom !== BENCH && toPos === BENCH) {
-  const fromId = prev[draggingFrom];
-  if (fromId == null) return prev;
-
-  const newAssignments = { ...prev, [draggingFrom]: null };
-
-  // ベンチへ戻す（重複防止）
-  setBenchPlayers((prevList) => {
-    if (prevList.some((p) => p.id === fromId)) return prevList;
-    const pl = teamPlayers.find((p) => p.id === fromId);
-    return pl ? [...prevList, pl] : prevList;
-  });
-
-  // この選手がロック相手なら、対応するAのロックを解除
-  setPairLocks((m) => {
-    let changed = false;
-    const copy: Record<number, number> = { ...m };
-    for (const [aStr, partner] of Object.entries(copy)) {
-      if (partner === fromId) {
-        delete copy[Number(aStr)];
-        changed = true;
-      }
-    }
-    return changed ? copy : m;
-  });
-
-  updateLog(draggingFrom, fromId, BENCH, null);
-  return newAssignments;
-}
 
 
 if (draggingFrom === BENCH && toPos !== BENCH) {
@@ -1197,13 +1187,13 @@ if (draggingFrom === BENCH && toPos !== BENCH) {
 
   // === 追加：Aの位置へCを入れた瞬間、Aのロック相手をB→Cに付け替える ===
 // toPos が「Aの元ポジ」かどうかを initialAssignments で判定
-const aIdAtThisPos = initialAssignments[toPos]; // ← A（元）のID（なければ undefined/ null）
+  const aIdAtThisPos = initialAssignments[toPos]; // ← A（元）のID（なければ undefined/ null）
 
-// 直前までその位置にいたのが B（= replacedId）で、A のロック相手が B になっているなら…
-if (aIdAtThisPos != null && pairLocks[aIdAtThisPos] === replacedId) {
-  // A は今後 C としか入れ替え不可に変更（= B のロックは破棄）
-  setPairLocks((m) => ({ ...m, [aIdAtThisPos]: playerId }));
-}
+  // 直前までその位置にいたのが B（= replacedId）で、A のロック相手が B になっているなら…
+  if (aIdAtThisPos != null && pairLocks[aIdAtThisPos] === replacedId) {
+    // A は今後 C としか入れ替え不可に変更（= B のロックは破棄）
+    setPairLocks((m) => ({ ...m, [aIdAtThisPos]: playerId }));
+  }
 
 
 // ====== 置き換え：A↔Bペア制約（bench→守備） ======
@@ -1225,8 +1215,22 @@ if (replacedId != null && pairLocks[replacedId] == null) {
   setPairLocks((m) => ({ ...m, [replacedId]: playerId }));
 }
 
-
   newAssignments[toPos] = playerId;
+
+    // ★ 戻し成立（Aを元ポジに戻した）なら、控えに下がったBを完全フリー化
+  //   条件：この toPos の「元の先発」が A（= playerId）で、今いたのが B（= replcedId）
+  if (initialAssignments[toPos] === playerId && replacedId != null) {
+    setPairLocks((m) => {
+      const copy = { ...m };
+      // B をキーにしたロックが万一残っていても消す
+      delete copy[replacedId];
+      // A→B のように B を相手にしているロックも全て掃除
+      for (const [aStr, partner] of Object.entries({ ...copy })) {
+        if (partner === replacedId) delete copy[Number(aStr)];
+      }
+      return copy;
+    });
+  }
 
   // ✅ “B を A の位置へ落として戻した”場合でもロック解除（対称パターン）
 if (replacedId != null && pairLocks[replacedId] === playerId) {
@@ -1711,7 +1715,12 @@ const showAnnouncement = () => {
 })}
 </div>
 
-<h2 className="text-lg font-semibold mb-2">控え選手</h2>
+<div className="flex items-center mb-2">
+  <h2 className="text-lg font-semibold">控え選手</h2>
+  <span className="ml-2 text-red-600 text-sm inline-flex items-center whitespace-nowrap">
+    ⚠️ 交代する選手にドロップ
+  </span>
+</div>
 <div
   className="flex flex-wrap gap-2 mb-6"
   onDragOver={(e) => e.preventDefault()}
@@ -1861,7 +1870,7 @@ if (isPinchHitter && playerChanged && currentPos) {
     pos: currentPos,
     jsx: (
       <li key={`pinch-replaced-${index}`}>
-        代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withMark(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
+        代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
       </li>
     )
   };
@@ -1878,7 +1887,7 @@ if (isPinchHitter && currentPos) {
     pos: currentPos,
     jsx: (
       <li key={`pinch-assigned-${index}`}>
-        代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withMark(currentPos)}
+        代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
       </li>
     )
   };
@@ -1892,7 +1901,7 @@ if (isPinchHitter && currentPos) {
               pos: currentPos,
               jsx: (
                 <li key={`runner-${index}`}>
-                  代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withMark(currentPos)}
+                  代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
                 </li>
               )
             };
@@ -1905,7 +1914,7 @@ if (isPinchHitter && currentPos) {
               pos: currentPos,
               jsx: (
                 <li key={`replaced-${index}`}>
-                  {withMark(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withMark(currentPos)}：
+                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}：
                   {currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
                 </li>
               )
@@ -1919,7 +1928,7 @@ if (isPinchHitter && currentPos) {
               pos: currentPos,
               jsx: (
                 <li key={`shift-${index}`}>
-                  {withMark(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withMark(currentPos)}
+                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}
                 </li>
               )
             };

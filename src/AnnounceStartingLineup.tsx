@@ -191,7 +191,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       )}
     
 
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left font-bold">
         <div className="flex flex-col items-start">
           <img src="/icons/mic-red.png" className="w-6 h-6 mb-2" alt="Mic" />
           <div>

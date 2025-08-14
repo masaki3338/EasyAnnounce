@@ -113,6 +113,64 @@ const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
 
   const [startTime, setStartTime] = useState<string | null>(null);
 
+// 🔸 リエントリー用 state
+const [showReEntryModal, setShowReEntryModal] = useState(false);
+const [reEntryFromPlayer, setReEntryFromPlayer] = useState<any|null>(null); // Aくん（今いる選手）
+const [reEntryTargetPlayer, setReEntryTargetPlayer] = useState<any|null>(null); // Bくん（戻す元スタメン）
+const [reEntryOrder1, setReEntryOrder1] = useState<number|null>(null); // 1始まりの打順
+const [noReEntryMessage, setNoReEntryMessage] = useState<string>("");
+
+// 🔸 ルビ整形
+const rubyFull = (p: any) =>
+  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` +
+  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+const rubyLast = (p: any) =>
+  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+
+// 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
+const findReentryCandidateForCurrentSpot = () => {
+  console.log("🔍 リエントリー対象判定開始 ====================");
+
+  // 現在の打順（1始まり）
+  const order1 = (currentBatterIndex % battingOrder.length) + 1;
+  console.log("現在の打順:", order1);
+
+  // 今その枠に入っている「Aくん」
+  const currentEntry = battingOrder[currentBatterIndex];
+  const A = currentEntry ? getPlayer(currentEntry.id) : null;
+  console.log("現在の枠にいる選手 A:", A);
+
+  // usedPlayerInfo の中から「wasStarter && order一致」を探す
+  let B: any | null = null;
+  Object.entries(usedPlayerInfo || {}).forEach(([starterId, info]: any) => {
+    console.log(`候補チェック: ID=${starterId}`, info);
+    if (info?.wasStarter && info?.order === order1) {
+      const candidate = getPlayer(Number(starterId));
+      console.log(" → 打順一致＆wasStarter=true の候補:", candidate);
+      if (candidate) B = candidate;
+    }
+  });
+
+  // 打順・守備にいないか確認
+  const isInBatting = (pid: number) => battingOrder.some(e => e.id === pid);
+  const isInDefense = (pid: number) => Object.values(assignments || {}).some(id => id === pid);
+
+  if (B) {
+    console.log("B候補:", B);
+    console.log("打順にいる？", isInBatting(B.id));
+    console.log("守備にいる？", isInDefense(B.id));
+  }
+
+  if (B && !isInBatting(B.id) && !isInDefense(B.id)) {
+    console.log("✅ リエントリー対象あり！");
+    return { A, B, order1 };
+  }
+  console.log("❌ リエントリー対象なし");
+  return { A, B: null, order1 };
+};
+
+
+
   const handleStartGame = () => {
     const now = new Date();
     const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
@@ -133,6 +191,14 @@ const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
   const [showStartTimePopup, setShowStartTimePopup] = useState(false);
 
   const [announcedIds, setAnnouncedIds] = useState<number[]>([]);
+
+  const [lastPinchAnnouncement, setLastPinchAnnouncement] = useState<React.ReactNode | null>(null);
+
+  // 🔹 通常アナウンスでは 代打/代走 を非表示にする
+const displayReasonForLive = (reason?: string) =>
+  (reason === "代打" || reason === "代走") ? "" : (reason ?? "");
+
+const [selectedReturnPlayer, setSelectedReturnPlayer] = useState<any|null>(null);
 
 // 初期読み込み（初回レンダリング時）
 useEffect(() => {
@@ -487,7 +553,8 @@ const updateAnnouncement = () => {
 
     setAnnouncement(<>{lines}</>);
   } else {
-    setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
+    //setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
+    setAnnouncement("");
   }
 };
 
@@ -524,7 +591,8 @@ const handleRead = async () => {
       await localForage.setItem("announcedPlayerIds", updated);
     }
   } else {
-    setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
+    //setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
+    setAnnouncement("");
   }
 };
 
@@ -821,7 +889,7 @@ useEffect(() => {
         <div className="flex items-center mb-2">
           <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
           <span className="text-red-600 font-bold whitespace-pre-line">
-            {announcement || "アナウンス文がここに表示されます。"}
+            {announcement || ""}
           </span>
         </div>
         <div className="flex gap-4">
@@ -850,6 +918,28 @@ useEffect(() => {
   >
     代打
   </button>
+
+<button
+  onClick={() => {
+    const { A, B, order1 } = findReentryCandidateForCurrentSpot();
+
+    if (!B) {
+      setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+      // シンプルにアラートで良ければ↓だけでも可
+      alert("この打順にリエントリー可能な選手はいません。");
+      return;
+    }
+
+    setReEntryFromPlayer(A || null);
+    setReEntryTargetPlayer(B);
+    setReEntryOrder1(order1);
+    setShowReEntryModal(true);
+  }}
+  className="bg-purple-600 text-white px-6 py-2 rounded"
+>
+  リエントリー
+</button>
+
 
 </div>
 
@@ -916,6 +1006,110 @@ useEffect(() => {
   </div>
 )}
 
+{showReEntryModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-gray-200 p-6 rounded-xl shadow-xl text-center max-w-3xl w-full space-y-6">
+      <h2 className="text-3xl font-bold text-black">リエントリー</h2>
+
+      {/* アナウンス表示（ルビ付き） */}
+      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+        <div className="absolute -top-4 left-4 text-2xl">🎤📢</div>
+        <span
+          className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6"
+          dangerouslySetInnerHTML={{
+            __html: `
+${teamName || "自チーム"}、　選手の交代をお知らせいたします。
+${reEntryOrder1 ?? "?"}番　${reEntryFromPlayer ? rubyFull(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして　${reEntryTargetPlayer ? rubyFull(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。
+バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
+            `.trim()
+          }}
+        />
+      </div>
+
+      {/* 操作 */}
+      <div className="flex justify-center gap-3">
+        <button
+          onClick={() => {
+            if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
+            const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
+            const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+            const kanaAFull = `${reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || ""}${reEntryFromPlayer.firstNameKana || reEntryFromPlayer.firstName || ""}`;
+            const kanaBFull = `${reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || ""}${reEntryTargetPlayer.firstNameKana || reEntryTargetPlayer.firstName || ""}`;
+            const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
+            announce(
+              `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
+              `${reEntryOrder1}番 ${kanaAFull}${honorA} に代わりまして ` +
+              `${kanaBFull}${honorB} がリエントリーで戻ります。` +
+              `バッターは ${kanaBLast}${honorB}。`
+            );
+          }}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={() => speechSynthesis.cancel()}
+          className="bg-red-600 text-white px-4 py-2 rounded"
+        >
+          停止
+        </button>
+
+        {/* 確定：メモリ更新（打順／守備位置／退場情報） */}
+        <button
+          onClick={async () => {
+            if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
+            const idx = reEntryOrder1 - 1;
+
+            // 1) 打順：元スタメン（B）で上書き（reason=リエントリー）
+            const newOrder = [...battingOrder];
+            newOrder[idx] = { id: reEntryTargetPlayer.id, reason: "リエントリー" };
+            setBattingOrder(newOrder);
+            await localForage.setItem("battingOrder", newOrder);
+
+            // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
+            const curAssignments = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+            await localForage.setItem("lineupAssignments", curAssignments || assignments || {});
+            // setAssignments(curAssignments || assignments || {}) ←必要なら反映
+
+            // 3) 退場情報：元スタメン（B）の退場フラグ解除（= usedPlayerInfo から削除）
+            const newUsed = { ...(usedPlayerInfo || {}) };
+            delete (newUsed as any)[reEntryTargetPlayer.id];
+            setUsedPlayerInfo(newUsed);
+            await localForage.setItem("usedPlayerInfo", newUsed);
+
+            // （任意）チーム配列にいなければ追加
+            if (!players.some(p => p.id === reEntryTargetPlayer.id)) {
+              setPlayers(prev => [...prev, reEntryTargetPlayer]);
+            }
+
+            // 後片付け
+            setShowReEntryModal(false);
+            setReEntryFromPlayer(null);
+            setReEntryTargetPlayer(null);
+            setReEntryOrder1(null);
+          }}
+          className="bg-orange-600 text-white px-4 py-2 rounded"
+        >
+          確定
+        </button>
+        <button
+          onClick={() => {
+            setShowReEntryModal(false);
+            setReEntryFromPlayer(null);
+            setReEntryTargetPlayer(null);
+            setReEntryOrder1(null);
+          }}
+          className="bg-green-600 text-white px-4 py-2 rounded"
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
 
 {/* ✅ 代打　モーダル */}
 {showSubModal && (
@@ -936,38 +1130,37 @@ useEffect(() => {
 
         {/* 矢印 */}
         <div className="text-blue-600 text-3xl">⬅</div>
-
-        {/* ベンチ選手（2段表示） */}
+     {/* ベンチ選手（2段表示） */}
 {/* ベンチ選手（退場選手はグレースケール） */}
 
-<div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
-  
-  {benchPlayers.map((p) => {
-console.log("🪑 benchPlayers", benchPlayers);
-console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
+      <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
+        
+        {benchPlayers.map((p) => {
+      console.log("🪑 benchPlayers", benchPlayers);
+      console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
 
-    // 現役選手（battingOrderや守備にいる）以外、かつ退場記録あり→グレー
-    const isRetired =
-      (p.id in usedPlayerInfo) &&
-      !battingOrder.some(e => e.id === p.id) &&
-      !Object.values(assignments).some(id => id === p.id);
+          // 現役選手（battingOrderや守備にいる）以外、かつ退場記録あり→グレー
+          const isRetired =
+            (p.id in usedPlayerInfo) &&
+            !battingOrder.some(e => e.id === p.id) &&
+            !Object.values(assignments).some(id => id === p.id);
 
-    return (
-      <div
-        key={p.id}
-        onClick={() => !isRetired && setSelectedSubPlayer(p)}
-        className={`w-[22%] text-sm px-2 py-1 rounded border font-semibold text-center
-          ${isRetired
-            ? "bg-gray-300 text-gray-500 line-through cursor-not-allowed"
-            : selectedSubPlayer?.id === p.id
-              ? "bg-yellow-200 border-yellow-600 cursor-pointer"
-              : "bg-gray-100 border-gray-400 cursor-pointer"}`}
-      >
-        {p.lastName} {p.firstName} #{p.number}
+          return (
+            <div
+              key={p.id}
+              onClick={() => !isRetired && setSelectedSubPlayer(p)}
+              className={`w-[22%] text-sm px-2 py-1 rounded border font-semibold text-center
+                ${isRetired
+                  ? "bg-gray-300 text-gray-500 line-through cursor-not-allowed"
+                  : selectedSubPlayer?.id === p.id
+                    ? "bg-yellow-200 border-yellow-600 cursor-pointer"
+                    : "bg-gray-100 border-gray-400 cursor-pointer"}`}
+            >
+              {p.lastName} {p.firstName} #{p.number}
+            </div>
+          );
+        })}
       </div>
-    );
-  })}
-</div>
 
 
       </div>
@@ -976,13 +1169,20 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <div className="absolute -top-4 left-4 text-2xl">🎤📢</div>
          
-        <span className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6">
+       <span className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6">
+          {/* 先頭打者なら通常アナウンスの前置きを追加 */}
+          {isLeadingBatter && (
+            <>
+              {`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、`}
+              <br />
+            </>
+          )}
           {currentBatterIndex + 1}番{" "}
           <ruby>
             {getPlayer(battingOrder[currentBatterIndex]?.id)?.lastName}
             <rt>{getPlayer(battingOrder[currentBatterIndex]?.id)?.lastNameKana}</rt>
           </ruby>{" "}
-          くん に代わりまして{" "}
+          {(getPlayer(battingOrder[currentBatterIndex]?.id)?.isFemale ? "さん" : "くん")} に代わりまして{" "}
           <ruby>
             {selectedSubPlayer?.lastName}
             <rt>{selectedSubPlayer?.lastNameKana}</rt>
@@ -991,12 +1191,12 @@ console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
             {selectedSubPlayer?.firstName}
             <rt>{selectedSubPlayer?.firstNameKana}</rt>
           </ruby>{" "}
-          くん、バッターは{" "}
+          {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、バッターは{" "}
           <ruby>
             {selectedSubPlayer?.lastName}
             <rt>{selectedSubPlayer?.lastNameKana}</rt>
           </ruby>{" "}
-          くん、背番号 {selectedSubPlayer?.number}
+          {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、背番号 {selectedSubPlayer?.number}
         </span>
 
         {/* 読み上げ・停止 */}
