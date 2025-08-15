@@ -1056,20 +1056,28 @@ const handlePositionDragStart = (
   e.dataTransfer.effectAllowed = "move";
   setDraggingFrom(pos);
 
-  // ★ ゴースト指定：掴んだ内側のプレイヤー要素を dragImage に
-  const target = e.currentTarget.querySelector<HTMLElement>("div[draggable='true']") || (e.currentTarget as HTMLElement);
-  const { ghost, rect } = makeDragGhost(target);
+  // ★ イベントから切り離して保持
+  const el = e.currentTarget as HTMLDivElement;
 
-  // 画像の基準位置を中央付近に固定（右端でもズレない）
+  const target =
+    el.querySelector<HTMLElement>("div[draggable='true']") || el;
+
+  const { ghost, rect } = makeDragGhost(target);
   e.dataTransfer.setDragImage(ghost, rect.width / 2, rect.height / 2);
 
-  // cleanup は dragend で
   const onEnd = () => {
-    ghost.remove();
-    e.currentTarget.removeEventListener("dragend", onEnd as any);
+    try { ghost.remove(); } catch {}
+    try { el.removeEventListener("dragend", onEnd); } catch {}
+    window.removeEventListener("dragend", onEnd);
+    window.removeEventListener("drop", onEnd);
   };
-  e.currentTarget.addEventListener("dragend", onEnd as any);
+
+  // once: true で二重解除を気にしない
+  el.addEventListener("dragend", onEnd, { once: true });
+  window.addEventListener("dragend", onEnd, { once: true });
+  window.addEventListener("drop", onEnd, { once: true });
 };
+
 
 
   const handleBenchDragStart = (e: React.DragEvent, playerId: number) => {
@@ -1189,11 +1197,31 @@ if (draggingFrom === BENCH && toPos !== BENCH) {
 // toPos が「Aの元ポジ」かどうかを initialAssignments で判定
   const aIdAtThisPos = initialAssignments[toPos]; // ← A（元）のID（なければ undefined/ null）
 
-  // 直前までその位置にいたのが B（= replacedId）で、A のロック相手が B になっているなら…
-  if (aIdAtThisPos != null && pairLocks[aIdAtThisPos] === replacedId) {
-    // A は今後 C としか入れ替え不可に変更（= B のロックは破棄）
-    setPairLocks((m) => ({ ...m, [aIdAtThisPos]: playerId }));
-  }
+// === 追加：Aの位置へCを入れた瞬間、B→AロックをB→Cへ付け替えつつAを完全解除 ===
+// toPos が「元の先発(B)のポジション」かどうかを initialAssignments で判定
+const starterAtThisPos = initialAssignments[toPos]; // 元の先発 = B
+if (
+  starterAtThisPos != null &&
+  replacedId != null &&                      // 直前までそこにいたのが A
+  pairLocks[starterAtThisPos] === replacedId // いま B→A のロックになっている
+) {
+  setPairLocks((m) => {
+    const copy = { ...m };
+
+    // 1) B→A を B→C に付け替え
+    //    playerId はいま落とした C
+    copy[starterAtThisPos] = playerId;
+
+    // 2) A を完全に自由化（A をキーにしたロックも、値として参照されているロックも掃除）
+    delete copy[replacedId]; // key = A のロックを削除
+    for (const [k, v] of Object.entries(copy)) {
+      if (v === replacedId) delete copy[Number(k)]; // partner = A を参照するエントリを掃除
+    }
+
+    return copy;
+  });
+}
+
 
 
 // ====== 置き換え：A↔Bペア制約（bench→守備） ======
@@ -1208,12 +1236,16 @@ if (lockPartner != null && replacedId !== lockPartner) {
   return prev;
 }
 
-// (新規作成) A→B の最初の交代が「いま成立」するならロック作成
-// ＝ 守備位置に A（元）が居て、ベンチから B を入れる瞬間
-if (replacedId != null && pairLocks[replacedId] == null) {
-  // replacedId = A, playerId = B
+// 先発（画面を開いた時点でフィールドにいた選手）にだけロックを作る
+if (
+  replacedId != null &&
+  isStarter(replacedId) &&        // ★ これを追加
+  pairLocks[replacedId] == null &&
+  replacedId !== playerId         // 念のため：同一IDの自爆防止
+) {
   setPairLocks((m) => ({ ...m, [replacedId]: playerId }));
 }
+
 
   newAssignments[toPos] = playerId;
 
@@ -1471,94 +1503,79 @@ setBattingReplacements((prev) => {
   await localForage.setItem("usedPlayerInfo", usedInfo);
   console.log("✅ 守備交代で登録された usedPlayerInfo：", usedInfo);
 
-  // 現在の打順をコピーして更新
-  const updatedOrder = structuredClone(battingOrder); // または [...battingOrder]
+// ---- 打順は「並びを固定」する：入替や移動では一切並べ替えない ----
+// 基本方針：
+// 1) 守備位置が変わっただけ（両者ともフィールドに残っている）→ 打順は不変（何もしない）
+// 2) 元の選手(initialId)がフィールドからいなくなった（ベンチに下がった）
+//    かつ その守備位置にいる currentId がベンチ出身（打順にまだ居ない）→
+//    「元の選手の打順スロット」に currentId を“途中出場”で上書き
 
-  // 守備位置ごとに交代をチェック
-  positions.forEach((pos) => {
-  const initialId = initialAssignments[pos]; // 初期（例：代打）
-  const currentId = assignments[pos];        // 現在の守備選手（控え）
+const updatedOrder = structuredClone(battingOrder);
 
-if (currentId) {
-  const currentIndex = updatedOrder.findIndex(entry => entry.id === currentId);
-  const replacedIndex = initialId
-    ? updatedOrder.findIndex(entry => entry.id === initialId)
-    : updatedOrder.findIndex(entry => entry.id === null); // 空欄枠や代打だった場合
+// フィールドに居る選手集合（数値のみ）
+const onFieldIds = new Set(
+  Object.values(assignments).filter((v): v is number => typeof v === "number")
+);
 
-  if (replacedIndex !== -1) {
-    // replacedIndex が優先 → 守備に就いた選手（currentId）を登録
+// “打順に元から居る（＝先発 or 既に登録済み）選手”集合
+const startersOrRegistered = new Set(
+  updatedOrder.map(e => e?.id).filter((id): id is number => typeof id === "number")
+);
+
+// 守備位置ごとに差分を確認（ただし打順の並びは一切変更しない）
+positions.forEach((pos) => {
+  const initialId = initialAssignments[pos]; // そのポジの「元の選手」
+  const currentId = assignments[pos];        // そのポジの「今の選手」
+
+  if (!initialId || !currentId || initialId === currentId) return;
+
+  const replacedIndex = updatedOrder.findIndex(e => e.id === initialId);
+  if (replacedIndex === -1) return; // 念のためガード
+
+  const currentIsAlreadyInOrder = startersOrRegistered.has(currentId);
+  const initialStillOnField     = onFieldIds.has(initialId);
+
+  // A) 守備の“位置替え”だけ（両者とも打順に存在 & まだフィールド上）→ 触らない
+  if (currentIsAlreadyInOrder && initialStillOnField) {
+    return;
+  }
+
+  // B) 元の選手がベンチに下がり、今いる選手が“新規（打順未登録）”
+  //    → 元の選手の打順スロットだけを「途中出場」で上書き
+  if (!currentIsAlreadyInOrder && !initialStillOnField) {
     updatedOrder[replacedIndex] = {
       id: currentId,
       reason: "途中出場",
     };
-    console.log(`[SET] ${pos}：打順${replacedIndex + 1} に ${currentId} を途中出場で登録`);
-  } else if (currentIndex === -1) {
-    // 新規参加の選手で打順にいない → 空いてる場所を探して登録
-    const emptyIndex = updatedOrder.findIndex(entry => entry.id === null);
-    if (emptyIndex !== -1) {
-      updatedOrder[emptyIndex] = {
-        id: currentId,
-        reason: "途中出場",
-      };
-      console.log(`[NEW] ${pos}：空いてる打順${emptyIndex + 1} に ${currentId} を登録`);
-    } else {
-      console.warn(`[SKIP] ${pos}：${currentId} を打順に登録できる空きがありません`);
-    }
-  } else {
-    // すでに登録済み → 出場理由だけ更新（必要なら）
-    updatedOrder[currentIndex] = {
-      id: currentId,
-      reason: updatedOrder[currentIndex].reason === "代打"
-        ? "途中出場"
-        : updatedOrder[currentIndex].reason,
-    };
-    console.log(`[KEEP] ${pos}：${currentId} は既に登録済み（打順${currentIndex + 1}）`);
+    startersOrRegistered.add(currentId);
   }
-}
 
+  // C) それ以外（例：initial はまだフィールドに居る / current も既に打順に居る等）
+  //    → 何もしない
 });
 
-// 🔄 代打された選手がその後守備に就いていない場合は打順を控えと差し替える
-Object.entries(initialAssignments).forEach(([pos, initialId]) => {
-  const currentId = assignments[pos];
-  if (!initialId || !currentId) return;
-
-  const wasDaida = battingOrder.find(entry => entry.id === initialId && entry.reason === "代打");
-  const isInitialStillPlaying = Object.values(assignments).includes(initialId);
-
-  if (wasDaida && !isInitialStillPlaying) {
-    const index = battingOrder.findIndex(entry => entry.id === initialId);
-    if (index !== -1) {
-      updatedOrder[index] = {
-        id: currentId,
-        reason: "途中出場",
-      };
-      console.log(`[FIXED] 代打(${initialId}) ➡ 控え(${currentId})を打順${index + 1}に上書き`);
-    }
+// 代打が守備に就いたら理由だけ“途中出場”に補正（並びは不変）
+updatedOrder.forEach((entry, index) => {
+  if (entry.reason === "代打" && onFieldIds.has(entry.id)) {
+    updatedOrder[index] = { ...entry, reason: "途中出場" };
   }
 });
 
-  // 🔽「代打」のまま残っている打順を修正（守備に入っていない場合）
-  battingOrder.forEach((entry, index) => {
-    const assignedPos = Object.entries(assignments).find(([_, id]) => id === entry.id);
-    if (entry.reason === "代打" && !assignedPos) {
-      updatedOrder[index].reason = "途中出場";
-      console.log(`[FIX] 代打(${entry.id})が守備に就いていないが、控えと交代されたため「途中出場」に修正（打順${index + 1}）`);
-    }
-  });
+// 🟣 battingReplacements を最優先で打順スロットへ確定反映
+Object.entries(battingReplacements).forEach(([idxStr, repl]) => {
+  const idx = Number(idxStr);
+  const starterId = battingOrder[idx]?.id;
+  if (starterId == null) return;
 
-// ✅ 守備に就いた代打の出場理由修正処理（🆕ここ！）
-  updatedOrder.forEach((entry, index) => {
-    const isDaida = entry.reason === "代打";
-    const isAssigned = Object.values(assignments).includes(entry.id);
-    if (isDaida && isAssigned) {
-      updatedOrder[index] = {
-        ...entry,
-        reason: "途中出場",
-      };
-      console.log(`[UPDATE] 守備に就いた代打(${entry.id})を「途中出場」に修正（打順${index + 1}）`);
-    }
-  });
+  const replacementId = repl.id;
+  const starterStillOnField = onFieldIds.has(starterId);
+  const replacementOnField  = onFieldIds.has(replacementId);
+
+  if (!starterStillOnField && replacementOnField) {
+    updatedOrder[idx] = { id: replacementId, reason: "途中出場" };
+    startersOrRegistered.add(replacementId);
+  }
+});
 
 
   // 🟢 保存処理（守備位置、交代、打順）
@@ -1743,82 +1760,78 @@ const showAnnouncement = () => {
   <div className="flex-1">
     <h2 className="text-lg font-semibold mb-2">打順（1番〜9番）</h2>
     <ul className="space-y-1 text-sm border border-gray-300 p-2 rounded">
-      {battingOrder.map((entry, index) => {
-        const starter = teamPlayers.find((p) => p.id === entry.id);
-        if (!starter) return null;
+{battingOrder.map((entry, index) => {
+  const displayId = battingReplacements[index]?.id ?? entry.id;
 
-        const replaced = battingReplacements[index];
-        const currentId = replaced?.id ?? entry.id;
-        const currentPlayer = replaced ?? starter;
+   const starter = teamPlayers.find(p => p.id === entry.id);
+  const player  = teamPlayers.find(p => p.id === displayId);
+  if (!starter || !player) return null;
 
-        const currentPos = getPositionName(assignments, currentId);
-        const initialPos = getPositionName(initialAssignments, entry.id);
+  const currentPos = getPositionName(assignments, displayId);
+  const initialPos = getPositionName(initialAssignments, entry.id);
 
-        const playerChanged = replaced && replaced.id !== entry.id;
-        const positionChanged = currentPos !== initialPos;
+  const playerChanged   = displayId !== entry.id;
+  const positionChanged = currentPos !== initialPos;
 
-        const isPinchHitter = entry.reason === "代打";
-        const isPinchRunner = entry.reason === "代走";
-        const isPinch = isPinchHitter || isPinchRunner;
-        const pinchLabel = isPinchHitter ? "代打" : isPinchRunner ? "代走" : "";
-        const isPinchReplaced = isPinch && playerChanged;
-        const isPinchHitterReplaced = isPinchHitter && playerChanged;
+  const isPinchHitter = entry.reason === "代打";
+  const isPinchRunner = entry.reason === "代走";
+  const isPinch = isPinchHitter || isPinchRunner;
+  const pinchLabel = isPinchHitter ? "代打" : isPinchRunner ? "代走" : "";
 
-        return (
-          <li key={`${index}-${currentId}`} className="border px-2 py-1 rounded bg-white">
-            <div className="flex items-start gap-2">
-              <span className="w-8">{index + 1}番</span>
-              <div>
-                {isPinchReplaced ? (
-                  <>
-                    {/* ➤ 1行目: 代打/代走選手を打ち消し線 */}
-                    <div className="line-through text-gray-500 text-sm">
-                      {pinchLabel} {starter.lastName}{starter.firstName} #{starter.number}
-                    </div>
-                    {/* ➤ 2行目: 守備に入った選手 */}
-                    <div className="text-red-600 font-bold">
-                      {currentPos}　{currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
-                    </div>
-                  </>
-                ) : isPinch ? (
-                  <>
-                    {/* 通常の代打/代走 → そのまま守備 */}
-                    {/* ① 1行目 : 「代打/代走」に取り消し線 */}
-                    <div>
-                      <span className="line-through">{pinchLabel}</span>&nbsp;
-                      {starter.lastName}{starter.firstName} #{starter.number}
-                    </div>
-                    {/* ② 2行目 : 守備位置を赤字で表示 */}
-                    <div className="pl-0 text-red-600 font-bold">
-                      {currentPos}
-                    </div>
-                  </>
-                ) : playerChanged ? (
-                  <>
-                    {/* スタメンから交代 */}
-                    <div className="line-through text-gray-500 text-sm">
-                      {initialPos}　{starter.lastName}{starter.firstName} #{starter.number}
-                    </div>
-                    <div className="text-red-600 font-bold">
-                      {currentPos}　{currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
-                    </div>
-                  </>
-                ) : positionChanged ? (
-                  <>
-                    <div className="line-through text-gray-500 text-sm">{initialPos}</div>
-                    <div>
-                      <span className="text-red-600 font-bold">{currentPos}</span>　{starter.lastName}{starter.firstName} #{starter.number}
-                    </div>
-                  </>
-                ) : (
-                  <div>{currentPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
-                )}
-
+  return (
+    <li key={`${index}-${displayId}`} className="border px-2 py-1 rounded bg-white">
+      <div className="flex items-start gap-2">
+        <span className="w-8">{index + 1}番</span>
+        <div>
+          {isPinch && playerChanged ? (
+            // 代打/代走の選手が別人に交代した（=displayIdが変わった）
+            <>
+              <div className="line-through text-gray-500 text-sm">
+                {pinchLabel} {starter.lastName}{starter.firstName} #{starter.number}
               </div>
-            </div>
-          </li>
-        );
-      })}
+              <div className="text-red-600 font-bold">
+                {currentPos}　{player.lastName}{player.firstName} #{player.number}
+              </div>
+            </>
+          ) : isPinch ? (
+            // 代打/代走のまま（同一ID）で守備入り or 位置だけ変わった
+            <>
+              <div>
+                <span className="line-through">{pinchLabel}</span>&nbsp;
+                {starter.lastName}{starter.firstName} #{starter.number}
+              </div>
+              <div className="pl-0 text-red-600 font-bold">
+                {currentPos}
+              </div>
+            </>
+          ) : playerChanged ? (
+            // スタメンから別選手に交代
+            <>
+              <div className="line-through text-gray-500 text-sm">
+                {initialPos}　{starter.lastName}{starter.firstName} #{starter.number}
+              </div>
+              <div className="text-red-600 font-bold">
+                {currentPos}　{player.lastName}{player.firstName} #{player.number}
+              </div>
+            </>
+          ) : positionChanged ? (
+            // 同一選手で守備位置だけ変更
+            <>
+              <div className="line-through text-gray-500 text-sm">{initialPos}</div>
+              <div>
+                <span className="text-red-600 font-bold">{currentPos}</span>　{starter.lastName}{starter.firstName} #{starter.number}
+              </div>
+            </>
+          ) : (
+            // 変更なし
+            <div>{currentPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+})}
+
 
     </ul>
   </div>
