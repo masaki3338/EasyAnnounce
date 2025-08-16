@@ -33,7 +33,7 @@ import DefenseChange from "./DefenseChange";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.4"
+const APP_VERSION = "0.0.1"
 
 // 画面の種類を列挙した型
 export type ScreenType =
