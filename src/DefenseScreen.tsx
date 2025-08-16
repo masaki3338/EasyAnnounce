@@ -35,6 +35,10 @@ type DefenseScreenProps = {
   onBack?: () => void; // ✅ 任意として追加
 };
 
+
+
+
+
 const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense }) => {  
   const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
@@ -76,6 +80,182 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+// ▼リエントリー用 state と関数を追加
+const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
+const [reEntryTarget, setReEntryTarget] = useState<{ id: number; fromPos: string } | null>(null);
+const [reEntryMessage, setReEntryMessage] = useState("");
+
+ // プレイヤー取得を安全に
+  const getPlayerSafe = (id: number) => {
+    if (typeof getPlayer === "function") {
+      const p = getPlayer(id);
+      if (p) return p;
+    }
+    return (Array.isArray(teamPlayers) ? teamPlayers.find((tp:any)=>tp.id===id) : null) || null;
+  };
+
+  const playerLabel = (id: number) => {
+    const p: any = getPlayerSafe(id);
+    if (!p) return `ID:${id}`;
+    const last = p.lastName ?? p.familyName ?? p.last_name ?? "";
+    const first = p.firstName ?? p.givenName ?? p.first_name ?? "";
+    const lastKana = p.lastNameKana ?? p.last_name_kana ?? "";
+    const firstKana = p.firstNameKana ?? p.first_name_kana ?? "";
+    const number = p.number ? `（${p.number}）` : "";
+    const name =
+      (last || first) ? `${last}${first}` :
+      (lastKana || firstKana) ? `${lastKana}${firstKana}` :
+      `ID:${id}`;
+    return `${name}${number}`;
+  };
+
+  const honor = (id: number) => {
+    const p: any = getPlayerSafe(id);
+    if (!p) return "";
+    return p.isFemale ? "さん" : "くん";
+  };
+
+// 読み上げ関数
+const speak = (t: string) => {
+  const s = window.speechSynthesis;
+  if (s.speaking) s.cancel();
+  const u = new SpeechSynthesisUtterance(t);
+  u.lang = "ja-JP";
+  s.speak(u);
+};
+const stopSpeak = () => window.speechSynthesis?.cancel();
+
+// A(代打/代走ID)からB(元先発)を特定し、文面とターゲットをセット
+const buildReentryMessage = async (pinchId: number) => {
+  if (!pinchId) { setReEntryTarget(null); setReEntryMessage(""); return; }
+
+  const used: Record<number, any> =
+    (await localForage.getItem("usedPlayerInfo")) || {};
+  const assignmentsNow: Record<string, number | null> =
+    (await localForage.getItem("lineupAssignments")) || {};
+  const battingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+  const team: { name?: string } =
+    (await localForage.getItem("team")) || {};
+
+  // A: 代打/代走の選手
+  const A = teamPlayers.find(p => p.id === pinchId);
+  const aReason = battingOrder.find(e => e.id === pinchId)?.reason || "代打";
+
+  // usedPlayerInfo から subId === A.id の元先発Bを探す
+  let starterId: number | null = null;
+  let fromPos: string | undefined;
+
+  for (const [sid, info] of Object.entries(used || {})) {
+    if (Number((info as any)?.subId) === pinchId) {
+      starterId = Number(sid);
+      fromPos = (info as any)?.fromPos as string | undefined;
+      break;
+    }
+  }
+
+  if (!starterId || !fromPos) {
+    setReEntryTarget(null);
+    setReEntryMessage("");
+    alert("この選手に対応するリエントリー対象はありません。");
+    return;
+  }
+
+  // すでに出場中ならリエントリー不可
+  const isInDefense = Object.values(assignmentsNow || {}).some(id => id === starterId);
+  const isInOrder   = battingOrder.some(e => e.id === starterId);
+  if (isInDefense || isInOrder) {
+    setReEntryTarget(null);
+    setReEntryMessage("");
+    alert("リエントリー可能な状態ではありません。");
+    return;
+  }
+
+  // B: 元先発
+  const B = teamPlayers.find(p => p.id === starterId);
+  const honor = (p?: any) => (p?.isFemale ? "さん" : "くん");
+  const teamName = team?.name || "東京武蔵ポニー";
+  const posJP: Record<string, string> = {
+    "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
+    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト"
+  };
+
+  const msg =
+    `${teamName}、選手の交代をお知らせいたします。\n` +
+    `先ほど${aReason}いたしました ` +
+    `${A?.lastName ?? ""}${A?.firstName ?? ""}${honor(A)} に代わりまして ` +
+    `${B?.lastName ?? ""}${B?.firstName ?? ""}${honor(B)} がリエントリーで ` +
+    `${posJP[fromPos] ?? fromPos} に入ります。`;
+
+  setReEntryTarget({ id: starterId, fromPos });
+  setReEntryMessage(msg);
+};
+
+// 「代打/代走の守備位置を設定」ポップアップのリエントリー ボタンから呼ぶ
+const handleReentryCheck = async () => {
+  // 初期化（毎回リセット）
+  setReEntryMessage("");
+  setReEntryTarget(null);
+
+  // 現在の打順と開始スナップショットを取得
+  const battingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+  const startingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("startingBattingOrder")) || [];
+
+  // 代打/代走で入っている打順を 1 件だけ拾う（最初の1件）
+  const pinchIdx = battingOrder.findIndex(e => e?.reason === "代打" || e?.reason === "代走");
+  if (pinchIdx === -1) {
+    setReEntryMessage("対象選手なし");
+    return;
+  }
+  const pinchId = battingOrder[pinchIdx]?.id;
+
+  // その打順の“元の先発”を開始スナップショットから逆引き
+  const starterId = startingOrder[pinchIdx]?.id;
+  if (!starterId) {
+    setReEntryMessage("対象選手なし");
+    return;
+  }
+
+  // 先発の元守備位置を現在の守備配置から特定
+  const assignmentsNow: Record<string, number | null> =
+    (await localForage.getItem("lineupAssignments")) || {};
+  const fromPos = Object.keys(assignmentsNow).find(pos => assignmentsNow[pos] === starterId);
+
+  if (!fromPos) {
+    // 守備配置にいない場合は “元ポジ不明” だが、対象としては成立
+    // メッセージだけ「守備位置」を省いて出すか、startingAssignments を別途保存して使う想定
+    setReEntryMessage("対象選手なし");
+    return;
+  }
+
+  // A, B の情報と文面を作成（守備に居ても弾かない）
+  const A = teamPlayers.find(p => p.id === pinchId);
+  const B = teamPlayers.find(p => p.id === starterId);
+  const aReason = battingOrder[pinchIdx]?.reason || "代打";
+  const team: { name?: string } = (await localForage.getItem("team")) || {};
+  const teamName = team?.name || "東京武蔵ポニー";
+  const honor = (p?: any) => (p?.isFemale ? "さん" : "くん");
+  const posJP: Record<string, string> = {
+    "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
+    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト"
+  };
+
+  const msg =
+    `${teamName}、選手の交代をお知らせいたします。\n` +
+    `先ほど${aReason}いたしました ` +
+    `${A?.lastName ?? ""}${A?.firstName ?? ""}${honor(A)} に代わりまして ` +
+    `${B?.lastName ?? ""}${B?.firstName ?? ""}${honor(B)} がリエントリーで ` +
+    `${posJP[fromPos] ?? fromPos} に入ります。`;
+
+  setReEntryTarget({ id: starterId, fromPos });
+  setReEntryMessage(msg);
+};
+
+
+
+
 
 useEffect(() => {
 
@@ -102,6 +282,7 @@ useEffect(() => {
    
 
     const savedBattingOrder = (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
+    setBattingOrder(savedBattingOrder); // ← この行を追加
     const hasSubPlayers = savedBattingOrder.some(
       (entry) => entry.reason === "代打" || entry.reason === "代走"
     );
@@ -619,24 +800,111 @@ const totalRuns = () => {
         </button>
       </div>
 
+
 {showConfirmModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
-      <h2 className="text-xl font-bold text-red-600">代打/代走の選手の守備位置を設定して下さい</h2>
+      <h2 className="text-xl font-bold text-red-600">
+        代打/代走の選手の守備位置を設定して下さい
+      </h2>
+
       <div className="flex justify-center gap-4 mt-4">
+        {/* 守備交代へ */}
         <button
           onClick={() => {
             setShowConfirmModal(false);
-            onChangeDefense(); // 守備交代へ
+            onChangeDefense();
           }}
           className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700"
         >
           ＯＫ
         </button>
+
+        {/* リエントリー（結果はこの画面に出す） */}
+        <button
+          onClick={handleReentryCheck}
+          className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+        >
+          リエントリー
+        </button>
       </div>
+
+      {/* ▼ ここに結果をその場表示 */}
+      {reEntryMessage && (
+        <div className="mt-3 space-y-3">
+          {(!reEntryTarget || reEntryMessage === "対象選手なし") ? (
+            <div className="text-sm text-gray-700 border rounded p-3 bg-gray-50">
+              対象選手なし
+            </div>
+          ) : (
+            <>
+              <div className="whitespace-pre-wrap text-left border rounded p-3 bg-gray-50">
+                {reEntryMessage}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <button
+                  className="px-3 py-2 bg-green-600 text-white rounded"
+                  onClick={() => speak(reEntryMessage)}
+                >
+                  読み上げ
+                </button>
+                <button
+                  className="px-3 py-2 bg-gray-700 text-white rounded"
+                  onClick={() => window.speechSynthesis?.cancel()}
+                >
+                  停止
+                </button>
+                <button
+                  className="px-3 py-2 bg-indigo-600 text-white rounded"
+                  onClick={async () => {
+                    if (!reEntryTarget) return;
+                    if (reEntryTarget.fromPos === "投") {
+                      alert("投手は投手としてのリエントリーはできません。守備位置を調整してください。");
+                      return;
+                    }
+                    const curAssign: Record<string, number | null> =
+                      (await localForage.getItem("lineupAssignments")) || assignments || {};
+                    const nextAssign = { ...curAssign };
+                    nextAssign[reEntryTarget.fromPos] = reEntryTarget.id;
+                    setAssignments(nextAssign);
+                    await localForage.setItem("lineupAssignments", nextAssign);
+
+                    const usedNow: Record<number, any> =
+                      (await localForage.getItem("usedPlayerInfo")) || {};
+                    usedNow[reEntryTarget.id] = {
+                      ...(usedNow[reEntryTarget.id] || {}),
+                      hasReentered: true,
+                    };
+                    await localForage.setItem("usedPlayerInfo", usedNow);
+
+                    // 閉じる処理（この確認モーダルは用途次第で閉じてもOK）
+                    setReEntryMessage("");
+                    setReEntryTarget(null);
+                    window.speechSynthesis?.cancel();
+                  }}
+                >
+                  確定
+                </button>
+                <button
+                  className="px-3 py-2 bg-gray-400 text-white rounded"
+                  onClick={() => {
+                    setReEntryMessage("");
+                    setReEntryTarget(null);
+                    window.speechSynthesis?.cancel();
+                  }}
+                >
+                  キャンセル
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   </div>
 )}
+
+
 
 
       {showPitchLimitModal && (
@@ -726,7 +994,7 @@ const totalRuns = () => {
 </div>
     </div>
   </div>
-)}
+      )}
 
     </div>
   );
