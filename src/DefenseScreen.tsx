@@ -85,35 +85,55 @@ const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[
 const [reEntryTarget, setReEntryTarget] = useState<{ id: number; fromPos: string } | null>(null);
 const [reEntryMessage, setReEntryMessage] = useState("");
 
- // プレイヤー取得を安全に
-  const getPlayerSafe = (id: number) => {
-    if (typeof getPlayer === "function") {
-      const p = getPlayer(id);
-      if (p) return p;
-    }
-    return (Array.isArray(teamPlayers) ? teamPlayers.find((tp:any)=>tp.id===id) : null) || null;
-  };
 
-  const playerLabel = (id: number) => {
-    const p: any = getPlayerSafe(id);
-    if (!p) return `ID:${id}`;
-    const last = p.lastName ?? p.familyName ?? p.last_name ?? "";
-    const first = p.firstName ?? p.givenName ?? p.first_name ?? "";
-    const lastKana = p.lastNameKana ?? p.last_name_kana ?? "";
-    const firstKana = p.firstNameKana ?? p.first_name_kana ?? "";
-    const number = p.number ? `（${p.number}）` : "";
-    const name =
-      (last || first) ? `${last}${first}` :
-      (lastKana || firstKana) ? `${lastKana}${firstKana}` :
-      `ID:${id}`;
-    return `${name}${number}`;
-  };
+// プレイヤー取得の安全版
+const getPlayerSafe = (id: number) => {
+  // getPlayer があれば優先
+  // @ts-ignore
+  if (typeof getPlayer === "function") {
+    // @ts-ignore
+    const p = getPlayer(id);
+    if (p) return p;
+  }
+  // teamPlayers から検索
+  // @ts-ignore
+  return (Array.isArray(teamPlayers) ? teamPlayers.find((tp:any)=>tp.id===id) : null) || null;
+};
 
-  const honor = (id: number) => {
-    const p: any = getPlayerSafe(id);
-    if (!p) return "";
-    return p.isFemale ? "さん" : "くん";
-  };
+// 表示名（姓名 → カナ → ID の順でフォールバック、背番号もあれば付与）
+/*const playerLabel = (id: number) => {
+  const p: any = getPlayerSafe(id);
+  if (!p) return `ID:${id}`;
+  const last = p.lastName ?? p.familyName ?? p.last_name ?? "";
+  const first = p.firstName ?? p.givenName ?? p.first_name ?? "";
+  const lastKana = p.lastNameKana ?? p.last_name_kana ?? "";
+  const firstKana = p.firstNameKana ?? p.first_name_kana ?? "";
+  const number = p.number ? `（${p.number}）` : "";
+  const name =
+    (last || first) ? `${last}${first}` :
+    (lastKana || firstKana) ? `${lastKana}${firstKana}` :
+    `ID:${id}`;
+  return `${name}${number}`;
+};*/
+const playerLabel = (id: number) => {
+  const p: any = getPlayerSafe(id);
+  if (!p) return `ID:${id}`;
+  const last = p.lastName ?? p.familyName ?? p.last_name ?? "";
+  const lastKana = p.lastNameKana ?? p.last_name_kana ?? "";
+  const name =
+    (last ) ? `${last}` :
+    (lastKana ) ? `${lastKana}` :
+    `ID:${id}`;
+  return `${name}`;
+};
+
+// 敬称（名前が取れないときは付けない）
+const honor = (id: number) => {
+  const p: any = getPlayerSafe(id);
+  if (!p) return "";
+  return p.isFemale ? "さん" : "くん";
+};
+
 
 // 読み上げ関数
 const speak = (t: string) => {
@@ -125,70 +145,57 @@ const speak = (t: string) => {
 };
 const stopSpeak = () => window.speechSynthesis?.cancel();
 
-// A(代打/代走ID)からB(元先発)を特定し、文面とターゲットをセット
-const buildReentryMessage = async (pinchId: number) => {
-  if (!pinchId) { setReEntryTarget(null); setReEntryMessage(""); return; }
+// 代打/代走ポップアップ内の「リエントリー」ボタンから呼ばれる
+const handleReentryCheck = async () => {
+  // 表示の初期化
+  setReEntryMessage("");
+  setReEntryTarget(null);
 
-  const used: Record<number, any> =
-    (await localForage.getItem("usedPlayerInfo")) || {};
-  const assignmentsNow: Record<string, number | null> =
-    (await localForage.getItem("lineupAssignments")) || {};
+  // 現在の打順 & 試合開始時の打順スナップショット
   const battingOrder: Array<{ id: number; reason?: string }> =
     (await localForage.getItem("battingOrder")) || [];
-  const team: { name?: string } =
-    (await localForage.getItem("team")) || {};
+  const startingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("startingBattingOrder")) || [];
 
-  // A: 代打/代走の選手
-  const A = teamPlayers.find(p => p.id === pinchId);
-  const aReason = battingOrder.find(e => e.id === pinchId)?.reason || "代打";
+  // 「代打 or 代走」で入っている最初の打順枠を拾う
+  const pinchIdx = battingOrder.findIndex(e => e?.reason === "代打" || e?.reason === "代走");
+  if (pinchIdx === -1) { setReEntryMessage("対象選手なし"); return; }
 
-  // usedPlayerInfo から subId === A.id の元先発Bを探す
-  let starterId: number | null = null;
-  let fromPos: string | undefined;
+  // A=代打/代走で出ている選手, B=その打順の元スタメン
+  const pinchId = battingOrder[pinchIdx]?.id;
+  const starterId = startingOrder[pinchIdx]?.id;
+  if (!pinchId || !starterId) { setReEntryMessage("対象選手なし"); return; }
 
-  for (const [sid, info] of Object.entries(used || {})) {
-    if (Number((info as any)?.subId) === pinchId) {
-      starterId = Number(sid);
-      fromPos = (info as any)?.fromPos as string | undefined;
-      break;
-    }
-  }
+  // B の“元守備位置”を現在の守備配置から逆引き
+  const assignmentsNow: Record<string, number | null> =
+    (await localForage.getItem("lineupAssignments")) || {};
+  const fromPos = Object.keys(assignmentsNow).find(pos => assignmentsNow[pos] === starterId);
+  if (!fromPos) { setReEntryMessage("対象選手なし"); return; }
 
-  if (!starterId || !fromPos) {
-    setReEntryTarget(null);
-    setReEntryMessage("");
-    alert("この選手に対応するリエントリー対象はありません。");
-    return;
-  }
-
-  // すでに出場中ならリエントリー不可
-  const isInDefense = Object.values(assignmentsNow || {}).some(id => id === starterId);
-  const isInOrder   = battingOrder.some(e => e.id === starterId);
-  if (isInDefense || isInOrder) {
-    setReEntryTarget(null);
-    setReEntryMessage("");
-    alert("リエントリー可能な状態ではありません。");
-    return;
-  }
-
-  // B: 元先発
-  const B = teamPlayers.find(p => p.id === starterId);
-  const honor = (p?: any) => (p?.isFemale ? "さん" : "くん");
+  // 文面（名前欠落しないようにヘルパー使用）
+  const team: { name?: string } = (await localForage.getItem("team")) || {};
   const teamName = team?.name || "東京武蔵ポニー";
+  const aReason = battingOrder[pinchIdx]?.reason || "代打";
   const posJP: Record<string, string> = {
     "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
     "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト"
   };
 
+  const aLabel = playerLabel(pinchId);
+  const bLabel = playerLabel(starterId);
+  const aHonor = honor(pinchId);
+  const bHonor = honor(starterId);
+
   const msg =
     `${teamName}、選手の交代をお知らせいたします。\n` +
-    `先ほど${aReason}いたしました ` +
-    `${A?.lastName ?? ""}${A?.firstName ?? ""}${honor(A)} に代わりまして ` +
-    `${B?.lastName ?? ""}${B?.firstName ?? ""}${honor(B)} がリエントリーで ` +
-    `${posJP[fromPos] ?? fromPos} に入ります。`;
+    `先ほど${aReason}いたしました ${aLabel}${aHonor} に代わりまして ` +
+    `${bLabel}${bHonor} がリエントリーで ${posJP[fromPos] ?? fromPos} に入ります。`;
 
   setReEntryTarget({ id: starterId, fromPos });
   setReEntryMessage(msg);
+
+  // デバッグ（必要なら）
+  console.log("[RE] pinchIdx:", pinchIdx, "A:", pinchId, "B:", starterId, "fromPos:", fromPos);
 };
 
 
@@ -221,19 +228,28 @@ useEffect(() => {
 
    
 
-    const savedBattingOrder = (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
-    setBattingOrder(savedBattingOrder); // ← この行を追加
-    const hasSubPlayers = savedBattingOrder.some(
-      (entry) => entry.reason === "代打" || entry.reason === "代走"
-    );
-    if (hasSubPlayers) {
-      setShowConfirmModal(true);
-      return;
-    }
+const savedBattingOrder =
+  (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
+setBattingOrder(savedBattingOrder);
 
-    if (savedAssignments) setAssignments(savedAssignments);
-    if (savedTeam.name) setMyTeamName(savedTeam.name);
-    if (savedTeam.players) setTeamPlayers(savedTeam.players);
+// ✅ まず基礎データを反映してから…
+if (savedAssignments) setAssignments(savedAssignments);
+if (savedTeam.name) setMyTeamName(savedTeam.name);
+if (savedTeam.players) setTeamPlayers(savedTeam.players);
+if (savedScores) setScores(savedScores);
+setInning(savedMatchInfo.inning ?? 1);
+setIsTop(savedMatchInfo.isTop ?? true);
+setIsDefense(savedMatchInfo.isDefense ?? true);
+setIsHome(savedMatchInfo.isHome ?? false);
+
+// ✅ その後にモーダルを出す（return しない）
+const hasSubPlayers = savedBattingOrder.some(
+  (entry) => entry.reason === "代打" || entry.reason === "代走"
+);
+if (hasSubPlayers) {
+  setShowConfirmModal(true);
+}
+
     if (savedMatchInfo.opponentTeam) setOpponentTeamName(savedMatchInfo.opponentTeam);
     if (savedScores) setScores(savedScores);
     setInning(savedMatchInfo.inning ?? 1);
