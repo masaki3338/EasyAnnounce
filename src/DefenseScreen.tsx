@@ -191,67 +191,7 @@ const buildReentryMessage = async (pinchId: number) => {
   setReEntryMessage(msg);
 };
 
-// 「代打/代走の守備位置を設定」ポップアップのリエントリー ボタンから呼ぶ
-const handleReentryCheck = async () => {
-  // 初期化（毎回リセット）
-  setReEntryMessage("");
-  setReEntryTarget(null);
 
-  // 現在の打順と開始スナップショットを取得
-  const battingOrder: Array<{ id: number; reason?: string }> =
-    (await localForage.getItem("battingOrder")) || [];
-  const startingOrder: Array<{ id: number; reason?: string }> =
-    (await localForage.getItem("startingBattingOrder")) || [];
-
-  // 代打/代走で入っている打順を 1 件だけ拾う（最初の1件）
-  const pinchIdx = battingOrder.findIndex(e => e?.reason === "代打" || e?.reason === "代走");
-  if (pinchIdx === -1) {
-    setReEntryMessage("対象選手なし");
-    return;
-  }
-  const pinchId = battingOrder[pinchIdx]?.id;
-
-  // その打順の“元の先発”を開始スナップショットから逆引き
-  const starterId = startingOrder[pinchIdx]?.id;
-  if (!starterId) {
-    setReEntryMessage("対象選手なし");
-    return;
-  }
-
-  // 先発の元守備位置を現在の守備配置から特定
-  const assignmentsNow: Record<string, number | null> =
-    (await localForage.getItem("lineupAssignments")) || {};
-  const fromPos = Object.keys(assignmentsNow).find(pos => assignmentsNow[pos] === starterId);
-
-  if (!fromPos) {
-    // 守備配置にいない場合は “元ポジ不明” だが、対象としては成立
-    // メッセージだけ「守備位置」を省いて出すか、startingAssignments を別途保存して使う想定
-    setReEntryMessage("対象選手なし");
-    return;
-  }
-
-  // A, B の情報と文面を作成（守備に居ても弾かない）
-  const A = teamPlayers.find(p => p.id === pinchId);
-  const B = teamPlayers.find(p => p.id === starterId);
-  const aReason = battingOrder[pinchIdx]?.reason || "代打";
-  const team: { name?: string } = (await localForage.getItem("team")) || {};
-  const teamName = team?.name || "東京武蔵ポニー";
-  const honor = (p?: any) => (p?.isFemale ? "さん" : "くん");
-  const posJP: Record<string, string> = {
-    "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
-    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト"
-  };
-
-  const msg =
-    `${teamName}、選手の交代をお知らせいたします。\n` +
-    `先ほど${aReason}いたしました ` +
-    `${A?.lastName ?? ""}${A?.firstName ?? ""}${honor(A)} に代わりまして ` +
-    `${B?.lastName ?? ""}${B?.firstName ?? ""}${honor(B)} がリエントリーで ` +
-    `${posJP[fromPos] ?? fromPos} に入ります。`;
-
-  setReEntryTarget({ id: starterId, fromPos });
-  setReEntryMessage(msg);
-};
 
 
 

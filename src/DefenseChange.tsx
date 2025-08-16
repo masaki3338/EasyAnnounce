@@ -1459,126 +1459,122 @@ setBattingReplacements((prev) => {
 //**************// 
 //　確定ボタン　 //
 //**************// 
-  const confirmChange = async () => {
-    const usedInfo: Record<
+const confirmChange = async () => {
+  // usedInfo を読み出し
+  const usedInfo: Record<
     number,
     {
       fromPos: string;
       subId: number;
-      reason:"守備交代";
-      order: number;
+      reason: "守備交代";
+      order: number | null;     // ← number | null にしておくと安全
       wasStarter: boolean;
     }
   > = (await localForage.getItem("usedPlayerInfo")) || {};
 
+  // ★ ここで一度だけ取得（ループ内で await しない）
+  const startingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("startingBattingOrder")) || [];
+
+  // 守備交代で usedInfo を更新（order/wasStarter を必ず書く）
   positions.forEach((pos) => {
-    const initialId = initialAssignments[pos];  // 元の選手
+    const initialId = initialAssignments[pos];  // 元の選手（先発想定）
     const currentId = assignments[pos];         // 現在の選手
     const playerChanged = initialId && currentId && initialId !== currentId;
 
     if (playerChanged) {
-      const battingIndex = battingOrder.findIndex((e) => e.id === initialId);
-      if (battingIndex !== -1) {
-        const order = battingIndex + 1;
-        const reason = battingOrder[battingIndex]?.reason;
-        const wasStarter = reason === "スタメン";
+      // 1) 打順 order（1始まり）：battingOrder → なければ startingOrder でフォールバック
+      const idxNow = battingOrder.findIndex((e) => e.id === initialId);
+      const idxStart = startingOrder.findIndex((e) => e.id === initialId);
+      const order: number | null =
+        idxNow !== -1 ? idxNow + 1 :
+        idxStart !== -1 ? idxStart + 1 :
+        null;
 
-        // 代打・代走なら守備位置名を "代打" または "代走" にする
-        const fromPos = reason === "代打"
-          ? "代打"
-          : reason === "代走"
-          ? "代走"
-          : pos;
+      // 2) wasStarter：開始スナップショットに居たら true
+      const wasStarter = idxStart !== -1;
 
-        usedInfo[initialId] = {
-          fromPos,
-          subId: currentId,
-          reason: "守備交代",
-          order,
-          wasStarter,
-        };
-      }
+      // 3) fromPos：代打/代走で入っていたなら "代打"/"代走"
+      const battingReasonNow = idxNow !== -1 ? battingOrder[idxNow]?.reason : undefined;
+      const fromPos =
+        battingReasonNow === "代打" ? "代打" :
+        battingReasonNow === "代走" ? "代走" :
+        pos;
+
+      usedInfo[initialId] = {
+        fromPos,
+        subId: currentId!,
+        reason: "守備交代",
+        order,        // ← null の可能性も許容
+        wasStarter,
+      };
     }
   });
+
   await localForage.setItem("usedPlayerInfo", usedInfo);
   console.log("✅ 守備交代で登録された usedPlayerInfo：", usedInfo);
 
-// ---- 打順は「並びを固定」する：入替や移動では一切並べ替えない ----
-// 基本方針：
-// 1) 守備位置が変わっただけ（両者ともフィールドに残っている）→ 打順は不変（何もしない）
-// 2) 元の選手(initialId)がフィールドからいなくなった（ベンチに下がった）
-//    かつ その守備位置にいる currentId がベンチ出身（打順にまだ居ない）→
-//    「元の選手の打順スロット」に currentId を“途中出場”で上書き
+  // ---- 打順は「並びを固定」する：入替や移動では一切並べ替えない ----
+  const updatedOrder = structuredClone(battingOrder);
 
-const updatedOrder = structuredClone(battingOrder);
+  // フィールドに居る選手集合（数値のみ）
+  const onFieldIds = new Set(
+    Object.values(assignments).filter((v): v is number => typeof v === "number")
+  );
 
-// フィールドに居る選手集合（数値のみ）
-const onFieldIds = new Set(
-  Object.values(assignments).filter((v): v is number => typeof v === "number")
-);
+  // “打順に元から居る（＝先発 or 既に登録済み）選手”集合
+  const startersOrRegistered = new Set(
+    updatedOrder.map(e => e?.id).filter((id): id is number => typeof id === "number")
+  );
 
-// “打順に元から居る（＝先発 or 既に登録済み）選手”集合
-const startersOrRegistered = new Set(
-  updatedOrder.map(e => e?.id).filter((id): id is number => typeof id === "number")
-);
+  // 守備位置ごとに差分を確認（並びは一切変更しない）
+  positions.forEach((pos) => {
+    const initialId = initialAssignments[pos];
+    const currentId = assignments[pos];
 
-// 守備位置ごとに差分を確認（ただし打順の並びは一切変更しない）
-positions.forEach((pos) => {
-  const initialId = initialAssignments[pos]; // そのポジの「元の選手」
-  const currentId = assignments[pos];        // そのポジの「今の選手」
+    if (!initialId || !currentId || initialId === currentId) return;
 
-  if (!initialId || !currentId || initialId === currentId) return;
+    const replacedIndex = updatedOrder.findIndex(e => e.id === initialId);
+    if (replacedIndex === -1) return;
 
-  const replacedIndex = updatedOrder.findIndex(e => e.id === initialId);
-  if (replacedIndex === -1) return; // 念のためガード
+    const currentIsAlreadyInOrder = startersOrRegistered.has(currentId);
+    const initialStillOnField     = onFieldIds.has(initialId);
 
-  const currentIsAlreadyInOrder = startersOrRegistered.has(currentId);
-  const initialStillOnField     = onFieldIds.has(initialId);
+    // A) 位置替えだけ → 触らない
+    if (currentIsAlreadyInOrder && initialStillOnField) return;
 
-  // A) 守備の“位置替え”だけ（両者とも打順に存在 & まだフィールド上）→ 触らない
-  if (currentIsAlreadyInOrder && initialStillOnField) {
-    return;
-  }
+    // B) 元の選手がベンチに下がり、今いる選手が“新規” → 途中出場で上書き
+    if (!currentIsAlreadyInOrder && !initialStillOnField) {
+      updatedOrder[replacedIndex] = { id: currentId, reason: "途中出場" };
+      startersOrRegistered.add(currentId);
+    }
+    // C) それ以外 → 何もしない
+  });
 
-  // B) 元の選手がベンチに下がり、今いる選手が“新規（打順未登録）”
-  //    → 元の選手の打順スロットだけを「途中出場」で上書き
-  if (!currentIsAlreadyInOrder && !initialStillOnField) {
-    updatedOrder[replacedIndex] = {
-      id: currentId,
-      reason: "途中出場",
-    };
-    startersOrRegistered.add(currentId);
-  }
+  // 代打が守備に就いたら理由だけ“途中出場”に補正
+  updatedOrder.forEach((entry, index) => {
+    if (entry.reason === "代打" && onFieldIds.has(entry.id)) {
+      updatedOrder[index] = { ...entry, reason: "途中出場" };
+    }
+  });
 
-  // C) それ以外（例：initial はまだフィールドに居る / current も既に打順に居る等）
-  //    → 何もしない
-});
+  // battingReplacements を確定反映
+  Object.entries(battingReplacements).forEach(([idxStr, repl]) => {
+    const idx = Number(idxStr);
+    const starterId = battingOrder[idx]?.id;
+    if (starterId == null) return;
 
-// 代打が守備に就いたら理由だけ“途中出場”に補正（並びは不変）
-updatedOrder.forEach((entry, index) => {
-  if (entry.reason === "代打" && onFieldIds.has(entry.id)) {
-    updatedOrder[index] = { ...entry, reason: "途中出場" };
-  }
-});
+    const replacementId = repl.id;
+    const starterStillOnField = onFieldIds.has(starterId);
+    const replacementOnField  = onFieldIds.has(replacementId);
 
-// 🟣 battingReplacements を最優先で打順スロットへ確定反映
-Object.entries(battingReplacements).forEach(([idxStr, repl]) => {
-  const idx = Number(idxStr);
-  const starterId = battingOrder[idx]?.id;
-  if (starterId == null) return;
+    if (!starterStillOnField && replacementOnField) {
+      updatedOrder[idx] = { id: replacementId, reason: "途中出場" };
+      startersOrRegistered.add(replacementId);
+    }
+  });
 
-  const replacementId = repl.id;
-  const starterStillOnField = onFieldIds.has(starterId);
-  const replacementOnField  = onFieldIds.has(replacementId);
-
-  if (!starterStillOnField && replacementOnField) {
-    updatedOrder[idx] = { id: replacementId, reason: "途中出場" };
-    startersOrRegistered.add(replacementId);
-  }
-});
-
-
-  // 🟢 保存処理（守備位置、交代、打順）
+  // 保存
   await localForage.setItem("lineupAssignments", assignments);
   await localForage.setItem("battingReplacements", battingReplacements);
   await localForage.setItem("battingOrder", updatedOrder);
@@ -1586,31 +1582,16 @@ Object.entries(battingReplacements).forEach(([idxStr, repl]) => {
   console.log("[CONFIRM] 守備交代確定後の battingOrder:");
   console.table(updatedOrder);
 
-  // 🔴 usedPlayerInfo の更新（退場選手記録）
-  const newUsedPlayerInfo: Record<number, { fromPos: string; subId: number }> = {};
-  positions.forEach((pos) => {
-    const initialId = initialAssignments[pos];
-    const currentId = assignments[pos];
-    if (initialId && currentId && initialId !== currentId) {
-      newUsedPlayerInfo[initialId] = {
-        fromPos: pos,
-        subId: currentId,
-      };
-    }
-  });
-  await localForage.setItem("usedPlayerInfo", newUsedPlayerInfo);
-
-  setPairLocks({});  // 画面を閉じるタイミングでロック全消去（次回はリセット）
-  // 🔽 ここで画面遷移
-  onConfirmed?.(); // 守備画面へ遷移
-  console.log("✅ onConfirmed called"); // ← これが出れば呼ばれてる
+  setPairLocks({});
+  onConfirmed?.();
+  console.log("✅ onConfirmed called");
 };
 
 
-// 新たにアナウンス表示だけの関数を定義
-const showAnnouncement = () => {
-  setShowSaveModal(true);
-};
+  // 新たにアナウンス表示だけの関数を定義
+  const showAnnouncement = () => {
+    setShowSaveModal(true);
+  };
 
   useEffect(() => {
   teamPlayers.slice(0, 9).forEach((player, index) => {
@@ -1619,14 +1600,8 @@ const showAnnouncement = () => {
     const initialPlayerId = initialAssignments[initialPos];
     const isSamePosition = currentPos === initialPos;
     const isSamePlayer = assignments[currentPos] === initialPlayerId;
-    const isChanged = !(isSamePosition && isSamePlayer);
-
-    
+    const isChanged = !(isSamePosition && isSamePlayer);    
     const playerLabel = formatPlayerLabel(player);
-
-   // console.log(
-   //   `[${index + 1}番] ${playerLabel} | 初期=${initialPos}, 現在=${currentPos} | samePos=${isSamePosition}, samePlayer=${isSamePlayer}, 変更あり=${isChanged}`
-   // );
   });
 }, [assignments, initialAssignments, teamPlayers]);
 
