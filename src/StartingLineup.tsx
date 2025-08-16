@@ -111,6 +111,8 @@ useEffect(() => {
     await localForage.setItem("benchOutIds", benchOutIds);
     await localForage.setItem("lineupAssignments", assignments);
     await localForage.setItem("battingOrder", battingOrder);
+    await localForage.setItem("startingBattingOrder", battingOrder);
+
     // 🔽 追加：スタメン情報（打順・守備位置）を初期記録として保存
     const initialOrder = battingOrder.map((entry, index) => {
       const position = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] ?? "－";
