@@ -1067,9 +1067,23 @@ ${reEntryOrder1 ?? "?"}番　${reEntryFromPlayer ? rubyFull(reEntryFromPlayer) :
             await localForage.setItem("battingOrder", newOrder);
 
             // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
-            const curAssignments = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
-            await localForage.setItem("lineupAssignments", curAssignments || assignments || {});
-            // setAssignments(curAssignments || assignments || {}) ←必要なら反映
+// 守備配置の現在値を取得
+const curAssignments =
+  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
+  || assignments || {};
+const newAssignments = { ...curAssignments };
+
+// B（リエントリー対象）の元ポジションを取得
+const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
+
+if (fromPos) {
+  // 元ポジションにBを割り当て
+  newAssignments[fromPos] = reEntryTargetPlayer.id;
+}
+
+// state とストレージを更新
+setAssignments(newAssignments);
+await localForage.setItem("lineupAssignments", newAssignments);
 
             // 3) 退場情報：元スタメン（B）の退場フラグ解除（= usedPlayerInfo から削除）
             const newUsed = { ...(usedPlayerInfo || {}) };
