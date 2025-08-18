@@ -776,13 +776,7 @@ const totalRuns = () => {
           ＯＫ
         </button>
 
-        {/* リエントリー（結果はこの画面に出す） */}
-        <button
-          onClick={handleReentryCheck}
-          className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
-        >
-          リエントリー
-        </button>
+
       </div>
 
       {/* ▼ ここに結果をその場表示 */}
