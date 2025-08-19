@@ -166,6 +166,14 @@ const App = () => {
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
   const [tiebreakMessage, setTiebreakMessage] = useState<string>("");
+// --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
+const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
+const ann = endGameAnnouncement ?? "";
+const bpIndex = ann.indexOf(BREAKPOINT_LINE);
+const beforeText = bpIndex >= 0 ? ann.slice(0, bpIndex + BREAKPOINT_LINE.length) : ann;
+const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : "";
+
+
   const handleSpeak = () => {
     if ('speechSynthesis' in window) {
       const msg = new SpeechSynthesisUtterance("この試合は、ただ今で打ち切り、継続試合となります。明日以降に中断した時点から再開いたします。あしからずご了承くださいませ。");
@@ -388,41 +396,66 @@ const App = () => {
         onChange={async (e) => {
           const value = e.target.value;
           if (value === "end") {
+            console.group("[END] その他→試合終了");
             const now = new Date();
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
             setEndTime(formatted);
-            
-            const team = await localForage.getItem("team") as { name: string };
-            const match = await localForage.getItem("matchInfo") as {
-              matchNumber: number;
-              scores: number[];
-              opponentTeam?: string;
-              isHome?: boolean; // ← これを追加
-            };
-            type Scores = {
-              [inning: number]: {
-                top?: number;
-                bottom?: number;
-              };
-            };
 
-            const scores = await localForage.getItem("scores") as {
-              [inning: number]: { top?: number; bottom?: number };
-            };
+            const team = (await localForage.getItem("team")) as { name?: string } | null;
+            // RAW で取得（別所で上書きされている可能性があるため）
+            const match = (await localForage.getItem("matchInfo")) as any;
+            console.log("matchInfo (RAW) =", match);
+            const stash = await localForage.getItem("matchNumberStash");
+    if (match && (match.matchNumber == null) && Number(stash) >= 1) {
+      await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
+      console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
+    }
 
-            const isHome = match?.isHome ?? true;
+            type Scores = { [inning: string]: { top?: number; bottom?: number } };
+            const scores = ((await localForage.getItem("scores")) as Scores) || {};
+            console.log("scores (RAW) =", scores);
+
+            const isHome: boolean = !!(match?.isHome ?? true);
+            console.log("isHome =", isHome);
+
+            const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
             const totalMyScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? s.bottom ?? 0 : s.top ?? 0;
-              return sum + Number(val);
+              const val = isHome ? (s?.bottom ?? 0) : (s?.top ?? 0);
+              return sum + toNum(val);
             }, 0);
+
             const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? s.top ?? 0 : s.bottom ?? 0; // 自分がホームなら相手は先攻（top）
-              return sum + Number(val);
+              const val = isHome ? (s?.top ?? 0) : (s?.bottom ?? 0);
+              return sum + toNum(val);
             }, 0);
-            const myTeam = team?.name || "自チーム";
-            const nextGame    = (match?.matchNumber ?? 1) + 1;
-            const currentGame =  match?.matchNumber ?? 1;
+
+            console.log("totals -> my:", totalMyScore, "opp:", totalOpponentScore);
+
+            const myTeam = team?.name ?? "自チーム";
+
+            // --- ここがポイント：試合番号の“自己修復”＋フォールバック ---
+            let rawMatchNumber = match?.matchNumber;
+
+            // A) matchInfo に無ければ、スタッシュから復元（後述の保存変更と対）
+            if (rawMatchNumber == null) {
+              const stash = await localForage.getItem("matchNumberStash");
+              if (Number(stash) >= 1) {
+                rawMatchNumber = Number(stash);
+                // ついでに matchInfo を自己修復（後続画面でも正しく使えるように）
+                const repaired = { ...(match || {}), matchNumber: rawMatchNumber };
+                await localForage.setItem("matchInfo", repaired);
+                console.log("💾 repaired matchInfo with matchNumber =", rawMatchNumber);
+              } else {
+                console.warn("⚠️ matchNumber not found (neither matchInfo nor stash)");
+              }
+            }
+
+            const parsed = Number(rawMatchNumber);
+            const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+            const nextGame = currentGame + 1;
+            console.log({ rawMatchNumber, currentGame, nextGame });
+
             if (totalMyScore > totalOpponentScore) {
               setEndGameAnnouncement(
                 `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
@@ -436,12 +469,11 @@ const App = () => {
                 `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
               );
               setShowEndGamePopup(true);
-            }
-            else{
+            } else {
               alert("試合終了しました");
             }
-
-          } else if (value === "tiebreak") {
+            console.groupEnd();
+          } else if (value === "continue") {
             const msg =
             "この試合は、◯回終了して同点のため、大会規定により◯死◯塁からのタイブレークに入ります。\n" +
             "◯回の表（裏）の攻撃は、\n" +
@@ -502,41 +534,66 @@ const App = () => {
         onChange={async (e) => {
           const value = e.target.value;
           if (value === "end") {
+            console.group("[END] その他→試合終了");
             const now = new Date();
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
             setEndTime(formatted);
-            
-            const team = await localForage.getItem("team") as { name: string };
-            const match = await localForage.getItem("matchInfo") as {
-              matchNumber: number;
-              scores: number[];
-              opponentTeam?: string;
-              isHome?: boolean; // ← これを追加
-            };
-            type Scores = {
-              [inning: number]: {
-                top?: number;
-                bottom?: number;
-              };
-            };
 
-            const scores = await localForage.getItem("scores") as {
-              [inning: number]: { top?: number; bottom?: number };
-            };
+            const team = (await localForage.getItem("team")) as { name?: string } | null;
+            // RAW で取得（別所で上書きされている可能性があるため）
+            const match = (await localForage.getItem("matchInfo")) as any;
+            const stash = await localForage.getItem("matchNumberStash");
+              if (match && (match.matchNumber == null) && Number(stash) >= 1) {
+                await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
+                console.log("🩹 repaired matchInfo at mount with matchNumber =", stash);
+              }
+            console.log("matchInfo (RAW) =", match);
 
-            const isHome = match?.isHome ?? true;
+            type Scores = { [inning: string]: { top?: number; bottom?: number } };
+            const scores = ((await localForage.getItem("scores")) as Scores) || {};
+            console.log("scores (RAW) =", scores);
+
+            const isHome: boolean = !!(match?.isHome ?? true);
+            console.log("isHome =", isHome);
+
+            const toNum = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
             const totalMyScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? s.bottom ?? 0 : s.top ?? 0;
-              return sum + Number(val);
+              const val = isHome ? (s?.bottom ?? 0) : (s?.top ?? 0);
+              return sum + toNum(val);
             }, 0);
+
             const totalOpponentScore = Object.values(scores).reduce((sum, s) => {
-              const val = isHome ? s.top ?? 0 : s.bottom ?? 0; // 自分がホームなら相手は先攻（top）
-              return sum + Number(val);
+              const val = isHome ? (s?.top ?? 0) : (s?.bottom ?? 0);
+              return sum + toNum(val);
             }, 0);
-            const myTeam = team?.name || "自チーム";
-            const nextGame    = (match?.matchNumber ?? 1) + 1;
-            const currentGame =  match?.matchNumber ?? 1;
+
+            console.log("totals -> my:", totalMyScore, "opp:", totalOpponentScore);
+
+            const myTeam = team?.name ?? "自チーム";
+
+            // --- ここがポイント：試合番号の“自己修復”＋フォールバック ---
+            let rawMatchNumber = match?.matchNumber;
+
+            // A) matchInfo に無ければ、スタッシュから復元（後述の保存変更と対）
+            if (rawMatchNumber == null) {
+              const stash = await localForage.getItem("matchNumberStash");
+              if (Number(stash) >= 1) {
+                rawMatchNumber = Number(stash);
+                // ついでに matchInfo を自己修復（後続画面でも正しく使えるように）
+                const repaired = { ...(match || {}), matchNumber: rawMatchNumber };
+                await localForage.setItem("matchInfo", repaired);
+                console.log("💾 repaired matchInfo with matchNumber =", rawMatchNumber);
+              } else {
+                console.warn("⚠️ matchNumber not found (neither matchInfo nor stash)");
+              }
+            }
+
+            const parsed = Number(rawMatchNumber);
+            const currentGame = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+            const nextGame = currentGame + 1;
+            console.log({ rawMatchNumber, currentGame, nextGame });
+
             if (totalMyScore > totalOpponentScore) {
               setEndGameAnnouncement(
                 `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
@@ -550,10 +607,10 @@ const App = () => {
                 `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
               );
               setShowEndGamePopup(true);
-            }
-            else{
+            } else {
               alert("試合終了しました");
             }
+            console.groupEnd();
           } else if (value === "continue") {
             setShowContinuationModal(true);
           } else if (value === "heat") {

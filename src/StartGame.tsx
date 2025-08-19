@@ -147,6 +147,16 @@ const StartGame = ({
     onStart(isFirstAttack);
   };
 
+  // 守備に就いている選手（投・捕・一…・指）
+  const assignedIds = Object.values(assignments)
+    .filter((v) => v !== null)
+    .map((v) => Number(v));
+
+  const dhId = (assignments as any)["指"] ?? null; // DHが使われているか
+  const pitcherId = (assignments as any)["投"] ?? null;
+  const pitcher = pitcherId ? players.find((p) => Number(p.id) === Number(pitcherId)) : undefined;
+
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 bg-gradient-to-b from-blue-50 via-white to-gray-50 min-h-screen">
       <h1 className="text-2xl sm:text-3xl font-bold text-center text-blue-800 mb-6 flex items-center justify-center gap-2">
@@ -200,6 +210,15 @@ const StartGame = ({
             </div>
           );
         })}
+        {dhId && pitcher && (
+          <div className="flex gap-2 mt-1">
+            <span className="w-8"></span>
+            <span className="w-10">投</span>
+            <span className="w-24">{pitcher.name}</span>
+            <span>#{pitcher.number}</span>
+          </div>
+        )}
+
       </div>
     </div>
 
@@ -210,7 +229,11 @@ const StartGame = ({
         {players
           .filter(
             (p) =>
+              // 打順に入っていない
               !battingOrder.some((entry) => entry.id === p.id) &&
+              // 守備にも就いていない（←ココを追加：投手などは控えに出ない）
+              !assignedIds.includes(p.id) &&
+              // ベンチ外でもない
               !benchOutIds.includes(p.id)
           )
           .map((player) => (

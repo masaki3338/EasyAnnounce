@@ -34,9 +34,9 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
 
       if (saved) {
         setTournamentName(saved.tournamentName ?? "");
-        setMatchNumber(saved.matchNumber ?? 1);
+        setMatchNumber(Number(saved.matchNumber ?? 1));
         setOpponentTeam(saved.opponentTeam ?? "");
-        setIsHome(saved.isHome ?? "先攻");
+        setIsHome(saved.isHome ? "後攻" : "先攻");
         setBenchSide(saved.benchSide ?? "1塁側");
 
         if (saved.umpires?.length === 4) {
@@ -83,6 +83,7 @@ const stopExchangeMessage = () => {
     };
 
     await localForage.setItem("matchInfo", matchInfo);
+    await localForage.setItem("matchNumberStash", matchNumber);
     alert("\u2705 試合情報を保存しました");
   };
 
@@ -112,17 +113,28 @@ const stopExchangeMessage = () => {
             />
             <div className="flex items-center space-x-2">
               <span className="text-lg">本日の</span>
-              <select
-                value={matchNumber}
-                onChange={(e) => setMatchNumber(Number(e.target.value))}
-                className="p-2 border rounded-lg text-lg"
-              >
-                {[1, 2, 3, 4, 5].map((num) => (
-                  <option key={num} value={num}>
-                    第{num}試合
-                  </option>
-                ))}
-              </select>
+             <select
+  value={matchNumber}
+  onChange={async (e) => {
+    const num = Number(e.target.value);
+    setMatchNumber(num);
+
+    // 既存：matchInfoへ即保存（マージ）
+    const existing = await localForage.getItem<any>("matchInfo");
+    await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
+
+    // ★ 追加：スタッシュにも保存（他画面で上書きされても復旧できる）
+    await localForage.setItem("matchNumberStash", num);
+
+    console.log("[MC:change] matchNumber saved →", num);
+  }}
+  className="p-2 border rounded-lg text-lg"
+>
+  {[1, 2, 3, 4, 5].map((num) => (
+    <option key={num} value={num}>第{num}試合</option>
+  ))}
+</select>
+
             </div>
           </div>
         </div>
@@ -230,6 +242,7 @@ const stopExchangeMessage = () => {
               teamName: team?.name ?? "" 
             };
             await localForage.setItem("matchInfo", matchInfo);
+            await localForage.setItem("matchNumberStash", matchNumber);
             onGoToLineup();
           }}
           className="w-full sm:w-auto px-6 py-4 bg-blue-600 text-white rounded-lg text-lg hover:bg-blue-700"

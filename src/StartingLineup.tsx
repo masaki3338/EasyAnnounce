@@ -7,6 +7,9 @@ import { TouchBackend } from 'react-dnd-touch-backend';
 
 
 const positions = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+// ▼ 追加（フィールド上の守備位置に含めないDHキー）
+const DH = "指"; // 守備位置キー
+const allSlots = [...positions, DH]; // 守備割当マップはDHも含めて扱う
 const positionNames: { [key: string]: string } = {
   投: "ピッチャー",
   捕: "キャッチャー",
@@ -17,6 +20,7 @@ const positionNames: { [key: string]: string } = {
   左: "レフト",
   中: "センター",
   右: "ライト",
+  指: "DH", 
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
@@ -29,6 +33,7 @@ const positionStyles: { [key: string]: React.CSSProperties } = {
   左: { top: "22%", left: "18%" },
   中: { top: "22%", left: "50%" },
   右: { top: "22%", left: "81%" },
+  指: { top: "88%", left: "82%" },
 };
 
 type Player = {
@@ -41,7 +46,7 @@ type Player = {
 const StartingLineup = () => {
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>(
-    Object.fromEntries(positions.map((p) => [p, null]))
+    Object.fromEntries(allSlots.map((p) => [p, null]))
   );
   const [battingOrder, setBattingOrder] = useState<
     { id: number; reason: "スタメン" }[]
@@ -57,33 +62,50 @@ const StartingLineup = () => {
     
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
   const loadInitialData = async () => {
     const team = await localForage.getItem<{ players: Player[] }>("team");
     setTeamPlayers(team?.players || []);
 
-    const savedBenchOut = await localForage.getItem<number[]>("benchOutIds"); // 🔽 ①追加
-    if (savedBenchOut) setBenchOutIds(savedBenchOut);                         // 🔽 ②追加
+    const savedBenchOut = await localForage.getItem<number[]>("benchOutIds");
+    if (savedBenchOut) setBenchOutIds(savedBenchOut);
 
-    const initialOrder = await localForage.getItem<{
-      id: number;
-      order: number;
-      position: string;
-    }[]>("initialBattingOrder");
+    // ✅ まず保存済みの完全な守備配置/打順から復元
+    const savedAssignments =
+      await localForage.getItem<{ [pos: string]: number | null }>("lineupAssignments");
+    const savedBattingOrder =
+      await localForage.getItem<{ id: number; reason: "スタメン" }[]>("battingOrder");
+
+    if (savedAssignments) {
+      // 欠けたキーに備えて全スロットを初期化してからマージ
+      const base = Object.fromEntries(allSlots.map((p) => [p, null])) as {
+        [pos: string]: number | null;
+      };
+      const merged = { ...base, ...savedAssignments };
+      setAssignments(merged);
+
+      if (savedBattingOrder && savedBattingOrder.length) {
+        setBattingOrder(savedBattingOrder.slice(0, 9));
+      }
+      return; // ← フォールバック不要
+    }
+
+    // ↙ フォールバック：初回保存時の初期記録から復元
+    const initialOrder = await localForage.getItem<
+      { id: number; order: number; position: string }[]
+    >("initialBattingOrder");
 
     if (initialOrder && initialOrder.length > 0) {
-      const newAssignments: { [pos: string]: number | null } = Object.fromEntries(
-        positions.map((p) => [p, null])
-      );
+      const newAssignments: { [pos: string]: number | null } =
+        Object.fromEntries(allSlots.map((p) => [p, null]));
       const newBattingOrder: { id: number; reason: "スタメン" }[] = [];
 
       for (const entry of initialOrder) {
         newAssignments[entry.position] = entry.id;
         newBattingOrder[entry.order - 1] = { id: entry.id, reason: "スタメン" };
       }
-
       setAssignments(newAssignments);
-      setBattingOrder(newBattingOrder);
+      setBattingOrder(newBattingOrder.slice(0, 9));
     }
   };
 
@@ -93,6 +115,7 @@ const StartingLineup = () => {
 
 useEffect(() => {
   if (battingOrder.length === 0) {
+    // 守備の並び（positions）順で素直に並べる。DHはここでは扱わない。
     const assignedIdsInOrder: number[] = [];
     for (const pos of positions) {
       const id = assignments[pos];
@@ -101,11 +124,12 @@ useEffect(() => {
       }
     }
     if (assignedIdsInOrder.length > 0) {
-      const trimmed = assignedIdsInOrder.slice(0, 9); // 最大9人
+      const trimmed = assignedIdsInOrder.slice(0, 9);
       setBattingOrder(trimmed.map((id) => ({ id, reason: "スタメン" })));
     }
   }
 }, [assignments]);
+
 
   const saveAssignments = async () => {
     await localForage.setItem("benchOutIds", benchOutIds);
@@ -127,7 +151,7 @@ useEffect(() => {
   };
 
   const clearAssignments = async () => {
-    const emptyAssignments = Object.fromEntries(positions.map((p) => [p, null]));
+    const emptyAssignments = Object.fromEntries(allSlots.map((p) => [p, null])); // ← 変更
     setAssignments(emptyAssignments);
     setBattingOrder([]);
     setBenchOutIds([]);
@@ -181,45 +205,109 @@ const handleDragStart = (
 };
 
 
-  const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
-    e.preventDefault();
-    
-    const playerIdStr =
+const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
+  e.preventDefault();
+
+  const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
-    const playerId = Number(playerIdStr);
+  const playerId = Number(playerIdStr);
 
-    // ── Android だと custom MIME が取れない事があるので補完 ──
-    let fromPos = e.dataTransfer.getData("fromPosition");
-    if (!fromPos) {
-      fromPos = Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "";
+  // fromPosが取れない端末用フォールバック
+  let fromPos = e.dataTransfer.getData("fromPosition");
+  if (!fromPos) {
+    fromPos = Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "";
+  }
+
+  const prevPlayerIdAtTo = assignments[toPos] ?? null;
+
+  // 次状態を先に組み立てて、打順更新にも使う
+  const next: { [pos: string]: number | null } = { ...assignments };
+
+  // 交換（from→to）
+  if (fromPos && fromPos !== toPos) {
+    next[fromPos] = prevPlayerIdAtTo; // 交換なのでtoに居た人をfromへ
+  }
+
+  // toPosがDHなら、同一選手が他の守備に入っていたら外す（重複禁止）
+  if (toPos === DH) {
+    for (const p of positions) {
+      if (next[p] === playerId) next[p] = null;
     }
-    const prevPlayerId = assignments[toPos];
+  }
 
-    setAssignments((prev) => {
-      const updated = { ...prev };
+  // toPosが守備位置なら、もし同一選手がDHに入っていたらDHを外す（重複禁止）
+  if (toPos !== DH && next[DH] === playerId) {
+    next[DH] = null;
+  }
 
-      if (fromPos && fromPos !== toPos) {
-        updated[fromPos] = prevPlayerId ?? null;  // 交換
-      }
+  // 最終的にtoへ配置
+  next[toPos] = playerId;
 
-      updated[toPos] = playerId;
-      return updated;
-    });
+  setAssignments(next);
 
-    setBattingOrder((prev) => {
-      const updated = [...prev];
-      const isNew = !updated.some((entry) => entry.id === playerId);
+  // 打順の更新：DHが居れば「投手の代わりにDH」
+  setBattingOrder((prev) => {
+    let updated = [...prev];
 
-      if (isNew && prevPlayerId !== null) {
-        const index = updated.findIndex((entry) => entry.id === prevPlayerId);
-        if (index !== -1) updated[index] = { id: playerId, reason: "スタメン" };
-      } else if (isNew) {
+    const dhId = next[DH] ?? null;
+    const pitcherId = next["投"] ?? null;
+
+    // まず、今回動かした選手がリストに居なければ追加（ただしDHが関わる移動は追加しない）
+    const isDHMove = toPos === DH || fromPos === DH;
+    if (!isDHMove && !updated.some((e) => e.id === playerId)) {
+      if (prevPlayerIdAtTo !== null) {
+        const idx = updated.findIndex((e) => e.id === prevPlayerIdAtTo);
+        if (idx !== -1) updated[idx] = { id: playerId, reason: "スタメン" };
+        else updated.push({ id: playerId, reason: "スタメン" });
+      } else {
         updated.push({ id: playerId, reason: "スタメン" });
       }
+    }
 
-      return updated;
-    });
-  };
+
+// ── DHルール（打順固定）：投手枠とDHの“中身だけ”入れ替える ──
+// ── DHルール（打順固定）：投手枠とDHの“中身だけ”入れ替える ──
+// 変更前のDHを退避（変数名を oldDhId として新規定義）
+const oldDhId = assignments[DH] ?? null;
+
+if (pitcherId) {
+  if (dhId) {
+    const pIdx = updated.findIndex((e) => e.id === pitcherId);
+    const dIdx = updated.findIndex((e) => e.id === dhId);
+
+    if (pIdx !== -1 && dIdx === -1) {
+      // DHが打順に未登場：投手の“その枠”をDHに差し替え（順序はそのまま）
+      updated[pIdx] = { id: dhId, reason: "スタメン" };
+    } else if (pIdx !== -1 && dIdx !== -1 && pIdx !== dIdx) {
+      // 既に両方が並んでいる：順序は固定で“IDだけ”入れ替え（スワップ）
+      const tmp = updated[pIdx].id;
+      updated[pIdx].id = updated[dIdx].id;
+      updated[dIdx].id = tmp;
+    }
+    // pIdx === -1（投手が打順にいない）は何もしない＝打順固定
+  } else if (oldDhId) {
+    // DHが外れた：打順上の“DHが居た枠”を投手に戻す（順序は変えない）
+    const dIdx = updated.findIndex((e) => e.id === oldDhId);
+    if (dIdx !== -1) {
+      updated[dIdx] = { id: pitcherId, reason: "スタメン" };
+    }
+  }
+}
+
+
+
+    // 重複除去 & 9人制限
+    const seen = new Set<number>();
+    updated = updated.filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    }).slice(0, 9);
+
+    return updated;
+  });
+};
+
 
   const getPositionOfPlayer = (playerId: number) => {
     return Object.entries(assignments).find(([_, id]) => id === playerId)?.[0];
@@ -246,9 +334,54 @@ const handleDragStart = (
 
 const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault();
-  const playerId = Number(e.dataTransfer.getData("playerId"));
+
+  const playerId = Number(
+    e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain")
+  );
+  const fromPos = e.dataTransfer.getData("fromPosition") || "";
+
+  // ① ベンチ外 → 控え（従来どおり）
   setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
+
+  // ② フィールド → 控え は「DH」だけ許可（他守備は何もしない）
+  if (fromPos !== DH) return;
+
+  // ③ DH を守備から外す
+  const oldDhId = assignments[DH] ?? null;         // 外す前のDH
+  if (oldDhId !== playerId) {
+    // 念のため：ドラッグ元と一致しない場合は何もしない
+    // （一致しなくても続けたい場合はこのifを消してOK）
+  }
+  const next = { ...assignments, [DH]: null };
+  setAssignments(next);
+
+  // ④ 打順（固定）：DHがいなくなったら投手を打順に入れる
+  setBattingOrder((prev) => {
+    let updated = [...prev];
+    const pitcherId = next["投"] ?? null;
+
+    if (pitcherId) {
+      // DHが打順に居た枠を特定して、その枠を投手に置換（順序は変えない）
+      const dIdx = oldDhId ? updated.findIndex((e) => e.id === oldDhId) : -1;
+      if (dIdx !== -1) {
+        updated[dIdx] = { id: pitcherId, reason: "スタメン" };
+      } else if (!updated.some((e) => e.id === pitcherId)) {
+        // 念のため：DHが打順に居なかったケース。投手が不在なら末尾に追加。
+        // （基本はdIdxが見つかるはず）
+        updated.push({ id: pitcherId, reason: "スタメン" });
+      }
+    }
+
+    // 重複除去 & 9人制限
+    const seen = new Set<number>();
+    updated = updated
+      .filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
+      .slice(0, 9);
+
+    return updated;
+  });
 };
+
 
 
   const handleDropToBattingOrder = (
@@ -280,13 +413,13 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
       <h1 className="text-2xl font-bold mb-4">スタメン設定（守備配置）</h1>
 
       {/* フィールド配置 */}
-            <div className="relative w-full max-w-2xl mx-auto mb-6">
+      <div className="relative w-full max-w-2xl mx-auto mb-6">
           <img
             src="/field.jpg"
             alt="フィールド図"
             className="w-full rounded shadow select-none pointer-events-none"
           />
-          {positions.map((pos) => {
+          {allSlots.map((pos) => {
             const playerId = assignments[pos];
             const player = teamPlayers.find((p) => p.id === playerId);
             return (
@@ -315,7 +448,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                     {player.lastName}{player.firstName} #{player.number}
                   </div>
                 ) : (
-                  <div className="text-gray-400">空き</div>
+                  <div className="text-gray-400">{pos === DH ? "DHなし" : "空き"}</div>
                 )}
 
               </div>
@@ -325,113 +458,113 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
       {/* 打順と控えを横並びに表示 */}
       {/* 控え選手 + 打順を縦並びに表示し、スマホでも最適化 */}
-<div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
 
-  {/* 🔼 控え選手（登録済みで未使用の選手） */}
-  <div>
-    <h2 className="text-xl font-semibold mb-2">控え選手</h2>
-    <div
-      className="flex flex-wrap gap-2 min-h-[60px] bg-white p-2 border border-gray-300 rounded"
-      onDragOver={allowDrop}
-      onDrop={handleDropToBench}
-    >
-      {teamPlayers
-        .filter((p) => !assignedIds.includes(p.id) && !benchOutIds.includes(p.id))
-        .map((p) => (
+        {/* 🔼 控え選手（登録済みで未使用の選手） */}
+        <div>
+          <h2 className="text-xl font-semibold mb-2">控え選手</h2>
           <div
-            key={p.id}
-            draggable
-            onDragStart={(e) => handleDragStart(e, p.id)}
-            className="px-2 py-1 bg-gray-200 rounded cursor-move select-none"
+            className="flex flex-wrap gap-2 min-h-[60px] bg-white p-2 border border-gray-300 rounded"
+            onDragOver={allowDrop}
+            onDrop={handleDropToBench}
           >
-            {p.lastName}
-            {p.firstName} #{p.number}
+            {teamPlayers
+              .filter((p) => !assignedIds.includes(p.id) && !benchOutIds.includes(p.id))
+              .map((p) => (
+                <div
+                  key={p.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, p.id)}
+                  className="px-2 py-1 bg-gray-200 rounded cursor-move select-none"
+                >
+                  {p.lastName}
+                  {p.firstName} #{p.number}
+                </div>
+              ))}
           </div>
-        ))}
-    </div>
-  </div>
-
-{/* 🔽 ベンチ外選手（横並び表示） */}
-<div>
-  <h2 className="text-xl font-semibold mb-2 text-red-600">ベンチ外選手</h2>
-  <div
-    className="flex flex-wrap gap-2 min-h-[60px] bg-gray-50 p-2 border border-red-400 rounded"
-    onDragOver={allowDrop}
-    onDrop={handleDropToBenchOut}
-  >
-    {benchOutPlayers.length === 0 ? (
-      <div className="text-gray-400">ベンチ外選手はいません</div>
-    ) : (
-      benchOutPlayers.map((p) => (
-        <div
-          key={p.id}
-          draggable
-          onDragStart={(e) => handleDragStart(e, p.id)}
-          className="px-2 py-1 bg-gray-100 text-gray-500 border rounded cursor-move select-none"
-        >
-          {p.lastName}{p.firstName} #{p.number}
         </div>
-      ))
-    )}
-  </div>
-</div>
 
-
-
-<div>
-  <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-    打順（1～9番）
-    <span className="text-xs font-bold text-red-500">
-      ※ドラッグ＆ドロップで変更可能
-    </span>
-  </h2>
-  <div className="space-y-2">
-    {battingOrder.map((entry, i) => {
-      const player = teamPlayers.find((p) => p.id === entry.id);
-      if (!player) return null;
-      const pos = getPositionOfPlayer(entry.id);
-
-      return (
+      {/* 🔽 ベンチ外選手（横並び表示） */}
+      <div>
+        <h2 className="text-xl font-semibold mb-2 text-red-600">ベンチ外選手</h2>
         <div
-          key={entry.id}
-          className="border p-2 bg-blue-100 rounded cursor-move"
-          draggable
-          onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
-          onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
+          className="flex flex-wrap gap-2 min-h-[60px] bg-gray-50 p-2 border border-red-400 rounded"
           onDragOver={allowDrop}
+          onDrop={handleDropToBenchOut}
         >
-          <div className="flex gap-2">
-            <span className="w-10 font-bold">{i + 1}番</span>
-            <span className="w-24">{pos ? positionNames[pos] : "控え"}</span>
-            <span className="w-28">{player.lastName}{player.firstName}</span>
-            <span className="w-12">#{player.number}</span>
-          </div>
+          {benchOutPlayers.length === 0 ? (
+            <div className="text-gray-400">ベンチ外選手はいません</div>
+          ) : (
+            benchOutPlayers.map((p) => (
+              <div
+                key={p.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, p.id)}
+                className="px-2 py-1 bg-gray-100 text-gray-500 border rounded cursor-move select-none"
+              >
+                {p.lastName}{p.firstName} #{p.number}
+              </div>
+            ))
+          )}
         </div>
-      );
-    })}
-  </div>
-</div>
-
-
-</div>
-
-
-<div className="mt-6 flex gap-6">
-  <button
-    className="bg-blue-600 text-white px-4 py-2 rounded"
-    onClick={saveAssignments}
-  >
-    保存する
-  </button>
-  <button
-    className="bg-red-500 text-white px-4 py-2 rounded"
-    onClick={clearAssignments}
-  >
-    クリア
-  </button>
-</div>
-      
       </div>
+
+
+
+      <div>
+        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+          打順（1～9番）
+          <span className="text-xs font-bold text-red-500">
+            ※ドラッグ＆ドロップで変更可能
+          </span>
+        </h2>
+        <div className="space-y-2">
+          {battingOrder.map((entry, i) => {
+            const player = teamPlayers.find((p) => p.id === entry.id);
+            if (!player) return null;
+            const pos = getPositionOfPlayer(entry.id);
+
+            return (
+              <div
+                key={entry.id}
+                className="border p-2 bg-blue-100 rounded cursor-move"
+                draggable
+                onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
+                onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
+                onDragOver={allowDrop}
+              >
+                <div className="flex gap-2">
+                  <span className="w-10 font-bold">{i + 1}番</span>
+                  <span className="w-24">{pos ? positionNames[pos] : "控え"}</span>
+                  <span className="w-28">{player.lastName}{player.firstName}</span>
+                  <span className="w-12">#{player.number}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+
+      </div>
+
+
+      <div className="mt-6 flex gap-6">
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+          onClick={saveAssignments}
+        >
+          保存する
+        </button>
+        <button
+          className="bg-red-500 text-white px-4 py-2 rounded"
+          onClick={clearAssignments}
+        >
+          クリア
+        </button>
+      </div>
+      
+    </div>
   );
 };
 

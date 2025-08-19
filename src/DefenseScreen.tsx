@@ -21,6 +21,7 @@ const positionStyles: { [key: string]: React.CSSProperties } = {
   左: { top: '22%', left: '17%' },
   中: { top: '22%', left: '50%' },
   右: { top: '22%', left: '80%' },
+  指: { top: '89%', left: '80%' },
 };
 
 const positions = Object.keys(positionStyles);
@@ -178,7 +179,7 @@ const handleReentryCheck = async () => {
   const aReason = battingOrder[pinchIdx]?.reason || "代打";
   const posJP: Record<string, string> = {
     "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
-    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト"
+    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト","指":"指名打者"
   };
 
   const aLabel = playerLabel(pinchId);
@@ -289,7 +290,7 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   current = 0;
   total = 0;
   setAnnounceMessages([
-    `ピッチャー${pitcherName}くん、`,
+    `ピッチャー${pitcherName}${pitcherSuffix}、`,
     `この回の投球数は0球です。`,
     `トータル0球です。`
   ]);
@@ -527,23 +528,42 @@ const totalRuns = () => {
     return p?.name ?? `${p?.lastName ?? ''}${p?.firstName ?? ''} #${p?.number}`;
   };
 
-  const handleSpeak = () => {
-    if (synthRef.current?.speaking) synthRef.current.cancel();
-    if (announceMessages.length === 0) return;
-    const text = announceMessages.join('。');
-    const utterance = new SpeechSynthesisUtterance(text);
-    utteranceRef.current = utterance;
-    synthRef.current.speak(utterance);
-  };
+  // ★ TTS用にテキストを整形（ふりがな優先＆用語の読みを固定）
+const normalizeForTTS = (input: string) => {
+  if (!input) return "";
+  let t = input;
 
-  const handlePitchLimitSpeak = () => {
-    if (synthRef.current?.speaking) synthRef.current.cancel();
-    if (pitchLimitMessages.length === 0) return;
-    const text = pitchLimitMessages.join('。');
-    const utterance = new SpeechSynthesisUtterance(text);
-    utteranceRef.current = utterance;
-    synthRef.current.speak(utterance);
-  };
+  // <ruby>表示</ruby> → 読み（かな）に置換
+  t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, "$2");
+
+  // 残りのタグは除去
+  t = t.replace(/<[^>]+>/g, "");
+
+  // 読みを固定したい語を差し替え
+  t = t.replace(/投球数/g, "とうきゅうすう");
+
+  return t;
+};
+
+const handleSpeak = () => {
+  if (synthRef.current?.speaking) synthRef.current.cancel();
+  if (announceMessages.length === 0) return;
+  const text = normalizeForTTS(announceMessages.join("。")); // ← ここを適用
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ja-JP"; // 明示
+  utteranceRef.current = utterance;
+  synthRef.current.speak(utterance);
+};
+
+const handlePitchLimitSpeak = () => {
+  if (synthRef.current?.speaking) synthRef.current.cancel();
+  if (pitchLimitMessages.length === 0) return;
+  const text = normalizeForTTS(pitchLimitMessages.join("。")); // ← 念のため適用
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ja-JP"; // 明示
+  utteranceRef.current = utterance;
+  synthRef.current.speak(utterance);
+};
 
 
   const handleStop = () => {

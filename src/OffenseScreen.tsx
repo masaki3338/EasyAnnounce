@@ -1,4 +1,5 @@
-import React, { useState, useEffect ,useRef} from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+
 import localForage from "localforage";
 
 import { DndProvider } from 'react-dnd';
@@ -78,6 +79,7 @@ const positionNames: { [key: string]: string } = {
   "左": "レフト",
   "中": "センター",
   "右": "ライト",
+  "指": "指名打者",  
 };
 
 
@@ -126,6 +128,31 @@ const rubyFull = (p: any) =>
   `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 const rubyLast = (p: any) =>
   `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+
+const headAnnounceKeyRef = useRef<string>("");
+
+// TTS用にHTMLをプレーンテキスト化（rubyは<rt>だけ残す）
+const normalizeForTTS = (input: string) => {
+  if (!input) return "";
+  let t = input;
+
+  // 典型: <ruby>山田<rt>やまだ</rt></ruby> → やまだ
+  t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
+
+  // rbタグ（使っていれば）: <rb>山田</rb><rt>やまだ</rt> の保険
+  t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
+
+  // 残ったタグは全除去
+  t = t.replace(/<[^>]+>/g, "");
+
+  // 連続空白を1つに
+  t = t.replace(/\s+/g, " ").trim();
+
+  // 読み固定が必要な語（必要に応じて追加）
+  t = t.replace(/投球数/g, "とうきゅうすう");
+
+  return t;
+};
 
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
 const findReentryCandidateForCurrentSpot = () => {
@@ -344,6 +371,42 @@ const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null
 const [showSubModal, setShowSubModal] = useState(false);
 const [selectedSubPlayer, setSelectedSubPlayer] = useState<any | null>(null);
 const [benchPlayers, setBenchPlayers] = useState<any[]>([]);
+// いま守備に就いている選手IDの集合
+const onFieldIds = useMemo(() => {
+  return new Set(
+    Object.values(assignments).filter((v): v is number => typeof v === "number")
+  );
+}, [assignments]);
+
+// 「出場済み」と見なす選手IDの集合（守備に就いている・打順に載っている・代打/代走も含む）
+const playedIds = useMemo(() => {
+  const s = new Set<number>();
+  onFieldIds.forEach((id) => s.add(id));                 // 守備で出場中
+  (battingOrder || []).forEach((e) => e?.id != null && s.add(e.id)); // 打順に載っている
+  const u = (usedPlayerInfo as Record<number, { subId?: number }>) || {};
+  Object.entries(u).forEach(([origIdStr, info]) => {     // 代打を出された元選手＆途中出場側も出場済みに
+    const origId = Number(origIdStr);
+    if (!Number.isNaN(origId)) s.add(origId);
+    if (typeof info?.subId === "number") s.add(info.subId);
+  });
+  return s;
+}, [onFieldIds, battingOrder, usedPlayerInfo]);
+
+// ベンチ選手を「出場可能」と「出場済み」に分割
+// ベンチ選手を「出場可能」と「出場済み」に分割（出場経験/現在出場中を考慮）
+const { activeBench, retiredBench } = useMemo(() => {
+  const active: any[] = [];
+  const retired: any[] = [];
+  benchPlayers.forEach((p) => {
+    const nowInBatting = (battingOrder || []).some(e => e?.id === p.id);
+    const nowOnField   = onFieldIds.has(p.id);
+    const hasPlayed    = playedIds.has(p.id) || nowInBatting || nowOnField;
+    (hasPlayed ? retired : active).push(p);
+  });
+  return { activeBench: active, retiredBench: retired };
+}, [benchPlayers, playedIds, onFieldIds, battingOrder]);
+
+
 const [showRunnerModal, setShowRunnerModal] = useState(false);
 const [isRunnerConfirmed, setIsRunnerConfirmed] = useState(false);
 const [runnerAnnouncement, setRunnerAnnouncement] = useState<string[]>([]);
@@ -461,8 +524,11 @@ const getAnnouncementName = (player: Player) => {
     : `${player.lastName ?? ""}${player.firstName ?? ""}`;
 };
 
-const announce = (text: string) => {
-  const utter = new SpeechSynthesisUtterance(text);
+const announce = (text: string | string[]) => {
+  const joined = Array.isArray(text) ? text.join("、") : text;
+  const plain = normalizeForTTS(joined);   // ★ ruby→かな、タグ除去、用語の読み補正
+  if (speechSynthesis.speaking) speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(plain);
   utter.lang = "ja-JP";
   speechSynthesis.speak(utter);
 };
@@ -1018,8 +1084,8 @@ useEffect(() => {
           className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6"
           dangerouslySetInnerHTML={{
             __html: `
-${teamName || "自チーム"}、　選手の交代をお知らせいたします。
-${reEntryOrder1 ?? "?"}番　${reEntryFromPlayer ? rubyFull(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして　${reEntryTargetPlayer ? rubyFull(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。
+${teamName || "自チーム"}、選手の交代をお知らせいたします。
+${reEntryOrder1 ?? "?"}番 ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。
 バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
             `.trim()
           }}
@@ -1034,12 +1100,13 @@ ${reEntryOrder1 ?? "?"}番　${reEntryFromPlayer ? rubyFull(reEntryFromPlayer) :
             const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
             const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
             const kanaAFull = `${reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || ""}${reEntryFromPlayer.firstNameKana || reEntryFromPlayer.firstName || ""}`;
+            const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
             const kanaBFull = `${reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || ""}${reEntryTargetPlayer.firstNameKana || reEntryTargetPlayer.firstName || ""}`;
             const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
             announce(
               `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
-              `${reEntryOrder1}番 ${kanaAFull}${honorA} に代わりまして ` +
-              `${kanaBFull}${honorB} がリエントリーで戻ります。` +
+              `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
+              `${kanaBLast}${honorB} がリエントリーで戻ります。` +
               `バッターは ${kanaBLast}${honorB}。`
             );
           }}
@@ -1067,34 +1134,69 @@ ${reEntryOrder1 ?? "?"}番　${reEntryFromPlayer ? rubyFull(reEntryFromPlayer) :
             await localForage.setItem("battingOrder", newOrder);
 
             // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
-// 守備配置の現在値を取得
-const curAssignments =
-  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
-  || assignments || {};
-const newAssignments = { ...curAssignments };
+            // 守備配置の現在値を取得
+            const curAssignments =
+              (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
+              || assignments || {};
+            const newAssignments = { ...curAssignments };
 
-// B（リエントリー対象）の元ポジションを取得
-const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
+            // B（リエントリー対象）の元ポジションを取得
+            const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
 
-if (fromPos) {
-  // 元ポジションにBを割り当て
-  newAssignments[fromPos] = reEntryTargetPlayer.id;
-}
+            if (fromPos) {
+              // 元ポジションにBを割り当て
+              newAssignments[fromPos] = reEntryTargetPlayer.id;
+            }
 
-// state とストレージを更新
-setAssignments(newAssignments);
-await localForage.setItem("lineupAssignments", newAssignments);
+            // state とストレージを更新
+            setAssignments(newAssignments);
+            await localForage.setItem("lineupAssignments", newAssignments);
 
-            // 3) 退場情報：元スタメン（B）の退場フラグ解除（= usedPlayerInfo から削除）
+            // 3) 退場情報：Aは「退場として残す」/ 元スタメンBは「退場解除」（= usedPlayerInfo から削除）
             const newUsed = { ...(usedPlayerInfo || {}) };
+
+            // Bの以前の記録（fromPosなど）を保険で拾っておく
+            const prevB = (usedPlayerInfo || {})[reEntryTargetPlayer.id] as
+              | { fromPos?: string; order?: number; subId?: number; wasStarter?: boolean }
+              | undefined;
+
+            // Aの fromPos を推定（Bの元ポジ or いまAが居た守備）
+            const fromPosForA =
+              prevB?.fromPos ||
+              (Object.entries(newAssignments).find(([, id]) => id === reEntryFromPlayer?.id)?.[0] ?? "");
+
+            // 🔴 A（交代で退場）をキーに退場記録を残す
+            if (reEntryFromPlayer) {
+              (newUsed as any)[reEntryFromPlayer.id] = {
+                fromPos: fromPosForA,
+                subId: reEntryTargetPlayer.id,     // AをBが置き換えた
+                reason: "リエントリー",
+                order: reEntryOrder1,              // 何番の話か
+                wasStarter: false,
+              };
+            }
+
+            // 🟢 B（元スタメン）は退場解除（＝usedから削除）
             delete (newUsed as any)[reEntryTargetPlayer.id];
+
             setUsedPlayerInfo(newUsed);
             await localForage.setItem("usedPlayerInfo", newUsed);
+
 
             // （任意）チーム配列にいなければ追加
             if (!players.some(p => p.id === reEntryTargetPlayer.id)) {
               setPlayers(prev => [...prev, reEntryTargetPlayer]);
             }
+
+            // B をベンチから除外し、A を未登録ならベンチに追加
+            setBenchPlayers(prev => {
+              const withoutB = prev.filter(p => p.id !== reEntryTargetPlayer.id);
+              if (reEntryFromPlayer && !withoutB.some(p => p.id === reEntryFromPlayer.id)) {
+                return [...withoutB, reEntryFromPlayer];
+              }
+              return withoutB;
+            });
+
 
             // 後片付け
             setShowReEntryModal(false);
@@ -1145,36 +1247,49 @@ await localForage.setItem("lineupAssignments", newAssignments);
         {/* 矢印 */}
         <div className="text-blue-600 text-3xl">⬅</div>
      {/* ベンチ選手（2段表示） */}
-{/* ベンチ選手（退場選手はグレースケール） */}
 
-      <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
-        
-        {benchPlayers.map((p) => {
-      console.log("🪑 benchPlayers", benchPlayers);
-      console.log("🗑️ usedPlayerInfo", usedPlayerInfo);
-
-          // 現役選手（battingOrderや守備にいる）以外、かつ退場記録あり→グレー
-          const isRetired =
-            (p.id in usedPlayerInfo) &&
-            !battingOrder.some(e => e.id === p.id) &&
-            !Object.values(assignments).some(id => id === p.id);
-
-          return (
-            <div
-              key={p.id}
-              onClick={() => !isRetired && setSelectedSubPlayer(p)}
-              className={`w-[22%] text-sm px-2 py-1 rounded border font-semibold text-center
-                ${isRetired
-                  ? "bg-gray-300 text-gray-500 line-through cursor-not-allowed"
-                  : selectedSubPlayer?.id === p.id
-                    ? "bg-yellow-200 border-yellow-600 cursor-pointer"
-                    : "bg-gray-100 border-gray-400 cursor-pointer"}`}
-            >
-              {p.lastName} {p.firstName} #{p.number}
-            </div>
-          );
-        })}
+{/* ベンチ（出場可能） */}
+<div className="w-full">
+  <div className="text-sm font-bold text-gray-600 mb-1">控え選手（出場可能）</div>
+  <div className="flex flex-wrap justify-center gap-2 mb-4 max-h-32 overflow-y-auto">
+    {activeBench.map((p) => (
+      <div
+        key={p.id}
+        onClick={() => setSelectedSubPlayer(p)}
+        className={`w-[22%] text-sm px-2 py-1 rounded border font-semibold text-center
+          ${selectedSubPlayer?.id === p.id
+            ? "bg-yellow-200 border-yellow-600 cursor-pointer"
+            : "bg-gray-100 border-gray-400 cursor-pointer"}`}
+      >
+        {p.lastName} {p.firstName} #{p.number}
       </div>
+    ))}
+    {activeBench.length === 0 && (
+      <div className="text-sm text-gray-500">出場可能なベンチ選手がいません</div>
+    )}
+  </div>
+</div>
+
+{/* 出場済み選手（別セクション） */}
+{retiredBench.length > 0 && (
+  <div className="w-full">
+    <div className="text-sm font-bold text-gray-600 mb-1">出場済み選手（出場不可）</div>
+    <div className="flex flex-wrap justify-center gap-2 max-h-32 overflow-y-auto">
+      {retiredBench.map((p) => (
+        <div
+          key={p.id}
+          className="w-[22%] text-sm px-2 py-1 rounded border font-semibold text-center
+                    bg-gray-300 text-gray-500 cursor-not-allowed"
+          title="出場済みのため選択不可"
+        >
+          {p.lastName} {p.firstName} #{p.number}
+        </div>
+
+      ))}
+    </div>
+  </div>
+)}
+
 
 
       </div>
@@ -1224,9 +1339,9 @@ await localForage.setItem("lineupAssignments", newAssignments);
               const kanaSubFull = `${sub.lastNameKana || sub.lastName || ""}${sub.firstNameKana || sub.firstName || ""}`;
               const kanaSubLast = sub.lastNameKana || sub.lastName || "";
               const honorific = sub.isFemale ? "さん" : "くん";
-
+              const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
               announce(
-                `${currentBatterIndex + 1}番 ${kanaCurrent} ${honorific} に代わりまして、` +
+                `${currentBatterIndex + 1}番 ${kanaCurrent} ${honorificBef} に代わりまして、` +
                 `${kanaSubFull} ${honorific}、バッターは ${kanaSubLast} ${honorific}、背番号 ${sub.number}`
               );
             }}
@@ -1443,7 +1558,7 @@ await localForage.setItem("lineupAssignments", newAssignments);
     {/* 🔹 選手選択 */}
     <h3 className="text-lg font-bold mb-2">代走として出す選手を選択</h3>
     <div className="grid grid-cols-2 gap-2 mb-4">
-      {benchPlayers.map((player) => {
+      {activeBench.map((player) => {
         const isUsed = Object.values(runnerAssignments).some(p => p?.id === player.id);
         const isSelected = runnerAssignments[selectedBase]?.id === player.id;
 
@@ -1456,25 +1571,42 @@ await localForage.setItem("lineupAssignments", newAssignments);
               const replaced = getPlayer(runnerId);
               const honorific = player.isFemale ? "さん" : "くん";
 
- // ルビ付きフルネーム生成
-const rubyName = (p) =>
-  `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
-  `<ruby>${p.firstName}<rt>${p.firstNameKana || ""}</rt></ruby>`;
- // ルビ付きファーストネーム生成
-const rubylastName = (p) =>
-  `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`;
-// 敬称
-const honorificFrom = replaced?.isFemale ? "さん" : "くん";
-const honorificTo   = player.isFemale ? "さん" : "くん";
+// ルビ付きラストネーム生成
+const rubyLastName = (p: any) =>
+  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
 
-setRunnerAnnouncement((prev) => {
-  const updated = prev.filter(msg => !msg.startsWith(`${selectedBase}ランナー`));
-  return [
-    ...updated,
-    `${selectedBase}ランナー ${rubylastName(replaced)}${honorificFrom} に代わりまして、` +
-    `${rubyName(player)}${honorificTo}、${selectedBase}ランナーは ${rubylastName(player)}${honorificTo}、背番号 ${player.number}`
-  ];
+// ルビ付きファーストネーム生成
+const rubyFirstName = (p: any) =>
+  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+
+// ルビ付きフルネーム生成
+const rubyFullName = (p: any) => `${rubyLastName(p)}${rubyFirstName(p)}`;
+
+// 敬称（replaced が未定義でも安全に）
+const honorificFrom = replaced?.isFemale ? "さん" : "くん";
+const honorificTo   = player?.isFemale ? "さん" : "くん";
+
+setRunnerAnnouncement((prev: string[]) => {
+  const prefix = `${selectedBase}ランナー`;
+  const updated = prev.filter((msg) => !msg.startsWith(prefix));
+
+  const fromName = replaced
+    ? `${rubyLastName(replaced)}${honorificFrom}`
+    : ""; // 置換元が無いケースも一応ケア
+
+  const toNameFull = `${rubyFullName(player)}${honorificTo}`;
+  const toNameLast = `${rubyLastName(player)}${honorificTo}`;
+
+  const text =
+    (fromName
+      ? `${prefix} ${fromName} に代わりまして、`
+      : `${prefix} に代わりまして、`) +
+    `${toNameFull}、` +
+    `${prefix}は ${toNameLast}、背番号 ${player.number}。`; // ← 句点を追加
+
+  return [...updated, text];
 });
+
 
               setRunnerAssignments(prev => ({ ...prev, [selectedBase]: player }));
               setReplacedRunners(prev => ({ ...prev, [selectedBase]: replaced }));

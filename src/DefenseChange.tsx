@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -62,6 +62,7 @@ const posNameToSymbol: Record<string, string> = {
   レフト: "左",
   センター: "中",
   ライト: "右",
+  指名打者: "指",
 };
 
 // ─────────────────────────────────────────────
@@ -120,7 +121,7 @@ const generateAnnouncementText = (
   /* ---------- 前処理 ---------- */
   const posJP: Record<string, string> = {
     投: "ピッチャー", 捕: "キャッチャー", 一: "ファースト", 二: "セカンド",
-    三: "サード",   遊: "ショート",     左: "レフト",   中: "センター",  右: "ライト"
+    三: "サード",   遊: "ショート",     左: "レフト",   中: "センター",  右: "ライト",   指: "指名打者", 
   };
   const reasonMap = Object.fromEntries(
     battingOrder.map(e => [e.id, e.reason])
@@ -162,7 +163,35 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
   const reasonText = info.reason === "代走" ? "代走" : "代打";
 
   // 1行目：希望フォーマット（句点なし）
-  result.push(`先ほど${reasonText}致しました${lastWithHonor(A)} に代わりまして、${lastWithHonor(B)} がリエントリーで ${posFull}、`);
+// ← ここから（新しい塊に置換してOK）
+{
+  // ★ 元スタメンB（origId）が “今” 入っている守備
+  const posNowSym2 = Object.entries(assignments).find(([k, v]) => v === origId)?.[0];
+  if (!posNowSym2) return;
+
+  const B2 = teamPlayers.find(p => p.id === origId);
+  const A2 = teamPlayers.find(p => p.id === info.subId);
+  if (!A2 || !B2) return;
+
+  const posFull2 = posJP[posNowSym2 as keyof typeof posJP];
+
+  // ★ 今回 B が実際に誰（C）から交代して入ったか
+  const replacedRec = replace.find(r => r.pos === posNowSym2 && r.to.id === B2.id);
+  const replaced = replacedRec?.from ?? null;
+
+  // ★ 文言：C がいれば C を相手に、無ければ従来どおり A を相手にする
+  let firstLine: string;
+  if (replaced && replaced.id !== A2.id) {
+    firstLine = `${lastWithHonor(replaced)} に代わりまして、${lastWithHonor(B2)} がリエントリーで ${posFull2}、`;
+  } else {
+    const reasonText = info.reason === "代走" ? "代走" : "代打";
+    firstLine = `先ほど${reasonText}致しました${lastWithHonor(A2)} に代わりまして、${lastWithHonor(B2)} がリエントリーで ${posFull2}、`;
+  }
+  result.push(firstLine);
+}
+// ← ここまで
+
+
 
   // 2行目：Bが入った位置から“どこへ動いたか”のシフトを拾う（あれば）
   const move = shift.find(s => s.fromPos === posNowSym);
@@ -482,7 +511,8 @@ if (pinchShiftLines.length > 0) {
 /* =========================================
   1) 代打・代走 → そのまま守備へ (samePosPinch)
 ========================================= */
-const pinchInSamePos: string[] = [];
+type PinchLine = { reason: "代打" | "代走"; text: string };
+const pinchInSamePos: PinchLine[] = [];
 
 battingOrder.forEach((entry, idx) => {
   const player = teamPlayers.find(p => p.id === entry.id);
@@ -496,27 +526,36 @@ battingOrder.forEach((entry, idx) => {
 
   if ((entry.reason === "代打" || entry.reason === "代走") && !wasReplaced && unchanged) {
     const honor = player.isFemale ? "さん" : "くん";
-    const ruby   = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>${honor}`;
-    const head   = pinchInSamePos.length === 0 ? "先ほど" : "同じく先ほど";
-    pinchInSamePos.push(`${head}${entry.reason}致しました${ruby} がそのまま入り ${posJP[pos]}`);
+    const ruby = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>${honor}`;
 
+    // 直前の行と理由（代打/代走）が同じなら「同じく先ほど」
+    // 違うなら毎回「先ほど」
+    const prev = pinchInSamePos[pinchInSamePos.length - 1];
+    const sameReason = prev ? prev.reason === entry.reason : false;
+    const head = pinchInSamePos.length === 0 ? "先ほど" : (sameReason ? "同じく先ほど" : "先ほど");
+
+    pinchInSamePos.push({
+      reason: (entry.reason === "代打" ? "代打" : "代走"),
+      text: `${head}${entry.reason}致しました${ruby} がそのまま入り ${posJP[pos]}`
+    });
+
+    // 打順行は従来どおり
     lineupLines.push({
       order: idx + 1,
-      text : `${idx + 1}番 ${posJP[pos]} ${ruby}`      
-    });
-    
+      text : `${idx + 1}番 ${posJP[pos]} ${ruby} 背番号 ${player.number}`
+    });    
   }
 });
 
-if (pinchInSamePos.length === 1) {
-  // ここでは句点を付けずに push
-  result.push(pinchInSamePos[0]);
+const pinchTexts = pinchInSamePos.map(p => p.text);
+if (pinchTexts.length === 1) {
+  result.push(pinchTexts[0]);
   skipHeader = true;
-} else if (pinchInSamePos.length > 1) {
-  // 複数行の場合も句点は付けない
-  result.push(pinchInSamePos.join("、\n"));
+} else if (pinchTexts.length > 1) {
+  result.push(pinchTexts.join("、\n"));
   skipHeader = true;
 }
+
 /* =========================================
   2) 代打・代走を含まない通常交代ロジック
 　========================================= */
@@ -550,7 +589,7 @@ if (!skipHeader) {
 const nextPosMap: Record<string, string> = { 二: "中", 中: "左", 左: "遊", 遊: "右" };
 
 // 守備位置の表示順序（昇順）
-const posOrder = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+const posOrder = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "指"];
 const posIndex = (pos: string) => posOrder.indexOf(pos);
 
 replace.sort((a, b) => posIndex(a.pos) - posIndex(b.pos));
@@ -824,6 +863,7 @@ const positionStyles: Record<string, React.CSSProperties> = {
   左: { top: "22%", left: "18%" },
   中: { top: "22%", left: "50%" },
   右: { top: "22%", left: "81%" },
+  指: { top: "88%", left: "82%" },
 };
 
 const positions = Object.keys(positionStyles);
@@ -862,6 +902,86 @@ type DefenseChangeProps = {
 
 const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   
+  // ---- ここから: モーダル読み上げ用（DefenseChange 内） ----
+const modalTextRef = useRef<HTMLDivElement | null>(null);
+
+// 置き換え版：漢字+ルビの重複は rt だけ読む／それ以外は通常テキストを読む
+const speakVisibleAnnouncement = () => {
+  const root = modalTextRef.current;
+  if (!root) return;
+
+  const toReadable = (node: Node): string => {
+    // ① プレーン文字はそのまま
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.nodeValue || "";
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+
+      // ② <ruby> は <rt> だけを抽出（漢字側は読まない）
+      if (tag === "ruby") {
+        const rts = el.getElementsByTagName("rt");
+        if (rts.length > 0) {
+          let s = "";
+          for (const rt of Array.from(rts)) s += rt.textContent || "";
+          return s;
+        }
+        // 万一 rt が無ければ中身をそのまま
+        return el.textContent || "";
+      }
+
+      // ③ <rt> / <rp> は <ruby>で処理するので個別には読まない
+      if (tag === "rt" || tag === "rp") return "";
+
+      // ④ 改行タグは改行として扱い（後で句点に正規化）
+      if (tag === "br") return "\n";
+
+      // ⑤ それ以外は子孫を順に読む
+      let acc = "";
+      el.childNodes.forEach((child) => { acc += toReadable(child); });
+      return acc;
+    }
+    return "";
+  };
+
+  // モーダル内の“見えているHTML”を変換
+  let text = toReadable(root);
+
+  // 正規化処理（追加）
+  text = text
+    .replace(/に入ります/g, "にはいります")
+    .replace(/へ入ります/g, "へはいります")
+    .replace(/が\s*入り/g, "がはいり")
+    .replace(/へ\s*入り/g, "へはいり")
+    .replace(/に\s*入り/g, "にはいり")
+    .replace(/そのまま\s*入り/g, "そのままはいり")
+    .replace(/に入ります/g, "にはいります")
+    .replace(/へ入ります/g, "へはいります");
+    speechSynthesis.cancel();
+    
+  // 軽い整形：連続空白/改行→読みやすい形に
+  text = text
+    .replace(/\u00A0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "。")
+    .replace(/。。+/g, "。")
+    .trim();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP";
+  u.rate = 1;
+  u.pitch = 1;
+  u.volume = 1;
+  speechSynthesis.speak(u);
+};
+
+
+  const stopSpeaking  = () => speechSynthesis.cancel();
+  const pauseSpeaking = () => speechSynthesis.pause();
+  const resumeSpeaking = () => speechSynthesis.resume();
+  // ---- ここまで ----
+
   const [teamName, setTeamName] = useState("自チーム");
 
   useEffect(() => {
@@ -1017,8 +1137,13 @@ const playedIds = React.useMemo(() => {
     if (typeof info?.subId === "number") s.add(info.subId); // ← 途中出場側も出場済み
   });
 
+   // ④ 先発（初期守備）の全員も「出場済み」に含める（投手交代でベンチに下がっても出場済み扱い）
+  Object.values(initialAssignments || {}).forEach((id) => {
+    if (typeof id === "number") s.add(id);
+  });
+  
   return s;
-}, [onFieldIds, battingOrder, usedPlayerInfo]);
+}, [onFieldIds, battingOrder, usedPlayerInfo, initialAssignments]);
 
 const benchNeverPlayed = React.useMemo(
   () => benchPlayers.filter((p) => !playedIds.has(p.id)),
@@ -1051,6 +1176,7 @@ let battingLogsBuffer: string[][] = []; // 一時的なログ格納用（map中�
   "左": "レフト",
   "中": "センター",
   "右": "ライト",
+  "指": "指名打者",
 };
 // フル表記（丸数字 + フル名）で表示する
 const withFull = (pos: string) => {
@@ -1069,6 +1195,7 @@ const posNum: Record<string, string> = {
   "左": "⑦",
   "中": "⑧",
   "右": "⑨",
+  "指": "DH",
 };
 const withMark = (pos: string) => `${posNum[pos] ?? ""}${pos}`;
 
@@ -1792,7 +1919,31 @@ const confirmChange = async () => {
     }
   });
 
-  await localForage.setItem("usedPlayerInfo", usedInfo);
+  // 🆕 リエントリー確定した元選手(B)の代打/代走痕跡を掃除する
+{
+  // いまフィールドに出ている選手の集合（数値IDだけ）
+  const onFieldIds = new Set(
+    Object.values(assignments).filter(
+      (v): v is number => typeof v === "number"
+    )
+  );
+
+  // usedPlayerInfo の「元選手B（キー）」側に 代打/代走 が残っていて、
+  // かつ B がフィールドに戻っている → リエントリー確定としてクリア
+  for (const [origIdStr, info] of Object.entries(usedInfo)) {
+    const origId = Number(origIdStr);
+    const reason = (info as any)?.reason as string | undefined;
+    if ((reason === "代打" || reason === "代走") && onFieldIds.has(origId)) {
+      (usedInfo as any)[origIdStr] = { ...(info as any), hasReentered: true };
+      delete (usedInfo as any)[origIdStr].reason;   // 代打/代走フラグを消す
+      delete (usedInfo as any)[origIdStr].subId;    // 代打/代走の相手の紐付けを消す
+      delete (usedInfo as any)[origIdStr].fromPos;  // 元ポジ情報も不要
+    }
+  }
+}
+// （この直後に既存の保存行が続く）
+await localForage.setItem("usedPlayerInfo", usedInfo);
+
   console.log("✅ 守備交代で登録された usedPlayerInfo：", usedInfo);
 
   // ---- 打順は「並びを固定」する：入替や移動では一切並べ替えない ----
@@ -1834,7 +1985,7 @@ const confirmChange = async () => {
 
   // 代打が守備に就いたら理由だけ“途中出場”に補正
   updatedOrder.forEach((entry, index) => {
-    if (entry.reason === "代打" && onFieldIds.has(entry.id)) {
+    if (["代打", "代走"].includes(entry?.reason) && onFieldIds.has(entry.id)) {
       updatedOrder[index] = { ...entry, reason: "途中出場" };
     }
   });
@@ -1922,10 +2073,8 @@ const confirmChange = async () => {
   alt="フィールド図"
   className="w-full rounded shadow pointer-events-none"
   draggable={false}
-/>
+/>  
   
-  
-  {/* 通常の描画（スタメンや通常交代） */}
 {/* 通常の描画（スタメンや通常交代） */}
 {positions.map((pos) => {
   const currentId = assignments[pos];
@@ -2116,6 +2265,33 @@ const confirmChange = async () => {
   );
 })}
 
+{(() => {
+  const dhId = assignments["指"] ?? null;
+  const pitcherId = assignments["投"] ?? null;
+
+  // DH運用中 ＆ 投手が打順に含まれていない場合のみ表示
+  const pitcherIsInBattingOrder = battingOrder.some((e) => e.id === pitcherId);
+
+  if (dhId && pitcherId && !pitcherIsInBattingOrder) {
+    const p = teamPlayers.find((tp) => tp.id === pitcherId);
+    if (!p) return null;
+
+    return (
+      <li key="pitcher-under-9" className="border px-2 py-1 rounded bg-white">
+        <div className="flex items-start gap-2">
+          {/* 番号欄は空白にして 9番の“下”として見せる */}
+          <span className="w-8" />
+          <div>
+            {/* 形式：守備位置「投」　選手名　#背番号 */}
+            投　{p.lastName}{p.firstName} #{p.number}
+          </div>
+        </div>
+      </li>
+    );
+  }
+  return null;
+})()}
+
 
     </ul>
   </div>
@@ -2156,40 +2332,39 @@ const confirmChange = async () => {
               )
             };
           }
+          
+          if (isPinchHitter && playerChanged && currentPos) {
+            const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
+            const replacedPlayer = replaced;
 
-if (isPinchHitter && playerChanged && currentPos) {
-  const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
-  const replacedPlayer = replaced;
+            return {
+              key: `pinch-replaced-${index}`,
+              type: 1,
+              pos: currentPos,
+              jsx: (
+                <li key={`pinch-replaced-${index}`}>
+                  代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
+                </li>
+              )
+            };
+          }
 
-  return {
-    key: `pinch-replaced-${index}`,
-    type: 1,
-    pos: currentPos,
-    jsx: (
-      <li key={`pinch-replaced-${index}`}>
-        代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
-      </li>
-    )
-  };
-}
-
-if (isPinchHitter && currentPos) {
-  // 🆕 replacedが未定義でも代打選手が存在するなら補完
-  if (!replaced) {
-    replaced = teamPlayers.find(p => p.id === entry.id);
-  }
-  return {
-    key: `pinch-assigned-${index}`,
-    type: 1,
-    pos: currentPos,
-    jsx: (
-      <li key={`pinch-assigned-${index}`}>
-        代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
-      </li>
-    )
-  };
-}
-
+          if (isPinchHitter && currentPos) {
+            // 🆕 replacedが未定義でも代打選手が存在するなら補完
+            if (!replaced) {
+              replaced = teamPlayers.find(p => p.id === entry.id);
+            }
+            return {
+              key: `pinch-assigned-${index}`,
+              type: 1,
+              pos: currentPos,
+              jsx: (
+                <li key={`pinch-assigned-${index}`}>
+                  代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
+                </li>
+              )
+            };
+          }
 
           if (isPinchRunner && replaced) {
             return {
@@ -2233,6 +2408,36 @@ if (isPinchHitter && currentPos) {
 
           return null;
         }).filter(Boolean) as { key: string; type: number; pos: string; jsx: JSX.Element }[];
+
+        // --- 追加: DHありで打順に投手が居ないケースでも投手交代を表示する ---
+(() => {
+  const initP = initialAssignments?.["投"];
+  const curP  = assignments?.["投"];
+
+  // 両方とも数値で、かつ別人、かつ既に投手の行が無いときだけ追加
+  if (
+    typeof initP === "number" &&
+    typeof curP === "number" &&
+    initP !== curP &&
+    !changes.some(c => c.pos === "投")
+  ) {
+    const from = teamPlayers.find(p => p.id === initP);
+    const to   = teamPlayers.find(p => p.id === curP);
+    if (from && to) {
+      changes.push({
+        key: "pitcher-change-extra",
+        type: 3,             // 通常の「交代」扱い
+        pos: "投",
+        jsx: (
+          <li key="pitcher-change-extra">
+            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
+            {" "}➡ {withFull("投")}：{to.lastName}{to.firstName} #{to.number}
+          </li>
+        ),
+      });
+    }
+  }
+})();
 
         // 優先順位に従ってソート
         changes.sort((a, b) => {
@@ -2280,26 +2485,31 @@ if (isPinchHitter && currentPos) {
      {announcementText && (
        <div className="flex-1 mt-4 px-4 py-3 border rounded bg-white overflow-y-auto">
     <div
+      ref={modalTextRef} 
       className="text-red-600 text-lg font-bold whitespace-pre-wrap"
       dangerouslySetInnerHTML={{ __html: announcementText }}
     />
   </div>
 )}
 
-      <div className="flex justify-center gap-4 mb-4">
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-          onClick={handleSpeak}
-        >
-          音声読み上げ
-        </button>
-        <button
-          className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
-          onClick={handleStop}
-        >
-          音声停止
-        </button>
-      </div>
+{/* いつでも見える操作フッター */}
+<div className="sticky bottom-0 left-0 right-0 bg-white pt-3 pb-2">
+  <div className="flex justify-center gap-4">
+    <button
+      onClick={speakVisibleAnnouncement}
+      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+    >
+      読み上げ
+    </button>
+    <button
+      onClick={stopSpeaking}
+      className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+    >
+      停止
+    </button>
+  </div>
+</div>
+
 
       <button
         className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full"
