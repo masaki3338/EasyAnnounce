@@ -707,7 +707,7 @@ const handlePitchLimitSpeak = () => {
               minWidth: '80px' 
             }}
           >
-            {playerNameNum ?? <span className="text-gray-300">空き</span>}
+            {playerNameNum ?? <span className="text-gray-300">DHなし</span>}
           </div>
           );
         })}

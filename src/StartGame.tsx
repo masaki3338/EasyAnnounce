@@ -143,6 +143,10 @@ const StartGame = ({
       "3塁": null,
     });
 
+    // ✅ 試合開始時のDH有無を保存
+    const dhEnabledAtStart = Boolean((assignments as any)?.["指"]);
+    await localForage.setItem("dhEnabledAtStart", dhEnabledAtStart);
+
     // 🏁 試合開始（攻撃または守備画面へ）
     onStart(isFirstAttack);
   };

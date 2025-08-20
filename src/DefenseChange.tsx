@@ -575,7 +575,7 @@ if (!skipHeader) {
     result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
   } else if (result.length === 0) {
     if (hasMixed || (hasReplace && hasShift)) {
-      result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします.`);
+      result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
     } else if (hasReplace) {
       result.push(`${teamName}、選手の交代をお知らせいたします。`);
     } else if (hasShift) {
@@ -618,19 +618,20 @@ replace.forEach((r) => {
   handledPlayerIds.add(r.to.id);
   handledPositions.add(r.pos);
 
-  // ✅ lineupLines 重複防止付き追加
-  if (!lineupLines.some(l =>
-    l.order === r.order &&
-    l.text.includes(posJP[r.pos])
-  )) {
-    const isReentryTo = reentryToIds.has(r.to.id);
-    lineupLines.push({
-      order: r.order,
-      text: isReentryTo
-        ? `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
-        : `${r.order}番 ${posJP[r.pos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
-    });
-  }
+// ✅ lineupLines 重複防止付き追加
+if (r.order > 0 && !lineupLines.some(l =>
+  l.order === r.order &&
+  l.text.includes(posJP[r.pos])
+)) {
+  const isReentryTo = reentryToIds.has(r.to.id);
+  lineupLines.push({
+    order: r.order,
+    text: isReentryTo
+      ? `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+      : `${r.order}番 ${posJP[r.pos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+  });
+}
+
 
 });
 
@@ -665,19 +666,20 @@ mixed.forEach((r, i) => {
     i === mixed.length - 1 && shift.length === 0
   );
 
-  // ✅ lineupLines（重複防止付き）
-  if (!lineupLines.some(l =>
-    l.order === r.order &&
-    l.text.includes(posJP[r.toPos])
-  )) {
-    const isReentryTo = reentryToIds.has(r.to.id);
-    lineupLines.push({
-      order: r.order,
-      text: isReentryTo
-        ? `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
-        : `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
-    });
-  }
+// ✅ lineupLines（重複防止付き）
+if (r.order > 0 && !lineupLines.some(l =>
+  l.order === r.order &&
+  l.text.includes(posJP[r.toPos])
+)) {
+  const isReentryTo = reentryToIds.has(r.to.id);
+  lineupLines.push({
+    order: r.order,
+    text: isReentryTo
+      ? `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
+      : `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+  });
+}
+
 
 
   // ✅ 処理済みフラグ：選手IDは両方、ポジションは「移動先」だけ
@@ -776,47 +778,38 @@ sortedShift.forEach((s, i) => {
 // ・末尾が「…が ポジション、」なら「…が ポジション に入ります。」
 // ・末尾が「…へ、」/「…に、」なら「…へ入ります。」/「…に入ります。」
 // ・それ以外で「、」なら「 が入ります。」を付与
+// ==== 本文終端の統一：最後の1本だけを「正しい日本語」で閉じる ====
+// ・「…が入り ポジション（へ|に）?」 → 「…が入り ポジション。」
 if (!suppressTailClose) {
   for (let i = result.length - 1; i >= 0; i--) {
     const line = result[i].trim();
 
-    // 打順や「以上に代わります。」は対象外
+    // 打順行／「以上に代わります。」は対象外
     if (/^\d+番 /.test(line)) continue;
     if (line.endsWith("以上に代わります。")) continue;
 
-    // 👇 追加：代打そのまま守備入り（pinchInSamePos）の場合は対象外
-    if (/そのまま入り/.test(line) && !/へ$/.test(line) && !/に$/.test(line)) {
-      break; // 何も付けずに終了
-    }
+    // 代打そのまま守備入りは変更しない
+    if (/そのまま入り/.test(line) && !/[へに]$/.test(line)) break;
 
-    // 🆕 リエントリー行の終端を「◯◯ に入ります。」に正規化
-    const reentryPattern =
-      /(リエントリーで)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/;
-    if (reentryPattern.test(line)) {
-      result[i] = line.replace(reentryPattern, (_m, re, pos) => `${re} ${pos} に入ります。`);
+    // ★ NEW: 「…が入り ポジション（へ|に）?」 → 「…が入り ポジション。」
+    const gaIriPos =
+      /(が\s*入り)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*(?:へ|に)?\s*[、。]?$/;
+    if (gaIriPos.test(line)) {
+      result[i] = line.replace(gaIriPos, (_m, head, pos) => `${head} ${pos}。`);
       break;
     }
 
+    // （必要に応じて）リエントリー行など他パターンの終端調整が続く場合はここに保持
 
-    const posPattern = /(が)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/;
-    if (posPattern.test(line)) {
-      result[i] = line.replace(posPattern, (_m, ga, pos) => `${ga} ${pos} に入ります。`);
-      break;
-    }
-
-    if (/[へに]\s*、?$/.test(line)) {
-      result[i] = line.replace(/([へに])\s*、?$/, "$1入ります。");
-      break;
-    }
-
-    if (line.endsWith("に入ります。") || line.endsWith("が入ります。")) {
-      break;
-    }
-
+    // 末尾が読点のみなら安全に閉じる
     if (line.endsWith("、")) {
-      result[i] = line.slice(0, -1) + " が入ります。";
-    } else {
-      result[i] = line + " が入ります。";
+      result[i] = line.slice(0, -1) + "。";
+      break;
+    }
+    // 何も句点が無い場合だけ句点を足す
+    if (!/[。]$/.test(line)) {
+      result[i] = line + "。";
+      break;
     }
     break;
   }
@@ -824,16 +817,20 @@ if (!suppressTailClose) {
 
 
 
+
 /* ---- 打順行を最後にまとめて追加 ---- */
-const already = new Set(result); // 既に出した行を記録
+const already = new Set(result);
+
 lineupLines
+  .filter(l => l.order > 0)       // ★ 0番は表示しない
   .sort((a, b) => a.order - b.order)
-  .forEach(l => {
+  .forEach((l) => {
     if (!already.has(l.text)) {
       result.push(l.text);
       already.add(l.text);
     }
   });
+
 
   /* ---- 「以上に代わります。」判定 ---- */
   const total = replace.length + shift.length + mixed.length;
@@ -1000,6 +997,10 @@ const speakVisibleAnnouncement = () => {
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [dhEnabledAtStart, setDhEnabledAtStart] = useState<boolean>(false);
+  // DH解除を確定時にまとめて適用するための保留フラグ
+  const [pendingDisableDH, setPendingDisableDH] = useState(false);
+  const [dhDisableDirty, setDhDisableDirty] = useState(false);
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
@@ -1018,6 +1019,40 @@ const [reentryInfos, setReentryInfos] = useState<ReentryEntry[]>([]);
   // 先発（画面オープン時にフィールドにいた）かどうか
   const isStarter = (playerId?: number | null) =>
     playerId != null && Object.values(initialAssignments || {}).includes(playerId);
+
+useEffect(() => {
+  (async () => {
+    const stored = await localForage.getItem("dhEnabledAtStart");
+    setDhEnabledAtStart(Boolean(stored));
+  })();
+}, []);
+
+const handleDisableDH = async () => {
+  const dhId = assignments?.["指"] ?? null;
+  const pitcherId = assignments?.["投"] ?? null;
+
+  if (!dhId) { window.alert("現在DHは使用していません。"); return; }
+  if (!pitcherId) { window.alert("投手が未設定です。先に投手を設定してください。"); return; }
+
+  // DHが打順のどこにいるか
+  const idx = battingOrder.findIndex(e => e.id === dhId);
+  if (idx === -1) { window.alert("打順に指名打者が見つかりませんでした。"); return; }
+
+  // ① 守備の「指」を空欄にしてDHなし表示へ（＝9番下の投手行も消える）
+  setAssignments(prev => ({ ...prev, "指": null }));
+
+  // ② 以後“指”にD&DできないUIガードや未保存フラグ
+  setDhEnabledAtStart(false);
+  setDhDisableDirty(true);
+
+  // ③ 打順は触らない！ 下段の赤字表示だけ作る（=投手を交代者として見せる）
+  const p = teamPlayers.find(tp => tp.id === pitcherId);
+  if (p) setBattingReplacements(prev => ({ ...prev, [idx]: p }));
+
+  // ※ 保存(localForage)はここでは行わず、「交代を確定する」で反映
+};
+
+
 
 
 useEffect(() => {
@@ -1204,9 +1239,6 @@ const announcementText = useMemo(() => {
 // --- リエントリー専用（複数件対応） ---
 let reentryLines: string[] = [];
 
-
-
-
   const changes: ChangeRecord[] = [];
 
   battingOrder.forEach((entry, index) => {
@@ -1271,6 +1303,36 @@ let reentryLines: string[] = [];
     }
   });
 
+// --- 追加: 投手⇄投手の交代（DHで打順に投手がいないケースの補完）---
+(() => {
+  // ★ ここを追加：DHが有効のときだけ補完を走らせる
+  const dhActiveNow = !!assignments?.["指"];
+  if (!dhActiveNow) return;
+
+  const initP = initialAssignments?.["投"];
+  const curP  = assignments?.["投"];
+
+  if (
+    typeof initP === "number" &&
+    typeof curP === "number" &&
+    initP !== curP &&
+    !changes.some(r => r.type === "replace" && r.pos === "投")
+  ) {
+    const from = teamPlayers.find(p => p.id === initP);
+    const to   = teamPlayers.find(p => p.id === curP);
+    if (from && to) {
+      changes.push({
+        type: "replace",
+        order: 0,      // （DH運用中のみ）打順外として補完
+        from,
+        to,
+        pos: "投",
+      });
+    }
+  }
+})();
+
+
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
 // 既存：通常のアナウンス文
@@ -1283,10 +1345,31 @@ const normalText = generateAnnouncementText(
   initialAssignments,
   usedPlayerInfo
 );
+// ★ 追加：DH解除押下中は、ヘッダー行の「直後」に告知文を挿入する
+const injectDhDisabledAfterHeader = (txt: string) => {
+  if (!dhDisableDirty) return txt;
+
+  const lines = txt.split("\n");
+  // ヘッダー行（…お知らせいたします。／.）を探す
+  const headerIdx = lines.findIndex((l) =>
+    /お知らせいたします[。.]$/.test(l.trim())
+  );
+  if (headerIdx >= 0) {
+    lines.splice(headerIdx + 1, 0, "ただいまより、指名打者制を解除します。");
+    return lines.join("\n");
+  }
+  // ヘッダーが見つからなければ先頭に付ける（保険）
+  return `ただいまより、指名打者制を解除します。\n${txt}`;
+};
+
+// ★ 追加：DH解除ボタン押下中は、先頭に告知文を付加する
+const addDhDisabledHeader = (txt: string) =>
+  dhDisableDirty ? `ただいまより、指名打者制を解除します。\n${txt}` : txt;
 
 // 既存と合体（リエントリーなしなら通常だけ返す）
 if (reentryLines.length === 0) {
-  return normalText;
+  return injectDhDisabledAfterHeader(normalText);
+
 }
 
 // 1) 通常側のヘッダーは削除（リエントリー行ですでに案内済み）
@@ -1864,6 +1947,8 @@ setBattingReplacements((prev) => {
     return filteredLogs.filter((_, idx) => !toRemove.has(idx));
   };
 
+
+  
 //**************// 
 //　確定ボタン　 //
 //**************// 
@@ -1879,6 +1964,32 @@ const confirmChange = async () => {
       wasStarter: boolean;
     }
   > = (await localForage.getItem("usedPlayerInfo")) || {};
+
+    // ▼ ここから追加：確定時に最終状態を作る（DH解除をここで反映）
+  let finalAssignments = { ...assignments };
+  let finalBattingOrder = [...battingOrder];
+  let finalDhEnabledAtStart = dhEnabledAtStart;
+
+  if (pendingDisableDH) {
+    const dhId = finalAssignments["指"];
+    const pitcherId = finalAssignments["投"];
+
+    if (typeof dhId === "number" && typeof pitcherId === "number") {
+      const idx = finalBattingOrder.findIndex(e => e.id === dhId);
+      if (idx !== -1) {
+        // 指名打者の打順を投手に置換
+        finalBattingOrder[idx] = { id: pitcherId, reason: "スタメン" };
+      }
+    } else {
+      window.alert("DH解除に必要な情報（指名打者 or 投手）が不足しています。");
+      return; // 不整合は保存しない
+    }
+
+    // 守備の「指」を空にしてDHなしへ
+    finalAssignments["指"] = null;
+    finalDhEnabledAtStart = false; // 以後“指”へのD&Dは禁止・9番下の投手表示も出なくなる
+  }
+  // ▲ ここまで追加
 
   // ★ ここで一度だけ取得（ループ内で await しない）
   const startingOrder: Array<{ id: number; reason?: string }> =
@@ -2010,6 +2121,7 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   await localForage.setItem("lineupAssignments", assignments);
   await localForage.setItem("battingReplacements", battingReplacements);
   await localForage.setItem("battingOrder", updatedOrder);
+  await localForage.setItem("dhEnabledAtStart",  dhEnabledAtStart);
 
   console.log("[CONFIRM] 守備交代確定後の battingOrder:");
   console.table(updatedOrder);
@@ -2115,8 +2227,8 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   <div
       key={pos}
       
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => handleDrop(pos, e)}
+      onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
+      onDrop={(e) => { if (pos !== "指" || dhEnabledAtStart) handleDrop(pos, e); }}
       className={className}
       style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10 }}
     >
@@ -2130,7 +2242,7 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
       {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
     </div>
   ) : (
-    <span className="text-gray-300 text-base">空き</span>
+    <span className="text-gray-300 text-base">DHなし</span>
   )}
     </div>
   );
@@ -2145,7 +2257,7 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
 </div>
 <div
   className="flex flex-col gap-2 mb-6"
-  onDragOver={(e) => e.preventDefault()}
+  onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
   onDrop={(e) => handleDrop(BENCH, e)}
 >
   {/* 未出場の控え */}
@@ -2266,31 +2378,63 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
 })}
 
 {(() => {
-  const dhId = assignments["指"] ?? null;
-  const pitcherId = assignments["投"] ?? null;
+  // DHが使われていなければ出さない
+  const dhActive = !!assignments["指"];
+  if (!dhActive) return null;
 
-  // DH運用中 ＆ 投手が打順に含まれていない場合のみ表示
-  const pitcherIsInBattingOrder = battingOrder.some((e) => e.id === pitcherId);
+  // 先発（試合開始時）の投手IDを基準に表示
+  const starterPitcherId =
+    typeof initialAssignments?.["投"] === "number"
+      ? (initialAssignments["投"] as number)
+      : null;
+  if (!starterPitcherId) return null;
 
-  if (dhId && pitcherId && !pitcherIsInBattingOrder) {
-    const p = teamPlayers.find((tp) => tp.id === pitcherId);
-    if (!p) return null;
+  // 先発投手が打順に含まれているときは出さない（DH時のみ表示）
+  const inBatting = battingOrder.some((e) => e.id === starterPitcherId);
+  if (inBatting) return null;
 
-    return (
-      <li key="pitcher-under-9" className="border px-2 py-1 rounded bg-white">
-        <div className="flex items-start gap-2">
-          {/* 番号欄は空白にして 9番の“下”として見せる */}
-          <span className="w-8" />
-          <div>
-            {/* 形式：守備位置「投」　選手名　#背番号 */}
-            投　{p.lastName}{p.firstName} #{p.number}
-          </div>
+  // 現在の投手（控えから交代後を含む）
+  const currentPitcherId =
+    typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
+
+  const oldP = teamPlayers.find((p) => p.id === starterPitcherId);
+  const newP = currentPitcherId
+    ? teamPlayers.find((p) => p.id === currentPitcherId)
+    : undefined;
+  if (!oldP) return null;
+
+  // 交代が起きたか？（先発投手IDと現在投手IDが異なる）
+  const replaced = !!newP && currentPitcherId !== starterPitcherId;
+
+  return (
+    <li key="pitcher-under-9" className="border px-2 py-1 rounded bg-white">
+      <div className="flex items-start gap-2">
+        {/* 番号欄は空白にして 9番の“下”として見せる */}
+        <span className="w-8" />
+        <div>
+          {replaced ? (
+            <>
+              {/* 上段：交代前（取り消し線・グレー） */}
+              <div className="line-through text-gray-500 text-sm">
+                投　{oldP.lastName}{oldP.firstName} #{oldP.number}
+              </div>
+              {/* 下段：交代後（赤太字） */}
+              <div className="text-red-600 font-bold">
+                投　{newP!.lastName}{newP!.firstName} #{newP!.number}
+              </div>
+            </>
+          ) : (
+            // 交代なしは1行表示
+            <div>
+              投　{oldP.lastName}{oldP.firstName} #{oldP.number}
+            </div>
+          )}
         </div>
-      </li>
-    );
-  }
-  return null;
+      </div>
+    </li>
+  );
 })()}
+
 
 
     </ul>
@@ -2462,6 +2606,17 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   >
     交代を確定する
   </button>
+
+<button
+  type="button"
+  onClick={handleDisableDH}
+  disabled={!assignments?.["指"]}
+  className="bg-gray-800 text-white px-6 py-2 rounded disabled:bg-gray-300"
+>
+  DH解除
+</button>
+
+
 
   <button
     onClick={showAnnouncement}

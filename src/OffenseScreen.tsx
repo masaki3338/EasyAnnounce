@@ -112,6 +112,23 @@ const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
 const [showGroundPopup, setShowGroundPopup] = useState(false);
 const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
+// 🔸 DH解除モーダル表示フラグ
+const [showDhDisableModal, setShowDhDisableModal] = useState(false);
+// 現在DHが有効？
+const dhActive = Boolean(assignments?.["指"]);
+// 現在の投手ID
+const pitcherId = typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
+// DH選手ID
+const dhBatterId = typeof assignments?.["指"] === "number" ? (assignments["指"] as number) : null;
+
+// DHの打順インデックス
+const dhOrderIndex = useMemo(
+  () => (dhBatterId != null ? battingOrder.findIndex(e => e.id === dhBatterId) : -1),
+  [battingOrder, dhBatterId]
+);
+
+// 「今の打者がDH本人か？」
+const isDhTurn = dhActive && dhOrderIndex !== -1 && currentBatterIndex === dhOrderIndex;
 
   const [startTime, setStartTime] = useState<string | null>(null);
 
@@ -318,16 +335,27 @@ if (team && typeof team === "object") {
   setPlayers(all);
   setTeamName((team as any).name || "");
 
-  const starters = (order as { id: number; reason: string }[]).map(e => e.id);
+  // 打順に載っている9人
+  const starterIds = new Set(
+    (order as { id: number; reason: string }[]).map(e => e.id)
+  );
+
+  // ✅ DH稼働中なら「投手」もスタメン扱いに含める
+  const dhActive = Boolean((lineup as any)?.["指"]);
+  const pitcherStarterId = (lineup as any)?.["投"];
+  if (dhActive && typeof pitcherStarterId === "number") {
+    starterIds.add(pitcherStarterId);
+  }
 
   const benchOutIds: number[] = await localForage.getItem("benchOutIds") || [];
 
   const bench = all.filter((p: any) =>
-    !starters.includes(p.id) && !benchOutIds.includes(p.id)
+    !starterIds.has(p.id) && !benchOutIds.includes(p.id)
   );
 
   setBenchPlayers(bench);
 }
+
 
       if (order && Array.isArray(order)) {
         setBattingOrder(order as { id: number; reason: string }[]);
@@ -1004,10 +1032,92 @@ useEffect(() => {
   className="bg-purple-600 text-white px-6 py-2 rounded"
 >
   リエントリー
+
 </button>
+{isDhTurn && (
+  <button
+    onClick={() => setShowDhDisableModal(true)}
+    className="bg-gray-800 text-white px-6 py-2 rounded"
+    disabled={!dhActive || !pitcherId}
+  >
+    DH解除
+  </button>
+)}
 
 
 </div>
+
+
+{showDhDisableModal && (() => {
+  if (!dhActive || dhOrderIndex === -1 || !pitcherId) return null;
+
+  const order1 = dhOrderIndex + 1;
+  const p = getPlayer(pitcherId);
+  if (!p) return null;
+
+  const honor = p.isFemale ? "さん" : "くん";
+  const line1 = "ただいまより、指名打者制を解除します。";
+  const line2 = `${order1}番　ピッチャー　${p.lastName} ${p.firstName}${honor}　ピッチャー${p.lastName}${honor}　背番号${p.number}`;
+
+  const speak = () => announce(`${line1}${line2}`);
+  const stop  = () => speechSynthesis.cancel();
+
+  const confirmDisableDH = async () => {
+    // 1) 打順：DHの枠を「現在の投手」に置換
+    const newOrder = [...battingOrder];
+    newOrder[dhOrderIndex] = { id: pitcherId!, reason: "DH解除" };
+
+    // 2) 守備：指名打者を無効化（=DHなし）
+    const newAssignments = { ...assignments, 指: null };
+
+    // 3) 反映＆保存（この画面で完結）
+    setBattingOrder(newOrder);
+    setAssignments(newAssignments);
+    await localForage.setItem("battingOrder", newOrder);
+    await localForage.setItem("lineupAssignments", newAssignments);
+    await localForage.setItem("dhEnabledAtStart", false); // 守備画面でも“指”不可に
+
+    // 4) ベンチ再計算（DH解除後は投手をスタメン集合に含めない）
+    const all = allPlayers.length ? allPlayers : players;
+    const starterIds = new Set(newOrder.map(e => e.id));
+    const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    const newBench = all.filter((pp: any) => !starterIds.has(pp.id) && !benchOutIds.includes(pp.id));
+    setBenchPlayers(newBench);
+
+    setShowDhDisableModal(false);
+
+    // もし今がDHの打席中なら、置換後の打者表示を最新化
+    setCurrentBatterIndex(dhOrderIndex);
+    setIsLeadingBatter(true);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+      <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-xl w-full">
+        <h2 className="text-xl font-bold">DH解除</h2>
+
+        {/* アナウンス文言 */}
+        <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+          <div className="absolute -top-4 left-4 text-2xl">🎤📢</div>
+          <div className="whitespace-pre-line text-base font-bold leading-relaxed mt-2 ml-6">
+            {line1}
+            {"\n"}
+            {line2}
+          </div>
+        </div>
+
+        {/* 操作 */}
+        <div className="flex flex-wrap gap-3 justify-center">
+          <button onClick={speak} className="bg-blue-600 text-white px-4 py-2 rounded">読み上げ</button>
+          <button onClick={stop}  className="bg-red-600  text-white px-4 py-2 rounded">停止</button>
+          <button onClick={confirmDisableDH} className="bg-orange-600 text-white px-4 py-2 rounded">確定</button>
+          <button onClick={() => setShowDhDisableModal(false)} className="bg-green-600 text-white px-4 py-2 rounded">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  );
+})()}
+
 
  {/* ✅ 得点ポップアップここに挿入 */}
 {showScorePopup && (
