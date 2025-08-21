@@ -1,28 +1,7 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
-const handleStart = async () => {
-  // 🧹 各種リセット
-  await localForage.removeItem("announcedPlayerIds"); // 打席読み上げ済み
-  await localForage.removeItem("runnerInfo");         // 走者情報（代走など）
-  await localForage.removeItem("pitchCounts");        // 投球数
-  await localForage.removeItem("scores");             // 得点
-  await localForage.removeItem("lastBatterIndex");    // 前回の打者
-  await localForage.removeItem("nextBatterIndex");    // 次の打者（任意）
-  await localForage.removeItem("usedBatterIds");      // 簡略アナウンスに使う履歴（必要なら）
-  await localForage.removeItem("scores"); // スコアを完全に削除して空状態に
 
-  // 🧹 イニングと攻守情報の初期化
-  const isHome = !isFirstAttack; // 自チームが後攻ならホーム
-  const initialMatchInfo = {
-    opponentTeam: "",      // 相手チーム名（必要なら再設定）
-    inning: 1,
-    isTop: true,
-    isDefense: !isFirstAttack, // 先攻なら守備でない → 攻撃
-    isHome: isHome,
-  };
-  await localForage.setItem("matchInfo", initialMatchInfo);
-};
 
 const resetAnnouncedIds = () => {
   setAnnouncedIds([]);
@@ -49,12 +28,49 @@ const StartGame = ({
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]); // 🆕
 
+  // 画面を開いたら、スタメン守備を lineupAssignments に確定保存
+useEffect(() => {
+  (async () => {
+    // 進行中の試合があれば触らない（任意の安全ガード）
+    const inProgress = await localForage.getItem("lastBatterIndex");
+    if (inProgress != null) return;
+
+    // startingassignments を最優先で採用（無ければ既存 lineupAssignments）
+    const src =
+      (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
+      (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ??
+      {};
+
+    // 文字列IDが混じっても壊れないように正規化（null はそのまま）
+    const normalized = Object.fromEntries(
+      Object.entries(src).map(([pos, v]) => [pos, v == null ? null : Number(v)])
+    ) as Record<string, number | null>;
+
+    // offense/defense 画面の基準に確定保存
+    await localForage.setItem("lineupAssignments", normalized);
+
+    // （画面内表示にも使っているなら）state にも反映
+    try {
+      // setAssignments が同コンポーネントで定義されている前提
+      // 無い場合はこの2行は削ってOK
+      // @ts-ignore
+      setAssignments(normalized);
+    } catch {}
+  })();
+}, []);
+
   useEffect(() => {
     const loadData = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
-      const assign = await localForage.getItem("lineupAssignments");
-      const order = await localForage.getItem("battingOrder");
-      const team = await localForage.getItem("team");
+      // 変更後（starting を最優先に、無ければ従来キーを使う）
+      const assign =
+        (await localForage.getItem<Record<string, number|null>>("startingassignments")) ??
+        (await localForage.getItem<Record<string, number|null>>("lineupAssignments"));
+
+      const order =
+        (await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder")) ??
+        (await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder"));
+            const team = await localForage.getItem("team");
 
       const benchOut = await localForage.getItem<number[]>("benchOutIds");
       if (Array.isArray(benchOut)) {
@@ -118,7 +134,15 @@ const StartGame = ({
     await localForage.removeItem("lastBatterIndex");
     await localForage.removeItem("nextBatterIndex");
     await localForage.removeItem("usedBatterIds");
-    await localForage.setItem("battingOrder", battingOrder); // 🆕 打順保存
+    // 代打/代走のreasonを全員「スタメン」に戻してから保存
+    const normalizedOrder = (Array.isArray(battingOrder) ? battingOrder : [])
+      .map((e: any) => {
+        const id = typeof e === "number" ? e : (typeof e?.id === "number" ? e.id : e?.playerId);
+        return typeof id === "number" ? { id, reason: "スタメン" } : null;
+      })
+      .filter((v: any): v is { id: number; reason: string } => !!v)
+      .slice(0, 9);
+    await localForage.setItem("battingOrder", normalizedOrder);
     await localForage.removeItem("checkedIds"); // 🔄 チェック状態を初期化
 
     // 🧼 空の得点データを保存（全て空白にするため）
@@ -134,6 +158,13 @@ const StartGame = ({
     };
     await localForage.setItem("matchInfo", initialMatchInfo);
 
+    // 代打/代走・再入場・交代表示の残骸を全削除
+    await localForage.setItem("usedPlayerInfo", {});  // （既存）代打/代走の紐づけを初期化
+    await localForage.removeItem("reentryInfos");     // リエントリー記録
+    await localForage.removeItem("battingReplacements"); // 打順置換の表示用キャッシュ
+    await localForage.removeItem("pairLocks");        // A↔Bロック（守備同士の相手記録）
+    await localForage.removeItem("previousPositions");// 直前守備の記録（使っていれば）
+
     // ✅ 代打・代走情報を初期化
     await localForage.setItem("usedPlayerInfo", {});
     // ✅ ランナー情報を初期化
@@ -146,10 +177,32 @@ const StartGame = ({
     // ✅ 試合開始時のDH有無を保存
     const dhEnabledAtStart = Boolean((assignments as any)?.["指"]);
     await localForage.setItem("dhEnabledAtStart", dhEnabledAtStart);
+    // 代打/代走/臨時代走の履歴を全消し
+    await localForage.setItem("usedPlayerInfo", {});  // ← これが最重要
+    // 塁上の代走状態も全クリア
+    await localForage.setItem("runnerAssignments", { "1塁": null, "2塁": null, "3塁": null });
+
+    // （使っていれば）補助キーも掃除
+    await localForage.removeItem("replacedRunners");
+    await localForage.removeItem("tempRunnerFlags");
+
+    // ★ スタメン守備を「lineupAssignments」に確定保存（offense/defense画面の基準）
+    const startAssign =
+      (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
+      (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ??
+      {};
+
+    const normalizedAssign = Object.fromEntries(
+      Object.entries(startAssign).map(([pos, v]) => [pos, v == null ? null : Number(v)])
+    ) as Record<string, number | null>;
+
+    await localForage.setItem("lineupAssignments", normalizedAssign);
+
 
     // 🏁 試合開始（攻撃または守備画面へ）
     onStart(isFirstAttack);
   };
+
 
   // 守備に就いている選手（投・捕・一…・指）
   const assignedIds = Object.values(assignments)

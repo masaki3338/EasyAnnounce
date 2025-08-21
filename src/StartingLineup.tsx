@@ -55,6 +55,43 @@ const StartingLineup = () => {
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
+  // 保存先キー：startingassignments / startingBattingOrder を正として扱う
+useEffect(() => {
+  (async () => {
+    // ① まず専用領域から読む
+    const a = await localForage.getItem<Record<string, number|null>>("startingassignments");
+    const o = await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder");
+
+    if (a && o?.length) {
+      setAssignments(a);
+      setBattingOrder(o);
+      return;
+    }
+
+    // ② 専用領域が無ければ、既存の全体設定から初期化して専用領域に保存
+    const globalA = await localForage.getItem<Record<string, number|null>>("lineupAssignments");
+    const globalO = await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder");
+
+    let baseA = globalA ?? Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
+    let baseO = globalO ?? [];
+
+    // 打順が無ければ守備から暫定生成（DH考慮：投手を外してDHを入れる）
+    if (baseO.length === 0) {
+      const dhId = baseA[DH] ?? null;
+      const orderPositions = dhId ? [...positions.filter(p => p !== "投"), DH] : [...positions];
+      const ids = orderPositions.map(p => baseA[p]).filter((id): id is number => typeof id === "number");
+      baseO = ids.slice(0, 9).map(id => ({ id, reason: "スタメン" }));
+    }
+
+    setAssignments(baseA);
+    setBattingOrder(baseO);
+    // 専用領域を作成
+    await localForage.setItem("startingassignments", baseA);
+    await localForage.setItem("startingBattingOrder", baseO);
+  })();
+}, []);
+
+
   useEffect(() => {
     localForage.getItem<{ players: Player[] }>("team").then((team) => {
       setTeamPlayers(team?.players || []);
@@ -72,9 +109,9 @@ useEffect(() => {
 
     // ✅ まず保存済みの完全な守備配置/打順から復元
     const savedAssignments =
-      await localForage.getItem<{ [pos: string]: number | null }>("lineupAssignments");
+      await localForage.getItem<{ [pos: string]: number | null }>("startingassignments");
     const savedBattingOrder =
-      await localForage.getItem<{ id: number; reason: "スタメン" }[]>("battingOrder");
+      await localForage.getItem<{ id: number; reason: "スタメン" }[]>("startingBattingOrder");
 
     if (savedAssignments) {
       // 欠けたキーに備えて全スロットを初期化してからマージ
@@ -113,29 +150,26 @@ useEffect(() => {
 }, []);
 
 
-useEffect(() => {
-  if (battingOrder.length === 0) {
-    // 守備の並び（positions）順で素直に並べる。DHはここでは扱わない。
-    const assignedIdsInOrder: number[] = [];
-    for (const pos of positions) {
-      const id = assignments[pos];
-      if (id && !assignedIdsInOrder.includes(id)) {
-        assignedIdsInOrder.push(id);
-      }
-    }
-    if (assignedIdsInOrder.length > 0) {
-      const trimmed = assignedIdsInOrder.slice(0, 9);
-      setBattingOrder(trimmed.map((id) => ({ id, reason: "スタメン" })));
-    }
-  }
-}, [assignments]);
 
+
+const handleApplyToGlobal = async () => {
+  const a = (await localForage.getItem<Record<string, number|null>>("startingassignments")) ?? assignments;
+  const o = (await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder")) ?? battingOrder;
+
+  await localForage.setItem("lineupAssignments", a);
+  await localForage.setItem("battingOrder", o);
+  // 任意：初期スナップショットを更新しておく
+  await localForage.setItem("initialBattingOrder", o);
+
+  alert("スタメンを全画面に適用しました");
+};
 
   const saveAssignments = async () => {
     await localForage.setItem("benchOutIds", benchOutIds);
     await localForage.setItem("lineupAssignments", assignments);
     await localForage.setItem("battingOrder", battingOrder);
     await localForage.setItem("startingBattingOrder", battingOrder);
+    await localForage.setItem("startingassignments", assignments);
 
     // 🔽 追加：スタメン情報（打順・守備位置）を初期記録として保存
     const initialOrder = battingOrder.map((entry, index) => {
@@ -159,6 +193,13 @@ useEffect(() => {
     await localForage.removeItem("battingOrder");
     await localForage.removeItem("initialBattingOrder");
     await localForage.removeItem("benchOutIds");
+
+    const emptyA = Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
+    setAssignments(emptyA);
+    setBattingOrder([]);
+
+    await localForage.removeItem("startingassignments");
+    await localForage.removeItem("startingBattingOrder");
     alert("スタメンと守備位置をクリアしました！");
   };
 
@@ -321,15 +362,28 @@ if (pitcherId) {
     e.dataTransfer.setData("text/plain", String(playerId));
   };
 
-  const handleDropToBenchOut = (e: React.DragEvent<HTMLDivElement>) => {
+const handleDropToBenchOut = (e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault();
+
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
   const playerId = Number(playerIdStr);
-  setBenchOutIds((prev) => {
-    if (!prev.includes(playerId)) return [...prev, playerId];
-    return prev;
+  if (!playerId) return;
+
+  // ① ベンチ外リストに追加（重複防止）
+  setBenchOutIds((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
+
+  // ② 守備配置から完全に外す（DH含む、同一選手がどこに居てもnullへ）
+  setAssignments((prev) => {
+    const next = { ...prev };
+    for (const k of Object.keys(next)) {
+      if (next[k] === playerId) next[k] = null;
+    }
+    return next;
   });
+
+  // ③ 打順からも外す（固定打順のまま、該当選手だけ除去）
+  setBattingOrder((prev) => prev.filter((e) => e.id !== playerId));
 };
 
 const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {

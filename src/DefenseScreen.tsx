@@ -80,6 +80,8 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const synthRef = useRef(window.speechSynthesis);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // 臨時代走が居るときの「先出し」モーダル
+  const [showTempReentryModal, setShowTempReentryModal] = useState(false);
 
 // ▼リエントリー用 state と関数を追加
 const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
@@ -199,10 +201,59 @@ const handleReentryCheck = async () => {
   console.log("[RE] pinchIdx:", pinchIdx, "A:", pinchId, "B:", starterId, "fromPos:", fromPos);
 };
 
+// ★ 臨時代走を最優先で拾い、文面とターゲットをセット
+const handleTempReentryCheck = async () => {
+  setReEntryMessage("");
+  setReEntryTarget(null);
+
+  const battingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+  const startingOrder: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("startingBattingOrder")) || [];
+
+  // 「臨時代走」の打順インデックスを特定
+  const pinchIdx = battingOrder.findIndex((e) => e?.reason === "臨時代走");
+  if (pinchIdx === -1) return;
+
+  const pinchId = battingOrder[pinchIdx]?.id;     // 代走で出ている選手（A）
+  const starterId = startingOrder[pinchIdx]?.id;  // その打順の元スタメン（B）
+  if (!pinchId || !starterId) return;
+
+  // B の元守備位置（現在の lineUpAssignments から逆引き）
+  const assignmentsNow: Record<string, number | null> =
+    (await localForage.getItem("lineupAssignments")) || {};
+  const fromPos = Object.keys(assignmentsNow).find((pos) => assignmentsNow[pos] === starterId);
+  if (!fromPos) return;
+
+  // 表示パーツ
+  const posJP: Record<string, string> = {
+    "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
+    "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト","指":"指名打者"
+  };
+  const aLabel = playerLabel(pinchId);
+  const bLabel = playerLabel(starterId);
+  const aHonor = honor(pinchId);
+  const bHonor = honor(starterId);
+
+  // ★ 指定の文面
+  const msg =
+    `先ほど臨時代走いたしました ${aLabel}${aHonor} に代わりまして` +
+    ` ${bLabel}${bHonor} が ${posJP[fromPos] ?? fromPos} に戻ります。`;
+
+  setReEntryTarget({ id: starterId, fromPos, index: pinchIdx });
+  setReEntryMessage(msg);
+};
 
 
 
 
+// 臨時代走モーダルが開いたら、文面とターゲットを準備
+useEffect(() => {
+  if (!showTempReentryModal) return;
+  (async () => {
+    await handleTempReentryCheck();
+  })();
+}, [showTempReentryModal]);
 
 
 useEffect(() => {
@@ -243,13 +294,18 @@ setIsTop(savedMatchInfo.isTop ?? true);
 setIsDefense(savedMatchInfo.isDefense ?? true);
 setIsHome(savedMatchInfo.isHome ?? false);
 
-// ✅ その後にモーダルを出す（return しない）
-const hasSubPlayers = savedBattingOrder.some(
-  (entry) => entry.reason === "代打" || entry.reason === "代走"
-);
-if (hasSubPlayers) {
+// 既存：savedBattingOrder は上で set 済み
+const hasTempRunner = savedBattingOrder.some((e) => e.reason === "臨時代走");
+const hasOtherSubs  = savedBattingOrder.some((e) => e.reason === "代打" || e.reason === "代走");
+
+// 分岐：臨時代走がいれば“先出しモーダル”を優先
+if (hasTempRunner) {
+  setShowTempReentryModal(true);
+} else if (hasOtherSubs) {
   setShowConfirmModal(true);
 }
+
+
 
     if (savedMatchInfo.opponentTeam) setOpponentTeamName(savedMatchInfo.opponentTeam);
     if (savedScores) setScores(savedScores);
@@ -776,7 +832,76 @@ const handlePitchLimitSpeak = () => {
         </button>
       </div>
 
+{/* 🔽 臨時代走確認モーダル*/}
+{showTempReentryModal && (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
+      <h2 className="text-xl font-bold text-red-600">臨時代走の戻し</h2>
 
+      <div className="whitespace-pre-wrap text-left border rounded p-3 bg-gray-50 min-h-[64px]">
+        {reEntryMessage || "対象選手なし"}
+      </div>
+
+      <div className="flex flex-wrap gap-2 justify-center">
+        <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={() => speak(reEntryMessage)}>読み上げ</button>
+        <button className="px-3 py-2 bg-gray-700 text-white rounded" onClick={() => window.speechSynthesis?.cancel()}>停止</button>
+
+        <button
+          className="px-3 py-2 bg-indigo-600 text-white rounded"
+          onClick={async () => {
+            if (!reEntryTarget) return;
+
+            // 守備を元選手(B)に戻す
+            const curAssign: Record<string, number | null> =
+              (await localForage.getItem("lineupAssignments")) || assignments || {};
+            const nextAssign = { ...curAssign, [reEntryTarget.fromPos]: reEntryTarget.id };
+            setAssignments(nextAssign);
+            await localForage.setItem("lineupAssignments", nextAssign);
+
+            // 打順も B を戻す（臨時代走を消す）
+            if (typeof reEntryTarget.index === "number") {
+              const order: Array<{ id: number; reason?: string }> =
+                (await localForage.getItem("battingOrder")) || [];
+              if (order[reEntryTarget.index]) {
+                order[reEntryTarget.index] = { id: reEntryTarget.id, reason: "スタメン" };
+                await localForage.setItem("battingOrder", order);
+              }
+            }
+
+            // 任意：リエントリー済みフラグ
+            const usedNow: Record<number, any> = (await localForage.getItem("usedPlayerInfo")) || {};
+            usedNow[reEntryTarget.id] = { ...(usedNow[reEntryTarget.id] || {}), hasReentered: true };
+            await localForage.setItem("usedPlayerInfo", usedNow);
+
+            // クローズ → 守備画面に戻る（従来モーダルは出さない）
+            window.speechSynthesis?.cancel();
+            setReEntryMessage("");
+            setReEntryTarget(null);
+            setShowTempReentryModal(false);
+          }}
+        >
+          確定
+        </button>
+
+        <button
+          className="px-3 py-2 bg-gray-400 text-white rounded"
+          onClick={() => {
+            // 臨時代走を処理しない → 従来モーダルへ
+            setReEntryMessage("");
+            setReEntryTarget(null);
+            window.speechSynthesis?.cancel();
+            setShowTempReentryModal(false);
+            setShowConfirmModal(true);
+          }}
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 🔽 代打/代走確認モーダル*/}
 {showConfirmModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">

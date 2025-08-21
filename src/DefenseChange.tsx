@@ -1629,7 +1629,7 @@ if (fromId !== null && toId !== null) {
       if (!playerIdStr) return prev;
       const playerId = Number(playerIdStr);
 
-      const replacedId = newAssignments[toPos];  // 守備位置にいた選手
+      const replacedId = prev[toPos];  // 守備位置にいた選手
 
       // --- リエントリー判定（ベンチ→守備の“その位置”だけを入替） ---
     let allowDrop = true; // 🆕 不可ならこのターンの配置を中止
@@ -1797,25 +1797,36 @@ if (fromId !== null && toId !== null) {
 
 
     // 🟢（ベンチ → 先発 のときだけ）battingReplacements を更新
-    // 既にグラウンドにいる選手同士の入替え（守備位置の交換）は打順を触らない
-    if (fromPos === BENCH && targetIndex !== -1 && replacedId !== playerId) {
-      const benchPlayer = teamPlayers.find((p) => p.id === playerId);
-      if (benchPlayer) {
-        setBattingReplacements((prev) => ({
-          ...prev,
-          [targetIndex]: benchPlayer,
-        }));
-      }
+// ✅ 置き換え：targetIndex を自前で求め、draggingFrom===BENCH を前提に更新
+{
+  // 打順スロット（index）を、まず「今そこに居る人」で探す
+  let targetIndex = battingOrder.findIndex(e => e.id === replacedId);
+
+  // それで見つからなければ、過去の置換テーブル（bench→bench の引継ぎ）から探す
+  if (targetIndex === -1 && replacedId != null) {
+    const prevEntry = Object.entries(battingReplacements)
+      .find(([, p]) => p.id === replacedId);
+    if (prevEntry) targetIndex = Number(prevEntry[0]);
+  }
+
+  if (targetIndex !== -1) {
+    const benchPlayer = teamPlayers.find((p) => p.id === playerId);
+    if (benchPlayer && replacedId !== playerId) {
+      // 置換として登録/更新
+      setBattingReplacements((prev) => ({
+        ...prev,
+        [targetIndex]: benchPlayer,
+      }));
     } else {
-      // on-field ⇄ on-field の入替えは念のため置換を消しておく
-      if (targetIndex !== -1) {
-        setBattingReplacements((prev) => {
-          const next = { ...prev };
-          delete next[targetIndex];
-          return next;
-        });
-      }
+      // 同じ選手を戻すなどのケースでは、その枠の置換をクリア
+      setBattingReplacements((prev) => {
+        const next = { ...prev };
+        delete next[targetIndex];
+        return next;
+      });
     }
+  }
+}
 
       // 🔄 交代取り消しのチェック（初期と一致していたら削除）
     // 🔄 交代取り消しのチェック（最小限の更新：既存の置換はフィールドに居る限り維持）
@@ -2242,11 +2253,11 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
     ⚠️ 交代する選手にドロップ
   </span>
 </div>
-<div
-  className="flex flex-col gap-2 mb-6"
-  onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
-  onDrop={(e) => handleDrop(BENCH, e)}
->
+  <div
+    className="flex flex-col gap-2 mb-6"
+    onDragOver={(e) => e.preventDefault()}
+    onDrop={(e) => handleDrop(BENCH, e)}
+  >
   {/* 未出場の控え */}
   {benchNeverPlayed.length === 0 ? (
     <div className="text-xs text-gray-400 mb-1">（なし）</div>

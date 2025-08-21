@@ -12,6 +12,7 @@ const positionMapJP: Record<string, string> = {
   "左": "レフト",
   "中": "センター",
   "右": "ライト",
+  "指": "指名打者",
   "-": "ー",
 };
 
@@ -54,39 +55,56 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
     loadData();
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const [team, assign, order, matchInfo] = await Promise.all([
-        localForage.getItem<{ name: string; players: Player[] }>("team"),
-        localForage.getItem("lineupAssignments"),
-        localForage.getItem("battingOrder"),
-        localForage.getItem("matchInfo"),
-      ]);
+useEffect(() => {
+  const loadData = async () => {
+    const [team, matchInfo] = await Promise.all([
+      localForage.getItem<{ name: string; players: Player[] }>("team"),
+      localForage.getItem("matchInfo"),
+    ]);
 
-      if (team) {
-        setTeamPlayers(team.players || []);
-        setHomeTeamName(team.name || "");
-      }
+    // ★ StartGame と同じ優先順位で読む（starting* → 通常キー）
+    const assignRaw =
+      (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
+      (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ??
+      {};
 
-      if (assign && typeof assign === "object") {
-        setAssignments(assign as { [pos: string]: number | null });
-      }
+    const orderRaw =
+      (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("startingBattingOrder")) ??
+      (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("battingOrder")) ??
+      [];
 
-      if (Array.isArray(order) && order.every(o => typeof o === "object" && "id" in o)) {
-        setBattingOrder(order as { id: number; reason: string }[]);
-      }
+    // ID を数値に正規化（null はそのまま）
+    const normalizedAssign: { [pos: string]: number | null } = {};
+    Object.entries(assignRaw).forEach(([pos, id]) => {
+      normalizedAssign[pos] = id == null ? null : Number(id);
+    });
+    setAssignments(normalizedAssign);
 
-      if (matchInfo && typeof matchInfo === "object") {
-        const mi = matchInfo as any;
-        setAwayTeamName(mi.opponentTeam || "");
-        setIsHomeTeamFirstAttack(!mi.isHome);
-        if (Array.isArray(mi.umpires)) {
-          setUmpires(mi.umpires);
-        }
-      }
-    };
-    loadData();
-  }, []);
+    // 打順も {id, reason} に正規化（playerId 形式も吸収）
+    const normalizedOrder = (orderRaw as any[])
+      .map((e) => {
+        const id = typeof e?.id === "number" ? e.id : e?.playerId;
+        if (typeof id !== "number") return null;
+        return { id: Number(id), reason: e?.reason ?? "スタメン" };
+      })
+      .filter(Boolean)
+      .slice(0, 9) as { id: number; reason: string }[];
+    setBattingOrder(normalizedOrder);
+
+    if (team) {
+      setTeamPlayers((team as any).players || []);
+      setHomeTeamName((team as any).name || "");
+    }
+    if (matchInfo && typeof matchInfo === "object") {
+      const mi = matchInfo as any;
+      setAwayTeamName(mi.opponentTeam || "");
+      setIsHomeTeamFirstAttack(!mi.isHome);
+      if (Array.isArray(mi.umpires)) setUmpires(mi.umpires);
+    }
+  };
+  loadData();
+}, []);
+
 
   const getPositionName = (pos: string) => positionMapJP[pos] || pos;
   const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
