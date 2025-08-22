@@ -148,7 +148,7 @@ const generateAnnouncementText = (
   let suppressTailClose = false; // 🆕 このターンは末尾に「に入ります。」を付けない
   // 🆕 リエントリー + 守備変更（ユーザー希望フォーマット）
 Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
-  if (!info || (info.reason !== "代打" && info.reason !== "代走")) return;
+  if (!info || (info.reason !== "代打" && info.reason !== "代走" && info.reason !== "臨時代走")) return;
 
   const origId = Number(origIdStr);          // B（元スタメン）
   // ★ Bが“今”入っている守備（略号）を探す（同守備/別守備の両対応）
@@ -224,7 +224,7 @@ reentryOccurred = true; // 🆕 リエントリーを出した回であること
   // ▼ リエントリー対象（＝代打/代走で一度退いた元のスタメンが、自分の元ポジに戻ってきた）
   const reentryToIds = new Set<number>();
   Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
-    if (info && (info.reason === "代打" || info.reason === "代走")) {
+    if (info && (info.reason === "代打" || info.reason === "代走" || info.reason === "臨時代走")) {
       // 元いた守備の記号に正規化（"サード" → "三" など）
       const sym = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos;
       const origId = Number(origIdStr);
@@ -362,7 +362,7 @@ if (specialResult) {
                const handledIds = new Set<number>();
   ==================================================================== */
   battingOrder.forEach((entry, idx) => {
-    if (!["代打", "代走"].includes(entry.reason)) return;
+    if (!["代打", "代走", "臨時代走"].includes(entry.reason)) return;
 
     const originalPlayer = teamPlayers.find(p => p.id === entry.id);
     if (!originalPlayer) return;
@@ -416,7 +416,7 @@ const pinchShiftLines: string[] = [];
    🆕 特別処理: 代打・代走 → 守備入り（相互入れ替え含む）まとめ処理
    ==================================================================== */
 battingOrder.forEach((entry, idx) => {
-  if (!["代打", "代走"].includes(entry.reason)) return;
+  if (!["代打", "代走", "臨時代走"].includes(entry.reason)) return;
   if (handledIds.has(entry.id)) return;
 
   const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
@@ -438,7 +438,7 @@ battingOrder.forEach((entry, idx) => {
 
   // ★ 相手も代打/代走かチェック（相互入れ替え）
   const otherEntry = battingOrder.find(e =>
-    e.id === movedPlayer.id && ["代打", "代走"].includes(e.reason)
+    e.id === movedPlayer.id && ["代打", "代走", "臨時代走"].includes(e.reason)
   );
 
   if (otherEntry && !handledIds.has(movedPlayer.id)) {
@@ -511,7 +511,7 @@ if (pinchShiftLines.length > 0) {
 /* =========================================
   1) 代打・代走 → そのまま守備へ (samePosPinch)
 ========================================= */
-type PinchLine = { reason: "代打" | "代走"; text: string };
+type PinchLine = { reason: "代打" | "代走"| "臨時代走"; text: string };
 const pinchInSamePos: PinchLine[] = [];
 
 battingOrder.forEach((entry, idx) => {
@@ -524,7 +524,7 @@ battingOrder.forEach((entry, idx) => {
   const wasReplaced = !!usedPlayerInfo[entry.id];
   const unchanged   = initialAssignments[pos] === entry.id;
 
-  if ((entry.reason === "代打" || entry.reason === "代走") && !wasReplaced && unchanged) {
+  if ((entry.reason === "代打" || entry.reason === "代走" || entry.reason === "臨時代走") && !wasReplaced && unchanged) {
     const honor = player.isFemale ? "さん" : "くん";
     const ruby = `<ruby>${player.lastName}<rt>${player.lastNameKana ?? ""}</rt></ruby>${honor}`;
 
@@ -792,47 +792,57 @@ if (
   }
 }
 
-// ==== 本文終端の統一：最後の1本だけ「が入ります。」にする ====
 // ==== 本文終端の統一：最後の1本だけを「正しい日本語」で閉じる ====
+// ・末尾が「…リエントリーで ポジション、」→「…リエントリーで ポジションに入ります。」
 // ・末尾が「…が ポジション、」なら「…が ポジション に入ります。」
 // ・末尾が「…へ、」/「…に、」なら「…へ入ります。」/「…に入ります。」
-// ・それ以外で「、」なら「 が入ります。」を付与
-// ==== 本文終端の統一：最後の1本だけを「正しい日本語」で閉じる ====
-// ・「…が入り ポジション（へ|に）?」 → 「…が入り ポジション。」
-if (!suppressTailClose) {
-  for (let i = result.length - 1; i >= 0; i--) {
-    const line = result[i].trim();
-
-    // 打順行／「以上に代わります。」は対象外
-    if (/^\d+番 /.test(line)) continue;
-    if (line.endsWith("以上に代わります。")) continue;
-
-    // 代打そのまま守備入りは変更しない
-    if (/そのまま入り/.test(line) && !/[へに]$/.test(line)) break;
-
-    // ★ NEW: 「…が入り ポジション（へ|に）?」 → 「…が入り ポジション。」
-    const gaIriPos =
-      /(が\s*入り)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*(?:へ|に)?\s*[、。]?$/;
-    if (gaIriPos.test(line)) {
-      result[i] = line.replace(gaIriPos, (_m, head, pos) => `${head} ${pos}。`);
-      break;
+// ・それ以外で「、」なら「。」を付与
+{
+  // 末尾の“本文行”インデックスを取得（打順行・ヘッダー・「以上に代わります。」は除外）
+  const lastBodyIndex = (() => {
+    for (let i = result.length - 1; i >= 0; i--) {
+      const t = result[i].trim();
+      if (/^\d+番 /.test(t)) continue;                  // 打順行は除外
+      if (t.endsWith("以上に代わります。")) continue;    // しめ行は除外
+      if (/お知らせいたします。$/.test(t)) continue;     // ヘッダーは除外
+      return i;
     }
+    return -1;
+  })();
 
-    // （必要に応じて）リエントリー行など他パターンの終端調整が続く場合はここに保持
+  // リエントリー行が末尾なら、終端調整を必ず有効化（抑止フラグを無効化）
+  const reentryTail =
+    lastBodyIndex >= 0 &&
+    /リエントリーで\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/
+      .test(result[lastBodyIndex].trim());
+  if (reentryTail) suppressTailClose = false;
 
-    // 末尾が読点のみなら安全に閉じる
-    if (line.endsWith("、")) {
-      result[i] = line.slice(0, -1) + "。";
-      break;
+  if (!suppressTailClose && lastBodyIndex >= 0) {
+    const line = result[lastBodyIndex].trim();
+
+    // ★ NEW: リエントリー末尾 → 「…ポジションに入ります。」
+    const reentryPos =
+      /リエントリーで\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/;
+    if (reentryPos.test(line)) {
+      result[lastBodyIndex] = line.replace(
+        reentryPos,
+        (_m, pos) => `リエントリーで ${pos}に入ります。`
+      );
+    } else {
+      // ★ 既存の「が入り …」の正規化
+      const gaIriPos =
+        /(が\s*入り)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*(?:へ|に)?\s*[、。]?$/;
+      if (gaIriPos.test(line)) {
+        result[lastBodyIndex] = line.replace(gaIriPos, (_m, head, pos) => `${head} ${pos}。`);
+      } else if (line.endsWith("、")) {
+        result[lastBodyIndex] = line.slice(0, -1) + "。";
+      } else if (!/[。]$/.test(line)) {
+        result[lastBodyIndex] = line + "。";
+      }
     }
-    // 何も句点が無い場合だけ句点を足す
-    if (!/[。]$/.test(line)) {
-      result[i] = line + "。";
-      break;
-    }
-    break;
   }
 }
+
 
 
 
@@ -1131,7 +1141,7 @@ useEffect(() => {
 // ✅ 代打・代走の割り当て（“連鎖”の末端まで辿る）
 for (const [originalIdStr, info] of Object.entries(usedInfo)) {
   const { fromPos, reason } = info;
-  if (!(reason === "代打" || reason === "代走")) continue;
+  if (!(reason === "代打" || reason === "代走" || reason === "臨時代走")) continue;
 
   const sym = posNameToSymbol[fromPos ?? ""] ?? fromPos ?? "";
   if (!sym) continue;
@@ -1461,7 +1471,7 @@ useEffect(() => {
   // 代打または代走として出場している選手を元の選手の位置に自動配置
   battingOrder.forEach((entry) => {
     const info = usedPlayerInfo[entry.id];
-    if (info?.subId && (entry.reason === "代打" || entry.reason === "代走")) {
+    if (info?.subId && (entry.reason === "代打" || entry.reason === "代走"|| entry.reason === "臨時代走")) {
       const pos = initialAssignments ? Object.entries(initialAssignments).find(([, pid]) => pid === entry.id)?.[0] : undefined;
       if (pos && updatedAssignments[pos] !== info.subId) {
         console.log(`[DEBUG] 代打/代走 ${info.subId} を ${pos} に配置`);
@@ -1553,6 +1563,53 @@ const handlePositionDragStart = (
   const handleDrop = (toPos: string, e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (!draggingFrom) return;
+
+    // ★ DHを他守備にドロップ → その瞬間にDH解除 & 退場 & 打順差し替え
+if (draggingFrom === "指" && toPos !== BENCH && toPos !== "指") {
+  setAssignments((prev) => {
+    const dhId = prev["指"];
+    if (!dhId) return prev;
+
+    const replacedId = prev[toPos] ?? null;
+
+    // 1) 守備を更新（DH → toPos / 指は空に）
+    const next = { ...prev, [toPos]: dhId, "指": null };
+
+    // 2) DH解除のUIフラグ（既存ロジックを即時発火させる）
+    setDhEnabledAtStart(false);
+    setDhDisableDirty(true); // アナウンスに「DH解除」を差し込む
+
+    // 3) 退場処理（出場済み選手として benchOutIds に入れる）
+    if (typeof replacedId === "number") {
+      (async () => {
+        const outIds = (await localForage.getItem<number[]>("benchOutIds")) || [];
+        if (!outIds.includes(replacedId)) {
+          outIds.push(replacedId);
+          await localForage.setItem("benchOutIds", outIds);
+        }
+      })();
+
+      // 4) 退場した選手の“打順”に投手を入れる（プレビュー反映）
+      //    toPosが"投"なら投手=DH本人、それ以外は現投手
+      const pitcherId = toPos === "投" ? dhId : prev["投"];
+      if (typeof pitcherId === "number") {
+        const idx = battingOrder.findIndex((e) => e.id === replacedId);
+        const p = teamPlayers.find((tp) => tp.id === pitcherId);
+        if (idx >= 0 && p) {
+          setBattingReplacements((prevRep) => ({ ...prevRep, [idx]: p }));
+        }
+      }
+    }
+
+    // 5) ログ（視覚上の変更履歴）
+    updateLog("指", dhId, toPos, replacedId);
+
+    return next;
+  });
+
+  setDraggingFrom(null);
+  return;
+}
 
     setAssignments((prev) => {
       const newAssignments = { ...prev };
@@ -2016,6 +2073,7 @@ const confirmChange = async () => {
       const fromPos =
         battingReasonNow === "代打" ? "代打" :
         battingReasonNow === "代走" ? "代走" :
+        battingReasonNow === "臨時代走" ? "臨時代走" :
         pos;
 
       usedInfo[initialId] = {
@@ -2042,7 +2100,7 @@ const confirmChange = async () => {
   for (const [origIdStr, info] of Object.entries(usedInfo)) {
     const origId = Number(origIdStr);
     const reason = (info as any)?.reason as string | undefined;
-    if ((reason === "代打" || reason === "代走") && onFieldIds.has(origId)) {
+    if ((reason === "代打" || reason === "代走"|| reason === "臨時代走")  && onFieldIds.has(origId)) {
       (usedInfo as any)[origIdStr] = { ...(info as any), hasReentered: true };
       delete (usedInfo as any)[origIdStr].reason;   // 代打/代走フラグを消す
       delete (usedInfo as any)[origIdStr].subId;    // 代打/代走の相手の紐付けを消す
@@ -2094,7 +2152,7 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
 
   // 代打が守備に就いたら理由だけ“途中出場”に補正
   updatedOrder.forEach((entry, index) => {
-    if (["代打", "代走"].includes(entry?.reason) && onFieldIds.has(entry.id)) {
+    if (["代打", "代走", "臨時代走"].includes(entry?.reason) && onFieldIds.has(entry.id)) {
       updatedOrder[index] = { ...entry, reason: "途中出場" };
     }
   });
@@ -2214,7 +2272,7 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   }
 
   const isChanged = currentId !== initialId;
-  const isSub = reason === "代打" || reason === "代走";
+  const isSub = reason === "代打" || reason === "臨時代走"|| reason === "代走";
 
   const className = `absolute text-sm font-bold px-2 py-1 rounded cursor-move 
     ${isSub ? "text-yellow-300 bg-black bg-opacity-90 ring-2 ring-yellow-400" 

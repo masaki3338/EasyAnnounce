@@ -29,7 +29,11 @@ import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
 import DefenseScreen from "./DefenseScreen";
 import DefenseChange from "./DefenseChange";
-
+import OperationSettings from "./screens/OperationSettings";
+import PitchLimit from "./screens/PitchLimit";
+import TiebreakRule from "./screens/TiebreakRule";
+import Contact from "./screens/Contact";
+import VersionInfo from "./screens/VersionInfo";
 
 
 // バージョン番号を定数で管理
@@ -46,19 +50,24 @@ export type ScreenType =
   | "warmup"
   | "sheetKnock"
   | "announceStartingLineup"
-  | "templateEdit"
+  | "operationSettings"
   | "offense"
   | "defense"
   | "defenseChange"
   | "gather"
   | "startGreeting"
-  | "seatIntroduction";  // ← 新規追加
+  | "seatIntroduction"
+  |"operationSettings"
+  | "pitchLimit"
+  | "tiebreakRule"
+  | "contact"
+  | "versionInfo";
 
 const screenMap: { [key: string]: ScreenType } = {
   "チーム・選手登録": "teamRegister",
   "試合作成": "matchCreate",
   "試合開始": "startGame",
-  "運用設定": "templateEdit",
+  "運用設定": "operationSettings",
 };
 
 
@@ -68,6 +77,7 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState("");
+
 
 
   useEffect(() => {
@@ -166,6 +176,11 @@ const App = () => {
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
   const [tiebreakMessage, setTiebreakMessage] = useState<string>("");
+    // ▼ 投球数ポップアップ用
+  const [showPitchListPopup, setShowPitchListPopup] = useState(false);
+  const [pitchList, setPitchList] = useState<
+    { name: string; number?: string; total: number }[]
+  >([]);
 // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
 const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
 const ann = endGameAnnouncement ?? "";
@@ -376,7 +391,6 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
         </>
       )}
 
-      {screen === "templateEdit" && <NotImplemented onBack={() => setScreen("menu")} />}
 
       {screen === "offense" && (
         <>
@@ -490,7 +504,33 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
           } else if (value === "manual") {
             //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
             setShowManualPopup(true);
+          } else if (value === "pitchlist") {
+            // チームと投手別累計を読み込んで一覧を構築
+            const team = (await localForage.getItem("team")) as
+              | { players?: any[] }
+              | null;
+            const totals =
+              ((await localForage.getItem("pitcherTotals")) as Record<number, number>) ||
+              {};
+            const players = Array.isArray(team?.players) ? team!.players : [];
+
+            const rows = Object.entries(totals)
+              .filter(([, cnt]) => (cnt ?? 0) > 0)
+              .map(([idStr, total]) => {
+                const id = Number(idStr);
+                const p = players.find((x) => x?.id === id);
+                const name =
+                  (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
+                const number = p?.number ? `#${p.number}` : undefined;
+                return { name, number, total: Number(total) || 0 };
+              })
+              // 表示は降順
+              .sort((a, b) => b.total - a.total);
+
+            setPitchList(rows);
+            setShowPitchListPopup(true);
           }
+
         }}
         defaultValue=""
       >
@@ -502,6 +542,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
         <option value="continue">継続試合</option>
         <option value="heat">熱中症</option> 
         <option value="manual">連盟🎤マニュアル</option> 
+        <option value="pitchlist">投球数⚾</option>
       </select>
     </div>
           <OffenseScreen
@@ -618,7 +659,33 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
           } else if (value === "manual") {
             //window.location.href = "/manual.pdf"; // ← PDFを別タブで開く
             setShowManualPopup(true);
+          } else if (value === "pitchlist") {
+            // チームと投手別累計を読み込んで一覧を構築
+            const team = (await localForage.getItem("team")) as
+              | { players?: any[] }
+              | null;
+            const totals =
+              ((await localForage.getItem("pitcherTotals")) as Record<number, number>) ||
+              {};
+            const players = Array.isArray(team?.players) ? team!.players : [];
+
+            const rows = Object.entries(totals)
+              .filter(([, cnt]) => (cnt ?? 0) > 0)
+              .map(([idStr, total]) => {
+                const id = Number(idStr);
+                const p = players.find((x) => x?.id === id);
+                const name =
+                  (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
+                const number = p?.number ? `#${p.number}` : undefined;
+                return { name, number, total: Number(total) || 0 };
+              })
+              // 表示は降順
+              .sort((a, b) => b.total - a.total);
+
+            setPitchList(rows);
+            setShowPitchListPopup(true);
           }
+
         }}
         defaultValue=""
       >
@@ -629,6 +696,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
         <option value="continue">継続試合</option>
         <option value="heat">熱中症</option> 
         <option value="manual">連盟🎤マニュアル</option> 
+        <option value="pitchlist">投球数⚾</option>
       </select>
     </div>
            <DefenseScreen key="defense" 
@@ -651,6 +719,26 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
     }} />
   </>
 )}
+{screen === "operationSettings" && (
+  <OperationSettings onNavigate={setScreen} />
+)}
+
+{screen === "pitchLimit" && (
+  <PitchLimit onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "tiebreakRule" && (
+  <TiebreakRule onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "contact" && (
+  <Contact onBack={() => setScreen("operationSettings")} version={APP_VERSION} />
+)}
+
+{screen === "versionInfo" && (
+  <VersionInfo version={APP_VERSION} onBack={() => setScreen("operationSettings")} />
+)}
+
 
 {showEndGamePopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -827,6 +915,37 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
     </div>
   </div>
 )}
+
+{showPitchListPopup && (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 w-[340px]">
+      <h2 className="text-xl font-bold">投球数</h2>
+
+      <div className="text-left font-medium leading-8">
+        {pitchList.length === 0 ? (
+          <div className="text-gray-500">記録がありません</div>
+        ) : (
+          pitchList.map((r, i) => (
+            <div key={i} className="flex justify-between gap-3">
+              <span className="flex-1">
+                {r.name} {r.number ?? ""}
+              </span>
+              <span className="w-16 text-right">{r.total}球</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <button
+        className="mt-2 bg-gray-600 text-white px-6 py-2 rounded"
+        onClick={() => setShowPitchListPopup(false)}
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
+
 
     </>    
   );

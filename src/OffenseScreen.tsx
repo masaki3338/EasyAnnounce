@@ -98,6 +98,7 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [currentBatterIndex, setCurrentBatterIndex] = useState(0);
   const [announcement, setAnnouncement] = useState<React.ReactNode>(null);
+  const [announcementOverride, setAnnouncementOverride] = useState<React.ReactNode | null>(null);
 const [scores, setScores] = useState<{ [inning: number]: { top: number; bottom: number } }>({});
 const [isLeadingBatter, setIsLeadingBatter] = useState(true);
 const [announcedPlayerIds, setAnnouncedPlayerIds] = useState<number[]>([]);
@@ -408,6 +409,34 @@ const onFieldIds = useMemo(() => {
   );
 }, [assignments]);
 
+// 現在出場中（守備に就いている/指名打者）の選手だけ
+const onFieldPlayers = useMemo(
+  () => players.filter((p) => onFieldIds.has(p.id)),
+  [players, onFieldIds]
+);
+
+// 例）onFieldPlayers 定義のすぐ下に貼る
+const orderByBattingFromPrev = (list: any[], runnerIdx: number) => {
+  const N = battingOrder.length || 0;
+  if (!N || !Array.isArray(list) || list.length === 0) return list;
+
+  const start = (runnerIdx - 1 + N) % N; // 「代走される選手の1つ前」から始める
+  const dist = (pid: number) => {
+    const i = battingOrder.findIndex(e => e?.id === pid);
+    return i >= 0 ? ((start - i + N) % N) : N + 999; // ← これで 1,9,8,7...
+  };
+
+
+  // 同順位の並びを安定化（背番号→姓）
+  return [...list].sort((a, b) => {
+    const da = dist(a.id), db = dist(b.id);
+    if (da !== db) return da - db;
+    const na = Number(a.number ?? 9999), nb = Number(b.number ?? 9999);
+    if (na !== nb) return na - nb;
+    return String(a.lastName ?? "").localeCompare(String(b.lastName ?? ""));
+  });
+};
+
 // 「出場済み」と見なす選手IDの集合（守備に就いている・打順に載っている・代打/代走も含む）
 const playedIds = useMemo(() => {
   const s = new Set<number>();
@@ -452,8 +481,7 @@ const [tempRunnerFlags, setTempRunnerFlags] = useState<Record<string, boolean>>(
 const [selectedRunnerByBase, setSelectedRunnerByBase] = useState<Record<string, Player | null>>({});
 // アナウンスの「元ランナー名」（塁ごと） ex: "山田やまだ太郎たろうくん"
 const [fromNameByBase, setFromNameByBase] = useState<Record<string, string>>({});
-// 画面に出すアナウンス文言プレビュー（Step3で即反映）
-const [runnerAnnouncementPreview, setRunnerAnnouncementPreview] = useState<string>("");
+
 
 // base: "1塁"/"2塁"/"3塁" など、fromName: "〇〇くん" or ""、to: 代走に入る選手
 const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, isTemp: boolean): string => {
@@ -461,11 +489,11 @@ const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, i
   const toNameFull = `${to.lastName}${to.firstName}くん`;
   const toNameLast = `${to.lastName}くん`;
   const baseKanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
-  const prefix = `${baseKanji}塁ランナー`;
+  const prefix = `${baseKanji}ランナー`;
 
   if (isTemp) {
     // 例）「一塁ランナー〇〇くんに代わりまして 臨時代走、▲▲君、臨時代走は▲▲君。」
-    return `${prefix}${fromName ? fromName + "に" : ""}代わりまして 臨時代走、${toNameFull}、臨時代走は ${toNameLast}。`;
+    return `${prefix}${fromName ? fromName + "に" : ""}代わりまして 臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`;
   }
   // 通常代走
   return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}、背番号 ${to.number}。`;
@@ -475,6 +503,15 @@ const handleScoreInput = (digit: string) => {
   if (inputScore.length < 2) {
     setInputScore(prev => prev + digit);
   }
+};
+
+// HTML文字列を通常アナウンス欄へ出す
+const setAnnouncementHTML = (html: string) => {
+  const node = <span dangerouslySetInnerHTML={{ __html: html }} />;
+  // 従来の preview 用（保険）
+  setAnnouncement(node);
+  // ✅ 通常のアナウンス枠にも反映
+  setAnnouncementOverride(node);
 };
 
 
@@ -1718,10 +1755,19 @@ useEffect(() => {
                 }));
 
                 // 2) プレビュー文言を即時更新
-                const runnerId =
-                  selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex]?.id : undefined;
-                const replaced = runnerId ? getPlayer(runnerId) : null;                  // 元ランナー
+                const runnerId = selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex]?.id : undefined;
+                const replaced = runnerId ? getPlayer(runnerId) : null;// 元ランナー
+                const fromName = replaced ? `${replaced.lastName}${replaced.isFemale ? "さん" : "くん"}` : "";
                 const sub = runnerAssignments[base];                                     // 代走に出す選手（未選択なら null）
+
+                // いまSTEP3で選ばれている候補（クリック前後どちらにも対応）
+                const to =
+                  selectedRunnerByBase[base] ||
+                  runnerAssignments[base] ||
+                  null;
+
+                setAnnouncementHTML(makeRunnerAnnounce(base, fromName, player, isTemp));
+
 
                 setRunnerAnnouncement((prev) => {
                   const prefix = `${base}ランナー`;
@@ -1747,11 +1793,11 @@ useEffect(() => {
                   const text = checked
                     // 臨時代走 ON
                     ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
-                      `臨時代走、${toNameFull}、臨時代走は ${toNameLast}、背番号 ${sub.number}。`)
+                      `臨時代走、${toNameLast}、臨時代走は ${toNameLast}、背番号 ${sub.number}。`)
                     // 臨時代走 OFF（通常）
                     : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
                       `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${sub.number}。`);
-
+                  setAnnouncementHTML(text);
                   return [...updated, text];
                 });
               }}
@@ -1768,99 +1814,103 @@ useEffect(() => {
           {/* 🔹 選択内容表示 */}
           <h3 className="text-lg font-bold mb-2">代走設定内容</h3>
           <div className="text-md mb-4">
-            {(() => {
-              const runner = getPlayer(battingOrder[selectedRunnerIndex].id);
-              const sub = runnerAssignments[selectedBase];
-              const fromText = runner ? `${runner.lastName}${runner.firstName} #${runner.number}` : "";
-              const toText = sub ? `➡ ${sub.lastName}${sub.firstName} #${sub.number}` : "➡";
-              return <p>{selectedBase}：{fromText} {toText}</p>;
-            })()}
+          {(() => {
+            const runner = getPlayer(battingOrder[selectedRunnerIndex].id);
+            const sub = runnerAssignments[selectedBase];
+            const isTemp = !!tempRunnerFlags[selectedBase];           // ←追加
+            const fromText = runner ? `${runner.lastName}${runner.firstName} #${runner.number}` : "";
+            const toText = sub
+              ? `➡ ${isTemp ? "（" : ""}${sub.lastName}${sub.firstName} #${sub.number}${isTemp ? "）" : ""}`
+              : "➡";
+            return <p>{selectedBase}：{fromText} {toText}</p>;
+          })()}
+
           </div>
 
           {/* 🔹 選手選択 */}
           <h3 className="text-lg font-bold mb-2">代走として出す選手を選択</h3>
           <div className="grid grid-cols-2 gap-2 mb-4">
-            {activeBench.map((player) => {
-              const isUsed = Object.values(runnerAssignments).some(p => p?.id === player.id);
-              const isSelected = runnerAssignments[selectedBase]?.id === player.id;
+          {orderByBattingFromPrev(
+            // 臨時代走ONなら「現在出場中（本人は除外）」、OFFなら「控え（出場可能）」
+            tempRunnerFlags[selectedBase]
+              ? onFieldPlayers.filter((p) => p.id !== (battingOrder[selectedRunnerIndex!]?.id))
+              : activeBench,
+            (selectedRunnerIndex ?? 0) + battingOrder.length // 並びの起点＝「前の打者」
+          ).map((player) => {
+            // 他の塁で選択済みは無効（同じ塁の再選択は許可）
+            const isUsedElsewhere = Object.entries(runnerAssignments)
+              .some(([b, p]) => p?.id === player.id && b !== selectedBase);
+            const isSelected = runnerAssignments[selectedBase!]?.id === player.id;
 
-              return (
-                <button
-                  key={player.id}
-                  disabled={isUsed && !isSelected}
-                  onClick={() => {
-                    const runnerId = battingOrder[selectedRunnerIndex]?.id;
-                    const replaced = getPlayer(runnerId);
-                    const honorific = player.isFemale ? "さん" : "くん";
+            return (
+              <button
+                key={player.id}
+                type="button"
+                disabled={isUsedElsewhere}
+                aria-pressed={isSelected}
+onClick={() => {
+  const base = selectedBase!;
 
-      // ルビ付きラストネーム生成
-      const rubyLastName = (p: any) =>
-        `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+  // 元のランナー（置換される側）
+  const runnerId =
+    selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex].id : null;
+  const replaced = runnerId ? getPlayer(runnerId) : null;
 
-      // ルビ付きファーストネーム生成
-      const rubyFirstName = (p: any) =>
-        `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+  // 敬称
+  const honorificFrom = replaced?.isFemale ? "さん" : "くん";
+  const honorificTo = player.isFemale ? "さん" : "くん";
 
-      // ルビ付きフルネーム生成
-      const rubyFullName = (p: any) => `${rubyLastName(p)}${rubyFirstName(p)}`;
+  // ルビ関数
+  const rubyLast = (p: any) =>
+    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+  const rubyFirst = (p: any) =>
+    `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+  const rubyFull = (p: any) => `${rubyLast(p)}${rubyFirst(p)}`;
 
-      // 敬称（replaced が未定義でも安全に）
-      const honorificFrom = replaced?.isFemale ? "さん" : "くん";
-      const honorificTo   = player?.isFemale ? "さん" : "くん";
+  // 画面状態を更新（誰を代走に入れるか）
+  setRunnerAssignments(prev => ({ ...prev, [base]: player }));
+  setReplacedRunners(prev => ({ ...prev, [base]: replaced || null }));
+  setSelectedRunnerByBase(prev => ({ ...prev, [base]: player }));
 
-      setRunnerAnnouncement((prev: string[]) => {
-        const prefix = `${selectedBase}ランナー`;
-        const updated = prev.filter((msg) => !msg.startsWith(prefix));
+  // アナウンス文（臨時/通常）を生成
+  const isTemp = !!tempRunnerFlags[base];
+  const baseKanji = base.replace("1","一").replace("2","二").replace("3","三");
+  const prefix = `${baseKanji}ランナー`;
 
-        const fromName = replaced
-          ? `${rubyLastName(replaced)}${honorificFrom}`
-          : ""; // 置換元が無いケースも一応ケア
+  const fromName =
+    replaced ? `${rubyLast(replaced)}${honorificFrom}` : "";
+  const toNameFull = `${rubyFull(player)}${honorificTo}`;
+  const toNameLast = `${rubyLast(player)}${honorificTo}`;
 
-        const toNameFull = `${rubyFullName(player)}${honorificTo}`;
-        const toNameLast = `${rubyLastName(player)}${honorificTo}`;
-
-        // ✨ 臨時代走の有無で文言を分岐
-        const isTemp = selectedBase ? !!tempRunnerFlags[selectedBase] : false;
-
-        let text: string;
-        if (isTemp) {
-          // 例）「一塁ランナー〇〇くんに代わりまして 臨時代走、▲▲君、臨時代走は▲▲君。」
-          text =
-            (fromName
-              ? `${prefix} ${fromName} に代わりまして 臨時代走、`
-              : `${prefix} に代わりまして 臨時代走、`) +
-            `${toNameFull}、臨時代走は ${toNameLast}。`;
-        } else {
-          // 従来の通常代走アナウンス
-          text =
-            (fromName
-              ? `${prefix} ${fromName} に代わりまして、`
-              : `${prefix} に代わりまして、`) +
-            `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`;
-        }
-
-        return [...prev, text];
-
-      });
+  const text = isTemp
+    // 臨時代走
+    ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+       `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
+    // 通常代走
+    : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+       `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`);
 
 
-                    setRunnerAssignments(prev => ({ ...prev, [selectedBase]: player }));
-                    setReplacedRunners(prev => ({ ...prev, [selectedBase]: replaced }));
-                    setSelectedSubRunner(player);
-                  }}
-                  className={`p-2 border rounded font-semibold text-center ${
-                    isSelected
-                      ? "bg-yellow-300 border-yellow-600 text-black"
-                      : isUsed
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-white hover:bg-gray-100"
-                  }`}
-                >
-                  {player.lastName} {player.firstName} #{player.number}
-                </button>
-              );
-            })}
+
+  // ② 本番のアナウンス配列も“同じ塁の文言だけ置き換え”して更新
+  setRunnerAnnouncement(prev => {
+    const updated = prev.filter(msg => !msg.startsWith(`${base}ランナー`) && !msg.startsWith(`${baseKanji}ランナー`));
+    return [...updated, text];
+  });
+}}
+
+                className={`text-sm px-2 py-1 rounded border text-center
+                  ${isUsedElsewhere ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    : isSelected ? "bg-red-100 border-red-400 font-bold"
+                                                : "bg-white hover:bg-gray-100"}`}
+                title={isUsedElsewhere ? "他の塁で選択済み" : ""}
+              >
+                {player.lastName} {player.firstName} #{player.number}
+              </button>
+            );
+          })}
           </div>
+
 
           {/* 🔹 アナウンス文言エリア */}
           {runnerAnnouncement && runnerAnnouncement.length > 0 && (
@@ -1868,26 +1918,40 @@ useEffect(() => {
               <div className="flex items-center mb-2">
                 <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
                 <div className="text-red-600 font-bold space-y-1">
-                  {["1塁", "2塁", "3塁"].map(base =>
-                    runnerAnnouncement
-                      .filter(msg => msg.startsWith(`${base}ランナー`))
-                      .map((msg, idx) => (
-                        <div
-                          key={`${base}-${idx}`}
-                          dangerouslySetInnerHTML={{ __html: msg }}
-                        />
-                      ))
-                  )}
+                {["1塁", "2塁", "3塁"].map((base) => {
+                  const kanji = base.replace("1","一").replace("2","二").replace("3","三");
+                  return runnerAnnouncement
+                    .filter(
+                      (msg) =>
+                        msg.startsWith(`${base}ランナー`) || // 1塁/2塁/3塁
+                        msg.startsWith(`${kanji}ランナー`) // 一塁/二塁/三塁
+                    )
+                    .map((msg, idx) => (
+                      <div
+                        key={`${base}-${idx}`}
+                        dangerouslySetInnerHTML={{ __html: msg }}
+                      />
+                    ));
+                })}
+
                 </div>
               </div>
               <div className="flex gap-4">
                 <button
                   onClick={() =>
                     announce(
-                      ["1塁", "2塁", "3塁"]
-                        .map(base => runnerAnnouncement.find(msg => msg.startsWith(`${base}ランナー`)))
-                        .filter(Boolean)
-                        .join("、")
+["1塁", "2塁", "3塁"]
+  .map((base) => {
+    const kanji = base.replace("1","一").replace("2","二").replace("3","三");
+    return runnerAnnouncement.find(
+      (msg) =>
+        msg.startsWith(`${base}ランナー`) ||
+        msg.startsWith(`${kanji}ランナー`)
+    );
+  })
+  .filter(Boolean)
+  .join("、")
+
                     )
                   }
                   className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -1944,6 +2008,10 @@ useEffect(() => {
       Object.entries(runnerAssignments).forEach(([base, sub]) => {
         const replaced = replacedRunners[base]; // ベース上にいた選手（= 代走で置き換える対象）
         if (!sub || !replaced) return;
+        // 🛑 臨時代走は「表示だけ」。打順・守備・usedPlayerInfo 等は保存しない
+        if (tempRunnerFlags[base]) {
+          return;
+        }
 
         // 打順の index を取得（代打→代走に置換）
         const index = battingOrder.findIndex(entry => entry.id === replaced.id);

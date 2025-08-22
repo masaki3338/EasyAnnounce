@@ -54,6 +54,8 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [scores, setScores] = useState<Scores>({});
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+
  const handleStartGame = () => {
       const now = new Date();
       const timeString = now.toLocaleTimeString("ja-JP", { hour: '2-digit', minute: '2-digit' });
@@ -88,6 +90,8 @@ const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[
 const [reEntryTarget, setReEntryTarget] = useState<{ id: number; fromPos: string } | null>(null);
 const [reEntryMessage, setReEntryMessage] = useState("");
 
+// 投手IDごとの累計球数（例: { 12: 63, 18: 23 }）
+const [pitcherTotals, setPitcherTotals] = useState<Record<number, number>>({});
 
 // プレイヤー取得の安全版
 const getPlayerSafe = (id: number) => {
@@ -278,7 +282,9 @@ useEffect(() => {
     const savedScores = (await localForage.getItem<Scores>('scores')) || {};
     const savedPitchCount = (await localForage.getItem<{ current: number; total: number; pitcherId?: number }>('pitchCounts')) || { current: 0, total: 0 };
 
-   
+    const savedSelected = await localForage.getItem<number>("rule.pitchLimit.selected");
+    setPitchLimitSelected(typeof savedSelected === "number" ? savedSelected : 75);
+
 
 const savedBattingOrder =
   (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
@@ -313,6 +319,10 @@ if (hasTempRunner) {
     setIsTop(savedMatchInfo.isTop ?? true);
     setIsDefense(savedMatchInfo.isDefense ?? true);
     setIsHome(savedMatchInfo.isHome ?? false);
+
+    const savedPitcherTotals =
+  (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+setPitcherTotals(savedPitcherTotals);
 
 // 🟡 ピッチャー交代チェック
 const currentPitcherId = savedAssignments?.['投'];
@@ -381,96 +391,117 @@ await localForage.setItem("pitchCounts", {
 
   
   const addPitch = async () => {
-  const newCurrent = currentPitchCount + 1;
-  const newTotal = totalPitchCount + 1;
-  setCurrentPitchCount(newCurrent);
-  setTotalPitchCount(newTotal);
+    const newCurrent = currentPitchCount + 1;
+    const newTotal = totalPitchCount + 1;
+    setCurrentPitchCount(newCurrent);
+    setTotalPitchCount(newTotal);
 
-  const pitcherId = assignments['投'];
+    const pitcherId = assignments['投'];
 
-  // 🔽 matchInfo を取得
-  const savedMatchInfo = await localForage.getItem<{
-    inning?: number;
-    isTop?: boolean;
-  }>('matchInfo');
+    // 🔽 matchInfo を取得
+    const savedMatchInfo = await localForage.getItem<{
+      inning?: number;
+      isTop?: boolean;
+    }>('matchInfo');
 
-  const isSameInning =
-    savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
+    const isSameInning =
+      savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
 
-  // 保存
-  await localForage.setItem('pitchCounts', {
-    current: newCurrent,
-    total: newTotal,
-    pitcherId: pitcherId ?? null
-  });
-
-const pitcher = teamPlayers.find(p => p.id === pitcherId);
-const pitcherName = pitcher?.lastName ?? '投手';
-const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
-const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
-const newMessages: string[] = [];
-
-// ✅ この回の投球数は常に表示（ふりがな付き）
-newMessages.push(
-  `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
-);
-
-  // ✅ イニングが変わっている時だけトータルも表示
-  if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です。`);
-  }
-
-  // ★ ポップアップ用：65 or 75球ちょうどのとき
-  if (newTotal === 65 || newTotal === 75) {
-    const specialMsg =
-      newTotal === 75
-        ? `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
-        : `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
-    setPitchLimitMessages([specialMsg]);
-    setShowPitchLimitModal(true);
-  }
-
-  setAnnounceMessages(newMessages);
-};
-
-  const subtractPitch = async () => {
-  const newCurrent = Math.max(currentPitchCount - 1, 0);
-  const newTotal = Math.max(totalPitchCount - 1, 0);
-  setCurrentPitchCount(newCurrent);
-  setTotalPitchCount(newTotal);
-
-  const pitcherId = assignments['投'];
-
-  // 🔽 matchInfo を取得して現在の回と比較
-  const savedMatchInfo = await localForage.getItem<{
-    inning?: number;
-    isTop?: boolean;
-  }>('matchInfo');
-
-  const isSameInning =
-    savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
-
-  // 保存
-  await localForage.setItem('pitchCounts', {
-    current: newCurrent,
-    total: newTotal,
-    pitcherId: pitcherId ?? null
-  });
+    // 保存
+    await localForage.setItem('pitchCounts', {
+      current: newCurrent,
+      total: newTotal,
+      pitcherId: pitcherId ?? null
+    });
 
   const pitcher = teamPlayers.find(p => p.id === pitcherId);
-  const pitcherLastName = pitcher?.lastName ?? '投手';
+  const pitcherName = pitcher?.lastName ?? '投手';
+  const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
   const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
+  const newMessages: string[] = [];
 
-  const newMessages = [
-    `ピッチャー${pitcherLastName}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
-  ];
+  // ✅ この回の投球数は常に表示（ふりがな付き）
+  newMessages.push(
+    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
+  );
 
-  // ✅ イニングが変わっていたらトータルも表示
-  if (newCurrent !== newTotal) {
-    newMessages.push(`トータル${newTotal}球です。`);
-  }
+    // ✅ イニングが変わっている時だけトータルも表示
+    if (newCurrent !== newTotal) {
+      newMessages.push(`トータル${newTotal}球です。`);
+    }
 
-  setAnnounceMessages(newMessages);
+    // ★ ポップアップ用： (selected-10) と selected ちょうどのとき
+    const warn1 = Math.max(0, pitchLimitSelected - 10);
+    const warn2 = pitchLimitSelected;
+
+    if (newTotal === warn1 || newTotal === warn2) {
+      const specialMsg =
+        newTotal === warn2
+          ? `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
+          : `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
+      setPitchLimitMessages([specialMsg]);
+      setShowPitchLimitModal(true);
+    }
+    setAnnounceMessages(newMessages);
+
+    // 投手別累計を更新
+    if (typeof pitcherId === "number") {
+      const map =
+        (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+      map[pitcherId] = (map[pitcherId] ?? 0) + 1;
+      setPitcherTotals({ ...map });
+      await localForage.setItem("pitcherTotals", map);
+    }
+
+  };
+
+  const subtractPitch = async () => {
+    const newCurrent = Math.max(currentPitchCount - 1, 0);
+    const newTotal = Math.max(totalPitchCount - 1, 0);
+    setCurrentPitchCount(newCurrent);
+    setTotalPitchCount(newTotal);
+
+    const pitcherId = assignments['投'];
+
+    // 🔽 matchInfo を取得して現在の回と比較
+    const savedMatchInfo = await localForage.getItem<{
+      inning?: number;
+      isTop?: boolean;
+    }>('matchInfo');
+
+    const isSameInning =
+      savedMatchInfo?.inning === inning && savedMatchInfo?.isTop === isTop;
+
+    // 保存
+    await localForage.setItem('pitchCounts', {
+      current: newCurrent,
+      total: newTotal,
+      pitcherId: pitcherId ?? null
+    });
+
+    const pitcher = teamPlayers.find(p => p.id === pitcherId);
+    const pitcherLastName = pitcher?.lastName ?? '投手';
+    const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
+
+    const newMessages = [
+      `ピッチャー${pitcherLastName}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
+    ];
+
+    // ✅ イニングが変わっていたらトータルも表示
+    if (newCurrent !== newTotal) {
+      newMessages.push(`トータル${newTotal}球です。`);
+    }
+    setAnnounceMessages(newMessages);
+    
+    if (typeof pitcherId === "number") {
+      const map =
+        (await localForage.getItem<Record<number, number>>("pitcherTotals")) || {};
+      const next = Math.max((map[pitcherId] ?? 0) - 1, 0);
+      map[pitcherId] = next;
+      setPitcherTotals({ ...map });
+      await localForage.setItem("pitcherTotals", map);
+    }
+
 };
 
 
