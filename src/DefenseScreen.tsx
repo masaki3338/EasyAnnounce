@@ -219,7 +219,11 @@ const handleTempReentryCheck = async () => {
   const pinchIdx = battingOrder.findIndex((e) => e?.reason === "臨時代走");
   if (pinchIdx === -1) return;
 
-  const pinchId = battingOrder[pinchIdx]?.id;     // 代走で出ている選手（A）
+  // 攻撃画面が保存した「臨時で出た選手(A)」を優先して使う
+  const tempMap: Record<number, number> =
+    (await localForage.getItem("tempRunnerByOrder")) || {};
+  const pinchId = tempMap[pinchIdx] ?? battingOrder[pinchIdx]?.id;
+
   const starterId = startingOrder[pinchIdx]?.id;  // その打順の元スタメン（B）
   if (!pinchId || !starterId) return;
 
@@ -867,12 +871,15 @@ const handlePitchLimitSpeak = () => {
 {showTempReentryModal && (
   <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
     <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
-      <h2 className="text-xl font-bold text-red-600">臨時代走の戻し</h2>
+      <h2 className="text-xl font-bold text-red-600">臨時代走の戻り</h2>
 
-      <div className="whitespace-pre-wrap text-left border rounded p-3 bg-gray-50 min-h-[64px]">
-        {reEntryMessage || "対象選手なし"}
+      {/* 🎤 マイクアイコン + 赤字の文言エリア */}
+      <div className="flex items-start gap-2">
+        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-1" />
+        <div className="whitespace-pre-wrap text-left border border-red-400 rounded p-3 bg-red-50 min-h-[64px] text-red-600 font-bold">
+          {reEntryMessage || "対象選手なし"}
+        </div>
       </div>
-
       <div className="flex flex-wrap gap-2 justify-center">
         <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={() => speak(reEntryMessage)}>読み上げ</button>
         <button className="px-3 py-2 bg-gray-700 text-white rounded" onClick={() => window.speechSynthesis?.cancel()}>停止</button>
@@ -880,50 +887,95 @@ const handlePitchLimitSpeak = () => {
         <button
           className="px-3 py-2 bg-indigo-600 text-white rounded"
           onClick={async () => {
-            if (!reEntryTarget) return;
+            // ▼臨時代走フラグを消す（既存ロジックのまま）
+            const key = "tempRunnerByOrder";
+            const map = (await localForage.getItem<Record<number, number>>(key)) || {};
 
-            // 守備を元選手(B)に戻す
-            const curAssign: Record<string, number | null> =
-              (await localForage.getItem("lineupAssignments")) || assignments || {};
-            const nextAssign = { ...curAssign, [reEntryTarget.fromPos]: reEntryTarget.id };
-            setAssignments(nextAssign);
-            await localForage.setItem("lineupAssignments", nextAssign);
+            if (typeof reEntryTarget?.index === "number") {
+              delete map[reEntryTarget.index];
+              await localForage.setItem(key, map);
 
-            // 打順も B を戻す（臨時代走を消す）
-            if (typeof reEntryTarget.index === "number") {
               const order: Array<{ id: number; reason?: string }> =
                 (await localForage.getItem("battingOrder")) || [];
               if (order[reEntryTarget.index]) {
-                order[reEntryTarget.index] = { id: reEntryTarget.id, reason: "スタメン" };
+                // id はそのまま、reason を除去
+                order[reEntryTarget.index] = { id: order[reEntryTarget.index].id };
                 await localForage.setItem("battingOrder", order);
+                setBattingOrder(order);
+              }
+            } else {
+              //（該当インデックス不明時は保険で全打順から「臨時代走」を一掃）
+              const order: Array<{ id: number; reason?: string }> =
+                (await localForage.getItem("battingOrder")) || [];
+              let changed = false;
+              order.forEach((e, i) => {
+                if (e?.reason === "臨時代走") {
+                  delete map[i];
+                  order[i] = { id: e.id };
+                  changed = true;
+                }
+              });
+              await localForage.setItem(key, map);
+              if (changed) {
+                await localForage.setItem("battingOrder", order);
+                setBattingOrder(order);
               }
             }
 
-            // 任意：リエントリー済みフラグ
-            const usedNow: Record<number, any> = (await localForage.getItem("usedPlayerInfo")) || {};
-            usedNow[reEntryTarget.id] = { ...(usedNow[reEntryTarget.id] || {}), hasReentered: true };
-            await localForage.setItem("usedPlayerInfo", usedNow);
-
-            // クローズ → 守備画面に戻る（従来モーダルは出さない）
-            window.speechSynthesis?.cancel();
+            // ▼共通の後片付け
             setReEntryMessage("");
             setReEntryTarget(null);
+            window.speechSynthesis?.cancel();
             setShowTempReentryModal(false);
+
+            // ★ 分岐：他に「代打／代走」が残っていれば確認モーダル、無ければ守備交代画面へ
+            const orderNow: Array<{ id: number; reason?: string }> =
+              (await localForage.getItem("battingOrder")) || [];
+            const hasOtherSubs = orderNow.some(
+              (e) => e?.reason === "代打" || e?.reason === "代走"
+            );
+
+            if (hasOtherSubs) {
+              setShowConfirmModal(true);
+            } else {
+              setShowConfirmModal(false);  // → そのまま守備“画面”に留まる（遷移しない）
+            }
           }}
+
+
         >
           確定
         </button>
 
         <button
           className="px-3 py-2 bg-gray-400 text-white rounded"
-          onClick={() => {
-            // 臨時代走を処理しない → 従来モーダルへ
-            setReEntryMessage("");
-            setReEntryTarget(null);
-            window.speechSynthesis?.cancel();
-            setShowTempReentryModal(false);
-            setShowConfirmModal(true);
-          }}
+// （臨時代走モーダル内）キャンセル
+onClick={async () => {
+  // ▼ 臨時代走の記憶をクリア
+  const key = "tempRunnerByOrder";
+  const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+
+  if (typeof reEntryTarget?.index === "number") {
+    delete map[reEntryTarget.index];
+    await localForage.setItem(key, map);
+
+    const order: Array<{ id: number; reason?: string }> =
+      (await localForage.getItem("battingOrder")) || [];
+    if (order[reEntryTarget.index]?.reason === "臨時代走") {
+      order[reEntryTarget.index] = { id: order[reEntryTarget.index].id }; // reason除去
+      await localForage.setItem("battingOrder", order);
+      setBattingOrder(order);
+    }
+  }
+
+  // ▼既存の閉じ動作
+  setReEntryMessage("");
+  setReEntryTarget(null);
+  window.speechSynthesis?.cancel();
+  setShowTempReentryModal(false);
+  setShowConfirmModal(true);
+}}
+
         >
           キャンセル
         </button>

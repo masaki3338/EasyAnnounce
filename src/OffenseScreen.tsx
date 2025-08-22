@@ -1996,96 +1996,97 @@ onClick={() => {
                 キャンセル
               </button>
       <button
-        onClick={async () => {
-          const newOrder = [...battingOrder];
-          const newUsed = { ...usedPlayerInfo };
+// （代走モーダルの「確定」ボタン）
+onClick={async () => {
+  const newOrder = [...battingOrder];
+  const newUsed: Record<number, any> =
+    (await localForage.getItem("usedPlayerInfo")) || {};
+  const lineup: Record<string, number | null> =
+    (await localForage.getItem("lineupAssignments")) || {};
+  const wasStarterMap: Record<number, boolean> =
+    (await localForage.getItem("wasStarterMap")) || {};
+  let teamPlayerList = [...players];
 
-          const assignments = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
-          const wasStarterMap = await localForage.getItem<Record<number, boolean>>("wasStarterMap");
-          const updatedAssignments = { ...(assignments || {}) };
-          let teamPlayerList = [...players];
+  // 画面上で選んだ 1～3塁の代走指定を処理
+  for (const [base, sub] of Object.entries(runnerAssignments)) {
+    const replaced = replacedRunners[base as "1塁" | "2塁" | "3塁"];
+    if (!sub || !replaced) continue;
 
-      Object.entries(runnerAssignments).forEach(([base, sub]) => {
-        const replaced = replacedRunners[base]; // ベース上にいた選手（= 代走で置き換える対象）
-        if (!sub || !replaced) return;
-        // 🛑 臨時代走は「表示だけ」。打順・守備・usedPlayerInfo 等は保存しない
-        if (tempRunnerFlags[base]) {
-          return;
-        }
+    const idx = battingOrder.findIndex((e) => e.id === replaced.id);
+    if (idx === -1) continue;
 
-        // 打順の index を取得（代打→代走に置換）
-        const index = battingOrder.findIndex(entry => entry.id === replaced.id);
-        if (index === -1) return;
+    const isTemp = !!tempRunnerFlags[base as "1塁" | "2塁" | "3塁"];
+    if (isTemp) {
+      // 臨時代走 → 打順はそのまま（表示だけ）
+      const key = "tempRunnerByOrder";
+      const tempMap =
+        (await localForage.getItem<Record<number, number>>(key)) || {};
+      tempMap[idx] = sub.id;
+      await localForage.setItem(key, tempMap);
+      newOrder[idx] = { id: replaced.id, reason: "臨時代走" };
+      continue;
+    }
 
-        // ① 既存 used を読み、"代打 → 代走" のチェーンを解決
-        //    先発(=originalId) → 代打(subId=replaced.id) という記録があるはず
-        const chain = Object.entries(newUsed).find(([, info]: any) => info?.subId === replaced.id);
-        const originalId = chain ? Number(chain[0]) : replaced.id;
+    // ▼ 通常の代走：打順を代走選手へ置換
+    newOrder[idx] = { id: sub.id, reason: "代走" };
 
-        // ② fromPos を確定（先発の記録があれば継承。なければ assignments から拾う）
-        const chainFromPos = chain ? (chain[1] as any).fromPos : undefined;
-        let fromPos = chainFromPos;
-        if (!fromPos) {
-          // assignments から探す（"投/捕/一/…" のシンボル）
-          const hit = Object.entries(assignments || {}).find(([, id]) => id === originalId || id === replaced.id);
-          fromPos = hit?.[0] ?? ""; // 空のままは避けたいが、なければ空のまま
-        }
+    // 置換“前”の選手が守っていた守備位置（略号）を特定
+    const posNameToSymbol: Record<string, string> = {
+      "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一", "セカンド": "二",
+      "サード": "三", "ショート": "遊", "レフト": "左", "センター": "中", "ライト": "右", "指名打者": "指",
+    };
 
-        // ③ usedPlayerInfo を「元の先発のキー」で更新
-        newUsed[originalId] = {
-          ...(chain ? chain[1] : {}),
-          fromPos,               // 例: "一"
-          subId: sub.id,         // 代走のIDに上書き
-          // ✨ 臨時代走チェックに応じて理由を切替
-          reason: tempRunnerFlags[base] ? "臨時代走" : "代走",
-          order: index + 1,
-          wasStarter: wasStarterMap?.[originalId] ?? true,
-        };
+    // getPosition はこの画面にある関数（守備/代打/代走などを返す）
+    const fullFrom = getPosition(replaced.id);      // 例) "サード" / "投" / "代打"…
+    const fromPos =
+      (posNameToSymbol as any)[fullFrom ?? ""] ??
+      (fullFrom && "投捕一二三遊左中右指".includes(fullFrom) ? fullFrom : "");
 
+    // usedPlayerInfo を記録（DefenseChange で連鎖を辿る時にも使う）
+    newUsed[replaced.id] = {
+      fromPos: fromPos || "",    // 取得できない場合は空文字
+      subId: sub.id,
+      reason: "代走",
+      order: idx + 1,
+      wasStarter: !!wasStarterMap[replaced.id],
+    };
 
-        // ④ もし "代打ID" をキーにした残骸があれば削除（あなたのログの 1752049941486 のようなやつ）
-        if (newUsed[replaced.id] && replaced.id !== originalId) {
-          delete (newUsed as any)[replaced.id];
-        }
+    // 守備配置を引き継ぎ（“元の守備位置→代走選手”）
+    if (fromPos && lineup[fromPos] === replaced.id) {
+      lineup[fromPos] = sub.id;
+    }
 
-        // ⑤ 打順更新（代走）
-        //newOrder[index] = { id: sub.id, reason: "代走" };
-        const reason = tempRunnerFlags[base] ? "臨時代走" : "代走";
-        newOrder[index] = { id: sub.id, reason }
+    // ベンチ→チーム登録（未登録なら）
+    if (!teamPlayerList.some((p) => p.id === sub.id)) {
+      teamPlayerList = [...teamPlayerList, sub];
+    }
+  }
 
-        // ⑥ 守備も引き継ぎ（fromPos が取れた場合のみ）
-        if (fromPos) {
-          // fromPos は "投/捕/一/…" のどれか想定。もし "ファースト" 等の表記ならシンボル化してから入れてください。
-          updatedAssignments[fromPos] = sub.id;
-        }
+  // 保存と反映
+  setBattingOrder(newOrder);
+  await localForage.setItem("battingOrder", newOrder);
 
-        // ⑦ teamPlayers に代走選手がいなければ追加
-        if (!teamPlayerList.some(p => p.id === sub.id)) {
-          teamPlayerList.push(sub);
-        }
-      });
+  setAssignments(lineup);
+  await localForage.setItem("lineupAssignments", lineup);
 
+  setUsedPlayerInfo(newUsed);
+  await localForage.setItem("usedPlayerInfo", newUsed);
 
-          // ✅ 保存と更新
-          setBattingOrder(newOrder);
-          setUsedPlayerInfo(newUsed);
-          
-          await localForage.setItem("lineupAssignments", updatedAssignments);
-          await localForage.setItem("battingOrder", newOrder); 
-          await localForage.setItem("usedPlayerInfo", newUsed);
-          setPlayers(teamPlayerList);
+  setPlayers(teamPlayerList);
+  const teamRaw = (await localForage.getItem("team")) as any;
+  await localForage.setItem("team", { ...(teamRaw || {}), players: teamPlayerList });
 
+  // 後片付けと次画面誘導
+  setShowRunnerModal(false);
+  setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+  setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+  setRunnerAnnouncement([]);
+  setSelectedRunnerIndex(null);
+  setSelectedBase(null);
+  // モーダル表示の代わりに守備画面へ
+  //onSwitchToDefense();
+}}
 
-          // ✅ モーダルと状態をリセット
-          setShowRunnerModal(false);
-          setSelectedRunnerIndex(null);
-          setSelectedBase(null);
-          setSelectedSubRunner(null);
-          setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
-          setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
-          setRunnerAnnouncement([]);
-          setTempRunnerFlags({});
-        }}
         className="bg-red-600 text-white px-4 py-2 rounded"
       >
         確定

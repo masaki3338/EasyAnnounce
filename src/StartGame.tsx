@@ -130,6 +130,7 @@ useEffect(() => {
     await localForage.removeItem("announcedPlayerIds");
     await localForage.removeItem("runnerInfo");
     await localForage.removeItem("pitchCounts");
+    await localForage.removeItem("pitcherTotals");
     await localForage.removeItem("scores");              // 得点削除
     await localForage.removeItem("lastBatterIndex");
     await localForage.removeItem("nextBatterIndex");
