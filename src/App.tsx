@@ -37,7 +37,7 @@ import VersionInfo from "./screens/VersionInfo";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.0.1"
+const APP_VERSION = "1.00"
 
 // 画面の種類を列挙した型
 export type ScreenType =
@@ -143,7 +143,7 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
       </div>
 
       <div className="mt-12 text-white text-sm opacity-70 select-none">
-        バージョン: {APP_VERSION}
+        Version: {APP_VERSION}
       </div>
     </div>
   );

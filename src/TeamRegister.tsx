@@ -32,17 +32,53 @@ const TeamRegister = () => {
   const lastNameInputRef = useRef<HTMLInputElement>(null);
   const [restoreMessage, setRestoreMessage] = useState("");
 
-  const handleBackup = () => {
-    const blob = new Blob([JSON.stringify(team, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "team_backup.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+// 既存の handleBackup を置き換え
+const handleBackup = async () => {
+  const blob = new Blob([JSON.stringify(team, null, 2)], {
+    type: "application/json",
+  });
+
+  // File System Access API が使える場合（Chrome / Edge 等）
+  const anyWindow = window as any;
+  if (typeof anyWindow.showSaveFilePicker === "function") {
+    try {
+      const handle = await anyWindow.showSaveFilePicker({
+        suggestedName: `team_backup_${new Date()
+          .toISOString()
+          .slice(0,19)
+          .replace(/[:T]/g,"-")}.json`,
+        types: [
+          {
+            description: "JSON file",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+        excludeAcceptAllOption: false,
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      alert(`✅ 保存しました：${handle.name}`);
+      return;
+    } catch (err) {
+      // ユーザーがキャンセルした等。フォールバックへ続行
+      console.warn("save picker canceled or failed:", err);
+    }
+  }
+
+  // ▼ フォールバック（従来どおりの自動ダウンロード）
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "team_backup.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
 
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -173,11 +209,11 @@ useEffect(() => {
         onClick={handleBackup}
         className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
       >
-        📁 バックアップ保存
+        💾 記憶
       </button>
 
       <label className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded cursor-pointer">
-        📂 バックアップ読み込み
+        📂 復元
         <input
           type="file"
           accept="application/json"
