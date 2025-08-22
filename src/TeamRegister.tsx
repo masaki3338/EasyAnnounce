@@ -202,7 +202,7 @@ useEffect(() => {
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 bg-gray-50 min-h-screen">
-    <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">🏏 チーム／選手登録</h1>
+    <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">🧢 チーム／選手登録</h1>
 
     <div className="flex gap-3 justify-center mt-4 mb-2">
       <button
