@@ -1,7 +1,13 @@
 import React from "react";
 import type { ScreenType } from "../App";
 
-export default function OperationSettings({ onNavigate }: { onNavigate: (s: ScreenType) => void }) {
+type Props = {
+  onNavigate: (s: ScreenType) => void;
+  onOpenManual?: () => void; // ← 追加（AppのManualViewerを開くコールバック）
+};
+
+export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center py-10">
       <div className="w-full max-w-sm">
@@ -21,17 +27,23 @@ export default function OperationSettings({ onNavigate }: { onNavigate: (s: Scre
             タイブレークルール
           </button>
 
+          {/* ▼ 連盟アナウンスマニュアル（Appのモーダルを開く） */}
           <button
             className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
             onClick={() => {
-              const url = `${window.location.origin}/manual.pdf#zoom=page-fit`;
-              const win = window.open(url, "_blank", "noopener");
-              // ポップアップブロック対策：開けなければ同タブ遷移
-              if (!win) window.location.href = url;
+              if (onOpenManual) {
+                onOpenManual(); // App.tsx の ManualViewer モーダルを起動
+              } else {
+                // フォールバック（props未提供なら別タブで開く）
+                const url = `${window.location.origin}/manual.pdf#zoom=page-fit`;
+                const win = window.open(url, "_blank", "noopener");
+                if (!win) window.location.href = url;
+              }
             }}
           >
             連盟アナウンスマニュアル
           </button>
+
 
 
           <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
