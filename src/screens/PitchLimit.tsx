@@ -123,7 +123,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
                 onChange={chooseCustom}
             />
 
-            <span className="mr-1 cursor-default">カスタム：</span>
+            <span className="mr-1 cursor-default whitespace-nowrap shrink-0">カスタム：</span>
 
             {/* 1球単位で増減。押した瞬間 custom を選択＆保存 */}
             <button type="button" className="px-4 py-2 bg-gray-300 rounded-lg" onClick={decCustom}>
