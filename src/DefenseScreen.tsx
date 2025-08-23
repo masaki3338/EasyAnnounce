@@ -996,9 +996,11 @@ onClick={async () => {
 {showConfirmModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
     <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
-      <h2 className="text-xl font-bold text-red-600">
-        代打/代走の選手の守備位置を設定して下さい
+      <h2 className="text-xl font-bold text-red-600 leading-tight text-center">
+        <span>代打/代走の選手の守備位置を</span>{" "}
+        <span className="whitespace-nowrap">設定して下さい</span>
       </h2>
+
 
       <div className="flex justify-center gap-4 mt-4">
         {/* 守備交代へ */}

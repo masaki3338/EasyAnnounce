@@ -2403,13 +2403,13 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
 
   return (
   <div
-      key={pos}
-      
-      onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
-      onDrop={(e) => { if (pos !== "指" || dhEnabledAtStart) handleDrop(pos, e); }}
-      className={className}
-      style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10 }}
-    >
+    key={pos}
+    onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
+    onDrop={(e) => { if (pos !== "指" || dhEnabledAtStart) handleDrop(pos, e); }}
+    className={`${className} whitespace-nowrap text-center`}   // ← 追加
+    style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}  // ← 追加
+  >
+
    {player ? (
     <div
       draggable
@@ -2420,7 +2420,9 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
       {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
     </div>
   ) : (
-    <span className="text-gray-300 text-base">DHなし</span>
+  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "80px" }}>
+    DHなし
+  </span>
   )}
     </div>
   );

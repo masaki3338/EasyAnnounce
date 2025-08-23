@@ -1476,7 +1476,7 @@ await localForage.setItem("lineupAssignments", newAssignments);
           #{getPlayer(battingOrder[currentBatterIndex]?.id)?.number}
         </div>
         {/* 矢印 */}
-        <div className="text-blue-600 text-3xl">⬅</div>
+        <div className="text-blue-600 text-3xl">⬆</div>
         {/* ベンチ（出場可能） */}
         <div className="w-full">
           <div className="text-sm font-bold text-gray-600 mb-1">控え選手（出場可能）</div>
@@ -2126,6 +2126,27 @@ onClick={async () => {
   setPlayers(teamPlayerList);
   const teamRaw = (await localForage.getItem("team")) as any;
   await localForage.setItem("team", { ...(teamRaw || {}), players: teamPlayerList });
+
+  // ▼ 各種保存処理のあと（battingOrder, players 等を set / localForage 保存済みの直後）に追加
+{
+  // ✅ 代走プレビューで作られた文言を、通常アナウンス欄に反映
+  const orderedMsgs = ["1塁", "2塁", "3塁"]
+    .map((base) => {
+      const kanji = base.replace("1","一").replace("2","二").replace("3","三");
+      return runnerAnnouncement.find(
+        (msg) =>
+          msg.startsWith(`${base}ランナー`) ||
+          msg.startsWith(`${kanji}ランナー`)
+      );
+    })
+    .filter(Boolean) as string[];
+
+  if (orderedMsgs.length > 0) {
+    // 1塁→2塁→3塁の順で改行表示（複数塁をまとめて見やすく）
+    setAnnouncementHTML(orderedMsgs.join("<br/>"));
+  }
+}
+
 
   // 後片付けと次画面誘導
   setShowRunnerModal(false);
