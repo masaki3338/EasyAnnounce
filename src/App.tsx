@@ -487,18 +487,39 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
               alert("試合終了しました");
             }
             console.groupEnd();
-          } else if (value === "continue") {
-            const msg =
-            "この試合は、◯回終了して同点のため、大会規定により◯死◯塁からのタイブレークに入ります。\n" +
-            "◯回の表（裏）の攻撃は、\n" +
-            "　ファーストランナーは◯◯くん、背番号○、\n" +
-            "　セカンドランナーは◯◯くん、背番号○\n" +
-            "　バッターは◯番、[守備]◯◯くん";          
-            setTiebreakMessage(msg);
-            setShowTiebreakPopup(true);
+            } else if (value === "tiebreak") {
+              const cfg = (await localForage.getItem("tiebreakConfig")) as
+                | { outs?: string; bases?: string }
+                | null;
+              const outs = cfg?.outs ?? "ワンナウト";
+              const bases = cfg?.bases ?? "23塁";
 
-          } else if (value === "continue") {
-            setShowContinuationModal(true);
+              // 現在のイニング取得（matchInfo優先、なければscoresの最大回）
+              type Scores = { [inning: string]: { top?: number; bottom?: number } };
+              const match = (await localForage.getItem("matchInfo")) as any;
+              const scores = ((await localForage.getItem("scores")) as Scores) || {};
+
+              let inning = Number(match?.inning);
+              if (!Number.isFinite(inning) || inning < 1) {
+                const keys = Object.keys(scores)
+                  .map((k) => Number(k))
+                  .filter((n) => Number.isFinite(n) && n >= 1);
+                inning = keys.length > 0 ? Math.max(...keys) : 1;
+              }
+
+              // ★ 直前の回（最低でも1回に丸め）
+              const prevInning = Math.max(1, inning - 1);
+
+              const msg =
+                `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+
+              setTiebreakMessage(msg);
+              setShowTiebreakPopup(true);
+
+
+            } else if (value === "continue") {
+              setShowContinuationModal(true);
+
           } else if (value === "heat") {
             setShowHeatPopup(true);
           } else if (value === "manual") {
