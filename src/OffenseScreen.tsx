@@ -764,7 +764,7 @@ const handleRead = async () => {
     const lastNameKana = player.lastNameKana || player.lastName;
     const number = player.number;
     const honorific = player?.isFemale ? "さん" : "くん";
-    const posName = pos;
+    const posName = positionNames[pos] ?? pos;
 
     const isAnnouncedBefore = announcedPlayerIds.includes(entry.id);
 

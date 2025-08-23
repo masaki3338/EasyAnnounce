@@ -442,11 +442,10 @@ battingOrder.forEach((entry, idx) => {
   );
 
   if (otherEntry && !handledIds.has(movedPlayer.id)) {
-    // 2人まとめて1本化
-    result.push(
-      `先ほど${entry.reason}致しました${lastWithHonor(pinchPlayer)}が${posJP[pos]}、`
-      + `先ほど${otherEntry.reason}致しました${lastWithHonor(movedPlayer)}が${posJP[movedToPos]}に入ります。`
-    );
+    // 2人を別行で出す（2行目は「同じく先ほど…」で始める）
+    result.push(`先ほど${entry.reason}致しました${lastWithHonor(pinchPlayer)}が${posJP[pos]}、`);
+    result.push(`同じく先ほど${otherEntry.reason}致しました${lastWithHonor(movedPlayer)}が${posJP[movedToPos]}に入ります。`);
+
 
     lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${lastWithHonor(pinchPlayer)}` });
     const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
@@ -748,7 +747,34 @@ sortedShift.forEach((s, i) => {
   const tail = posJP[s.toPos];
   const ends = "、";
 
+// ↓↓↓ ここに置き換え ↓↓↓
+const pinchEntry = battingOrder.find(
+  (e) => e.id === s.player.id && ["代打", "代走", "臨時代走"].includes(e.reason)
+);
+
+if (pinchEntry) {
+  // 理由ごとの先頭フレーズ（「致しました／に出ました」も含めて整形）
+  const phrase =
+    pinchEntry.reason === "代打"
+      ? "代打致しました"
+      : pinchEntry.reason === "臨時代走"
+      ? "臨時代走"
+      : "代走に出ました";
+
+  // すでに同じ理由の「先ほど…」行が前にあれば「同じく先ほど…」で始める
+  const hasPriorSame = result.some(
+    (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
+  );
+  const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
+
+  // 例）「同じく先ほど代打致しました 折原… が レフト 、」
+  result.push(`${headText}${lastWithHonor(s.player)} が ${tail} ${ends}`);
+} else {
+  // 通常のシフト出力（従来通り）
   result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} ${ends}`);
+}
+// ↑↑↑ ここまで置き換え ↑↑↑
+
 
 // ✅ lineupLines の重複防止付き追加
 if (
@@ -791,6 +817,102 @@ if (
     suppressTailClose = false;
   }
 }
+
+// 🆕 並べ替え：本文のうち「先ほど…／同じく先ほど…」(=代打/代走/臨時代走)を先に、その後に通常の交代文を並べる
+{
+  const isHeader = (t: string) => /お知らせいたします。$/.test(t.trim());
+  const isLineup = (t: string) => /^\d+番 /.test(t.trim());
+  const isClosing = (t: string) => t.trim().endsWith("以上に代わります。");
+  const isBody = (t: string) => {
+    const s = t.trim();
+    return s.length > 0 && !isHeader(s) && !isLineup(s) && !isClosing(s);
+  };
+  const isPinchHead = (t: string) =>
+    /^((同じく)?先ほど(代打|代走|臨時代走)(致しました|に出ました))/.test(t.trim());
+
+  // 既存 result を分類して並べ替え
+  const headers: string[] = [];
+  const bodyPinch: string[] = [];
+  const bodyOther: string[] = [];
+  const closings: string[] = []; // 「以上に代わります。」など（この時点では通常まだ無いが保険）
+
+  for (const ln of result) {
+    if (isHeader(ln)) headers.push(ln);
+    else if (isLineup(ln)) {
+      // 打順行はここでは触らない（この後で既存ロジックがまとめて追加/整形）
+      bodyOther.push(ln); // 一時退避（位置は後段の打順出力で整う）
+    } else if (isClosing(ln)) closings.push(ln);
+    else if (isBody(ln)) (isPinchHead(ln) ? bodyPinch : bodyOther).push(ln);
+    else bodyOther.push(ln);
+  }
+
+  // result を再構成（代打/代走系 → その他）
+  result.splice(0, result.length, ...headers, ...bodyPinch, ...bodyOther, ...closings);
+}
+
+
+// 🆕 中間行の終端補正：このあとに“本文行”が続く場合は「…に入ります。」→「、」
+{
+  const isBody = (t: string) =>
+    !/^\d+番 /.test(t) &&                 // 打順行は除外
+    !/お知らせいたします。$/.test(t) &&   // ヘッダーは除外
+    !/以上に代わります。$/.test(t) &&     // しめ行は除外
+    t.trim().length > 0;
+
+  for (let i = 0; i < result.length - 1; i++) {
+    const cur = result[i].trim();
+    if (!isBody(cur)) continue;
+
+    // 次以降に“本文行”が1本でもあれば、この行は読点でつなぐ
+    const hasBodyAfter = result.slice(i + 1).some((ln) => isBody(ln.trim()));
+    if (!hasBodyAfter) continue;
+
+    result[i] = cur
+      // リエントリーの末尾「…リエントリーで サードに入ります。」→「…リエントリーで サード、」
+      .replace(
+        /リエントリーで\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)に入ります。$/,
+        "リエントリーで $1、"
+      )
+      // 通常の締めを読点に
+      .replace(/が\s*入ります。$/, "、")
+      .replace(/に入ります。$/, "、")
+      .replace(/へ入ります。$/, "、");
+  }
+}
+
+// 🆕 「先ほど◯◯致しました／に出ました」が連続するとき、後続行の先頭を「同じく先ほど◯◯…」に置換
+{
+  const isBody = (t: string) =>
+    !/^\d+番 /.test(t) &&                // 打順行は除外
+    !/お知らせいたします。$/.test(t) &&  // ヘッダーは除外
+    !/以上に代わります。$/.test(t) &&    // しめ行は除外
+    t.trim().length > 0;
+
+  // 直前行の“理由”を覚えて、同じ理由が続いたら「同じく」を付加
+  let lastReason: "代打" | "代走" | "臨時代走" | null = null;
+
+  for (let i = 0; i < result.length; i++) {
+    const line = result[i].trim();
+    if (!isBody(line)) { lastReason = null; continue; }
+
+    // 先頭が「先ほど◯◯致しました…」または「先ほど◯◯に出ました…」かを判定
+    const m = line.match(/^先ほど(代打|代走|臨時代走)(?:致しました|に出ました)/);
+    // 「先ほど…」以外の本文行が間に入っても、同じ理由の連続とみなす
+    if (!m) { continue; }
+
+
+    const reason = m[1] as "代打" | "代走" | "臨時代走";
+    if (lastReason === reason) {
+      // 2 行目以降：先頭を「同じく先ほど◯◯…」に置換
+      result[i] = line.replace(
+        /^先ほど(代打|代走|臨時代走)((?:致しました|に出ました))/,
+        (_all, r, suf) => `同じく先ほど${r}${suf}`
+      );
+    }
+    lastReason = reason;
+  }
+}
+
 
 // ==== 本文終端の統一：最後の1本だけを「正しい日本語」で閉じる ====
 // ・末尾が「…リエントリーで ポジション、」→「…リエントリーで ポジションに入ります。」
@@ -1705,10 +1827,10 @@ if (fromId !== null && toId !== null) {
         replacedId != null && (replacedId === latest || replacedId === info?.subId);
 
       if (isReentryCandidate) {
-        // ✅ リエントリー成立条件：
-        //  1) B を “元いた守備” に戻す（toPos === fromSym）
-        //  2) その位置にいたのが “自分に出ていた代打/代走（A最新）”
-        const ok = fromSym === toPos && isPinchAtThatPos;
+        // ✅ リエントリー成立条件（緩和版）:
+        //  「自分に出ていた代打/代走（A最新）が、今このドロップ先にいる」なら OK
+        const ok = isPinchAtThatPos;
+
 
         if (!ok) {
           // ✖ 条件を満たさない → この配置は行わない
@@ -2800,13 +2922,13 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   <div className="flex justify-center gap-4">
     <button
       onClick={speakVisibleAnnouncement}
-      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
     >
       読み上げ
     </button>
     <button
       onClick={stopSpeaking}
-      className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
     >
       停止
     </button>
