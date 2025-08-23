@@ -75,7 +75,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
 
         <h2 className="text-2xl font-bold text-center mb-10">規定投球数</h2>
 
-        <div className="space-y-6 text-lg">
+        <div className="space-y-6 text-lg px-7 sm:px-6">
           {/* 75 */}
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input type="radio" className="hidden" checked={isChecked("75")} onChange={choose75} />
