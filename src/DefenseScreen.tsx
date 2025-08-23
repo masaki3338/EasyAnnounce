@@ -356,15 +356,23 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   }
   setAnnounceMessages(msgs);
 } else {
-  // 🔴 投手交代 → 両方リセット
+  // 🔄 投手交代：この回は0から、通算は「投手IDごとの累計」を優先
+  const perPitcherTotal =
+    ((await localForage.getItem<Record<number, number>>("pitcherTotals")) || {})[
+      currentPitcherId as number
+    ] ?? 0;
+
   current = 0;
-  total = 0;
-  setAnnounceMessages([
-    `ピッチャー${pitcherName}${pitcherSuffix}、`,
+  total   = perPitcherTotal;
+
+  const msgs = [
+    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、`,
     `この回の投球数は0球です。`,
-    `トータル0球です。`
-  ]);
+    `トータル${total}球です。`
+  ];
+  setAnnounceMessages(msgs);
 }
+
 
 // 状態更新
 setCurrentPitchCount(current);

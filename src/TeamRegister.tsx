@@ -111,24 +111,11 @@ useEffect(() => {
     });
   }, []);
 
-  const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-
-    setTeam((prev) => {
-      if (name === "name") {
-        const currentFurigana = prev.furigana;
-        const autoFurigana = wanakana.toHiragana(value);
-        const isAutoFurigana = currentFurigana === wanakana.toHiragana(prev.name);
-        return {
-          ...prev,
-          name: value,
-          furigana: isAutoFurigana ? autoFurigana : currentFurigana,
-        };
-      } else {
-        return { ...prev, [name]: value };
-      }
-    });
-  };
+const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value } = e.target;
+  // ✅ チーム名・ふりがなをそれぞれ独立して更新（連動させない）
+  setTeam((prev) => ({ ...prev, [name]: value }));
+};
 
   const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -190,15 +177,17 @@ useEffect(() => {
       players: prev.players.filter((p) => p.id !== id),
     }));
 
-  const saveTeam = async () => {
-    const updatedTeam = {
-      ...team,
-      furigana: wanakana.toHiragana(team.name),
-      players: [...team.players].sort((a, b) => Number(a.number) - Number(b.number)),
-    };
-    await localForage.setItem("team", updatedTeam);
-    alert("✅ チーム情報を保存しました");
+const saveTeam = async () => {
+  const updatedTeam = {
+    ...team,
+    // ✅ 入力されたふりがなをそのまま保存（上書きしない）
+    furigana: (team.furigana ?? "").trim(),
+    players: [...team.players].sort((a, b) => Number(a.number) - Number(b.number)),
   };
+  await localForage.setItem("team", updatedTeam);
+  alert("✅ チーム情報を保存しました");
+};
+
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 bg-gray-50 min-h-screen">

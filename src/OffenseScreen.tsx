@@ -1346,22 +1346,36 @@ useEffect(() => {
 
             // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
             // 守備配置の現在値を取得
-            const curAssignments =
-              (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
-              || assignments || {};
-            const newAssignments = { ...curAssignments };
+// 守備配置の現在値を取得
+const curAssignments =
+  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
+  || assignments || {};
+const newAssignments = { ...curAssignments };
 
-            // B（リエントリー対象）の元ポジションを取得
-            const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
+// いま A（戻される側）が就いている“現在の守備位置”を探す
+const posOfA =
+  Object.entries(newAssignments).find(([, id]) => Number(id) === Number(reEntryFromPlayer?.id))?.[0];
 
-            if (fromPos) {
-              // 元ポジションにBを割り当て
-              newAssignments[fromPos] = reEntryTargetPlayer.id;
-            }
+// 念のため：B がどこかに残っていたら外す（重複防止）
+for (const [pos, id] of Object.entries(newAssignments)) {
+  if (Number(id) === Number(reEntryTargetPlayer.id)) {
+    newAssignments[pos] = null;
+  }
+}
 
-            // state とストレージを更新
-            setAssignments(newAssignments);
-            await localForage.setItem("lineupAssignments", newAssignments);
+// 置換：A が現在いる守備位置 → B を入れる
+if (posOfA) {
+  newAssignments[posOfA] = reEntryTargetPlayer.id;
+} else {
+  // A が守備にいない（代打のみ／DHのみ等）の場合はフォールバックで「Bの元ポジション」へ
+  const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
+  if (fromPos) newAssignments[fromPos] = reEntryTargetPlayer.id;
+}
+
+// state とストレージを更新
+setAssignments(newAssignments);
+await localForage.setItem("lineupAssignments", newAssignments);
+
 
             // 3) 退場情報：Aは「退場として残す」/ 元スタメンBは「退場解除」（= usedPlayerInfo から削除）
             const newUsed = { ...(usedPlayerInfo || {}) };

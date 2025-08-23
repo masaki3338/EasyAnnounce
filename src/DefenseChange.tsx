@@ -889,7 +889,7 @@ const positionStyles: Record<string, React.CSSProperties> = {
   左: { top: "22%", left: "18%" },
   中: { top: "22%", left: "50%" },
   右: { top: "22%", left: "81%" },
-  指: { top: "88%", left: "82%" },
+  指: { top: "88%", left: "81%" },
 };
 
 const positions = Object.keys(positionStyles);

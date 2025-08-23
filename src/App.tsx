@@ -514,21 +514,40 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
               {};
             const players = Array.isArray(team?.players) ? team!.players : [];
 
-            const rows = Object.entries(totals)
-              .filter(([, cnt]) => (cnt ?? 0) > 0)
-              .map(([idStr, total]) => {
-                const id = Number(idStr);
-                const p = players.find((x) => x?.id === id);
-                const name =
-                  (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
-                const number = p?.number ? `#${p.number}` : undefined;
-                return { name, number, total: Number(total) || 0 };
-              })
-              // 表示は降順
-              .sort((a, b) => b.total - a.total);
+            // 登板順（最初に投げた順）を読み込む
+            const order =
+              ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
+
+            // まず totals から行データを作って map に置く（>0 の人だけ）
+            const rowsMap = new Map<number, { name: string; number?: string; total: number }>();
+            for (const [idStr, total] of Object.entries(totals)) {
+              const tot = Number(total) || 0;
+              if (tot <= 0) continue;
+              const id = Number(idStr);
+              const p = players.find((x) => x?.id === id);
+              const name = (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
+              const number = p?.number ? `#${p.number}` : undefined;
+              rowsMap.set(id, { name, number, total: tot });
+            }
+
+            // 1) 登板順に並べて詰める
+            const rows: { name: string; number?: string; total: number }[] = [];
+            for (const id of order) {
+              const r = rowsMap.get(id);
+              if (r) {
+                rows.push(r);
+                rowsMap.delete(id); // 取り出したものは削除
+              }
+            }
+
+            // 2) まだ順番情報が無い投手（過去データ等）は最後に付け足す
+            for (const r of rowsMap.values()) {
+              rows.push(r);
+            }
 
             setPitchList(rows);
             setShowPitchListPopup(true);
+
           }
 
         }}
@@ -669,21 +688,40 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
               {};
             const players = Array.isArray(team?.players) ? team!.players : [];
 
-            const rows = Object.entries(totals)
-              .filter(([, cnt]) => (cnt ?? 0) > 0)
-              .map(([idStr, total]) => {
-                const id = Number(idStr);
-                const p = players.find((x) => x?.id === id);
-                const name =
-                  (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
-                const number = p?.number ? `#${p.number}` : undefined;
-                return { name, number, total: Number(total) || 0 };
-              })
-              // 表示は降順
-              .sort((a, b) => b.total - a.total);
+            // 登板順（最初に投げた順）を読み込む
+            const order =
+              ((await localForage.getItem<number[]>("pitcherOrder")) || []).slice();
+
+            // まず totals から行データを作って map に置く（>0 の人だけ）
+            const rowsMap = new Map<number, { name: string; number?: string; total: number }>();
+            for (const [idStr, total] of Object.entries(totals)) {
+              const tot = Number(total) || 0;
+              if (tot <= 0) continue;
+              const id = Number(idStr);
+              const p = players.find((x) => x?.id === id);
+              const name = (p?.lastName ?? "") + (p?.firstName ?? "") || `ID:${id}`;
+              const number = p?.number ? `#${p.number}` : undefined;
+              rowsMap.set(id, { name, number, total: tot });
+}
+
+            // 1) 登板順に並べて詰める
+            const rows: { name: string; number?: string; total: number }[] = [];
+            for (const id of order) {
+              const r = rowsMap.get(id);
+              if (r) {
+                rows.push(r);
+                rowsMap.delete(id); // 取り出したものは削除
+              }
+            }
+
+            // 2) まだ順番情報が無い投手（過去データ等）は最後に付け足す
+            for (const r of rowsMap.values()) {
+              rows.push(r);
+            }
 
             setPitchList(rows);
             setShowPitchListPopup(true);
+
           }
 
         }}
