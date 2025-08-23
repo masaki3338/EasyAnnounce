@@ -20,6 +20,14 @@ export default function OperationSettings({ onNavigate }: { onNavigate: (s: Scre
                   onClick={() => onNavigate("tiebreakRule")}>
             タイブレークルール
           </button>
+          
+          <button
+          className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
+          onClick={() => window.open("/manual.pdf", "_blank")}
+        >
+          連盟アナウンスマニュアル
+        </button>
+
           <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
                   onClick={() => onNavigate("contact")}>
             お問い合わせ
