@@ -779,8 +779,12 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
   </>
 )}
 {screen === "operationSettings" && (
-  <OperationSettings onNavigate={setScreen} />
+  <OperationSettings
+    onNavigate={setScreen}
+    onOpenManual={() => setShowManualPopup(true)} // ← 追加：ManualViewerを開く
+  />
 )}
+
 
 {screen === "pitchLimit" && (
   <PitchLimit onBack={() => setScreen("operationSettings")} />
