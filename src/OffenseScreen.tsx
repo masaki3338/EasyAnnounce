@@ -148,6 +148,8 @@ const rubyFull = (p: any) =>
   `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 const rubyLast = (p: any) =>
   `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+const rubyFirst = (p: any) =>
+  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 
 const headAnnounceKeyRef = useRef<string>("");
 
@@ -663,7 +665,7 @@ const announce = (text: string | string[]) => {
 };
 
 const handleNext = () => {  
-
+  setAnnouncementOverride(null);
   const next = (currentBatterIndex + 1) % battingOrder.length;
 // ✅ 2人目の打者の前かつ未表示ならポップアップを表示
   if (next === 1 && gameStartTime && !hasShownStartTimePopup.current) {
@@ -688,6 +690,7 @@ const handleNext = () => {
 
 
 const handlePrev = () => {
+  setAnnouncementOverride(null);
   const prev = (currentBatterIndex - 1 + battingOrder.length) % battingOrder.length;
   setCurrentBatterIndex(prev);
   setIsLeadingBatter(false); // ⬅ 追加
@@ -701,7 +704,11 @@ const updateAnnouncement = () => {
   if (player && pos) {
     const number = player.number;
     const honorific = player?.isFemale ? "さん" : "くん";
-    const posName = pos ? (positionNames[pos] ?? pos) : "";
+// 表示用: 代打／代走のときは空文字にする
+const rawPosName = pos ? (positionNames[pos] ?? pos) : "";
+const posNameForAnnounce = (pos === "代打" || pos === "代走") ? "" : rawPosName;
+// 表示の余計な二重スペースを防ぐための接頭スペース付きラベル
+const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
 
     const isChecked = checkedIds.includes(player.id);
 
@@ -729,22 +736,22 @@ const updateAnnouncement = () => {
       );
     }
 
-    if (!isChecked) {
-      lines.push(
-        <div>
-          {currentBatterIndex + 1}番 {posName} {displayRuby}
-          {honorific}、{posName} {displayRuby2}
-          {honorific}、背番号{number}。
-        </div>
-      );
-    } else {
-      lines.push(
-        <div>
-          {currentBatterIndex + 1}番 {posName} {displayRuby}
-          {honorific}、背番号{number}。
-        </div>
-      );
-    }
+if (!isChecked) {
+  lines.push(
+    <div>
+      {currentBatterIndex + 1}番 {posPrefix}{displayRuby}
+      {honorific}、{posPrefix}{displayRuby2}
+      {honorific}、背番号{number}。
+    </div>
+  );
+} else {
+  lines.push(
+    <div>
+      {currentBatterIndex + 1}番 {posPrefix}{displayRuby}
+      {honorific}、背番号{number}。
+    </div>
+  );
+}
 
     setAnnouncement(<>{lines}</>);
   } else {
@@ -764,7 +771,7 @@ const handleRead = async () => {
     const lastNameKana = player.lastNameKana || player.lastName;
     const number = player.number;
     const honorific = player?.isFemale ? "さん" : "くん";
-    const posName = positionNames[pos] ?? pos;
+    const posName = (pos === "代打" || pos === "代走") ? "" : (positionNames[pos] ?? pos);
 
     const isAnnouncedBefore = announcedPlayerIds.includes(entry.id);
 
@@ -1084,7 +1091,7 @@ useEffect(() => {
         <div className="flex items-center mb-2">
           <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
           <span className="text-red-600 font-bold whitespace-pre-line">
-            {announcement || ""}
+            {announcementOverride || announcement || ""}
           </span>
         </div>
         <div className="flex gap-4">
@@ -1644,6 +1651,34 @@ await localForage.setItem("lineupAssignments", newAssignments);
             if (!substitutedIndices.includes(currentBatterIndex)) {
               setSubstitutedIndices(prev => [...prev, currentBatterIndex]);
             }
+            // ★ ここは「確定」onClick 内の末尾付近に追記（battingOrder更新・保存などの後、モーダルを閉じる前）
+            const replaced = getPlayer(battingOrder[currentBatterIndex]?.id);  // 交代される側
+            const sub = selectedSubPlayer;                                     // 代打に入る側
+            if (replaced && sub) {
+              const honorBef = replaced.isFemale ? "さん" : "くん";
+              const honorSub = sub.isFemale ? "さん" : "くん";
+
+              // 先頭打者のときは前置きもモーダルと同じく付ける
+              const prefix = isLeadingBatter
+                ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>`
+                : "";
+
+              // モーダルの見た目と同じ並びでHTML構築（姓ルビ + 名ルビ を明示）
+              const html =
+                `${prefix}` +
+                `${currentBatterIndex + 1}番 ` +
+                `${rubyLast(replaced)} ${honorBef} に代わりまして ` +
+                `${rubyLast(sub)} ${rubyFirst(sub)} ${honorSub}、` +
+                `バッターは ${rubyLast(sub)} ${honorSub}、` +
+                `背番号 ${sub.number}`;
+
+              // 下部のアナウンス枠に反映（TTS用の正規化も内部で済む）
+              setAnnouncementHTML(html);
+            }
+
+            // 既存のモーダルクローズ等
+            // setShowSubModal(false) など
+
             setShowSubModal(false);
             }
           }}
@@ -1880,6 +1915,8 @@ onClick={() => {
   const rubyFirst = (p: any) =>
     `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
   const rubyFull = (p: any) => `${rubyLast(p)}${rubyFirst(p)}`;
+
+
 
   // 画面状態を更新（誰を代走に入れるか）
   setRunnerAssignments(prev => ({ ...prev, [base]: player }));
