@@ -1618,9 +1618,7 @@ useEffect(() => {
   (async () => {
     const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
     setBenchPlayers(
-      teamPlayers.filter(
-        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
-      )
+      teamPlayers.filter((p) => !assignedIdsNow.includes(p.id))
     );
   })();
 }, [assignments, teamPlayers]);
