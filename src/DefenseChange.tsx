@@ -1609,30 +1609,24 @@ useEffect(() => {
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
 // ✅ ベンチは“常に最新の assignments”から再計算する
-// ✅ ベンチは“常に最新の assignments”から再計算する
 useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
 
   const assignedIdsNow = Object.values(assignments)
     .filter((id): id is number => typeof id === "number");
 
-  (async () => {
-    // ここを置き換え
-    // const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
-    const raw = await localForage.getItem<any>("benchOutIds");
-    const benchOutIds: number[] = Array.isArray(raw)
-      ? raw.map((v) => Number(v)).filter((n) => !Number.isNaN(n))
-      : [];
+// ... replacedId を求めた後あたり（newAssignments を返す前）に
+(async () => {
+  const raw = await localForage.getItem<any>("benchOutIds");
+  const current: number[] = Array.isArray(raw)
+    ? raw.map(Number).filter((n) => !Number.isNaN(n))
+    : [];
+  const cleaned = current.filter((id) => id !== replacedId && id !== playerId);
+  if (cleaned.length !== current.length) {
+    await localForage.setItem("benchOutIds", cleaned);
+  }
+})();
 
-    // optional: 何が来ているか確認
-    // console.log("[DEBUG] benchOutIds(raw)->", raw, "normalized:", benchOutIds);
-
-    setBenchPlayers(
-      teamPlayers.filter(
-        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
-      )
-    );
-  })();
 }, [assignments, teamPlayers]);
 
 

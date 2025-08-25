@@ -285,6 +285,8 @@ const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string)
   next[toPos] = playerId;
 
   setAssignments(next);
+  // ここを追加：この選手はベンチ外ではありえないので除外
+  setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
 
   // 打順の更新：DHが居れば「投手の代わりにDH」
   setBattingOrder((prev) => {
@@ -458,9 +460,12 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
     });
   };
 
-  const assignedIds = Object.values(assignments).filter(Boolean) as number[];
+const assignedIds = Object.values(assignments).filter(Boolean) as number[];
+const benchOutPlayers = teamPlayers.filter(
+  (p) => benchOutIds.includes(p.id) && !assignedIds.includes(p.id)
+);
   const availablePlayers = teamPlayers.filter((p) => !assignedIds.includes(p.id));
-  const benchOutPlayers = teamPlayers.filter((p) => benchOutIds.includes(p.id));
+
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
