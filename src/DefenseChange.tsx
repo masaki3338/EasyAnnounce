@@ -1609,6 +1609,7 @@ useEffect(() => {
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
 // ✅ ベンチは“常に最新の assignments”から再計算する
+// ✅ ベンチは“常に最新の assignments”から再計算する
 useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
 
@@ -1616,12 +1617,24 @@ useEffect(() => {
     .filter((id): id is number => typeof id === "number");
 
   (async () => {
-    const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    // ここを置き換え
+    // const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    const raw = await localForage.getItem<any>("benchOutIds");
+    const benchOutIds: number[] = Array.isArray(raw)
+      ? raw.map((v) => Number(v)).filter((n) => !Number.isNaN(n))
+      : [];
+
+    // optional: 何が来ているか確認
+    // console.log("[DEBUG] benchOutIds(raw)->", raw, "normalized:", benchOutIds);
+
     setBenchPlayers(
-      teamPlayers.filter((p) => !assignedIdsNow.includes(p.id))
+      teamPlayers.filter(
+        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
+      )
     );
   })();
 }, [assignments, teamPlayers]);
+
 
 
 // iOS Safari の transform 原点ズレ対策用 dragImage ゴースト作成
