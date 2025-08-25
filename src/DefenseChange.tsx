@@ -1615,20 +1615,15 @@ useEffect(() => {
   const assignedIdsNow = Object.values(assignments)
     .filter((id): id is number => typeof id === "number");
 
-// ... replacedId を求めた後あたり（newAssignments を返す前）に
-(async () => {
-  const raw = await localForage.getItem<any>("benchOutIds");
-  const current: number[] = Array.isArray(raw)
-    ? raw.map(Number).filter((n) => !Number.isNaN(n))
-    : [];
-  const cleaned = current.filter((id) => id !== replacedId && id !== playerId);
-  if (cleaned.length !== current.length) {
-    await localForage.setItem("benchOutIds", cleaned);
-  }
-})();
-
+  (async () => {
+    const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    setBenchPlayers(
+      teamPlayers.filter(
+        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
+      )
+    );
+  })();
 }, [assignments, teamPlayers]);
-
 
 
 // iOS Safari の transform 原点ズレ対策用 dragImage ゴースト作成
