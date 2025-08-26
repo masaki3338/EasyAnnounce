@@ -34,13 +34,14 @@ type DefenseScreenProps = {
   onChangeDefense: () => void;
   onSwitchToOffense: () => void; // ✅ 追加
   onBack?: () => void; // ✅ 任意として追加
+  onGoToSeatIntroduction?: () => void; // ★ 追加
 };
 
 
 
 
 
-const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense }) => {  
+const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitchToOffense,onGoToSeatIntroduction,}) => {  
   const [showModal, setShowModal] = useState(false);
   const [inputScore, setInputScore] = useState("");
   const [editInning, setEditInning] = useState<number | null>(null);
@@ -289,7 +290,7 @@ useEffect(() => {
     const savedSelected = await localForage.getItem<number>("rule.pitchLimit.selected");
     setPitchLimitSelected(typeof savedSelected === "number" ? savedSelected : 75);
 
-
+    const post = await localForage.getItem<{enabled?:boolean}>("postDefenseSeatIntro");
 const savedBattingOrder =
   (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
 setBattingOrder(savedBattingOrder);
@@ -493,10 +494,11 @@ await localForage.setItem("pitchCounts", {
 
     const pitcher = teamPlayers.find(p => p.id === pitcherId);
     const pitcherLastName = pitcher?.lastName ?? '投手';
+    const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
     const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
 
     const newMessages = [
-      `ピッチャー${pitcherLastName}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
+        `ピッチャー<ruby>${pitcherLastName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
     ];
 
     // ✅ イニングが変わっていたらトータルも表示
@@ -676,38 +678,45 @@ const handlePitchLimitSpeak = () => {
         <h2 className="text-xl font-bold mb-2">
           {myTeamName || '自チーム'} vs {opponentTeamName || '対戦相手'}
         </h2>
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-2">
-            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
-              {[...Array(9)].map((_, i) => (
-                <option key={i} value={i + 1}>{i + 1}</option>
-              ))}
-            </select>
-            <span>回</span>
-            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-              <option value="表">表</option>
-              <option value="裏">裏</option>
-            </select>
-            <span>{isDefense ? "守備中" : "攻撃中"}</span>
-          </div>
-            {/* 試合開始ボタン */}
-            {inning === 1 && isTop  && (
-              <button
-                className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
-                onClick={handleStartGame}
-              >
-                試合開始
-              </button>
-            )}
+<div className="mb-2">
+  <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+    {/* 左：状態（縮む・折り返さない） */}
+    <div className="flex items-center gap-2 min-w-0 flex-1">
+      <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
+        {[...Array(9)].map((_, i) => (
+          <option key={i} value={i + 1}>{i + 1}</option>
+        ))}
+      </select>
+      <span className="whitespace-nowrap">回</span>
+      <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
+        <option value="表">表</option>
+        <option value="裏">裏</option>
+      </select>
+      <span className="whitespace-nowrap">
+        {isDefense ? "守備中" : "攻撃中"}
+      </span>
+    </div>
 
-            {/* イニング終了ボタン */}
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-3 py-1 bg-orange-700 text-white rounded"
-            >
-              イニング終了
-            </button>
-        </div>
+    {/* 右：ボタン群（縮ませない・折り返さない） */}
+<div className="flex items-center gap-2 shrink-0">
+  {inning === 1 && isTop && (
+    <button
+      onClick={handleStartGame}
+      className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"
+    >
+      試合開始
+    </button>
+  )}
+  <button
+    onClick={() => setShowModal(true)}
+    className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-orange-700 text-white rounded hover:bg-orange-800 text-xs sm:text-sm whitespace-nowrap"
+  >
+    イニング終了
+  </button>
+</div>
+  </div>
+</div>
+
 
         <table className="w-full border border-gray-400 text-center text-sm">
           <thead>
@@ -812,18 +821,34 @@ const handlePitchLimitSpeak = () => {
         })}
       </div>
 
-<div className="flex items-center justify-center gap-4">
-  <button onClick={subtractPitch} className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600">
+<div className="flex items-center justify-center gap-2 sm:gap-4 flex-nowrap overflow-x-auto">
+  <button
+    onClick={subtractPitch}
+    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 shrink-0"
+  >
     投球数－１
   </button>
-  <div>
-    <p>この回の投球数: <strong>{currentPitchCount}</strong></p>
-    <p>累計投球数: <strong>{totalPitchCount}</strong></p>
+
+  <div className="min-w-0 text-xs sm:text-sm leading-tight">
+    <p className="whitespace-nowrap">
+      <span className="font-bold text-sm sm:text-base">この回の投球数:</span>{"\u00A0"}
+      <strong className="tabular-nums">{currentPitchCount}</strong>
+    </p>
+    <p className="whitespace-nowrap">
+      <span className="font-bold text-sm sm:text-base">累計投球数:</span>{"\u00A0"}
+      <strong className="tabular-nums">{totalPitchCount}</strong>
+    </p>
   </div>
-  <button onClick={addPitch} className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">
+
+  <button
+    onClick={addPitch}
+    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 shrink-0"
+  >
     投球数＋１
   </button>
 </div>
+
+
 
       {/* 🔽 マイクアイコン付きアナウンスエリア */}
 {announceMessages.length > 0 && (
