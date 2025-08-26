@@ -82,6 +82,10 @@ const positionNames: { [key: string]: string } = {
   "指": "指名打者",  
 };
 
+// 先頭付近（型エラー防止）
+declare global { interface Window { prefetchTTS?: (t: string) => void } }
+
+
 
 
 //const OffenseScreen: React.FC<OffenseScreenProps> = ({ onSwitchToDefense, onBack }) => {
@@ -113,7 +117,8 @@ const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
 const [showGroundPopup, setShowGroundPopup] = useState(false);
 const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
-
+const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
+const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
 
 // 🔸 DH解除モーダル表示フラグ
 const [showDhDisableModal, setShowDhDisableModal] = useState(false);
@@ -498,7 +503,7 @@ const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, i
     return `${prefix}${fromName ? fromName + "に" : ""}代わりまして 臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`;
   }
   // 通常代走
-  return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}、背番号 ${to.number}。`;
+  return `${prefix}${fromName ? fromName + "に" : ""}代わりまして、${toNameFull}、${prefix}は ${toNameLast}、背番号  ${to.number}。`;
 };
 
 const handleScoreInput = (digit: string) => {
@@ -510,11 +515,13 @@ const handleScoreInput = (digit: string) => {
 // HTML文字列を通常アナウンス欄へ出す
 const setAnnouncementHTML = (html: string) => {
   const node = <span dangerouslySetInnerHTML={{ __html: html }} />;
-  // 従来の preview 用（保険）
   setAnnouncement(node);
-  // ✅ 通常のアナウンス枠にも反映
   setAnnouncementOverride(node);
+  // ★ 読み上げ用にHTML文字列も保持
+  setAnnouncementHTMLStr(html);
+  setAnnouncementHTMLOverrideStr(html);
 };
+
 
 
 const confirmScore = async () => {
@@ -583,11 +590,22 @@ const confirmScore = async () => {
   } else {
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
-    } else if (inning === 1 && isTop) {
-      onGoToSeatIntroduction();
-    } else {
-      onSwitchToDefense();
-    }
+} else if (inning === 1 && isTop) {
+  // ★ 代打/代走/臨時代走が残っているなら先に守備交代へ
+  const order = (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
+  const hasPending = order.some(e => e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走");
+  if (hasPending) {
+    await localForage.setItem("postDefenseSeatIntro", { enabled: true, at: Date.now() });
+    await localForage.setItem("seatIntroLock", true);
+    onSwitchToDefense();
+  } else {
+    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+    onGoToSeatIntroduction();
+  }
+} else {
+  onSwitchToDefense();
+}
+
   }
 };
 
@@ -701,102 +719,63 @@ const updateAnnouncement = () => {
   const player = getPlayer(entry?.id);
   const pos = getPosition(entry?.id);
 
-  if (player && pos) {
-    const number = player.number;
-    const honorific = player?.isFemale ? "さん" : "くん";
-// 表示用: 代打／代走のときは空文字にする
-const rawPosName = pos ? (positionNames[pos] ?? pos) : "";
-const posNameForAnnounce = (pos === "代打" || pos === "代走") ? "" : rawPosName;
-// 表示の余計な二重スペースを防ぐための接頭スペース付きラベル
-const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
-
-    const isChecked = checkedIds.includes(player.id);
-
-    // 👇 アナウンス用ふりがな（チェック済み → 苗字のみ、未チェック → フルネーム）
-    const displayRuby = isChecked ? (
-      <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
-    ) : (
-      <>
-        <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
-        <ruby>{player.firstName}<rt>{player.firstNameKana}</rt></ruby>
-      </>
-    );
-    const displayRuby2 = isChecked ? (
-      <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
-    ) : (
-      <>
-        <ruby>{player.lastName}<rt>{player.lastNameKana}</rt></ruby>
-      </>
-    );
-    let lines: React.ReactNode[] = [];
-
-    if (isLeadingBatter) {
-      lines.push(
-        <div>{`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、`}</div>
-      );
-    }
-
-if (!isChecked) {
-  lines.push(
-    <div>
-      {currentBatterIndex + 1}番 {posPrefix}{displayRuby}
-      {honorific}、{posPrefix}{displayRuby2}
-      {honorific}、背番号{number}。
-    </div>
-  );
-} else {
-  lines.push(
-    <div>
-      {currentBatterIndex + 1}番 {posPrefix}{displayRuby}
-      {honorific}、背番号{number}。
-    </div>
-  );
-}
-
-    setAnnouncement(<>{lines}</>);
-  } else {
-    //setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
+  if (!player || !pos) {
     setAnnouncement("");
+    setAnnouncementHTMLStr("");
+    setAnnouncementHTMLOverrideStr("");
+    return;
   }
+
+  const number = player.number;
+  const honorific = player?.isFemale ? "さん" : "くん";
+  const rawPosName = positionNames[pos] ?? pos;
+  const posNameForAnnounce = (pos === "代打" || pos === "代走") ? "" : rawPosName;
+  const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
+
+  const isChecked = checkedIds.includes(player.id);
+
+  const rubyLast  = `<ruby>${player.lastName ?? ""}<rt>${player.lastNameKana ?? ""}</rt></ruby>`;
+  const rubyFirst = `<ruby>${player.firstName ?? ""}<rt>${player.firstNameKana ?? ""}</rt></ruby>`;
+  const nameHTML  = isChecked ? rubyLast : (rubyLast + rubyFirst);
+
+  const lines: string[] = [];
+  if (isLeadingBatter) {
+    lines.push(`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、`);
+  }
+
+  if (!isChecked) {
+    lines.push(
+      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、` +
+      `${posPrefix}${rubyLast}${honorific}、背番号 ${number}。`
+    );
+  } else {
+    lines.push(
+      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、背番号 ${number}。`
+    );
+  }
+
+  const html = lines.join("");
+  setAnnouncement(<span dangerouslySetInnerHTML={{ __html: html }} />);
+  setAnnouncementOverride(null);
+  setAnnouncementHTMLStr(html);
+  setAnnouncementHTMLOverrideStr(""); // 通常はオーバーライド無し
 };
 
 
-const handleRead = async () => {
-  const entry = battingOrder[currentBatterIndex]; // ✅ 修正
-  const player = getPlayer(entry.id);             // ✅ 修正
-  const pos = getPosition(entry.id);              // ✅ 修正
-
-  if (player && pos) {
-    const fullNameKana = `${player.lastNameKana || player.lastName}${player.firstNameKana || player.firstName}`;
-    const lastNameKana = player.lastNameKana || player.lastName;
-    const number = player.number;
-    const honorific = player?.isFemale ? "さん" : "くん";
-    const posName = (pos === "代打" || pos === "代走") ? "" : (positionNames[pos] ?? pos);
-
-    const isAnnouncedBefore = announcedPlayerIds.includes(entry.id);
-
-    let text = "";
-
-    if (!isAnnouncedBefore) {
-      text = `${
-        isLeadingBatter ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、` : ""
-      }${currentBatterIndex + 1}番 ${posName} ${fullNameKana}${honorific}、${posName} ${lastNameKana}${honorific}、背番号${number}。`;
-    } else {
-      text = `${currentBatterIndex + 1}番 ${posName} ${lastNameKana}${honorific}、背番号${number}。`;
-    }
-
-    announce(text);
-
-    if (!isAnnouncedBefore) {
-      const updated = [...announcedPlayerIds, entry.id];
-      setAnnouncedPlayerIds(updated);
-      await localForage.setItem("announcedPlayerIds", updated);
-    }
-  } else {
-    //setAnnouncement("⚠️ アナウンスに必要な選手情報が見つかりません。");
-    setAnnouncement("");
-  }
+// クリック直前に現在の文面を温める
+const prefetchCurrent = () => {
+  const text = (announcementOverride || announcement || "").trim(); // ← その画面の“読み上げ文”に合わせて
+  window.prefetchTTS?.(text);
 };
+
+const handleRead = () => {
+  // ★ 表示中の文言（オーバーライド優先）を読み上げ
+  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+  const text = normalizeForTTS(html);  // ルビ→かな化＆タグ除去
+  if (!text) return;
+  announce(text);
+};
+
 
 // 音声読み上げ
 const speakText = (text: string) => {
@@ -1165,7 +1144,7 @@ useEffect(() => {
 
   const honor = p.isFemale ? "さん" : "くん";
   const line1 = "ただいまより、指名打者制を解除します。";
-  const line2 = `${order1}番　ピッチャー　${p.lastName} ${p.firstName}${honor}　ピッチャー${p.lastName}${honor}　背番号${p.number}`;
+  const line2 = `${order1}番　ピッチャー　${p.lastName} ${p.firstName}${honor}　ピッチャー${p.lastName}${honor}　背番号 ${p.number}`;
 
   const speak = () => announce(`${line1}${line2}`);
   const stop  = () => speechSynthesis.cancel();
