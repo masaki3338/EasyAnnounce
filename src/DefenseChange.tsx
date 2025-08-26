@@ -609,6 +609,12 @@ replace = replace.filter(r =>
 );
 
 replace.forEach((r) => {
+  // ★ DH補完の「投手 replace(order:0)」は、同じ選手が mixed で「…→投」に入ってくるならスキップ
+  if (r.order === 0 && r.pos === "投") {
+    const hasMixedToSame = mixed.some(m => m.to.id === r.to.id && m.toPos === "投");
+    if (hasMixedToSame) return;  // ← アナウンス行・重複管理の両方をここで回避
+  }
+
   const line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
   replaceLines.push(line);
 
@@ -734,13 +740,17 @@ sortedShift.forEach((s, i) => {
   const dupKey = `${s.player.id}|${s.fromPos}|${s.toPos}`;
   if (skipShiftPairs.has(dupKey)) return;
 
-  // ✅ すでに処理済みならスキップ
-  if (
-    handledPlayerIds.has(s.player.id)
-    // fromPos はスキップ条件から外す（2人目以降も表示させるため）
-    // handledPositions.has(s.fromPos) ||  ← コメントアウト
-    || handledPositions.has(s.toPos) // 移動先だけ重複防止
-  ) return;
+// ✅ すでに処理済みならスキップ
+// ただし「投手→他守備」のシフトは、同一ターンに投手交代（replace: 投）があっても表示する
+const allowedPitcherShift =
+  s.fromPos === "投" &&
+  replace.some(r => r.pos === "投" && r.from.id === s.player.id);
+
+if (
+  (!allowedPitcherShift && handledPlayerIds.has(s.player.id)) ||
+  handledPositions.has(s.toPos) // 移動先だけ重複防止
+) return;
+
 
   const h = s.player.isFemale ? "さん" : "くん";
   const head = posJP[s.fromPos];
@@ -1052,6 +1062,8 @@ const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
   
   // ---- ここから: モーダル読み上げ用（DefenseChange 内） ----
 const modalTextRef = useRef<HTMLDivElement | null>(null);
+// 直前に外れた“元スタメン”の打順Index（例: レフトが外れた等）
+const lastVacatedStarterIndex = useRef<number | null>(null);
 
 // 置き換え版：漢字+ルビの重複は rt だけ読む／それ以外は通常テキストを読む
 const speakVisibleAnnouncement = () => {
@@ -1166,6 +1178,7 @@ type ReentryEntry = {
 };
 
 const [reentryInfos, setReentryInfos] = useState<ReentryEntry[]>([]);
+const lastVacatedStarterIndexRef = useRef<number | null>(null);
 
   // 先発（画面オープン時にフィールドにいた）かどうか
   const isStarter = (playerId?: number | null) =>
@@ -1192,9 +1205,10 @@ const handleDisableDH = async () => {
   // ① 守備の「指」を空欄にしてDHなし表示へ（＝9番下の投手行も消える）
   setAssignments(prev => ({ ...prev, "指": null }));
 
-  // ② 以後“指”にD&DできないUIガードや未保存フラグ
-  setDhEnabledAtStart(false);
-  setDhDisableDirty(true);
+// ② 解除は“保留”にする（UI上は『指』は引き続き有効：確定まではドロップOK）
+setPendingDisableDH(true);
+setDhDisableDirty(true);
+
 
   // ③ 打順は触らない！ 下段の赤字表示だけ作る（=投手を交代者として見せる）
   const p = teamPlayers.find(tp => tp.id === pitcherId);
@@ -1483,6 +1497,38 @@ let reentryLines: string[] = [];
   }
 })();
 
+// 追加: DH中に「元投手が他守備へ移動」した場合の shift 補完（アナウンス用）
+(() => {
+  const dhActiveNow = !!assignments?.["指"];
+  if (!dhActiveNow) return;
+
+  const initialPitcherId = initialAssignments?.["投"];
+  if (typeof initialPitcherId !== "number") return;
+
+  // 元投手が現在どこにいるか（投手以外に動いていれば捕捉）
+  const movedToPos = Object.entries(assignments).find(([pos, pid]) => pid === initialPitcherId)?.[0];
+  if (!movedToPos || movedToPos === "投") return;
+
+  // 既に同じ shift を積んでいれば重複回避
+  if (changes.some(r =>
+    r.type === "shift" &&
+    r.player.id === initialPitcherId &&
+    r.fromPos === "投" &&
+    r.toPos === movedToPos
+  )) return;
+
+  const p = teamPlayers.find(tp => tp.id === initialPitcherId);
+  if (!p) return;
+
+  changes.push({
+    type: "shift",
+    order: 0,               // 打順外（DH）
+    player: p,
+    fromPos: "投",
+    toPos: movedToPos as any
+  });
+})();
+
 
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
@@ -1617,6 +1663,8 @@ useEffect(() => {
 
   (async () => {
     const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+
+    // ここでベンチ外を除外する
     setBenchPlayers(
       teamPlayers.filter(
         (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
@@ -1624,6 +1672,7 @@ useEffect(() => {
     );
   })();
 }, [assignments, teamPlayers]);
+
 
 
 // iOS Safari の transform 原点ズレ対策用 dragImage ゴースト作成
@@ -1686,52 +1735,73 @@ const handlePositionDragStart = (
     e.preventDefault();
     if (!draggingFrom) return;
 
+    // 『指』にドロップされたら、DH解除の保留を取り消す（＝DH継続に戻す）
+    if (toPos === "指" && (dhDisableDirty || pendingDisableDH)) {
+      setDhDisableDirty(false);
+      setPendingDisableDH(false);
+    }
+
     // ★ DHを他守備にドロップ → その瞬間にDH解除 & 退場 & 打順差し替え
-if (draggingFrom === "指" && toPos !== BENCH && toPos !== "指") {
-  setAssignments((prev) => {
-    const dhId = prev["指"];
-    if (!dhId) return prev;
+    if (draggingFrom === "指" && toPos !== BENCH && toPos !== "指") {
+      setAssignments((prev) => {
+        const dhId = prev["指"];
+        if (!dhId) return prev;
 
-    const replacedId = prev[toPos] ?? null;
+        const replacedId = prev[toPos] ?? null;
 
-    // 1) 守備を更新（DH → toPos / 指は空に）
-    const next = { ...prev, [toPos]: dhId, "指": null };
+        // 1) 守備を更新（DH → toPos / 指は空に）
+        const next = { ...prev, [toPos]: dhId, "指": null };
 
-    // 2) DH解除のUIフラグ（既存ロジックを即時発火させる）
-    setDhEnabledAtStart(false);
-    setDhDisableDirty(true); // アナウンスに「DH解除」を差し込む
+        // 2) DH解除のUIフラグ（既存ロジックを即時発火させる）
+        setDhEnabledAtStart(false);
+        setDhDisableDirty(true); // アナウンスに「DH解除」を差し込む
 
-    // 3) 退場処理（出場済み選手として benchOutIds に入れる）
-    if (typeof replacedId === "number") {
-      (async () => {
-        const outIds = (await localForage.getItem<number[]>("benchOutIds")) || [];
-        if (!outIds.includes(replacedId)) {
-          outIds.push(replacedId);
-          await localForage.setItem("benchOutIds", outIds);
-        }
-      })();
 
-      // 4) 退場した選手の“打順”に投手を入れる（プレビュー反映）
-      //    toPosが"投"なら投手=DH本人、それ以外は現投手
-      const pitcherId = toPos === "投" ? dhId : prev["投"];
-      if (typeof pitcherId === "number") {
-        const idx = battingOrder.findIndex((e) => e.id === replacedId);
-        const p = teamPlayers.find((tp) => tp.id === pitcherId);
-        if (idx >= 0 && p) {
-          setBattingReplacements((prevRep) => ({ ...prevRep, [idx]: p }));
+    // 4) 退場した選手の“打順”の表示：
+    //    投手の重複を避けて「現在 1〜9番に入っていない“元スタメン”の野手」を優先して入れる。
+    //    （該当者がいない場合のみ投手を採用）
+    const nextAssignments = next; // この時点で next が最新配置
+    const battingStarterIds = new Set(battingOrder.map(e => e.id));
+    const starterIds = new Set(
+      Object.values(initialAssignments).filter((v): v is number => typeof v === "number")
+    );
+    const currentPitcherId: number | null = (toPos === "投" ? dhId : prev["投"]) ?? null;
+
+    // 今フィールドにいるID（nextベース）
+    const onFieldIds = new Set(
+      Object.values(nextAssignments).filter((v): v is number => typeof v === "number")
+    );
+
+    // 候補: “元スタメン”かつ “現在1〜9番に入っていない” かつ “今フィールドにいる” かつ “投手ではない”
+    const nonPitcherNonBattingStarters = Array.from(starterIds).filter(id =>
+      !battingStarterIds.has(id) &&
+      onFieldIds.has(id) &&
+      id !== currentPitcherId
+    );
+
+    // 置換を入れる打順スロット（退場した元先発のスロット）
+    const idx = battingOrder.findIndex(e => e.id === replacedId);
+    if (idx >= 0) {
+      const candidateId = nonPitcherNonBattingStarters[0] ?? currentPitcherId;
+      if (typeof candidateId === "number") {
+        const candidate = teamPlayers.find(tp => tp.id === candidateId);
+        if (candidate) {
+          setBattingReplacements(prevRep => ({ ...prevRep, [idx]: candidate }));
         }
       }
     }
 
-    // 5) ログ（視覚上の変更履歴）
-    updateLog("指", dhId, toPos, replacedId);
 
-    return next;
-  });
 
-  setDraggingFrom(null);
-  return;
-}
+        // 5) ログ（視覚上の変更履歴）
+        updateLog("指", dhId, toPos, replacedId);
+
+        return next;
+      });
+
+      setDraggingFrom(null);
+      return;
+    }
 
     setAssignments((prev) => {
       const newAssignments = { ...prev };
@@ -1784,6 +1854,29 @@ if (draggingFrom === "指" && toPos !== BENCH && toPos !== "指") {
       if (toId !== null) {
         setPreviousPositions((prevMap) => ({ ...prevMap, [toId]: toPos }));
       }
+      // ★ この toPos から外れた“元スタメン”の打順Indexを記録（次のベンチ投入で使う）
+      if (toId != null) {
+        const idx = battingOrder.findIndex(e => e.id === toId);
+        if (idx !== -1) lastVacatedStarterIndexRef.current = idx;
+      }
+
+      // ▼ 指名打者（DH）→守備 のときは、落とした先の“元スタメン”の打順枠に
+      //    DH選手を置換として登録しておく（打順エリアが正しく赤字になるように）
+      if (draggingFrom === "指" && fromId != null && toId != null) {
+        // toId は落とした守備位置に“元々”いたスタメンのID（例：米山）
+        const targetIndex = battingOrder.findIndex(e => e.id === toId);
+        if (targetIndex !== -1) {
+          const dhPlayer = teamPlayers.find(p => p.id === fromId); // 例：吉川
+          if (dhPlayer) {
+            setBattingReplacements((prev) => ({
+              ...prev,
+              [targetIndex]: dhPlayer,
+            }));
+            lastVacatedStarterIndexRef.current = null; // ← 使い切りなのでリセット
+          }
+        }
+      }
+
 // ★ オンフィールド同士の入替では打順は触らない
 //    影響しうる打順スロット（from/to の元スタメン）だけ置換を消す
 if (fromId !== null && toId !== null) {
@@ -1975,13 +2068,18 @@ if (fromId !== null && toId !== null) {
     setBenchPlayers((prev) => prev.filter((p) => p.id !== playerId));
 
 
-    // 🟢（ベンチ → 先発 のときだけ）battingReplacements を更新
-// ✅ 置き換え：targetIndex を自前で求め、draggingFrom===BENCH を前提に更新
+// 🟢（ベンチ → 先発 のときだけ）battingReplacements を更新
 {
   // 打順スロット（index）を、まず「今そこに居る人」で探す
   let targetIndex = battingOrder.findIndex(e => e.id === replacedId);
 
-  // それで見つからなければ、過去の置換テーブル（bench→bench の引継ぎ）から探す
+  // 既存：let targetIndex = battingOrder.findIndex(e => e.id === replacedId);
+// 既存：過去の置換テーブルから探す…（既存コードの直後に）👇を追加
+if (targetIndex === -1 && toPos === "投" && lastVacatedStarterIndexRef.current != null) {
+  targetIndex = lastVacatedStarterIndexRef.current;
+}
+
+  // 見つからなければ、過去の置換テーブルから探す（bench→bench の引継ぎ）
   if (targetIndex === -1 && replacedId != null) {
     const prevEntry = Object.entries(battingReplacements)
       .find(([, p]) => p.id === replacedId);
@@ -1991,7 +2089,7 @@ if (fromId !== null && toId !== null) {
   if (targetIndex !== -1) {
     const benchPlayer = teamPlayers.find((p) => p.id === playerId);
     if (benchPlayer && replacedId !== playerId) {
-      // 置換として登録/更新
+      // 置換として登録/更新 ←★ これが打順行の“order”になります
       setBattingReplacements((prev) => ({
         ...prev,
         [targetIndex]: benchPlayer,
@@ -2006,6 +2104,7 @@ if (fromId !== null && toId !== null) {
     }
   }
 }
+
 
       // 🔄 交代取り消しのチェック（初期と一致していたら削除）
     // 🔄 交代取り消しのチェック（最小限の更新：既存の置換はフィールドに居る限り維持）
@@ -2404,8 +2503,9 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
   return (
   <div
     key={pos}
-    onDragOver={(e) => { if (pos !== "指" || dhEnabledAtStart) e.preventDefault(); }}
-    onDrop={(e) => { if (pos !== "指" || dhEnabledAtStart) handleDrop(pos, e); }}
+    onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
+    onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
+
     className={`${className} whitespace-nowrap text-center`}   // ← 追加
     style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}  // ← 追加
   >
