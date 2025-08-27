@@ -1,5 +1,7 @@
-import React from "react";
 import type { ScreenType } from "../App";
+import React, { useEffect, useState } from "react";
+import localForage from "localforage";
+
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
@@ -42,6 +44,15 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
             }}
           >
             連盟アナウンスマニュアル
+          </button>
+
+
+          {/* ▼ 読み上げ設定（別画面へ） */}
+          <button
+            className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
+            onClick={() => onNavigate?.("tts-settings")}
+          >
+            読み上げ設定
           </button>
 
 
