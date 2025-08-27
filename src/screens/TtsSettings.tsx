@@ -19,11 +19,18 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     })();
   }, []);
 
-  const handleSelect = async (g: "female" | "male") => {
-    setTtsGender(g);
-    await localForage.setItem("ttsGender", g);
-    await localForage.setItem("ttsDefaultSpeaker", g === "male" ? 13 : 30);
-  };
+const handleSelect = async (g: "female" | "male") => {
+  setTtsGender(g);
+  await localForage.setItem("ttsGender", g);
+  await localForage.setItem("ttsDefaultSpeaker", g === "male" ? 13 : 30);
+
+  // ▼ 追加：ttsBridge から同期で読めるよう localStorage にも保存
+  try {
+    localStorage.setItem("ttsGender", g);
+    localStorage.setItem("ttsDefaultSpeaker", String(g === "male" ? 13 : 30));
+  } catch {}
+};
+
 
 return (
   <div className="p-4 max-w-2xl mx-auto">
