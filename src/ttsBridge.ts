@@ -38,23 +38,66 @@ function splitJa(text: string): string[] {
   return segs.map(s => s.trim()).filter(Boolean);
 }
 
-async function playViaVoiceVox(text: string) {
-  // 毎回、最新の設定を読む（初期化時に一度だけ読まない）
-  const gender = (await localForage.getItem<string>("ttsGender")) === "male" ? "male" : "female";
-  const speaker = await localForage.getItem<number>("ttsDefaultSpeaker"); // male=13 / female=30 が入ってる
+async function playViaVoiceVox(text: string, onstart?: () => void, onend?: () => void) {
+  const gender  = (await localForage.getItem<string>("ttsGender")) === "male" ? "male" : "female";
+  const speaker = await localForage.getItem<number>("ttsDefaultSpeaker"); // male=13 / female=30 を保存済み
 
-  // どちらでもOK。より確実にしたいなら speaker を優先して渡す
   const qs = new URLSearchParams({ text });
   if (typeof speaker === "number") {
-    qs.set("speaker", String(speaker));     // ← こっちを使うとサーバ側でも最優先で尊重される
+    qs.set("speaker", String(speaker)); // ← 確実に反映（サーバは speaker 最優先）
   } else {
-    qs.set("gender", gender);               // ← または gender を付与（speaker 未指定なら有効）
+    qs.set("gender", gender);
   }
 
   const url = `/api/tts-voicevox?${qs.toString()}`;
   const audio = new Audio(url);
-  audio.play();
+  onstart?.();
+  await audio.play().catch(() => {});
+  audio.onended = () => onend?.();
 }
+
+(function installBridge() {
+  const synth = window.speechSynthesis;
+  const nativeSpeak = synth.speak.bind(synth);
+  const bridged = async (utter: SpeechSynthesisUtterance) => {
+    const text = (utter?.text ?? "").trim();
+    if (!text) return;
+    await playViaVoiceVox(
+      text,
+      () => utter.onstart?.(new Event("start")),
+      () => utter.onend?.(new Event("end"))
+    );
+  };
+
+  // 1) 直接上書き
+  try {
+    // @ts-ignore
+    synth.speak = bridged;
+    console.log("[EA-TTS] bridged via direct assignment");
+    (window as any).EATTS = { speak: bridged };
+    return;
+  } catch {}
+
+  // 2) iOS Safari 用 Proxy フォールバック
+  try {
+    const proxy = new Proxy(synth, {
+      get(target, prop, receiver) {
+        if (prop === "speak") return bridged;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    // @ts-ignore
+    window.speechSynthesis = proxy;
+    console.log("[EA-TTS] bridged via Proxy");
+    (window as any).EATTS = { speak: bridged };
+    return;
+  } catch {}
+
+  // 3) 最終手段：グローバル関数を提供
+  (window as any).EATTS = { speak: bridged };
+  console.warn("[EA-TTS] could not patch speechSynthesis; use window.EATTS.speak instead");
+})();
+
 
   // --- 先読み（画面側から window.prefetchTTS('文面') で呼べる）
   (window as any).prefetchTTS = async (text: string) => {
