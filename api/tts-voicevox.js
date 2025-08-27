@@ -7,8 +7,8 @@ function getBase() {
 function pickSpeaker(req) {
   const rawGender = String(req.query.gender || "").toLowerCase();
   if (req.query.speaker !== undefined) return Number(req.query.speaker); // 明示指定が最優先
-  if (rawGender === "male" || rawGender === "man" || rawGender === "男性") return 13; // 男性
-  return 30; // 既定は女性アナウンス
+  if (rawGender === "male" || rawGender === "man" || rawGender === "男性") return 30; // 男性
+  return 13; // 既定は女性アナウンス
 }
 
 async function handler(req, res) {
