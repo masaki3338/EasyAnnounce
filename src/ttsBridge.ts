@@ -39,12 +39,19 @@ function splitJa(text: string): string[] {
 }
 
 async function playViaVoiceVox(text: string) {
-  const raw = (await localForage.getItem<string>("ttsGender")) || "female";
-  const gender = raw === "male" ? "male" : "female";
+  // 毎回、最新の設定を読む（初期化時に一度だけ読まない）
+  const gender = (await localForage.getItem<string>("ttsGender")) === "male" ? "male" : "female";
+  const speaker = await localForage.getItem<number>("ttsDefaultSpeaker"); // male=13 / female=30 が入ってる
 
-  // 既存：/api/tts-voicevox?text=... を作っている行をこれに差し替え
-  const url = `/api/tts-voicevox?text=${encodeURIComponent(text)}&gender=${gender}`;
+  // どちらでもOK。より確実にしたいなら speaker を優先して渡す
+  const qs = new URLSearchParams({ text });
+  if (typeof speaker === "number") {
+    qs.set("speaker", String(speaker));     // ← こっちを使うとサーバ側でも最優先で尊重される
+  } else {
+    qs.set("gender", gender);               // ← または gender を付与（speaker 未指定なら有効）
+  }
 
+  const url = `/api/tts-voicevox?${qs.toString()}`;
   const audio = new Audio(url);
   audio.play();
 }
