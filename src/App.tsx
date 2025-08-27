@@ -33,6 +33,7 @@ import OperationSettings from "./screens/OperationSettings";
 import PitchLimit from "./screens/PitchLimit";
 import TiebreakRule from "./screens/TiebreakRule";
 import Contact from "./screens/Contact";
+import TtsSettings from "./screens/TtsSettings";
 import VersionInfo from "./screens/VersionInfo";
 
 
@@ -61,6 +62,7 @@ export type ScreenType =
   | "pitchLimit"
   | "tiebreakRule"
   | "contact"
+  | "tts-settings"
   | "versionInfo";
 
 const screenMap: { [key: string]: ScreenType } = {
@@ -492,7 +494,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
                 | { outs?: string; bases?: string }
                 | null;
               const outs = cfg?.outs ?? "ワンナウト";
-              const bases = cfg?.bases ?? "23塁";
+              const bases = cfg?.bases ?? "2,3塁";
 
               // 現在のイニング取得（matchInfo優先、なければscoresの最大回）
               type Scores = { [inning: string]: { top?: number; bottom?: number } };
@@ -792,6 +794,10 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
 
 {screen === "tiebreakRule" && (
   <TiebreakRule onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "tts-settings" && (
+  <TtsSettings onBack={() => setScreen("operationSettings")} />
 )}
 
 {screen === "contact" && (

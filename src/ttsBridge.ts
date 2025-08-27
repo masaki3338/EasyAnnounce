@@ -1,4 +1,6 @@
 // src/ttsBridge.ts
+import localForage from "localforage";
+
 type AnyUtt = SpeechSynthesisUtterance & { onend?: (ev?: any) => void };
 
 (function enableGlobalTTSOverride() {
@@ -25,6 +27,7 @@ type AnyUtt = SpeechSynthesisUtterance & { onend?: (ev?: any) => void };
     }
   };
 
+  
   // ttsBridge.ts の上の方に追加
 function splitJa(text: string): string[] {
   const t = text.replace(/\s+/g, " ").trim();
@@ -33,6 +36,17 @@ function splitJa(text: string): string[] {
   let segs = t.split(/(?<=[。！？!?])/);
   if (segs.length === 1) segs = t.split(/(?<=、)/);
   return segs.map(s => s.trim()).filter(Boolean);
+}
+
+async function playViaVoiceVox(text: string) {
+  const raw = (await localForage.getItem<string>("ttsGender")) || "female";
+  const gender = raw === "male" ? "male" : "female";
+
+  // 既存：/api/tts-voicevox?text=... を作っている行をこれに差し替え
+  const url = `/api/tts-voicevox?text=${encodeURIComponent(text)}&gender=${gender}`;
+
+  const audio = new Audio(url);
+  audio.play();
 }
 
   // --- 先読み（画面側から window.prefetchTTS('文面') で呼べる）
