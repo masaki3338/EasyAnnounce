@@ -29,10 +29,35 @@ const TeamRegister = () => {
     players: [],
   });
 
-  const lastNameInputRef = useRef<HTMLInputElement>(null);
-  const [restoreMessage, setRestoreMessage] = useState("");
 
-// 既存の handleBackup を置き換え
+  const [restoreMessage, setRestoreMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  // 必須入力欄
+  const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const lastNameInputRef = useRef<HTMLInputElement>(null);
+  const firstNameKanaRef = useRef<HTMLInputElement>(null);
+  const lastNameKanaRef  = useRef<HTMLInputElement>(null);
+  const numberInputRef   = useRef<HTMLInputElement>(null);
+
+  type FieldId = 'lastName' | 'lastNameKana' | 'firstName' | 'firstNameKana' | 'number';
+
+  const inputRefs: Record<FieldId, React.RefObject<HTMLInputElement>> = {
+    lastName:      lastNameInputRef,
+    lastNameKana:  lastNameKanaRef,   // （任意）
+    firstName:     firstNameInputRef,
+    firstNameKana: firstNameKanaRef,  // （任意）
+    number:        numberInputRef,
+  };
+
+  const FIELDS: { id: FieldId; label: string; placeholder: string }[] = [
+    { id: 'lastName',      label: '姓',             placeholder: '例：山田' },
+    { id: 'lastNameKana',  label: 'ふりがな（姓）', placeholder: 'やまだ' },
+    { id: 'firstName',     label: '名',             placeholder: '例：太郎' },
+    { id: 'firstNameKana', label: 'ふりがな（名）', placeholder: 'たろう' },
+    { id: 'number',        label: '背番号',         placeholder: '10' },
+  ];
+
+  // 既存の handleBackup を置き換え
 const handleBackup = async () => {
   const blob = new Blob([JSON.stringify(team, null, 2)], {
     type: "application/json",
@@ -125,57 +150,85 @@ const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     }));
   };
 
-  useEffect(() => {
-    if (editingPlayer.lastName && !editingPlayer.lastNameKana) {
-      setEditingPlayer((prev) => ({
-        ...prev,
-        lastNameKana: wanakana.toHiragana(editingPlayer.lastName),
-      }));
-    }
-  }, [editingPlayer.lastName, editingPlayer.lastNameKana]);
 
-  useEffect(() => {
-    if (editingPlayer.firstName && !editingPlayer.firstNameKana) {
-      setEditingPlayer((prev) => ({
-        ...prev,
-        firstNameKana: wanakana.toHiragana(editingPlayer.firstName),
-      }));
-    }
-  }, [editingPlayer.firstName, editingPlayer.firstNameKana]);
 
-  const addOrUpdatePlayer = () => {
-    if (!editingPlayer.lastName || !editingPlayer.firstName || !editingPlayer.number) return;
+const addOrUpdatePlayer = () => {
+  const ln  = (editingPlayer.lastName  ?? "").trim();
+  const fn  = (editingPlayer.firstName ?? "").trim();
+  const lnk  = (editingPlayer.lastNameKana   ?? "").trim();   // ★追加
+  const fnk  = (editingPlayer.firstNameKana  ?? "").trim();   // ★追加
+  const num = (editingPlayer.number    ?? "").trim();
 
-    setTeam((prev) => {
-      const existingIndex = prev.players.findIndex((p) => p.id === editingPlayer.id);
-      const newPlayer: Player = {
-        id: editingPlayer.id ?? Date.now(),
-        lastName: editingPlayer.lastName!,
-        firstName: editingPlayer.firstName!,
-        lastNameKana: editingPlayer.lastNameKana ?? wanakana.toHiragana(editingPlayer.lastName!),
-        firstNameKana: editingPlayer.firstNameKana ?? wanakana.toHiragana(editingPlayer.firstName!),
-        number: editingPlayer.number!,
-        isFemale: editingPlayer.isFemale ?? false,
-      };
+  // 未入力チェック（順番＝フォーカス優先度）
+  const missing: { label: string; ref: React.RefObject<HTMLInputElement> }[] = [];
+  if (!ln)  missing.push({ label: "姓",     ref: lastNameInputRef  });
+  if (!fn)  missing.push({ label: "名",     ref: firstNameInputRef });
+  if (!lnk) missing.push({ label: "ふりがな（姓）",  ref: lastNameKanaRef    });   // ★追加
+  if (!fnk) missing.push({ label: "ふりがな（名）",  ref: firstNameKanaRef   });   // ★追加
+  if (!num) missing.push({ label: "背番号", ref: numberInputRef    });
 
-      const updatedPlayers =
-        existingIndex >= 0
-          ? [...prev.players.slice(0, existingIndex), newPlayer, ...prev.players.slice(existingIndex + 1)]
-          : [...prev.players, newPlayer];
+  if (missing.length > 0) {
+    const labels = missing.map(m => m.label).join("・");
+    setFormError(`未入力の項目があります：${labels}`);
+    alert(`未入力の項目があります：${labels}`);
 
-      return { ...prev, players: updatedPlayers };
-    });
+    // 最初の未入力欄へスクロール＆フォーカス
+    setTimeout(() => {
+      const target = missing[0].ref.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus();
+    }, 0);
+    return;
+  }
 
-    setEditingPlayer({});
-  };
+  setFormError("");
+
+  // ここからは従来通りの追加・更新処理
+  if (!editingPlayer.lastName || !editingPlayer.firstName || !editingPlayer.number) return;
+
+  setTeam((prev) => {
+    const existingIndex = prev.players.findIndex((p) => p.id === editingPlayer.id);
+    const newPlayer: Player = {
+      id: editingPlayer.id ?? Date.now(),
+      lastName: editingPlayer.lastName!,
+      firstName: editingPlayer.firstName!,
+      // ★ ふりがなを強制自動生成しない（空でも保存可）
+      lastNameKana: editingPlayer.lastNameKana ?? "",
+      firstNameKana: editingPlayer.firstNameKana ?? "",
+      number: editingPlayer.number!,
+      isFemale: editingPlayer.isFemale ?? false,
+    };
+
+    const updatedPlayers =
+      existingIndex >= 0
+        ? [...prev.players.slice(0, existingIndex), newPlayer, ...prev.players.slice(existingIndex + 1)]
+        : [...prev.players, newPlayer];
+
+    return { ...prev, players: updatedPlayers };
+  });
+
+  setEditingPlayer({});
+};
+
 
   const editPlayer = (player: Player) => setEditingPlayer(player);
 
-  const deletePlayer = (id: number) =>
-    setTeam((prev) => ({
-      ...prev,
-      players: prev.players.filter((p) => p.id !== id),
-    }));
+const deletePlayer = (player: Player) => {
+  const name = `${player.lastName ?? ""} ${player.firstName ?? ""}`.trim();
+  const msg  = `背番号 ${player.number}：${name} を削除してよいですか？`;
+  if (!window.confirm(msg)) return;
+
+  setTeam((prev) => ({
+    ...prev,
+    players: prev.players.filter((p) => p.id !== player.id),
+  }));
+
+  // 編集中の選手を消した場合はフォームをクリア（任意）
+  if (editingPlayer.id === player.id) {
+    setEditingPlayer({});
+  }
+};
+
 
 const saveTeam = async () => {
   const updatedTeam = {
@@ -248,18 +301,13 @@ const saveTeam = async () => {
         </div>
       </div>
 
-      {/* 選手追加フォーム */}
+
+      {/* 選手追加フォーム */}      
       <div className="bg-white rounded-xl shadow p-4 mb-6">
         <h2 className="text-lg font-bold text-blue-600 mb-4">{editingPlayer.id ? "選手を編集" : "選手を追加"}</h2>
-
-        {[
-          { id: "lastName", label: "姓", placeholder: "例：山田" },
-
-          { id: "lastNameKana", label: "ふりがな（姓）", placeholder: "やまだ" },
-          { id: "firstName", label: "名", placeholder: "例：太郎" },
-          { id: "firstNameKana", label: "ふりがな（名）", placeholder: "たろう" },
-          { id: "number", label: "背番号", placeholder: "10" },
-        ].map(({ id, label, placeholder }) => (
+        
+      
+        {FIELDS.map(({ id, label, placeholder }) => (
           <div key={id} className="mb-3">
             <label htmlFor={id} className="block text-sm font-semibold text-gray-700">
               {label}
@@ -267,7 +315,7 @@ const saveTeam = async () => {
             <input
               id={id}
               name={id}
-              ref={id === "lastName" ? lastNameInputRef : undefined} // 
+              ref={inputRefs[id]}
               value={(editingPlayer as any)[id] || ""}
               onChange={handlePlayerChange}
               className="border border-gray-300 rounded px-3 py-2 w-full mt-1"
@@ -313,7 +361,7 @@ const saveTeam = async () => {
                   <button onClick={() => editPlayer(p)} className="text-blue-600 font-semibold">
                     編集
                   </button>
-                  <button onClick={() => deletePlayer(p.id)} className="text-red-500 font-semibold">
+                  <button onClick={() => deletePlayer(p)} className="text-red-500 font-semibold">
                     削除
                   </button>
                 </div>

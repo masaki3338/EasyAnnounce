@@ -255,10 +255,16 @@ const stopExchangeMessage = () => {
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full space-y-4 text-base">
      {/* ✅ 注意表示ブロック */}
-      <div className="flex items-center bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 p-3 rounded">
-        <span className="mr-2 text-2xl">⚠️</span>
-        <span className="font-semibold">試合開始45分前に🎤</span>
+      <div className="flex items-center gap-2">
+        <span className="font-semibold bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 rounded">
+        <span className="text-2xl">⚠️</span>
+          試合開始45分前に🎤
+        </span>
+        <button className="bg-white border border-gray-300 px-4 py-1 rounded-full text-sm">
+          1塁側チーム🎤
+        </button>
       </div>
+
       <div className="flex items-start leading-tight">
         <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
         <p className="whitespace-pre-line text-red-600 font-bold">
