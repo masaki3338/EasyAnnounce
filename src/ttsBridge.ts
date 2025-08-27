@@ -49,7 +49,8 @@ async function playViaVoiceVox(text: string, onstart?: () => void, onend?: () =>
     qs.set("gender", gender);
   }
 
-  const url = `/api/tts-voicevox?${qs.toString()}`;
+  //const url = `/api/tts-voicevox?${qs.toString()}`;
+const url = buildTtsUrlWithVoice(text);
   const audio = new Audio(url);
   onstart?.();
   await audio.play().catch(() => {});
@@ -99,6 +100,22 @@ async function playViaVoiceVox(text: string, onstart?: () => void, onend?: () =>
 })();
 
 
+
+function buildTtsUrlWithVoice(text: string) {
+  const t = encodeURIComponent(text);
+  // localStorage 優先（同期で読める）
+  const sp = localStorage.getItem("ttsDefaultSpeaker");
+  const g  = localStorage.getItem("ttsGender");
+
+  if (sp && /^\d+$/.test(sp)) {
+    return `/api/tts-voicevox?text=${t}&speaker=${sp}`; // ← speaker が最優先で効く
+  }
+  if (g === "male" || g === "female") {
+    return `/api/tts-voicevox?text=${t}&gender=${g}`;   // ← 無ければ gender で指定
+  }
+  return `/api/tts-voicevox?text=${t}`;                 // ← どちらも無ければ既定(女性=30)
+}
+
   // --- 先読み（画面側から window.prefetchTTS('文面') で呼べる）
   (window as any).prefetchTTS = async (text: string) => {
     const key = keyOf((text || "").trim());
@@ -108,7 +125,8 @@ async function playViaVoiceVox(text: string, onstart?: () => void, onend?: () =>
       location.port === "5173"
         ? "http://localhost:3000"
         : "";
-    const r = await fetch(`${apiBase}/api/tts-voicevox?text=${encodeURIComponent(key)}`);
+    //const r = await fetch(`${apiBase}/api/tts-voicevox?text=${encodeURIComponent(key)}`);
+    const r = await fetch(buildTtsUrlWithVoice(key));
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (!r.ok || !ct.startsWith("audio/")) return;
     const blob = await r.blob();
@@ -168,7 +186,8 @@ ss.speak = (utter: any) => {
         return;
       }
 
-      const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(text)}`;
+      //const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(text)}`;
+      const url = buildTtsUrlWithVoice(text);
       fetch(url)
         .then(async (r) => {
           const ct = (r.headers.get("content-type") || "").toLowerCase();
@@ -226,7 +245,9 @@ ss.speak = (utter: any) => {
       const part = segments[idx];
 
       // まずは <audio src> でストリーミング再生（最速）
-      const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(part)}`;
+      //const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(part)}`;
+      const url = buildTtsUrlWithVoice(part);
+
       const a = new Audio();
       a.src = url;
       a.preload = "auto";
