@@ -44,10 +44,23 @@ async function handler(req, res) {
   try {
     const text = String(req.query.text ?? req.body?.text ?? '').trim();
     const base = getBase();
-    //const speaker = Number(req.query.speaker ?? 13);  //男性
-    const speaker = Number(req.query.speaker ?? 30);  //アナウンス女性
+    // gender / speaker から話者を決定（優先度: speaker > gender > 既定=女性30）
+    const rawGender = String(req.query.gender || "").toLowerCase();
+    let speaker;
+    if (req.query.speaker !== undefined) {
+      // 明示指定が最優先
+      speaker = Number(req.query.speaker);
+    } else if (rawGender === "male" || rawGender === "man" || rawGender === "男性") {
+      // 男性指定
+      speaker = 13;
+    } else {
+      // 既定は女性アナウンス
+      speaker = 30;
+    }
+
     const speedScale = Number(req.query.speed ?? 1.08);
     const pitchScale = Number(req.query.pitch ?? 1);
+    const intonationScale = Number(req.query.pitch ?? 1.2);// 抑揚を強める
 
     // 診断モード： ?debug=1 を付けると /version だけチェック
     if ('debug' in req.query) {
@@ -70,6 +83,7 @@ async function handler(req, res) {
     const query = await qRes.json();
     query.speedScale = speedScale;
     query.pitchScale = pitchScale;
+    query.intonationScale = intonationScale;
 
     // 2) synthesis
     const sRes = await fetch(`${base}/synthesis?speaker=${speaker}`, {
