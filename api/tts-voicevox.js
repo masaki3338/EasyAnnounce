@@ -4,6 +4,33 @@ function getBase() {
   return process.env.VOICEVOX_URL || "http://127.0.0.1:50021";
 }
 
+// ひら→カタ変換（簡易）
+function hiraToKata(s) {
+  return s.replace(/[ぁ-ん]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60));
+}
+// モーラ文字を連結
+function joinMora(moras = []) {
+  return moras.map(m => m?.text ?? "").join("");
+}
+
+// 「～番」を無アクセントに（上がっていく読み）
+const BAN_WORDS = new Set([
+  "イチバン","ニバン","サンバン","ヨンバン","ゴバン","ロクバン","ナナバン","ハチバン","キュウバン"
+]);
+
+function forceRisingBan(query) {
+  if (!query || !Array.isArray(query.accent_phrases)) return query;
+  for (const ap of query.accent_phrases) {
+    const wordK = hiraToKata(joinMora(ap.moras || []));
+    // 「1番（いちばん）」などでも、音声化時は「イチバン」単独のAPになることが多い
+    if (BAN_WORDS.has(wordK)) {
+      // 無アクセント化（0にすると下がりが無くなり、スーッと上がる感じになる）
+      ap.accent = 0;
+    }
+  }
+  return query;
+}
+
 function pickSpeaker(req) {
   const rawGender = String(req.query.gender || "").toLowerCase();
   if (req.query.speaker !== undefined) return Number(req.query.speaker); // 明示指定が最優先
@@ -39,7 +66,8 @@ async function handler(req, res) {
       { method: "POST" }
     );
     if (!qRes.ok) throw new Error(`audio_query ${qRes.status}`);
-    const query = await qRes.json();
+ let query = await qRes.json();
+ query = forceRisingBan(query);
     query.speedScale = speedScale;
     query.pitchScale = pitchScale;
     query.intonationScale = intonationScale;
