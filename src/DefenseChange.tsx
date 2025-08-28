@@ -127,6 +127,16 @@ const generateAnnouncementText = (
     battingOrder.map(e => [e.id, e.reason])
   ) as Record<number, string>;
   
+  // ▼ 追加：usedPlayerInfo から「守備に入った代打/代走のID → 理由」を逆引き
+  const pinchReasonById: Record<number, "代打" | "代走" | "臨時代走" | undefined> = {};
+  Object.values(usedPlayerInfo || {}).forEach((info: any) => {
+    if (!info) return;
+    const r = info.reason as string | undefined;
+    if ((r === "代打" || r === "代走" || r === "臨時代走") && typeof info.subId === "number") {
+      pinchReasonById[info.subId] = r as any;
+    }
+  });
+
   const handledIds = new Set<number>();
 
   /* ---------- レコード分類 ---------- */
@@ -294,7 +304,7 @@ if (isBOnField) continue;
     const lines: string[] = [];
 
     // ✅ 文言を切り替える
-    const reasonText = entry.reason === "代打" ? "代打致しました" : "代走に出ました";
+    const reasonText = entry.reason === "代打" ? "代打致しました" : "代走致しました";
 
     // 1行目：控えが別守備に入る
     lines.push(
@@ -388,9 +398,11 @@ if (specialResult) {
    console.log("✅ 特別処理: 代打/代走選手に代わって控えが同じ守備位置に入ったケース");
      // 🛑 リエントリーで既に出力済み（同じ選手 or 同じ守備）なら、この特別行は出さない
     if (handledPlayerIds.has(subPlayer.id) || handledPositions.has(pos)) return;
+    // 代打/代走“本人”が入ってきたら、この特別行は作らない（通常のピンチ系ブロックに任せる）
+    const subEntry = battingOrder.find(e => e.id === subPlayer.id);
+    if (subEntry && ["代打","代走","臨時代走"].includes(subEntry.reason)) { return; }
 
-
-const reasonText = entry.reason === "代打" ? "代打致しました" : "代走に出ました";
+const reasonText = entry.reason === "代打" ? "代打致しました" : "代走致しました";
 result.push(`先ほど${reasonText}${lastWithHonor(originalPlayer)} に代わりまして、${fullNameHonor(subPlayer)} がそのまま入り ${posJP[pos]}、`);
 lineupLines.push({
   order: idx + 1,
@@ -436,35 +448,68 @@ battingOrder.forEach((entry, idx) => {
     .find(([k, v]) => v === originalId)?.[0] as keyof typeof posJP;
   if (!movedToPos || movedToPos === pos) return;
 
-  // ★ 相手も代打/代走かチェック（相互入れ替え）
-  const otherEntry = battingOrder.find(e =>
-    e.id === movedPlayer.id && ["代打", "代走", "臨時代走"].includes(e.reason)
-  );
-
-  if (otherEntry && !handledIds.has(movedPlayer.id)) {
-    // 2人を別行で出す（2行目は「同じく先ほど…」で始める）
-    result.push(`先ほど${entry.reason}致しました${lastWithHonor(pinchPlayer)}が${posJP[pos]}、`);
-    result.push(`同じく先ほど${otherEntry.reason}致しました${lastWithHonor(movedPlayer)}が${posJP[movedToPos]}に入ります。`);
-
-
-    lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${lastWithHonor(pinchPlayer)}` });
-    const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
-    if (movedOrder >= 0) {
-      lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[movedToPos]} ${lastWithHonor(movedPlayer)}` });
-    }
-
-    skipShiftPairs.add(`${movedPlayer.id}|${pos}|${movedToPos}`);
-
-    handledIds.add(entry.id);
-    handledIds.add(movedPlayer.id);
-    handledPlayerIds.add(pinchPlayer.id);
-    //handledPlayerIds.add(movedPlayer.id);
-    handledPositions.add(pos);
-    //handledPositions.add(movedToPos);
-    handledPlayerIds.add(pinchPlayer.id); // 代打/代走本人だけ
-    handledPositions.add(pos);            // 本人が入った守備位置だけ
-    return;
+// ★ 相互入れ替え（代打A⇄代打B）を usedPlayerInfo と assignments から検出する
+//    A: entry.id。Aの「元いた守備」= fromA（usedPlayerInfo）／「今いる守備」= toA（assignments）
+//    B: otherId。Bの「元いた守備」= fromB（=toA）／「今いる守備」= curPosB（=fromA）
+const pinchFromPosById = new Map<number, string>();
+Object.values(usedPlayerInfo || {}).forEach((info: any) => {
+  if (!info) return;
+  if (["代打","代走","臨時代走"].includes(info.reason) && typeof info.subId === "number") {
+    const sym = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos; // "サード"→"三" 等を正規化
+    pinchFromPosById.set(info.subId, sym);
   }
+});
+const curPosOf = (id: number) =>
+  Object.entries(assignments).find(([k, v]) => v === id)?.[0] as keyof typeof posJP | undefined;
+
+// A側
+const fromA = pinchFromPosById.get(entry.id);
+const toA   = (Object.entries(assignments).find(([k, v]) => v === entry.id)?.[0] as keyof typeof posJP) || pos;
+
+// Bを探索：「fromB===toA」かつ「curPosB===fromA」の代打/代走
+const otherId = [...pinchFromPosById.entries()]
+  .find(([id, fromB]) => id !== entry.id && fromB === toA && curPosOf(id) === fromA)?.[0];
+
+if (fromA && toA && otherId) {
+  const pinchPlayer = teamPlayers.find(p => p.id === entry.id)!;   // A
+  const movedPlayer = teamPlayers.find(p => p.id === otherId)!;    // B
+
+  const headById = (id: number) => {
+    const r = ((usedPlayerInfo as any)[id]?.reason) || (pinchReasonById[id] || reasonMap[id]);
+    return r === "代走" ? "代走致しました" : r === "臨時代走" ? "臨時代走" : "代打致しました";
+  };
+
+
+// ★ 2人分を“1エントリ”で必ず出す（後段の整形で消えないようにする）
+const phraseA = headById(entry.id);
+const phraseB = headById(otherId);
+const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
+
+const combined =
+  `先ほど${phraseA}${lastWithHonor(pinchPlayer)}が${posJP[toA]}、\n` +
+  `${prefixB}${phraseB}${lastWithHonor(movedPlayer)}が${posJP[fromA]}に入ります。`;
+result.push(combined);
+
+  // 二重出力防止
+  skipShiftPairs.add(`${pinchPlayer.id}|${fromA}|${toA}`);
+  skipShiftPairs.add(`${movedPlayer.id}|${toA}|${fromA}`);
+  handledIds.add(entry.id);
+  handledIds.add(movedPlayer.id);
+  handledPlayerIds.add(pinchPlayer.id);
+  handledPlayerIds.add(movedPlayer.id);
+  handledPositions.add(toA);
+  handledPositions.add(fromA);
+
+  // 打順行（重複防止付き）
+  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[toA]} ${lastWithHonor(pinchPlayer)}` });
+  const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
+  if (movedOrder >= 0) {
+    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[fromA]} ${lastWithHonor(movedPlayer)}` });
+  }
+  return; // 通常分岐へ流さない
+  
+}
+
 
   // ★ 相手が通常選手の場合は従来通り
 // ★ 相手が通常選手の場合は従来通り（2行に分割 + 重複スキップ登録）
@@ -514,14 +559,22 @@ type PinchLine = { reason: "代打" | "代走"| "臨時代走"; text: string };
 const pinchInSamePos: PinchLine[] = [];
 
 battingOrder.forEach((entry, idx) => {
+  
   const player = teamPlayers.find(p => p.id === entry.id);
   if (!player) return;
 
   const pos = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] as keyof typeof posJP | undefined;
   if (!pos) return;
 
+  // すでに特別処理（相互入替えなど）で扱った選手/守備はここでは出さない
+  if (handledPlayerIds.has(player.id) || handledPositions.has(pos)) return;
+
   const wasReplaced = !!usedPlayerInfo[entry.id];
-  const unchanged   = initialAssignments[pos] === entry.id;
+  const origIdAtPos = initialAssignments[pos];
+  const unchanged =
+   assignments[pos] === entry.id &&
+   origIdAtPos != null &&
+   resolveLatestSubId(origIdAtPos, usedPlayerInfo) === entry.id;
 
   if ((entry.reason === "代打" || entry.reason === "代走" || entry.reason === "臨時代走") && !wasReplaced && unchanged) {
     const honor = player.isFemale ? "さん" : "くん";
@@ -543,6 +596,9 @@ battingOrder.forEach((entry, idx) => {
       order: idx + 1,
       text : `${idx + 1}番 ${posJP[pos]} ${ruby} 背番号 ${player.number}`
     });    
+    // 追加（重複出力を防ぐため、ここで処理済みにする）
+    handledPlayerIds.add(player.id);
+    handledPositions.add(pos);
   }
 });
 
@@ -666,10 +722,26 @@ mixed.forEach((r, i) => {
   ) return;
 
   // ✅ アナウンス文作成
+// ✅ アナウンス文作成（代打/代走は fromPos を使わず「先ほど…」にする）
+const fromReason = reasonMap[r.from.id]; // battingOrder 由来
+const isPinchFrom = ["代打", "代走", "臨時代走"].includes(fromReason as any);
+
+if (isPinchFrom) {
+  const phrase =
+    fromReason === "代走" ? "代走致しました" :
+    fromReason === "臨時代走" ? "臨時代走" :
+    "代打致しました"; // ←「しました」にしたい場合はここを変更
+
+  addReplaceLine(
+    `先ほど${phrase}${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+    i === mixed.length - 1 && shift.length === 0
+  );
+} else {
   addReplaceLine(
     `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
     i === mixed.length - 1 && shift.length === 0
   );
+}
 
 // ✅ lineupLines（重複防止付き）
 // 既存 if (...) { lineupLines.push(...) } の直前～直後を以下に置換
@@ -757,33 +829,106 @@ if (
   const tail = posJP[s.toPos];
   const ends = "、";
 
-// ↓↓↓ ここに置き換え ↓↓↓
+// ↓↓↓ ここに置き換え（相互入れ替えは assignments + usedPlayerInfo で検出） ↓↓↓
 const pinchEntry = battingOrder.find(
   (e) => e.id === s.player.id && ["代打", "代走", "臨時代走"].includes(e.reason)
 );
 
 if (pinchEntry) {
-  // 理由ごとの先頭フレーズ（「致しました／に出ました」も含めて整形）
+  // usedPlayerInfo: { originalId : { fromPos, subId, reason: "代打|代走|臨時代走", ... } }
+  const subFromPosById = new Map<number, string>();
+  Object.values(usedPlayerInfo || {}).forEach((info: any) => {
+    if (!info) return;
+    const r = info.reason as string | undefined;
+    if ((r === "代打" || r === "代走" || r === "臨時代走") && typeof info.subId === "number") {
+      const sym = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos; // 例: "ライト"→"右"
+      subFromPosById.set(info.subId, sym);
+    }
+  });
+
+  const curPosOf = (id: number) =>
+    (Object.entries(assignments).find(([k, v]) => v === id)?.[0] as string | undefined);
+
+  // A=このシフトの代打
+  const fromA = subFromPosById.get(s.player.id);         // 代打Aが元々置き換えた守備
+  const toA   = curPosOf(s.player.id) ?? s.toPos;        // 代打Aの今の守備（= s.toPos のはず）
+
+  // B=相手の代打（toA→fromA へ動いた代打）
+  const otherId = [...subFromPosById.entries()]
+    .find(([id, fromB]) => id !== s.player.id && fromB === toA && curPosOf(id) === fromA)?.[0];
+
+  if (fromA && toA && otherId) {
+    const phraseOfId = (id: number) => {
+      // usedPlayerInfo 由来を優先（battingOrder は途中で「途中出場」に変わり得るため）
+      const r =
+        Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === id)?.reason ||
+        battingOrder.find((e) => e.id === id)?.reason;
+      return r === "代走" ? "代走致しました" : r === "臨時代走" ? "臨時代走" : "代打致しました";
+    };
+
+    const playerA = s.player;
+    const playerB = teamPlayers.find((p) => p.id === otherId)!;
+
+    // ★ 2人分を1行で必ず出す
+    const phraseA = phraseOfId(playerA.id);
+    const phraseB = phraseOfId(playerB.id);
+    const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
+
+    result.push(
+      `先ほど${phraseA}${lastWithHonor(playerA)} が ${posJP[toA]}、` +
+      `${prefixB}${phraseB}${lastWithHonor(playerB)} が ${posJP[fromA]}。`
+    );
+
+    // 打順行（重複しないようガード）
+    if (
+      typeof s.order === "number" &&
+      !lineupLines.some((l) => l.order === s.order && l.text.includes(posJP[toA]) && l.text.includes(lastRuby(playerA)))
+    ) {
+      lineupLines.push({ order: s.order, text: `${s.order}番 ${posJP[toA]} ${lastWithHonor(playerA)}` });
+    }
+    const otherOrder = battingOrder.findIndex((e) => e.id === playerB.id);
+    if (
+      otherOrder >= 0 &&
+      !lineupLines.some((l) => l.order === otherOrder + 1 && l.text.includes(posJP[fromA]) && l.text.includes(lastRuby(playerB)))
+    ) {
+      lineupLines.push({ order: otherOrder + 1, text: `${otherOrder + 1}番 ${posJP[fromA]} ${lastWithHonor(playerB)}` });
+    }
+
+    // 後段の通常処理に流れないよう両者＆両ポジションを処理済みに
+    if (typeof skipShiftPairs !== "undefined") {
+      skipShiftPairs.add(`${playerA.id}|${fromA}|${toA}`);
+      skipShiftPairs.add(`${playerB.id}|${toA}|${fromA}`);
+    }
+    if (typeof handledPlayerIds !== "undefined") {
+      handledPlayerIds.add(playerA.id);
+      handledPlayerIds.add(playerB.id);
+    }
+    if (typeof handledPositions !== "undefined") {
+      handledPositions.add(toA);
+      handledPositions.add(fromA);
+    }
+    return; // ← 相互入替えはここで完結
+  }
+
+  // 相互入替えでなければ従来の単独出力
   const phrase =
     pinchEntry.reason === "代打"
       ? "代打致しました"
       : pinchEntry.reason === "臨時代走"
       ? "臨時代走"
-      : "代走に出ました";
+      : "代走致しました";
 
-  // すでに同じ理由の「先ほど…」行が前にあれば「同じく先ほど…」で始める
   const hasPriorSame = result.some(
     (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
   );
   const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
-
-  // 例）「同じく先ほど代打致しました 折原… が レフト 、」
   result.push(`${headText}${lastWithHonor(s.player)} が ${tail} ${ends}`);
 } else {
-  // 通常のシフト出力（従来通り）
+  // 通常のシフト出力（従来どおり）
   result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} ${ends}`);
 }
 // ↑↑↑ ここまで置き換え ↑↑↑
+
 
 
 // ✅ lineupLines の重複防止付き追加
@@ -1249,7 +1394,7 @@ Object.entries(usedPlayerInfo).forEach(([originalIdStr, info]) => {
   }
 });
 
-    setInitialAssignments(updatedAssignments);
+    setInitialAssignments(assignments);
   };
 
   setInitialAssignmentsFromSubs();
@@ -1276,19 +1421,28 @@ useEffect(() => {
 
 // ✅ 代打・代走の割り当て（“連鎖”の末端まで辿る）
 for (const [originalIdStr, info] of Object.entries(usedInfo)) {
-  const { fromPos, reason } = info;
-  if (!(reason === "代打" || reason === "代走" || reason === "臨時代走")) continue;
+   const { fromPos, reason } = info;
+   if (!["代打", "代走", "臨時代走"].includes(reason)) continue;
+   const sym = posNameToSymbol[fromPos ?? ""] ?? fromPos ?? "";
+   if (!sym) continue;
 
-  const sym = posNameToSymbol[fromPos ?? ""] ?? fromPos ?? "";
-  if (!sym) continue;
+   const origId  = Number(originalIdStr);
+   const latest  = resolveLatestSubId(origId, usedInfo);
+   if (!latest) continue;
 
-  const latest = resolveLatestSubId(Number(originalIdStr), usedInfo);
-  if (latest) {
-    newAssignments[sym] = latest;
-    console.log(`[DEBUG] 代打/代走(最終) ${latest} を ${sym} に配置`);
-    // 以降の既存コード（updatedTeamPlayers に仮追加する処理など）は残してOK
-  }
-}
+   // 🔒 自動反映は「まだ何も確定していない素の状態」のときだけ
+   const isOriginalStillHere = newAssignments[sym] === origId; // その守備が今も元選手のまま
+   const isOriginalElsewhere = Object.entries(newAssignments)
+     .some(([k, v]) => v === origId && k !== sym);             // 元選手が他守備へ移動済み？
+   const isPinchOnField = Object.values(newAssignments).includes(latest); // 代打がどこかに既に入ってる？
+
+   if (isOriginalStillHere && !isOriginalElsewhere && !isPinchOnField) {
+     newAssignments[sym] = latest; // ← このときだけ自動で代打を同じ守備へ
+     console.log(`[AUTO] 代打/代走 ${latest} を ${sym} に自動配置`);
+   } else {
+     console.log(`[SKIP] 自動配置せず（元or代打が他で確定済み） sym=${sym}`);
+   }
+ }
 
     // ステート更新
     setBattingOrder(order);
@@ -2394,17 +2548,23 @@ await localForage.setItem("usedPlayerInfo", usedInfo);
     }
   });
 
-  // 保存
-  await localForage.setItem("lineupAssignments", assignments);
-  await localForage.setItem("battingReplacements", battingReplacements);
-  await localForage.setItem("battingOrder", updatedOrder);
-  await localForage.setItem("dhEnabledAtStart",  dhEnabledAtStart);
+  // setPairLocks({});       // すでに後段で呼んでいるなら二重呼びは不要
 
-  console.log("[CONFIRM] 守備交代確定後の battingOrder:");
-  console.table(updatedOrder);
 
-  setPairLocks({});
-  onConfirmed?.();
+// --- 保存（代打赤字はクリアして保存） ---
+await localForage.setItem("lineupAssignments", assignments);
+// ★ここを {} に固定する（非空は保存しない）
+await localForage.setItem("battingReplacements", {});
+await localForage.setItem("battingOrder", updatedOrder);
+await localForage.setItem("dhEnabledAtStart", dhEnabledAtStart);
+
+// 画面状態もあわせて空にしておく
+setBattingReplacements({});
+setSubstitutionLogs([]);
+setPairLocks({});
+
+onConfirmed?.();
+
   console.log("✅ onConfirmed called");
 };
 
