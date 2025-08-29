@@ -105,6 +105,21 @@ useEffect(() => {
   loadData();
 }, []);
 
+// ★ 追加：アナウンス文言のDOM参照
+const announceRef = useRef<HTMLDivElement | null>(null);
+// ★ 追加：DOM → HTML 文字列（<p>の区切りを<br>化）
+const getAnnounceHtml = () => {
+  const el = announceRef.current;
+  if (!el) return "";
+  let html = el.innerHTML;
+
+  // 段落境界が消えないよう <p> 区切りを <br> に置換（ttsBridge 側で <br>→「。」）
+  html = html.replace(/<\/p>\s*<p/gi, "</p><br><p");
+  html = html.replace(/<\/p>/gi, "</p><br>");
+  // 連続 <br> は1つに
+  html = html.replace(/(<br\s*\/?>\s*){2,}/gi, "<br>");
+  return html;
+};
 
   const getPositionName = (pos: string) => positionMapJP[pos] || pos;
   const getHonorific = (p: Player) => (p.isFemale ? "さん" : "くん");
@@ -142,13 +157,13 @@ useEffect(() => {
         const pos = Object.entries(assignments).find(([_, pid]) => pid === entry.id)?.[0] || "-";
         const posName = getPositionName(pos);
         const honorific = getHonorific(p);
-        return `${idx + 1}番　[${posName}]　${p.lastNameKana}${p.firstNameKana}${honorific}、　[${posName}]　${p.lastNameKana}${honorific}、背番号${p.number}、`;
+        return `${idx + 1}番　[${posName}]　${p.lastNameKana}　${p.firstNameKana}${honorific}、　[${posName}]　${p.lastNameKana}${honorific}、背番号${p.number}、`;
       })
       .filter(Boolean)
       .join("\n");
 
     const benchText = teamPlayers
-      .filter((p) => !battingOrder.includes(p.id))
+      .filter((p) => !startingIds.includes(p.id) && !benchOutIds.includes(p.id))
       .map((p) => `${p.lastNameKana}${p.firstNameKana}${getHonorific(p)}、背番号${p.number}、`)
       .join("\n");
 
@@ -162,7 +177,10 @@ useEffect(() => {
 
   const handleSpeak = () => {
     if (speaking) return;
-    const text = createSpeechText();
+    // ① 画面のアナウンス文言（HTML）を優先
+    const text = getAnnounceHtml();
+    // ② 取れなければ従来生成テキストへフォールバック
+    //const text = html || createSpeechText();
     if (!text) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -212,7 +230,7 @@ useEffect(() => {
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left font-bold">
         <div className="flex flex-col items-start">
           <img src="/icons/mic-red.png" className="w-6 h-6 mb-2" alt="Mic" />
-          <div>
+          <div ref={announceRef}>
             {isHomeTeamFirstAttack && (
               <p>
                 お待たせいたしました、{homeTeamName} 対 {awayTeamName} のスターティングラインナップ並びに審判員をお知らせいたします。
