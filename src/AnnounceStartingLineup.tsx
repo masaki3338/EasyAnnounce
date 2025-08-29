@@ -148,7 +148,7 @@ useEffect(() => {
       .join("\n");
 
     const benchText = teamPlayers
-      .filter((p) => !battingOrder.includes(p.id))
+      .filter((p) => !startingIds.includes(p.id) && !benchOutIds.includes(p.id))
       .map((p) => `${p.lastNameKana}${p.firstNameKana}${getHonorific(p)}、背番号${p.number}、`)
       .join("\n");
 
