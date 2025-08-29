@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 
 type Player = {
@@ -87,8 +87,44 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [showTempReentryModal, setShowTempReentryModal] = useState(false);
 
 // ▼リエントリー用 state と関数を追加
-const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
-const [reEntryTarget, setReEntryTarget] = useState<{ id: number; fromPos: string } | null>(null);
+// ★ 試合開始時の打順スナップショット（表示用）
+const [startingOrder, setStartingOrder] = useState<{ id: number; reason?: string }[]>([]);
+// 打順（代打・代走の「今の担い手」が入る）
+const [battingOrder, setBattingOrder] = useState<Array<{ id: number; reason?: string }>>([]);
+
+ // TR（臨時代走）情報：打順index → 走者ID
+const [tempRunnerByOrder, setTempRunnerByOrder] = useState<Record<number, number>>({});
+// 臨時代走が残っている打順は、元スタメンの位置に「代打選手」を仮表示（見た目だけ）
+const assignmentsForDisplay = useMemo(() => {
+  const disp: Record<string, number | null> = { ...assignments };
+  const bo = Array.isArray(battingOrder) ? battingOrder : [];
+
+  // ※ 数値/文字列の不一致に強い一致関数
+  const findPosById = (id?: number | null) =>
+    Object.keys(disp).find((p) => {
+      const v = disp[p];
+      return v != null && id != null && Number(v) === Number(id);
+    });
+
+  bo.forEach((e, i) => {
+    // 条件を拡張：① reason が「臨時代走」 または ② TR マップにエントリがある
+    const isTR = e?.reason === "臨時代走" || tempRunnerByOrder[i] != null;
+    if (!e || !isTR) return;
+
+    // 「代打出された選手」の現在位置を、まずは startingOrder[i] のIDで逆引き
+    const starterId = startingOrder?.[i]?.id;
+    const pos = findPosById(starterId);
+    if (!pos) return; // 途中で通常交代があって見つからない場合はスキップ
+
+    // その位置に “代打（battingOrder[i].id）” を仮表示
+    disp[pos] = e.id ?? null;
+  });
+
+  return disp;
+}, [assignments, battingOrder, startingOrder, tempRunnerByOrder]);
+
+
+const [reEntryTarget, setReEntryTarget] = useState<{ id: number; fromPos: string; index?: number } | null>(null);
 const [reEntryMessage, setReEntryMessage] = useState("");
 
 // 投手IDごとの累計球数（例: { 12: 63, 18: 23 }）
@@ -207,6 +243,7 @@ const handleReentryCheck = async () => {
 };
 
 // ★ 臨時代走を最優先で拾い、文面とターゲットをセット
+// ★ 臨時代走を最優先で拾い、文面とターゲットをセット（B=代打）
 const handleTempReentryCheck = async () => {
   setReEntryMessage("");
   setReEntryTarget(null);
@@ -216,42 +253,46 @@ const handleTempReentryCheck = async () => {
   const startingOrder: Array<{ id: number; reason?: string }> =
     (await localForage.getItem("startingBattingOrder")) || [];
 
-  // 「臨時代走」の打順インデックスを特定
+  // 「臨時代走」の打順インデックス
   const pinchIdx = battingOrder.findIndex((e) => e?.reason === "臨時代走");
   if (pinchIdx === -1) return;
 
-  // 攻撃画面が保存した「臨時で出た選手(A)」を優先して使う
+  // A＝臨時代走で走った選手（攻撃画面が保存した tempRunner を優先）
   const tempMap: Record<number, number> =
     (await localForage.getItem("tempRunnerByOrder")) || {};
   const pinchId = tempMap[pinchIdx] ?? battingOrder[pinchIdx]?.id;
 
-  const starterId = startingOrder[pinchIdx]?.id;  // その打順の元スタメン（B）
-  if (!pinchId || !starterId) return;
+  // B＝代打で出ていた選手（battingOrder に残っているのは代打）
+  const batterId = battingOrder[pinchIdx]?.id;
 
-  // B の元守備位置（現在の lineUpAssignments から逆引き）
+  // B の元守備位置（現在の assignments から、元スタメンIDで逆引き）
   const assignmentsNow: Record<string, number | null> =
     (await localForage.getItem("lineupAssignments")) || {};
-  const fromPos = Object.keys(assignmentsNow).find((pos) => assignmentsNow[pos] === starterId);
+  const starterIdForPos = startingOrder[pinchIdx]?.id;
+  if (!pinchId || !batterId || !starterIdForPos) return;
+
+  const fromPos = Object.keys(assignmentsNow).find((pos) => assignmentsNow[pos] === starterIdForPos);
   if (!fromPos) return;
 
-  // 表示パーツ
   const posJP: Record<string, string> = {
     "投":"ピッチャー","捕":"キャッチャー","一":"ファースト","二":"セカンド",
     "三":"サード","遊":"ショート","左":"レフト","中":"センター","右":"ライト","指":"指名打者"
   };
-  const aLabel = playerLabel(pinchId);
-  const bLabel = playerLabel(starterId);
-  const aHonor = honor(pinchId);
-  const bHonor = honor(starterId);
 
-  // ★ 指定の文面
+  const aLabel = playerLabel(pinchId);
+  const aHonor = honor(pinchId);
+  const bLabel = playerLabel(batterId);
+  const bHonor = honor(batterId);
+
   const msg =
     `先ほど臨時代走いたしました ${aLabel}${aHonor} に代わりまして` +
     ` ${bLabel}${bHonor} が ${posJP[fromPos] ?? fromPos} に戻ります。`;
 
-  setReEntryTarget({ id: starterId, fromPos, index: pinchIdx });
+  // ★ ターゲットも “代打選手”
+  setReEntryTarget({ id: batterId, fromPos, index: pinchIdx });
   setReEntryMessage(msg);
 };
+
 
 
 
@@ -294,6 +335,14 @@ useEffect(() => {
 const savedBattingOrder =
   (await localForage.getItem<{ id: number; reason: string }[]>("battingOrder")) || [];
 setBattingOrder(savedBattingOrder);
+// ★ スタメン打順も読み込んで保持
+const savedStartingOrder =
+  (await localForage.getItem<{ id: number; reason?: string }[]>("startingBattingOrder")) || [];
+setStartingOrder(savedStartingOrder);
+// ★ 臨時代走マップも読み込む
+const savedTempMap = (await localForage.getItem<Record<number, number>>("tempRunnerByOrder")) || {};
+setTempRunnerByOrder(savedTempMap);
+
 
 // ✅ まず基礎データを反映してから…
 if (savedAssignments) setAssignments(savedAssignments);
@@ -646,6 +695,7 @@ const normalizeForTTS = (input: string) => {
   return t;
 };
 
+
 const handleSpeak = () => {
   if (synthRef.current?.speaking) synthRef.current.cancel();
   if (announceMessages.length === 0) return;
@@ -803,7 +853,7 @@ const handlePitchLimitSpeak = () => {
       <div className="relative w-full max-w-2xl mx-auto my-6">
         <img src="/field.jpg" alt="フィールド図" className="w-full rounded shadow" />
         {positions.map(pos => {
-          const playerId = assignments[pos];
+          const playerId = assignmentsForDisplay[pos]; // ★ 表示用に差し替え
           const playerNameNum = getPlayerNameNumber(playerId);
           return (            
           <div
@@ -931,8 +981,8 @@ const handlePitchLimitSpeak = () => {
               const order: Array<{ id: number; reason?: string }> =
                 (await localForage.getItem("battingOrder")) || [];
               if (order[reEntryTarget.index]) {
-                // id はそのまま、reason を除去
-                order[reEntryTarget.index] = { id: order[reEntryTarget.index].id };
+                // 代打に戻ったので reason を "代打" に固定
+                order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
                 await localForage.setItem("battingOrder", order);
                 setBattingOrder(order);
               }
@@ -944,7 +994,8 @@ const handlePitchLimitSpeak = () => {
               order.forEach((e, i) => {
                 if (e?.reason === "臨時代走") {
                   delete map[i];
-                  order[i] = { id: e.id };
+                  // TR解除後は “代打として残っている打者” に戻る
+                  order[i] = { id: e.id, reason: "代打" };
                   changed = true;
                 }
               });
@@ -995,7 +1046,8 @@ onClick={async () => {
     const order: Array<{ id: number; reason?: string }> =
       (await localForage.getItem("battingOrder")) || [];
     if (order[reEntryTarget.index]?.reason === "臨時代走") {
-      order[reEntryTarget.index] = { id: order[reEntryTarget.index].id }; // reason除去
+    // TR解除後は代打扱いに戻す
+      order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
       await localForage.setItem("battingOrder", order);
       setBattingOrder(order);
     }
