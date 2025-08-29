@@ -4,6 +4,21 @@ function getBase() {
   return process.env.VOICEVOX_URL || "http://127.0.0.1:50021";
 }
 
+// 先頭付近に追加
+function resolveSpeaker(req) {
+  // 1) speaker が数値で来たら最優先
+  const sp = Number(req.query.speaker);
+  if (!Number.isNaN(sp)) return sp;
+
+  // 2) gender が来たら男女マップで決定（※あなたの環境に合わせて調整）
+  const g = String(req.query.gender || "").toLowerCase();
+  if (g === "male")   return 13; // ← 実際の style_id に合わせる
+  if (g === "female") return 30; // ← 実際の style_id に合わせる
+
+  // 3) 既定
+  return 30;
+}
+
 // ひら→カタ変換（簡易）
 function hiraToKata(s) {
   return s.replace(/[ぁ-ん]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60));
@@ -31,12 +46,7 @@ function forceRisingBan(query) {
   return query;
 }
 
-function pickSpeaker(req) {
-  const rawGender = String(req.query.gender || "").toLowerCase();
-  if (req.query.speaker !== undefined) return Number(req.query.speaker); // 明示指定が最優先
-  if (rawGender === "male" || rawGender === "man" || rawGender === "男性") return 30; // 男性
-  return 13; // 既定は女性アナウンス
-}
+
 
 async function handler(req, res) {
   try {
@@ -44,7 +54,7 @@ async function handler(req, res) {
     const base = getBase();
     if (!text) return res.status(400).json({ ok: false, error: "text is required" });
 
-    const speaker = pickSpeaker(req);
+    const speaker = resolveSpeaker(req);
     const speedScale = Number(req.query.speed ?? 1.08);
     const pitchScale = Number(req.query.pitch ?? 1);
     const intonationScale = Number(req.query.intonation ?? 1.2); // ← param名も分離
@@ -53,7 +63,16 @@ async function handler(req, res) {
     if ("debug" in req.query) {
       const v = await fetch(`${base}/version`);
       const verTxt = await v.text().catch(() => "");
-      return res.status(200).json({ ok: v.ok, base, version: verTxt });
+      return res.status(200).json({
+        ok: v.ok,
+        base,
+        version: txt,
+        speaker,                             // ★採用した話者ID
+        received: {                          // 参考：クエリの生値
+          speaker: req.query.speaker ?? null,
+          gender:  req.query.gender  ?? null,
+        },
+      });
     }
 
     // 0) エンジン起動確認
