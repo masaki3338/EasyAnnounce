@@ -32,11 +32,23 @@ type AnyUtt = SpeechSynthesisUtterance & { onend?: (ev?: any) => void };
 function splitJa(text: string): string[] {
   const t = text.replace(/\s+/g, " ").trim();
   if (!t) return [];
-  // まず句点で。文が1つしかできなければ読点でも切る
-  let segs = t.split(/(?<=[。！？!?])/);
-  if (segs.length === 1) segs = t.split(/(?<=、)/);
-  return segs.map(s => s.trim()).filter(Boolean);
+
+  // ★ 特例：イニングの攻撃アナウンスは分割しない
+  if (/(?:\d+回[表裏])[^。！？!?]*攻撃は/.test(t)) {
+    return [t];
+  }
+
+  // まず「。！？!?」で区切る
+  let segs = t.split(/(?<=[。！？!?])/).map(s => s.trim()).filter(Boolean);
+
+  // 1文しかできず、かつ全体が“長い”ときだけ「、」で分割（短文は分割しない）
+  if (segs.length === 1 && t.length >= 14) {
+    segs = t.split(/(?<=、)/).map(s => s.trim()).filter(Boolean);
+  }
+  return segs;
 }
+
+
 
 async function playViaVoiceVox(text: string, onstart?: () => void, onend?: () => void) {
   const gender  = (await localForage.getItem<string>("ttsGender")) === "male" ? "male" : "female";
@@ -134,6 +146,39 @@ function buildTtsUrlWithVoice(text: string) {
     remember(key, url);
   };
 
+function computeTimeoutMs(s: string): number {
+  const n = Math.min(50, Math.max(0, s.length)); // 0〜50文字を想定
+  return Math.min(3000, 1200 + n * 60);          // 1.2s + 文字数×60ms（上限3s）
+}
+
+
+  // playing を待つが、ms で見切る
+// 追加：ss.speak より上に置く
+function tryPlayWithTimeout(audio: HTMLAudioElement, label: string, ms = 1500) {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const ok = () => {
+      if (settled) return;
+      settled = true;
+      audio.removeEventListener("playing", ok);
+      console.log(`[EA-TTS] VOICEVOX playing ${label}`);
+      resolve();
+    };
+    const fail = (err?: any) => {
+      if (settled) return;
+      settled = true;
+      audio.removeEventListener("playing", ok);
+      console.warn(`[EA-TTS] play timeout → WebAudio (${label})`, err);
+      reject(err);
+    };
+    audio.addEventListener("playing", ok, { once: true });
+    const p = audio.play();
+    if (p && (p as any).catch) (p as any).catch(fail);
+    setTimeout(() => fail(new Error("timeout")), ms);
+  });
+}
+
+
   // --- <audio> で再生できない環境用に WebAudio で再生
   async function playWavWithWebAudio(ab: ArrayBuffer, onend?: () => void) {
     const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -175,109 +220,76 @@ ss.speak = (utter: any) => {
     const segments = splitJa(text);
 
     // ---- 1文だけ：これまで通りの経路（キャッシュ→fetch→<audio>/WebAudio）
-    if (segments.length <= 1) {
-      const key = keyOf(text);
-      const cached = mem.get(key);
-      if (cached) {
-        const a = new Audio(cached);
-        a.onended = () => { try { utter.onend?.(); } catch {} };
-        a.onerror = () => { console.warn("[EA-TTS] cached audio error → fallback"); mem.delete(key); originalSpeak(utter); };
-        a.play().catch((err) => { console.warn("[EA-TTS] cached play failed → fallback", err); originalSpeak(utter); });
-        return;
-      }
+if (segments.length <= 1) {
+  const url = buildTtsUrlWithVoice(text);
 
-      //const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(text)}`;
-      const url = buildTtsUrlWithVoice(text);
-      fetch(url)
-        .then(async (r) => {
-          const ct = (r.headers.get("content-type") || "").toLowerCase();
-          if (!r.ok || !ct.startsWith("audio/")) {
-            const body = await r.text().catch(() => "");
-            console.warn("[EA-TTS] non-audio response → fallback", { status: r.status, ct, body: body.slice(0, 120) });
-            originalSpeak(utter);
-            return;
-          }
+  // 1) まず <audio src> で“即再生”を試みる（成功すれば最速）
+  const a = new Audio();
+  a.src = url;
+  a.preload = "auto";
+  a.onended = () => { try { utter.onend?.(); } catch {} };
 
-          const ab = await r.arrayBuffer();
-          const blob = new Blob([ab], { type: ct });
-          const objUrl = URL.createObjectURL(blob);
-          remember(key, objUrl);
+  // <audio> がエラー → すぐ旧TTSにフォールバック ＋ 裏でプリウォーム
+  a.onerror = () => {
+    console.warn("[EA-TTS] <audio> single error → fallback Web Speech & prewarm");
+    (window as any)._ea_originalSpeak?.(utter) ?? originalSpeak(utter);
+    try { (window as any).prefetchTTS?.(text); } catch {}
+  };
 
-          if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-          const a = new Audio(objUrl);
-          a.onended = () => { URL.revokeObjectURL(objUrl); currentAudio = null; try { utter.onend?.(); } catch {} };
-          a.onerror  = () => {
-            console.warn("[EA-TTS] <audio> error → try WebAudio");
-            URL.revokeObjectURL(objUrl);
-            currentAudio = null;
-            playWavWithWebAudio(ab, () => { try { utter.onend?.(); } catch {} })
-              .catch(() => originalSpeak(utter));
-          };
-          currentAudio = a;
+  console.log("[EA-TTS] VOICEVOX audio play start (single)");
+  // 2) 1.2s 待って“playing”が来なければ、即 Web Speech に切替（無音で待たせない）
+  tryPlayWithTimeout(a, "single", computeTimeoutMs(text)).catch(() => {
+    console.warn("[EA-TTS] play timeout → fallback Web Speech & prewarm");
+    (window as any)._ea_originalSpeak?.(utter) ?? originalSpeak(utter);
+    try { (window as any).prefetchTTS?.(text); } catch {}
+  });
 
-          // “確実再生”（playing待ち→失敗でWebAudio→それも失敗なら旧TTS）
-          console.log("[EA-TTS] VOICEVOX audio play start");
-          const tryPlay = (audio: HTMLAudioElement, ms = 1200) =>
-            new Promise<void>((resolve, reject) => {
-              let settled = false;
-              const ok = () => { if (settled) return; settled = true; audio.removeEventListener("playing", ok); console.log("[EA-TTS] VOICEVOX playing"); resolve(); };
-              const fail = (err?: any) => { if (settled) return; settled = true; audio.removeEventListener("playing", ok); console.warn("[EA-TTS] play failed → try WebAudio", err); reject(err); };
-              audio.addEventListener("playing", ok, { once: true });
-              audio.play().catch(fail);
-              setTimeout(() => fail(new Error("play timeout")), ms);
-            });
+  return;
+}
 
-          tryPlay(a).catch(() => {
-            playWavWithWebAudio(ab, () => { try { utter.onend?.(); } catch {} })
-              .catch(() => originalSpeak(utter));
-          });
-        })
-        .catch((err) => {
-          console.warn("[EA-TTS] fetch error → fallback", err);
-          originalSpeak(utter);
-        });
-      return;
-    }
 
     // ---- 複数文：最初の1文を先に鳴らして、その後を順次再生
-    const playOne = (idx: number) => {
-      if (idx >= segments.length) { try { utter.onend?.(); } catch {}; return; }
-      const part = segments[idx];
+// 置換：ss.speak 内の playOne をこれに
+const playOne = (idx: number) => {
+  if (idx >= segments.length) { try { utter.onend?.(); } catch {} ; return; }
+  const part = segments[idx];
+  const url  = buildTtsUrlWithVoice(part);
 
-      // まずは <audio src> でストリーミング再生（最速）
-      //const url = `${apiBase}/api/tts-voicevox?text=${encodeURIComponent(part)}`;
-      const url = buildTtsUrlWithVoice(part);
+  const a = new Audio();
+  a.src = url;
+  a.preload = "auto";
+  a.onended = () => playOne(idx + 1);
+  a.onerror = async () => {
+    console.warn("[EA-TTS] <audio> part error → try WebAudio");
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      if (!r.ok || !ct.startsWith("audio/")) throw new Error(`non-audio: ${ct}`);
+      const ab = await r.arrayBuffer();
+      await playWavWithWebAudio(ab, () => playOne(idx + 1));
+    } catch (e) {
+      console.warn("[EA-TTS] part play failed → fallback Web Speech", e);
+      originalSpeak(utter);
+    }
+  };
 
-      const a = new Audio();
-      a.src = url;
-      a.preload = "auto";
+  console.log(`[EA-TTS] VOICEVOX audio play start (part ${idx + 1})`);
+  // ★ 1.5s で見切り→WebAudioに切替
+  tryPlayWithTimeout(a, `part ${idx + 1}/${segments.length}`, computeTimeoutMs(part))
+    .catch(async () => {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        const ct = (r.headers.get("content-type") || "").toLowerCase();
+        if (!r.ok || !ct.startsWith("audio/")) throw new Error(`non-audio: ${ct}`);
+        const ab = await r.arrayBuffer();
+        await playWavWithWebAudio(ab, () => playOne(idx + 1));
+      } catch (e) {
+        console.warn("[EA-TTS] part play (timeout) → fallback Web Speech", e);
+        originalSpeak(utter);
+      }
+    });
+};
 
-      a.onplaying = () => console.log(`[EA-TTS] VOICEVOX playing part ${idx+1}/${segments.length}`);
-      a.onended = () => playOne(idx + 1);
-      a.onerror = async () => {
-        console.warn("[EA-TTS] <audio> part error → try WebAudio");
-        try {
-          const r = await fetch(url);
-          const ct = (r.headers.get("content-type") || "").toLowerCase();
-          if (!r.ok || !ct.startsWith("audio/")) throw new Error(`non-audio: ${ct}`);
-          const ab = await r.arrayBuffer();
-          const AC:any = (window as any).AudioContext || (window as any).webkitAudioContext;
-          const ctx = new AC();
-          const buf: AudioBuffer = await new Promise((res,rej)=> (ctx as AudioContext).decodeAudioData(ab.slice(0), res, rej));
-          const src = (ctx as AudioContext).createBufferSource();
-          src.buffer = buf; src.connect((ctx as AudioContext).destination);
-          src.onended = () => { ctx.close(); playOne(idx + 1); };
-          src.start(0);
-        } catch (e) {
-          console.warn("[EA-TTS] part play failed → fallback Web Speech", e);
-          // 失敗時は旧TTSで全文読み（最後の砦）
-          originalSpeak(utter);
-        }
-      };
-
-      console.log(`[EA-TTS] VOICEVOX audio play start (part ${idx+1})`);
-      a.play().catch(() => a.onerror?.(new Event("error")));
-    };
 
     (window as any)._ea_originalSpeak = originalSpeak; // 念のため退避
     playOne(0);
