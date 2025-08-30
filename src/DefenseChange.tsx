@@ -594,7 +594,7 @@ battingOrder.forEach((entry, idx) => {
     // 打順行は従来どおり
     lineupLines.push({
       order: idx + 1,
-      text : `${idx + 1}番 ${posJP[pos]} ${ruby} 背番号 ${player.number}`
+      text : `${idx + 1}番 ${posJP[pos]} ${ruby} `
     });    
     // 追加（重複出力を防ぐため、ここで処理済みにする）
     handledPlayerIds.add(player.id);
@@ -671,8 +671,31 @@ replace.forEach((r) => {
     if (hasMixedToSame) return;  // ← アナウンス行・重複管理の両方をここで回避
   }
 
-  const line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
-  replaceLines.push(line);
+// ★ ここから追加：スタメン同一打順へのリエントリー判定
+const wasStarterTo = Object.values(initialAssignments || {}).includes(r.to.id);
+const infoForTo = (usedPlayerInfo as any)?.[r.to.id];
+const fromReason = reasonMap?.[r.from.id]; // battingOrder 由来（「代打」「代走」等）
+
+// 「スタメンが同じ打順の選手に戻る」= リエントリーとみなす
+const isReentrySameOrder =
+  wasStarterTo &&
+  r.order > 0 &&
+  (
+    // usedPlayerInfo で「このスタメンが以前この打順で交代された」と紐づいている
+    (infoForTo && infoForTo.subId === r.from.id)
+    // もしくは現在の“from”が代打/代走としてこの打順に入っている
+    || ["代打","代走","臨時代走"].includes(fromReason as any)
+  );
+
+// ここまで追加 ★
+
+// 既存：1行目を作る（リエントリーなら文言を差し替え）
+const line = isReentrySameOrder
+  ? `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+  : `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
+
+replaceLines.push(line);
+
 
   // ✅ 処理済み記録に追加
   handledPlayerIds.add(r.from.id);
