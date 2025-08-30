@@ -8,6 +8,7 @@ type MatchCreateProps = {
 
 const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [tournamentName, setTournamentName] = useState("");
+  const [recentTournaments, setRecentTournaments] = useState<string[]>([""]);
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
   const [isHome, setIsHome] = useState("先攻");
@@ -21,31 +22,63 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
     { role: "3塁審", name: "", furigana: "" },
   ]);
 
-  useEffect(() => {
-    const loadMatchInfo = async () => {
-      const saved = await localForage.getItem<{
-        tournamentName: string;
-        matchNumber: number;
-        opponentTeam: string;
-        isHome: string;
-        benchSide: string;
-        umpires: { role: string; name: string; furigana: string }[];
-      }>("matchInfo");
+useEffect(() => {
+  const loadMatchInfo = async () => {
+    // 大会名リスト（5件＋先頭空白）をロード
+    const savedList = await localForage.getItem<string[]>("recentTournaments");
+    if (savedList && Array.isArray(savedList) && savedList.length > 0) {
+      // 先頭は必ず空白に補正
+      const normalized = ["", ...savedList.filter((x) => x && x.trim() !== "")].slice(0, 6);
+      setRecentTournaments(normalized);
+    } else {
+      setRecentTournaments([""]);
+    }
 
-      if (saved) {
-        setTournamentName(saved.tournamentName ?? "");
-        setMatchNumber(Number(saved.matchNumber ?? 1));
-        setOpponentTeam(saved.opponentTeam ?? "");
-        setIsHome(saved.isHome ? "後攻" : "先攻");
-        setBenchSide(saved.benchSide ?? "1塁側");
+    // 既存の試合情報をロード
+    const saved = await localForage.getItem<{
+      tournamentName: string;
+      matchNumber: number;
+      opponentTeam: string;
+      isHome: string | boolean; // 過去互換
+      benchSide: string;
+      umpires: { role: string; name: string; furigana: string }[];
+    }>("matchInfo");
 
-        if (saved.umpires?.length === 4) {
-          setUmpires(saved.umpires);
-        }
+    if (saved) {
+      setTournamentName(saved.tournamentName ?? "");
+      setMatchNumber(Number(saved.matchNumber ?? 1));
+      setOpponentTeam(saved.opponentTeam ?? "");
+      // 既存コードは "後攻" を boolean にマッピングしているので過去互換で吸収
+      setIsHome(saved.isHome ? "後攻" : "先攻");
+      setBenchSide(saved.benchSide ?? "1塁側");
+
+      if (saved.umpires?.length === 4) {
+        setUmpires(saved.umpires);
       }
-    };
-    loadMatchInfo();
-  }, []);
+    }
+  };
+  loadMatchInfo();
+}, []);
+
+// 大会名を「5件まで（先頭は空白）」で更新して保存するヘルパー
+const upsertRecentTournaments = async (name: string) => {
+  const trimmed = (name ?? "").trim();
+
+  // 先頭空白以外は何も入力していない場合は保存スキップ
+  if (trimmed === "") {
+    setTournamentName("");
+    return;
+  }
+
+  // 現在のリストから空白と重複を取り除き、先頭に今回を追加
+  let list = recentTournaments.filter((t) => t !== "" && t !== trimmed);
+  list.unshift(trimmed);                // 先頭に新規
+  list = list.slice(0, 5);              // 最大5件
+  const finalList = ["", ...list];      // 先頭は必ず空白
+
+  setRecentTournaments(finalList);
+  await localForage.setItem("recentTournaments", finalList);
+};
 
   const speakExchangeMessage = () => {
   const msg = new SpeechSynthesisUtterance(
@@ -68,24 +101,30 @@ const stopExchangeMessage = () => {
     setUmpires(updated);
   };
 
-  const handleSave = async () => {
-    const team = await localForage.getItem<any>("team"); 
-    const matchInfo = {
-      tournamentName,
-      matchNumber,
-      opponentTeam,
-      isHome: isHome === "後攻", // ✅ booleanとして保存
-      benchSide,
-      umpires,
-      inning: 1,         // ✅ 初期イニングを追加
-      isTop: true,        // ✅ 初期は「表」に設定
-      teamName: team?.name ?? ""
-    };
+const handleSave = async () => {
+  // まず大会名リストを更新（5件上限、先頭空白維持）
+  await upsertRecentTournaments(tournamentName);
 
-    await localForage.setItem("matchInfo", matchInfo);
-    await localForage.setItem("matchNumberStash", matchNumber);
-    alert("\u2705 試合情報を保存しました");
+  // 既存の試合情報保存は維持
+  const team = await localForage.getItem<any>("team"); 
+  const matchInfo = {
+    tournamentName,
+    matchNumber,
+    opponentTeam,
+    isHome: isHome === "後攻", // ✅ booleanとして保存（既存仕様）
+    benchSide,
+    umpires,
+    inning: 1,         // ✅ 初期イニング
+    isTop: true,       // ✅ 初期は表
+    teamName: team?.name ?? ""
   };
+
+  await localForage.setItem("matchInfo", matchInfo);
+  await localForage.setItem("matchNumberStash", matchNumber);
+
+  alert("✅ 試合情報を保存しました");
+};
+
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 overflow-auto">
@@ -101,43 +140,60 @@ const stopExchangeMessage = () => {
       </h2>
 
       <div className="space-y-5">
-        <div>
-          <label className="block font-semibold text-lg mb-1">大会名</label>
-          <div className="flex items-center space-x-4">
-            <input
-              type="text"
-              value={tournamentName}
-              onChange={(e) => setTournamentName(e.target.value)}
-              className="flex-1 p-3 border rounded-lg text-lg"
-              placeholder="大会名を入力"
-            />
-            <div className="flex items-center space-x-2">
-              <span className="text-lg">本日の</span>
-             <select
-  value={matchNumber}
-  onChange={async (e) => {
-    const num = Number(e.target.value);
-    setMatchNumber(num);
+<div>
+  <label className="block font-semibold text-lg mb-1">大会名</label>
+  <div className="flex items-center space-x-4">
+    {/* 左側：大会名リスト + 手入力（上書き） */}
+    <div className="flex-1 space-y-2">
+      <select
+        value={tournamentName}
+        onChange={(e) => setTournamentName(e.target.value)}
+        className="w-full p-3 border rounded-lg text-lg"
+      >
+        {recentTournaments.map((name, i) => (
+          <option key={i} value={name}>
+            {name === "" ? "　" : name}
+          </option>
+        ))}
+      </select>
 
-    // 既存：matchInfoへ即保存（マージ）
-    const existing = await localForage.getItem<any>("matchInfo");
-    await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
+      <input
+        type="text"
+        value={tournamentName}
+        onChange={(e) => setTournamentName(e.target.value)}
+        className="w-full p-3 border rounded-lg text-lg"
+        placeholder="大会名を入力（上書き可）"
+      />
+    </div>
 
-    // ★ 追加：スタッシュにも保存（他画面で上書きされても復旧できる）
-    await localForage.setItem("matchNumberStash", num);
+    {/* 右側：本日の 第n試合（既存ロジックそのまま） */}
+    <div className="flex items-center space-x-2">
+      <span className="text-lg">本日の</span>
+      <select
+        value={matchNumber}
+        onChange={async (e) => {
+          const num = Number(e.target.value);
+          setMatchNumber(num);
 
-    console.log("[MC:change] matchNumber saved →", num);
-  }}
-  className="p-2 border rounded-lg text-lg"
->
-  {[1, 2, 3, 4, 5].map((num) => (
-    <option key={num} value={num}>第{num}試合</option>
-  ))}
-</select>
+          // 既存：matchInfoへ即保存（マージ）
+          const existing = await localForage.getItem<any>("matchInfo");
+          await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
 
-            </div>
-          </div>
-        </div>
+          // ★ 追加：スタッシュにも保存（他画面で上書きされても復旧できる）
+          await localForage.setItem("matchNumberStash", num);
+
+          console.log("[MC:change] matchNumber saved →", num);
+        }}
+        className="p-2 border rounded-lg text-lg"
+      >
+        {[1, 2, 3, 4, 5].map((num) => (
+          <option key={num} value={num}>第{num}試合</option>
+        ))}
+      </select>
+    </div>
+  </div>
+</div>
+
 
         <div>
           <label className="block font-semibold text-lg mb-1">相手チーム名</label>
@@ -229,12 +285,15 @@ const stopExchangeMessage = () => {
 
         <button
           onClick={async () => {
+            // 先に大会名リストを更新
+            await upsertRecentTournaments(tournamentName);
+
             const team = await localForage.getItem<any>("team");
             const matchInfo = {
               tournamentName,
               matchNumber,
               opponentTeam,
-              isHome: isHome === "後攻", // ✅ booleanとして保存
+              isHome: isHome === "後攻",
               benchSide,
               umpires,
               inning: 1,
@@ -243,8 +302,10 @@ const stopExchangeMessage = () => {
             };
             await localForage.setItem("matchInfo", matchInfo);
             await localForage.setItem("matchNumberStash", matchNumber);
+
             onGoToLineup();
           }}
+
           className="w-full sm:w-auto px-6 py-4 bg-blue-600 text-white rounded-lg text-lg hover:bg-blue-700"
         >
          スタメン設定
