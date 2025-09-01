@@ -3504,21 +3504,21 @@ onConfirmed?.();
   disabled={!history.length}
   className={`bg-gray-700 text-white px-6 py-2 rounded transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
 >
-  取消
+  ⮌
 </button>
 <button
   onClick={handleRedo}
   disabled={!redo.length}
   className={`bg-gray-700 text-white px-6 py-2 rounded transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
 >
-  やり直し
+  ⮎
 </button>
 
   <button
     onClick={confirmChange}
     className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition"
   >
-    交代を確定する
+    交代確定
   </button>
 
 <button
@@ -3536,7 +3536,7 @@ onConfirmed?.();
     onClick={showAnnouncement}
     className="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700 transition"
   >
-    アナウンス表示
+    🎤表示
   </button>
 </div>
 

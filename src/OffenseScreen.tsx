@@ -939,7 +939,7 @@ useEffect(() => {
                 className={`px-3 py-1 rounded ${history.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
                 title="直前の確定を取り消す"
               >
-                取消
+                ⮌
               </button>
               <button
                 onClick={handleRedo}
@@ -947,7 +947,7 @@ useEffect(() => {
                 className={`px-3 py-1 rounded ${redo.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
                 title="取り消しをやり直す"
               >
-                やり直し
+                ⮎
               </button>
             </div>
 
