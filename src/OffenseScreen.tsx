@@ -489,6 +489,97 @@ const [selectedRunnerByBase, setSelectedRunnerByBase] = useState<Record<string, 
 // アナウンスの「元ランナー名」（塁ごと） ex: "山田やまだ太郎たろうくん"
 const [fromNameByBase, setFromNameByBase] = useState<Record<string, string>>({});
 
+// ーーー Undo/Redo 用スナップショット型 ーーー
+type OffenseSnapshot = {
+  battingOrder: { id: number; reason?: string }[];
+  assignments: { [pos: string]: number | null };
+  usedPlayerInfo: Record<number, any>;
+  benchPlayers: any[];
+  runnerAssignments: { [base: string]: any | null };
+  replacedRunners: { [base: string]: any | null };
+  tempRunnerFlags: Record<string, boolean>;
+  selectedRunnerByBase: Record<string, any | null>;
+  inning: number;
+  isTop: boolean;
+  isHome: boolean;
+};
+
+// ーーー Undo/Redo のスタック ーーー
+const [history, setHistory] = useState<OffenseSnapshot[]>([]);
+const [redo, setRedo] = useState<OffenseSnapshot[]>([]);
+
+// 現在の状態を丸ごと保存
+const snapshotNow = (): OffenseSnapshot => ({
+  battingOrder: [...battingOrder],
+  assignments: { ...assignments },
+  usedPlayerInfo: { ...(usedPlayerInfo || {}) },
+  benchPlayers: [...benchPlayers],
+  runnerAssignments: { ...runnerAssignments },
+  replacedRunners: { ...replacedRunners },
+  tempRunnerFlags: { ...tempRunnerFlags },
+  selectedRunnerByBase: { ...selectedRunnerByBase },
+  inning,
+  isTop,
+  isHome,
+});
+
+// スナップショットを画面へ反映 + 永続化も揃える
+const restoreSnapshot = async (s: OffenseSnapshot) => {
+  setBattingOrder(s.battingOrder);
+  setAssignments(s.assignments);
+  setUsedPlayerInfo(s.usedPlayerInfo);
+  setBenchPlayers(s.benchPlayers);
+  setRunnerAssignments(s.runnerAssignments);
+  setReplacedRunners(s.replacedRunners);
+  setTempRunnerFlags(s.tempRunnerFlags);
+  setSelectedRunnerByBase(s.selectedRunnerByBase);
+  setInning(s.inning);
+  setIsTop(s.isTop);
+  setIsHome(s.isHome);
+
+  await localForage.setItem("battingOrder", s.battingOrder);
+  await localForage.setItem("lineupAssignments", s.assignments);
+  await localForage.setItem("usedPlayerInfo", s.usedPlayerInfo);
+  await localForage.setItem("runnerAssignments", s.runnerAssignments);
+  await localForage.setItem("replacedRunners", s.replacedRunners);
+  await localForage.setItem("tempRunnerFlags", s.tempRunnerFlags);
+  await localForage.setItem("selectedRunnerByBase", s.selectedRunnerByBase);
+  await localForage.setItem("matchInfo", {
+    opponentTeam,
+    inning: s.inning,
+    isTop: s.isTop,
+    isHome: s.isHome,
+  });
+};
+
+// 変更前に履歴へ積む
+const pushHistory = () => {
+  setHistory(h => [...h, snapshotNow()]);
+  setRedo([]); // 新規操作で Redo は破棄
+};
+
+// 取消（直前の状態へ）
+const handleUndo = async () => {
+  if (!history.length) return;
+  const current = snapshotNow();
+  const last = history[history.length - 1];
+  setHistory(h => h.slice(0, -1));
+  setRedo(r => [...r, current]);
+  await restoreSnapshot(last);
+  speechSynthesis.cancel();
+};
+
+// やり直し（取り消しを戻す）
+const handleRedo = async () => {
+  if (!redo.length) return;
+  const current = snapshotNow();
+  const next = redo[redo.length - 1];
+  setRedo(r => r.slice(0, -1));
+  setHistory(h => [...h, current]);
+  await restoreSnapshot(next);
+  speechSynthesis.cancel();
+};
+
 
 // base: "1塁"/"2塁"/"3塁" など、fromName: "〇〇くん" or ""、to: 代走に入る選手
 const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, isTemp: boolean): string => {
@@ -841,6 +932,25 @@ useEffect(() => {
                 試合開始
               </button>
             )}
+            <div className="flex items-center gap-2 mr-2">
+              <button
+                onClick={handleUndo}
+                disabled={!history.length}
+                className={`px-3 py-1 rounded ${history.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
+                title="直前の確定を取り消す"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={!redo.length}
+                className={`px-3 py-1 rounded ${redo.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
+                title="取り消しをやり直す"
+              >
+                やり直し
+              </button>
+            </div>
+
 
             {/* イニング終了ボタン */}
             <button
@@ -1150,6 +1260,8 @@ useEffect(() => {
   const stop  = () => speechSynthesis.cancel();
 
   const confirmDisableDH = async () => {
+    pushHistory(); // ← 追加（DH解除の確定前に退避）
+
     // 1) 打順：DHの枠を「現在の投手」に置換
     const newOrder = [...battingOrder];
     newOrder[dhOrderIndex] = { id: pitcherId!, reason: "DH解除" };
@@ -1321,6 +1433,8 @@ useEffect(() => {
         {/* 確定：メモリ更新（打順／守備位置／退場情報） */}
         <button
           onClick={async () => {
+            pushHistory(); // ← 追加（リエントリー確定前に退避）
+
             if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
             const idx = reEntryOrder1 - 1;
 
@@ -1566,6 +1680,8 @@ await localForage.setItem("lineupAssignments", newAssignments);
       <div className="flex flex-col lg:flex-row justify-center gap-4 mt-2">
         <button
           onClick={async () => {
+            pushHistory(); // ← 追加（代打確定前に退避）
+
             // 2. UsedPlayerInfo に元選手情報を登録
             const replacedId = battingOrder[currentBatterIndex].id;
             const replaced = getPlayer(replacedId);
@@ -2028,6 +2144,8 @@ onClick={() => {
       <button
 // （代走モーダルの「確定」ボタン）
 onClick={async () => {
+  pushHistory(); // ← 追加（代走確定前に退避）
+
   const newOrder = [...battingOrder];
   const newUsed: Record<number, any> =
     (await localForage.getItem("usedPlayerInfo")) || {};

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App"; // ✅ 追加
 
+
+
 const positionMapJP: Record<string, string> = {
   "投": "ピッチャー",
   "捕": "キャッチャー",
@@ -41,7 +43,14 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
   const [umpires, setUmpires] = useState<Umpire[]>([]);
   const [speaking, setSpeaking] = useState(false);
+  const announceBoxRef = useRef<HTMLDivElement | null>(null); // ← これを追加
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const isSpeakingRef = useRef(false);
+
+// ★追加：アンマウント時は必ず停止してキューを空にする
+useEffect(() => {
+  return () => window.speechSynthesis.cancel();
+}, []);
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
@@ -160,25 +169,72 @@ useEffect(() => {
     return `${header}\n${lineupLabel}\n${lineupText}\nベンチ入りの選手をお知らせいたします。\n${benchText}\n${umpireText}`;
   };
 
-  const handleSpeak = () => {
-    if (speaking) return;
-    const text = createSpeechText();
-    if (!text) return;
+  // ★追加：表示されているアナウンス文言をそのままテキスト化（rubyはrtだけを採用）
+const getVisibleAnnounceText = (): string => {
+  const root = announceBoxRef.current;
+  if (!root) return "";
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ja-JP";
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+  // DOMをクローンしてrtの中身（ふりがな）でrubyを置換
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("ruby").forEach((rb) => {
+    const rt = rb.querySelector("rt");
+    const kana = (rt?.textContent ?? "").trim();
+    const fallback = (rb.textContent ?? "").trim();
+    const textNode = document.createTextNode(kana || fallback);
+    rb.replaceWith(textNode);
+  });
 
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
+  // 画面の段落に近い形で結合（p毎に改行）
+  const lines: string[] = [];
+  clone.querySelectorAll("p").forEach((p) => {
+    const t = (p.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (t) lines.push(t);
+  });
+
+  // 見出しや注意枠のテキストが欲しい場合は適宜追加してもOK
+  return lines.join("\n");
+};
+
+const handleSpeak = () => {
+  // ★即時ロック（onstart を待たずに多重呼び出しを遮断）
+  if (isSpeakingRef.current) return;
+  isSpeakingRef.current = true;
+
+  // ★既存のキューを確実に空にする（同じ内容の多重再生を防止）
+  window.speechSynthesis.cancel();
+
+  const text = getVisibleAnnounceText(); // 表示どおりを読む
+  if (!text) {
+    isSpeakingRef.current = false;
+    return;
+  }
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = "ja-JP";
+
+  utt.onstart = () => {
+    setSpeaking(true);
   };
 
-  const handleStop = () => {
-    window.speechSynthesis.cancel();
+  const clear = () => {
     setSpeaking(false);
+    isSpeakingRef.current = false; // ★ロック解除
+    utteranceRef.current = null;
   };
+  utt.onend = clear;
+  utt.onerror = clear;
+
+  utteranceRef.current = utt;
+  window.speechSynthesis.speak(utt);
+};
+
+
+
+const handleStop = () => {
+  window.speechSynthesis.cancel(); // ★即停止 & キュー破棄
+  setSpeaking(false);
+  isSpeakingRef.current = false;   // ★ロック解除
+};
 
   return (
     <div className="p-6 max-w-4xl mx-auto bg-white border rounded-xl shadow">
@@ -209,7 +265,10 @@ useEffect(() => {
       )}
     
 
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left font-bold">
+        <div
+          ref={announceBoxRef} // ★追加
+          className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left font-bold"
+        >
         <div className="flex flex-col items-start">
           <img src="/icons/mic-red.png" className="w-6 h-6 mb-2" alt="Mic" />
           <div>
