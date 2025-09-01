@@ -47,6 +47,48 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isSpeakingRef = useRef(false);
 
+  // ★ すべての再生を確実に停止する
+const stopSpeechAll = () => {
+  try {
+    // Chrome系でたまに cancel が無視されるケースへの保険
+    // （resume→cancel の順だと止まることが多い）
+    window.speechSynthesis.resume?.();
+  } catch {}
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+
+  // VoiceVox等の <audio> を併用している場合に備え、全部止める
+  document
+    .querySelectorAll<HTMLAudioElement>("audio")
+    .forEach((a) => {
+      try {
+        a.pause();
+        a.currentTime = 0;
+      } catch {}
+    });
+
+  // state & ロック解除
+  isSpeakingRef.current = false;
+  setSpeaking(false);
+  if (utteranceRef.current) {
+    // 念のためハンドラを無効化
+    utteranceRef.current.onend = null as any;
+    utteranceRef.current.onerror = null as any;
+    utteranceRef.current = null;
+  }
+};
+
+// ページ離脱・画面遷移時も確実に止める
+useEffect(() => {
+  const onHide = () => stopSpeechAll();
+  window.addEventListener("visibilitychange", onHide);
+  return () => {
+    window.removeEventListener("visibilitychange", onHide);
+    stopSpeechAll();
+  };
+}, []);
+
 // ★追加：アンマウント時は必ず停止してキューを空にする
 useEffect(() => {
   return () => window.speechSynthesis.cancel();
@@ -196,14 +238,14 @@ const getVisibleAnnounceText = (): string => {
 };
 
 const handleSpeak = () => {
-  // ★即時ロック（onstart を待たずに多重呼び出しを遮断）
+  // 多重押下防止：onstart を待たずにロック
   if (isSpeakingRef.current) return;
   isSpeakingRef.current = true;
 
-  // ★既存のキューを確実に空にする（同じ内容の多重再生を防止）
-  window.speechSynthesis.cancel();
+  // 既存キューを空に（同一文の多重再生防止）
+  stopSpeechAll();
 
-  const text = getVisibleAnnounceText(); // 表示どおりを読む
+  const text = getVisibleAnnounceText(); // 表示そのままを読む関数
   if (!text) {
     isSpeakingRef.current = false;
     return;
@@ -212,13 +254,10 @@ const handleSpeak = () => {
   const utt = new SpeechSynthesisUtterance(text);
   utt.lang = "ja-JP";
 
-  utt.onstart = () => {
-    setSpeaking(true);
-  };
-
+  utt.onstart = () => setSpeaking(true);
   const clear = () => {
     setSpeaking(false);
-    isSpeakingRef.current = false; // ★ロック解除
+    isSpeakingRef.current = false;
     utteranceRef.current = null;
   };
   utt.onend = clear;
@@ -228,13 +267,10 @@ const handleSpeak = () => {
   window.speechSynthesis.speak(utt);
 };
 
-
-
 const handleStop = () => {
-  window.speechSynthesis.cancel(); // ★即停止 & キュー破棄
-  setSpeaking(false);
-  isSpeakingRef.current = false;   // ★ロック解除
+  stopSpeechAll();
 };
+
 
   return (
     <div className="p-6 max-w-4xl mx-auto bg-white border rounded-xl shadow">
@@ -319,14 +355,13 @@ const handleStop = () => {
       <div className="mt-6 flex justify-center gap-4">
         <button
           onClick={handleSpeak}
-          disabled={speaking}
+          disabled={isSpeakingRef.current || speaking}
           className="bg-blue-600 text-white px-4 py-2 rounded shadow disabled:bg-gray-400"
         >
           読み上げ
         </button>
         <button
           onClick={handleStop}
-          disabled={!speaking}
           className="bg-red-600 text-white px-4 py-2 rounded shadow disabled:bg-gray-400"
         >
           停止
