@@ -4,6 +4,27 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 
+// ▼ 見た目だけのミニSVG
+const IconField = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M12 2L2 12l10 10 10-10L12 2zm0 4l6 6-6 6-6-6 6-6z" />
+  </svg>
+);
+const IconBench = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z" />
+  </svg>
+);
+const IconOut = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm4.24 12.83l-1.41 1.41L12 13.41l-2.83 2.83-1.41-1.41L10.59 12 7.76 9.17l1.41-1.41L12 10.59l2.83-2.83 1.41 1.41L13.41 12z" />
+  </svg>
+);
+const IconOrder = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M7 5h10v2H7zm0 6h10v2H7zm0 6h10v2H7z" />
+  </svg>
+);
 
 
 const positions = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
@@ -463,11 +484,37 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   const benchOutPlayers = teamPlayers.filter((p) => benchOutIds.includes(p.id));
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">スタメン設定（守備配置）</h1>
+ <div
+   className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+   style={{
+     paddingTop: "max(16px, env(safe-area-inset-top))",
+     paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+   }}
+ >
+ <div className="mt-3 text-center select-none mb-2">
+   <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
+     <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden><path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z"/></svg>
+     <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+       スタメン設定（守備配置/打順配置）
+     </span>
+   </h1>
+   <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+   <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
+     <span className="opacity-80">ドラッグ＆ドロップで配置／打順を変更</span>
+   </div>
+ </div>
 
       {/* フィールド配置 */}
-      <div className="relative w-full max-w-2xl mx-auto mb-6">
+ {/* フィールド配置（カード） */}
+ <section className="w-full max-w-2xl mx-auto mb-6 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
+   <div className="flex items-center gap-2 mb-3">
+     <span className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+       {/* フィールドアイコン（見た目だけ） */}
+       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden><path d="M12 2L2 12l10 10 10-10L12 2zm0 4l6 6-6 6-6-6 6-6z"/></svg>
+     </span>
+     <h2 className="font-semibold text-white">フィールド配置</h2>
+   </div>
+   <div className="relative">
           <img
             src="/field.jpg"
             alt="フィールド図"
@@ -485,30 +532,29 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                   ...positionStyles[pos],
                   position: "absolute",
                   transform: "translate(-50%, -50%)",
-                  backgroundColor: "rgba(255,255,255,0.85)",
-                  padding: "4px 8px",
-                  borderRadius: "8px",
-                  minWidth: "80px",
-                  textAlign: "center",
                   cursor: player ? "move" : "default",
                 }}
+                className="min-w-[96px] max-w-[160px] px-2.5 py-1.5 rounded-xl
+                bg-white/90 text-gray-900 shadow border border-white/70
+                backdrop-blur-[2px] text-center"
               >
                 {player ? (
                   <div
                     draggable
                     onDragStart={(e) => handleDragStart(e, player.id, pos)}
-                    className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis touch-draggable"
+                    className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis"
                   >
                     {player.lastName}{player.firstName} #{player.number}
                   </div>
                 ) : (
-                  <div className="text-gray-400">{pos === DH ? "DHなし" : "空き"}</div>
+                  <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
                 )}
 
               </div>
             );
           })}
       </div>
+      </section>
 
       {/* 打順と控えを横並びに表示 */}
       {/* 控え選手 + 打順を縦並びに表示し、スマホでも最適化 */}
@@ -516,9 +562,14 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
         {/* 🔼 控え選手（登録済みで未使用の選手） */}
         <div>
-          <h2 className="text-xl font-semibold mb-2">控え選手</h2>
+ <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+   <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
+     <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z"/></svg>
+   </span>
+   控え選手
+ </h2>
           <div
-            className="flex flex-wrap gap-2 min-h-[60px] bg-white p-2 border border-gray-300 rounded"
+            className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
             onDragOver={allowDrop}
             onDrop={handleDropToBench}
           >
@@ -529,7 +580,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                   key={p.id}
                   draggable
                   onDragStart={(e) => handleDragStart(e, p.id)}
-                  className="px-2 py-1 bg-gray-200 rounded cursor-move select-none"
+                  className="px-2.5 py-1.5 bg-white/80 text-gray-900 rounded-lg cursor-move select-none shadow-sm"
                 >
                   {p.lastName}
                   {p.firstName} #{p.number}
@@ -540,9 +591,15 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
       {/* 🔽 ベンチ外選手（横並び表示） */}
       <div>
-        <h2 className="text-xl font-semibold mb-2 text-red-600">ベンチ外選手</h2>
+ <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+   <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center"><IconOut /></span>
+   ベンチ外選手
+ </h2>
         <div
-          className="flex flex-wrap gap-2 min-h-[60px] bg-gray-50 p-2 border border-red-400 rounded"
+           className="flex flex-wrap gap-2 min-h-[60px] p-2
+              rounded-2xl border ring-1 ring-inset
+              border-rose-600/90 ring-rose-600/60
+              bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25"
           onDragOver={allowDrop}
           onDrop={handleDropToBenchOut}
         >
@@ -554,7 +611,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                 key={p.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, p.id)}
-                className="px-2 py-1 bg-gray-100 text-gray-500 border rounded cursor-move select-none"
+                className="px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
               >
                 {p.lastName}{p.firstName} #{p.number}
               </div>
@@ -566,12 +623,11 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
 
       <div>
-        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-          打順（1～9番）
-          <span className="text-xs font-bold text-red-500">
-            ※ドラッグ＆ドロップで変更可能
-          </span>
-        </h2>
+ <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+   <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center"><IconOrder /></span>
+   打順（1～9番）
+   <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">ドラッグ＆ドロップで変更</span>
+ </h2>
         <div className="space-y-2">
           {battingOrder.map((entry, i) => {
             const player = teamPlayers.find((p) => p.id === entry.id);
@@ -581,7 +637,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
             return (
               <div
                 key={entry.id}
-                className="border p-2 bg-blue-100 rounded cursor-move"
+                className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move"
                 draggable
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
