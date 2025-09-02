@@ -1,12 +1,43 @@
-import React, { useEffect, useRef } from "react";
+// Gather.tsx（全文置き換え）
+import React, { useEffect, useRef, useState } from "react";
 
 interface Props {
   onNavigate: (screen: string) => void; // 画面遷移用コールバック
 }
 
+/* ====== ミニSVGアイコン（依存なし） ====== */
+const IconBack = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+  </svg>
+);
+const IconUsers = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M16 11a4 4 0 10-8 0 4 4 0 008 0zM5 20a7 7 0 0114 0v2H5v-2z" />
+  </svg>
+);
+
+const IconAlert: React.FC = () => (
+  <img
+    src="/icons/warning-icon.png"        // ← public/icons/warning-icon.png
+    alt="注意"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
+
 const Gather: React.FC<Props> = ({ onNavigate }) => {
   const message = "両チームの選手はベンチ前にお集まりください。";
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
     return () => stopSpeaking();
@@ -16,55 +47,105 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
     stopSpeaking();
     const utter = new SpeechSynthesisUtterance(message);
     utter.lang = "ja-JP";
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
     speechSynthesis.speak(utter);
     utterRef.current = utter;
   };
 
   const stopSpeaking = () => {
-    speechSynthesis.cancel();
+    try { speechSynthesis.cancel(); } catch {}
     utterRef.current = null;
+    setSpeaking(false);
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center p-6 space-y-6">
-
-
-      <div className="flex justify-center items-center mb-6 space-x-2">
-        {/* 中央タイトル */}
-        <h1 className="text-2xl font-bold">集合アナウンス</h1>
-        {/* 右隣ボタン */}
-        <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
-      </div>
-
-      {/* 注意アイコン付き文 */}
-      <div className="flex items-center space-x-2 mt-2">
-
-        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> グランド整備終了後、選手がベンチ前に待機していない場合のみ
+    <div
+      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      style={{
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      }}
+    >
+      {/* ヘッダー */}
+      <header className="w-full max-w-md">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => onNavigate("announcement")}
+            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
+          >
+            <IconBack />
+            <span className="text-sm">戻る</span>
+          </button>
+          <div className="w-10" />
         </div>
-      </div>
 
-      {/* アナウンス表示 */}
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
-        <p className="text-red-600 font-semibold text-lg">{message}</p>
-      </div>
+        {/* 中央大タイトル */}
+        <div className="mt-3 text-center select-none">
+          <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+            <span className="text-2xl md:text-3xl">👥</span>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+              集合アナウンス
+            </span>
+          </h1>
+          <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
+            <IconUsers />
+            <span>先攻チーム 🎤</span>
+          </div>
+        </div>
+      </header>
 
-      {/* 操作ボタン */}
-      <div className="flex space-x-4 mt-4">
-        <button
-          onClick={speakMessage}
-          className="bg-blue-500 text-white px-6 py-2 rounded shadow"
+      {/* 本体 */}
+      <main className="w-full max-w-md mt-6 space-y-5">
+        {/* 注意文（条件付きの案内） */}
+        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+              <IconAlert />
+            </div>
+            <h2 className="font-semibold">実施タイミング</h2>
+          </div>
+          <p className="text-amber-50/90 text-sm leading-relaxed">
+            グラウンド整備終了後、選手がベンチ前に待機していない場合のみ、案内してください。
+          </p>
+        </section>
+
+        {/* 🔴 アナウンス文言（赤 強め） */}
+        <section
+          className="
+            rounded-2xl p-4 shadow-lg text-left font-semibold
+            border border-rose-600/90
+            bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
+            ring-1 ring-inset ring-rose-600/50
+          "
         >
-          読み上げ
-        </button>
-        <button
-          onClick={stopSpeaking}
-          className="bg-red-500 text-white px-6 py-2 rounded shadow"
-        >
-          停止
-        </button>
-      </div>
+          <div className="flex items-start gap-2 mb-2">
+            <img src="/icons/mic-red.png" alt="Mic" className="w-6 h-6" />
+            <div className="text-rose-50/90 text-[11px]">アナウンス文言（表示どおり読み上げ）</div>
+          </div>
+          <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
+            {message}
+          </p>
+          {/* ▼ 赤枠内の操作ボタン */}
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={speakMessage}
+              disabled={speaking}
+              className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            >
+              <IconMic /> 読み上げ
+            </button>
+            <button
+              onClick={stopSpeaking}
+              className="flex-1 px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
+            >
+              停止
+            </button>
+          </div>
+        </section>  
+      </main>
     </div>
   );
 };

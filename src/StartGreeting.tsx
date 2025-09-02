@@ -1,29 +1,52 @@
+// StartGreeting.tsx（全文置き換え）
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
 interface Props {
   onNavigate: (screen: string) => void;
-  onBack?: () => void; // ← ✅ 追加
+  onBack?: () => void;
 }
 
-  const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
+// ---- ミニSVGアイコン（依存なし） ----
+const IconBack = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+  </svg>
+);
+
+const IconInfo: React.FC = () => (
+  <img
+    src="/icons/warning-icon.png"        // ← public/icons/warning-icon.png
+    alt="注意"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
+
+const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [reading, setReading] = useState(false);
   const [tournamentName, setTournamentName] = useState("");
   const [matchNumber, setMatchNumber] = useState("");
   const [teamName, setTeamName] = useState("");
   const [opponentName, setOpponentName] = useState("");
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
-const [teamFurigana, setTeamFurigana] = useState("");
-const [opponentFurigana, setOpponentFurigana] = useState("");
+  const [teamFurigana, setTeamFurigana] = useState("");
+  const [opponentFurigana, setOpponentFurigana] = useState("");
 
   useEffect(() => {
     const load = async () => {
       const team = await localForage.getItem<any>("team");
       const matchInfo = await localForage.getItem<any>("matchInfo");
-
       if (team) {
         setTeamName(team.name || "");
-        // ★ 自チームかな（チーム登録画面の保存値を最優先）
         setTeamFurigana(team.furigana ?? team.nameFurigana ?? team.nameKana ?? "");
       }
       if (matchInfo) {
@@ -39,21 +62,25 @@ const [opponentFurigana, setOpponentFurigana] = useState("");
 
   const team1st = benchSide === "1塁側" ? teamName : opponentName;
   const team3rd = benchSide === "3塁側" ? teamName : opponentName;
-// ★ 読み上げ用（かな優先、無ければ漢字名にフォールバック）
-const team1stRead = benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
-const team3rdRead = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
 
-// ★ 読み上げ用の文章（読みにくい語は少し“かな寄せ”）
-const messageSpeak =
-  `おまたせいたしました。${tournamentName}。` +
-  `ほんじつの だい ${matchNumber} しあい、` +
-  `いちるいがわ：${team1stRead} たい さんるいがわ：${team3rdRead} の しあい、` +
-  `まもなく かいし でございます。`;
+  // 読み上げ用（かな優先、無ければ漢字）
+  const team1stRead = benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+  const team3rdRead = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
 
-  const message = `お待たせいたしました。${tournamentName} \n本日の第${matchNumber}試合、\n一塁側：${team1st}　対　三塁側：${team3rd} の試合、\nまもなく開始でございます。`;
- 
+  const messageSpeak =
+    `おまたせいたしました。${tournamentName}。` +
+    `ほんじつの だい ${matchNumber} しあい、` +
+    `いちるいがわ：${team1stRead} たい さんるいがわ：${team3rdRead} の しあい、` +
+    `まもなく かいし でございます。`;
+
+  const message =
+    `お待たせいたしました。${tournamentName}\n` +
+    `本日の第${matchNumber}試合、\n` +
+    `一塁側：${team1st}　対　三塁側：${team3rd} の試合、\n` +
+    `まもなく開始でございます。`;
+
   const handleSpeak = () => {
-    const utter = new SpeechSynthesisUtterance(messageSpeak); // ← ★ かな文に変更
+    const utter = new SpeechSynthesisUtterance(messageSpeak);
     utter.lang = "ja-JP";
     utter.onstart = () => setReading(true);
     utter.onend = () => setReading(false);
@@ -61,53 +88,95 @@ const messageSpeak =
     speechSynthesis.cancel();
     speechSynthesis.speak(utter);
   };
-
   const handleStop = () => {
     speechSynthesis.cancel();
     setReading(false);
   };
 
   return (
-    <div className="min-h-screen bg-white p-6 flex flex-col items-center space-y-6">
-
-
-      <div className="flex justify-center items-center mb-6 space-x-2">
-        {/* 中央タイトル */}
-        <h1 className="text-2xl font-bold">試合開始挨拶</h1>
-        {/* 右隣ボタン */}
-        <button className="border px-4 py-1 rounded-full text-sm">先攻チーム🎤</button>
-      </div>
-
-      <div className="flex items-center space-x-2">
-        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 mb-3 text-sm font-semibold text-left">
-          <span className="mr-2 text-2xl">⚠️</span> 後攻チームが守備につくタイミング 
+    <div
+      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      style={{
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      }}
+    >
+      {/* ヘッダー */}
+      <header className="w-full max-w-md">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => (onBack ? onBack() : onNavigate("startGame"))}
+            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
+          >
+            <IconBack />
+            <span className="text-sm">戻る</span>
+          </button>
+          <div className="w-10" />
         </div>
-      </div>
 
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10" />
-        <p className="text-red-600 font-semibold whitespace-pre-wrap text-sm">
-          {message}
-        </p>
-      </div>
+        {/* 中央大タイトル */}
+        <div className="mt-3 text-center select-none">
+          <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+            <span className="text-2xl md:text-3xl">🎙️</span>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+              試合開始挨拶
+            </span>
+          </h1>
+          <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
+            <span>先攻チーム 🎤</span>
+          </div>
+        </div>
+      </header>
 
-      <div className="space-x-4">
-        <button
-          onClick={handleSpeak}
-          className={`px-6 py-2 rounded text-white ${
-            reading ? "bg-green-600" : "bg-blue-600"
-          } hover:bg-blue-700`}
+      {/* 本体 */}
+      <main className="w-full max-w-md mt-6 space-y-5">
+        {/* 注意/タイミングカード（アイコン＋淡いアンバー） */}
+        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+              <IconInfo />
+            </div>
+            <h2 className="font-semibold">読み上げタイミング</h2>
+          </div>
+          <p className="text-amber-50/90 text-sm leading-relaxed">
+            後攻チームが守備についたタイミングで実施。
+          </p>
+        </section>
+
+        {/* 🔴 アナウンス文言（“赤 強め”背景＋枠）。ボタンは枠の中に配置 */}
+        <section
+          className="
+            rounded-2xl p-4 shadow-lg text-left font-semibold
+            border border-rose-600/90
+            bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
+            ring-1 ring-inset ring-rose-600/50
+          "
         >
-          読み上げ
-        </button>
-        <button
-          onClick={handleStop}
-          className="px-6 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-          disabled={!reading}
-        >
-          停止
-        </button>
-      </div>
+          <div className="flex items-start gap-2 mb-2">
+            <img src="/icons/mic-red.png" alt="Mic" className="w-6 h-6" />
+          </div>
+          <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">{message}</p>
+
+          {/* 赤枠内の操作ボタン */}
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={handleSpeak}
+              disabled={reading}
+              className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            >
+              <IconMic /> 読み上げ
+            </button>
+            <button
+              onClick={handleStop}
+              className="flex-1 px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
+              disabled={!reading}
+            >
+              停止
+            </button>
+          </div>
+        </section>
+      </main>
     </div>
   );
 };

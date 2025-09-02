@@ -60,51 +60,73 @@ const StepRow: React.FC<{
   isLast?: boolean;
   onClick?: () => void;
 }> = ({ index, title, note, enabled, icon, isLast, onClick }) => {
+  // 担当（enabled）の“明るいスカイ”テーマ（前回のまま）
+  const enabledCard =
+    "relative w-full text-left rounded-2xl p-4 shadow-lg transition active:scale-95 " +
+    "bg-gradient-to-br from-sky-400/35 via-sky-400/20 to-sky-300/10 " +
+    "border border-sky-300/70 ring-1 ring-inset ring-sky-300/40 text-white";
+
+  // ✅ 担当外は文字を“少しだけ濃く”（見やすく）＆背景をやや明るく
+  const disabledCard =
+    "relative w-full text-left rounded-2xl p-4 shadow-lg transition " +
+    "bg-gray-200/90 border border-gray-300 text-gray-600 hover:bg-gray-200/90";
+
   return (
     <div className="grid grid-cols-[28px,1fr] gap-3 items-start">
       {/* 左：番号バッジ＋縦ライン */}
       <div className="flex flex-col items-center">
         <div
-          className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center 
-          ${enabled ? "bg-blue-600 text-white" : "bg-gray-400 text-gray-800"}`}
+          className={
+            "w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center " +
+            (enabled
+              ? "bg-gradient-to-br from-sky-400 to-sky-500 text-white shadow-[0_0_0_3px_rgba(56,189,248,0.25)]"
+              : "bg-gray-300 text-gray-700")
+          }
         >
           {index}
         </div>
         {!isLast && (
           <div
-            className={`w-px flex-1 mt-1 ${enabled ? "bg-blue-500/60" : "bg-gray-400/40"}`}
+            className={"w-px flex-1 mt-1 " + (enabled ? "bg-sky-400/80" : "bg-gray-400/50")}
             style={{ minHeight: 20 }}
           />
         )}
       </div>
 
-      {/* 右：カード本体（有効なら押せる） */}
-<button
-  aria-disabled={!enabled}
-  onClick={onClick}
-  className={`w-full text-left rounded-2xl p-4 shadow-lg transition
-    border ${enabled
-      ? "bg-white/10 border-white/10 hover:bg-white/15 text-white active:scale-95"
-      : "bg-gray-300 border-gray-300 text-gray-600 hover:bg-gray-300"}`}
->
-  <div className="flex items-center gap-3">
-    <div className={`w-11 h-11 rounded-xl flex items-center justify-center
-      ${enabled ? "bg-white/10 border border-white/10" : "bg-white/60"}`}>
-      {icon}
-    </div>
-    <div className="min-w-0">
-      <div className={`font-semibold ${enabled ? "" : "text-gray-700"}`}>{title}</div>
-      {note && (
-        <div className={`text-xs mt-0.5 ${enabled ? "text-white/80" : "text-gray-700/80"}`}>
-          {note}
+      {/* 右：カード本体（担当=明るい青 / 担当外=少し濃い文字で見やすく） */}
+      <button aria-disabled={!enabled} onClick={onClick} className={enabled ? enabledCard : disabledCard}>
+        {/* 担当のみ：左端アクセントバー */}
+        {enabled && (
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl bg-gradient-to-b from-sky-300 to-sky-600" />
+        )}
+
+        <div className="flex items-center gap-3">
+          <div
+            className={
+              "w-11 h-11 rounded-xl flex items-center justify-center " +
+              (enabled
+                ? "bg-sky-400/25 border border-sky-300/70 text-sky-50"
+                : "bg-white/70 text-gray-600 border border-white/60")
+            }
+          >
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <div className={"font-semibold " + (enabled ? "" : "text-gray-700")}>{title}</div>
+            {note && (
+              <div className={"text-xs mt-0.5 " + (enabled ? "text-sky-50/80" : "text-gray-600/90")}>
+                {note}
+              </div>
+            )}
+          </div>
         </div>
-      )}
-    </div>
-  </div>
-</button>
+      </button>
     </div>
   );
 };
+
+
+
 
 const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   // 先攻/後攻を文字で統一

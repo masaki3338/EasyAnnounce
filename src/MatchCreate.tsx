@@ -37,6 +37,16 @@ const IconUmpire = () => (
     <path d="M12 2a4 4 0 110 8 4 4 0 010-8zm-7 18a7 7 0 0114 0v2H5v-2z"/>
   </svg>
 );
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zM5 11h2a5 5 0 0010 0h2" />
+  </svg>
+);
+const IconClock = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm1 5h-2v6h6v-2h-4z" />
+  </svg>
+);
 
 
 type MatchCreateProps = {
@@ -54,6 +64,7 @@ const [opponentTeamFurigana, setOpponentTeamFurigana] = useState("");
   const [isHome, setIsHome] = useState("先攻");
   const [benchSide, setBenchSide] = useState("1塁側");
   const [showExchangeModal, setShowExchangeModal] = useState(false);
+const [speakingExchange, setSpeakingExchange] = useState(false);
 
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
@@ -121,15 +132,23 @@ const upsertRecentTournaments = async (name: string) => {
   await localForage.setItem("recentTournaments", finalList);
 };
 
-  const speakExchangeMessage = () => {
+// 置き換え：読み上げ開始
+const speakExchangeMessage = () => {
+  speechSynthesis.cancel();
   const msg = new SpeechSynthesisUtterance(
     `${tournamentName} 本日の第一試合、両チームのメンバー交換を行います。両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。メンバーチェックと道具チェックはシートノックの間に行います。`
   );
+  msg.lang = "ja-JP";
+  msg.onstart = () => setSpeakingExchange(true);
+  const clear = () => setSpeakingExchange(false);
+  msg.onend = clear; msg.onerror = clear;
   speechSynthesis.speak(msg);
 };
 
+// 置き換え：読み上げ停止
 const stopExchangeMessage = () => {
   speechSynthesis.cancel();
+  setSpeakingExchange(false);
 };
 
   const handleUmpireChange = (
@@ -420,49 +439,94 @@ return (
     </main>
 
     {/* 既存のモーダルはそのまま下に（読み上げ/停止/OK） */}
-    {showExchangeModal && (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-4 text-base">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">⚠️</span>
-            <span className="font-semibold bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 rounded">
-              試合開始45分前に🎤
-            </span>
-            <button className="bg-white border border-gray-300 px-4 py-1 rounded-full text-sm">
-              1塁側チーム🎤
-            </button>
-          </div>
+{showExchangeModal && (
+  <div className="fixed inset-0 z-50">
+    {/* 背景（タップで閉じる） */}
+    <div
+      className="absolute inset-0 bg-black/60"
+      onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+    />
 
-          <div className="flex items-start leading-tight">
-            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
-            <p className="whitespace-pre-line text-red-600 font-bold">
-              <strong>{tournamentName}</strong>{"\n"}
-              本日の第一試合、両チームのメンバー交換を行います。{"\n"}
-              両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
-              ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
-              ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
-              公式記録員、アナウンスもお集まりください。{"\n"}
-              メンバーチェックと道具チェックはシートノックの間に行います。
-            </p>
-          </div>
+    {/* 本体パネル */}
+    <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-auto
+                    bg-gradient-to-b from-gray-900 to-gray-850 text-white
+                    rounded-t-3xl sm:rounded-2xl shadow-2xl
+                    max-w-md w-full mx-auto p-5 sm:p-6">
+      {/* ヘッダー行 */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="inline-flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-full
+                        bg-amber-500/20 border border-amber-400/40">
+          <IconClock />
+          <span className="text-amber-50/90">試合開始45分前に🎤</span>
+        </div>
+        <button
+          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+          className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 active:scale-95"
+        >
+          閉じる
+        </button>
+      </div>
 
-          <div className="flex justify-end gap-2">
-            <button onClick={speakExchangeMessage} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              読み上げ
-            </button>
-            <button onClick={stopExchangeMessage} className="px-3 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">
-              停止
-            </button>
-            <button
-              onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              OK
-            </button>
-          </div>
+      {/* チップ行（任意情報） */}
+      <div className="mb-4 inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-full
+                      bg-white/10 border border-white/10">
+        <span className="opacity-80">担当：</span>
+        <span className="font-semibold">1塁側チーム 🎤</span>
+      </div>
+
+      {/* 🔴 アナウンス文言（赤 強め）＋ ボタン内蔵 */}
+      <div className="
+          rounded-2xl p-4 shadow-lg font-semibold
+          border border-rose-600/90
+          bg-gradient-to-br from-rose-600/50 via-rose-500/40 to-rose-400/30
+          ring-1 ring-inset ring-rose-600/60
+        ">
+        <div className="flex items-start gap-2 mb-2">
+          <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+          <div className="text-rose-50/90 text-[11px]">アナウンス文言（表示どおり読み上げ）</div>
+        </div>
+
+        <p className="text-white whitespace-pre-line leading-relaxed drop-shadow">
+          <strong>{tournamentName}</strong>
+          {"\n"}本日の第一試合、両チームのメンバー交換を行います。
+          {"\n"}両チームのキャプテンと全てのベンチ入り指導者は、
+          ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。
+          {"\n"}ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。
+          {"\n"}メンバーチェックと道具チェックはシートノックの間に行います。
+        </p>
+
+        {/* 赤枠内の操作ボタン */}
+        <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={speakExchangeMessage}
+            disabled={speakingExchange}
+            className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+          >
+            <IconMic /> 読み上げ
+          </button>
+          <button
+            onClick={stopExchangeMessage}
+            disabled={!speakingExchange}
+            className="flex-1 px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
+          >
+            停止
+          </button>
         </div>
       </div>
-    )}
+
+      {/* フッター（OKのみ） */}
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+          className="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold shadow active:scale-95"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
   </div>
 );
 
