@@ -1,6 +1,44 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
 
+// --- ミニSVGアイコン（外部依存なし） ---
+const IconBack = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+  </svg>
+);
+const IconTrophy = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M6 3v2H4v3a5 5 0 004 4.9V15H7v2h10v-2h-1v-2.1A5 5 0 0020 8V5h-2V3H6zm2 2h8v2h2v1a3 3 0 01-3 3H9A3 3 0 016 8V7h2V5zm3 9h2v1h-2v-1z"/>
+  </svg>
+);
+const IconCalendar = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M7 2h2v2h6V2h2v2h3v18H4V4h3V2zm13 6H4v12h16V8z"/>
+  </svg>
+);
+const IconVs = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M7 7h4l-4 10H3L7 7zm14 0l-5 10h-4l5-10h4z"/>
+  </svg>
+);
+const IconHomeAway = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z"/>
+  </svg>
+);
+const IconBench = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M4 10h16v2H4v-2zm0 5h16v2H4v-2z"/>
+  </svg>
+);
+const IconUmpire = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 2a4 4 0 110 8 4 4 0 010-8zm-7 18a7 7 0 0114 0v2H5v-2z"/>
+  </svg>
+);
+
+
 type MatchCreateProps = {
   onBack: () => void;
   onGoToLineup: () => void;
@@ -129,111 +167,161 @@ const handleSave = async () => {
   alert("✅ 試合情報を保存しました");
 };
 
+return (
+  <div
+    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-5"
+    style={{
+      paddingTop: "max(16px, env(safe-area-inset-top))",
+      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    }}
+  >
+    {/* ヘッダー */}
+    <header className="w-full max-w-md">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
+        >
+          <IconBack />
+          <span className="text-sm">メニュー</span>
+        </button>
+        <div className="w-10" />
+      </div>
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 overflow-auto">
-      <button
-        onClick={onBack}
-        className="mb-4 px-4 py-3 bg-gray-300 rounded-lg hover:bg-gray-400 text-base"
-      >
-        ← メニューに戻る
-      </button>
+      {/* 中央大タイトル */}
+      <div className="mt-3 text-center select-none">
+        <h1
+          className="
+            inline-flex items-center gap-2
+            text-3xl md:text-4xl font-extrabold tracking-wide leading-tight
+          "
+        >
+          <span className="text-2xl md:text-3xl">🗓️</span>
+          <span
+            className="
+              bg-clip-text text-transparent
+              bg-gradient-to-r from-white via-blue-100 to-blue-400
+              drop-shadow
+            "
+          >
+            試合情報入力
+          </span>
+        </h1>
+        <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+      </div>
+    </header>
 
-      <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">
-        試合情報入力
-      </h2>
+    {/* 本体：カード群 */}
+    <main className="w-full max-w-md mt-5 space-y-5">
 
-      <div className="space-y-5">
-<div>
-  <label className="block font-semibold text-lg mb-1">大会名</label>
-  <div className="flex items-center space-x-4">
-    {/* 左側：大会名リスト + 手入力（上書き） */}
-    <div className="flex-1 space-y-2">
-      <select
-        value={tournamentName}
-        onChange={(e) => setTournamentName(e.target.value)}
-        className="w-full p-3 border rounded-lg text-lg"
-      >
-        {recentTournaments.map((name, i) => (
-          <option key={i} value={name}>
-            {name === "" ? "　" : name}
-          </option>
-        ))}
-      </select>
-
-      <input
-        type="text"
-        value={tournamentName}
-        onChange={(e) => setTournamentName(e.target.value)}
-        className="w-full p-3 border rounded-lg text-lg"
-        placeholder="大会名を入力（上書き可）"
-      />
-    </div>
-
-    {/* 右側：本日の 第n試合（既存ロジックそのまま） */}
-    <div className="flex items-center space-x-2">
-      <span className="text-lg">本日の</span>
-      <select
-        value={matchNumber}
-        onChange={async (e) => {
-          const num = Number(e.target.value);
-          setMatchNumber(num);
-
-          // 既存：matchInfoへ即保存（マージ）
-          const existing = await localForage.getItem<any>("matchInfo");
-          await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
-
-          // ★ 追加：スタッシュにも保存（他画面で上書きされても復旧できる）
-          await localForage.setItem("matchNumberStash", num);
-
-          console.log("[MC:change] matchNumber saved →", num);
-        }}
-        className="p-2 border rounded-lg text-lg"
-      >
-        {[1, 2, 3, 4, 5].map((num) => (
-          <option key={num} value={num}>第{num}試合</option>
-        ))}
-      </select>
-    </div>
-  </div>
-</div>
-
-
-        <div>
-          <label className="block font-semibold text-lg mb-1">相手チーム名</label>
-          <input
-            type="text"
-            value={opponentTeam}
-            onChange={(e) => setOpponentTeam(e.target.value)}
-            className="w-full p-3 border rounded-lg text-lg"
-            placeholder="相手チーム名を入力"
-          />
-           {/* ★ 追加：ふりがな */}
-            <input
-              type="text"
-              value={opponentTeamFurigana}
-              onChange={(e) => setOpponentTeamFurigana(e.target.value)}
-              className="w-full p-3 border rounded-lg text-lg mt-2"
-              placeholder="相手チーム名のふりがな"
-            />
+      {/* 大会名 ＋ 本日の 第n試合 */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+            <IconTrophy />
+          </div>
+          <div className="font-semibold">大会名</div>
         </div>
 
-        <div>
-          <label className="block font-semibold text-lg mb-2">自チーム情報</label>
-          <div className="flex space-x-4">
+        <div className="flex items-start gap-4">
+          {/* 左：大会名セレクト＋上書き入力 */}
+          <div className="flex-1 space-y-2">
             <select
-              value={isHome}
-              onChange={(e) => setIsHome(e.target.value)}
-              className="flex-1 p-3 border rounded-lg text-lg"
+              value={tournamentName}
+              onChange={(e) => setTournamentName(e.target.value)}
+              className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
             >
-              <option>先攻</option>
-              <option>後攻</option>
+              {recentTournaments.map((name, i) => (
+                <option key={i} value={name}>
+                  {name === "" ? "　" : name}
+                </option>
+              ))}
             </select>
+            <input
+              type="text"
+              value={tournamentName}
+              onChange={(e) => setTournamentName(e.target.value)}
+              className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+              placeholder="大会名を入力（上書き可）"
+            />
+          </div>
 
+          {/* 右：本日の 第n試合 */}
+          <div className="shrink-0">
+            <div className="flex items-center gap-2 mb-2">
+              <IconCalendar />
+              <span className="text-sm">本日の</span>
+            </div>
+            <select
+              value={matchNumber}
+              onChange={async (e) => {
+                const num = Number(e.target.value);
+                setMatchNumber(num);
+                const existing = await localForage.getItem<any>("matchInfo");
+                await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
+                await localForage.setItem("matchNumberStash", num);
+                console.log("[MC:change] matchNumber saved →", num);
+              }}
+              className="p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+            >
+              {[1, 2, 3, 4, 5].map((num) => (
+                <option key={num} value={num}>第{num}試合</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* 相手チーム名＋ふりがな */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+            <IconVs />
+          </div>
+          <div className="font-semibold">相手チーム</div>
+        </div>
+
+        <input
+          type="text"
+          value={opponentTeam}
+          onChange={(e) => setOpponentTeam(e.target.value)}
+          className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+          placeholder="相手チーム名を入力"
+        />
+        <input
+          type="text"
+          value={opponentTeamFurigana}
+          onChange={(e) => setOpponentTeamFurigana(e.target.value)}
+          className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20 mt-2"
+          placeholder="相手チーム名のふりがな"
+        />
+      </section>
+
+      {/* 自チーム情報（先攻/後攻・ベンチ側） */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+            <IconHomeAway />
+          </div>
+          <div className="font-semibold">自チーム情報</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <select
+            value={isHome}
+            onChange={(e) => setIsHome(e.target.value)}
+            className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+          >
+            <option>先攻</option>
+            <option>後攻</option>
+          </select>
+
+          <div className="flex items-center gap-2">
+            <IconBench />
             <select
               value={benchSide}
               onChange={(e) => setBenchSide(e.target.value)}
-              className="flex-1 p-3 border rounded-lg text-lg"
+              className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
             >
               <option>1塁側</option>
               <option>3塁側</option>
@@ -241,65 +329,72 @@ const handleSave = async () => {
           </div>
         </div>
 
-{matchNumber === 1 && benchSide === "1塁側" && (
-  <div className="mt-6">
-    <button
-      onClick={() => setShowExchangeModal(true)}
-      className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-base"
-    >
-      メンバー交換
-    </button>
-  </div>
-)}
-
-        <div>
-          <label className="block font-semibold text-lg mb-3">審判</label>
-          <div className="space-y-3">
-            {umpires.map((umpire, index) => (
-              <div
-                key={index}
-                className="flex flex-col sm:flex-row sm:items-center sm:space-x-3"
-              >
-                <span className="w-full sm:w-20 font-medium text-base mb-1 sm:mb-0">
-                  {umpire.role}
-                </span>
-                <input
-                  type="text"
-                  placeholder="氏名"
-                  value={umpire.name}
-                  onChange={(e) =>
-                    handleUmpireChange(index, "name", e.target.value)
-                  }
-                  className="flex-1 p-3 border rounded-lg text-base mb-2 sm:mb-0"
-                />
-                <input
-                  type="text"
-                  placeholder="ふりがな"
-                  value={umpire.furigana}
-                  onChange={(e) =>
-                    handleUmpireChange(index, "furigana", e.target.value)
-                  }
-                  className="flex-1 p-3 border rounded-lg text-base"
-                />
-              </div>
-            ))}
+        {/* メンバー交換ボタン（条件一致時のみ） */}
+        {matchNumber === 1 && benchSide === "1塁側" && (
+          <div className="mt-4">
+            <button
+              onClick={() => setShowExchangeModal(true)}
+              className="px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-base active:scale-95"
+            >
+              メンバー交換（読み上げ案内）
+            </button>
           </div>
+        )}
+      </section>
+
+{/* 審判 */}
+<section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+  <div className="flex items-center gap-3 mb-3">
+    <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+      <IconUmpire />
+    </div>
+    <div className="font-semibold">審判</div>
+  </div>
+
+  <div className="space-y-3">
+    {umpires.map((umpire, index) => (
+      // ✅ レイアウトを刷新：役割は左（md以上）／上（モバイル）
+      <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+        {/* 役割ラベル */}
+        <span className="font-medium text-sm md:text-base md:col-span-3">
+          {umpire.role}
+        </span>
+
+        {/* 氏名＋ふりがな：常に横並びで1/2ずつ */}
+        <div className="md:col-span-9 grid grid-cols-2 gap-2">
+          <input
+            type="text"
+            placeholder="氏名"
+            value={umpire.name}
+            onChange={(e) => handleUmpireChange(index, "name", e.target.value)}
+            className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+          />
+          <input
+            type="text"
+            placeholder="ふりがな"
+            value={umpire.furigana}
+            onChange={(e) => handleUmpireChange(index, "furigana", e.target.value)}
+            className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+          />
         </div>
       </div>
+    ))}
+  </div>
+</section>
 
-      <div className="mt-8 flex flex-col space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0">
+
+      {/* アクションボタン */}
+      <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           onClick={handleSave}
-          className="w-full sm:w-auto px-6 py-4 bg-green-600 text-white rounded-lg text-lg hover:bg-green-700"
+          className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
         >
-          保存する
+          💾 保存する
         </button>
 
         <button
           onClick={async () => {
-            // 先に大会名リストを更新
             await upsertRecentTournaments(tournamentName);
-
             const team = await localForage.getItem<any>("team");
             const matchInfo = {
               tournamentName,
@@ -311,76 +406,66 @@ const handleSave = async () => {
               umpires,
               inning: 1,
               isTop: true,
-              teamName: team?.name ?? "" 
+              teamName: team?.name ?? "",
             };
             await localForage.setItem("matchInfo", matchInfo);
             await localForage.setItem("matchNumberStash", matchNumber);
-
             onGoToLineup();
           }}
+          className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
+        >
+          ▶ スタメン設定
+        </button>
+      </div>
+    </main>
 
-          className="w-full sm:w-auto px-6 py-4 bg-blue-600 text-white rounded-lg text-lg hover:bg-blue-700"
-        >
-         スタメン設定
-        </button>
-      </div>
+    {/* 既存のモーダルはそのまま下に（読み上げ/停止/OK） */}
+    {showExchangeModal && (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-4 text-base">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">⚠️</span>
+            <span className="font-semibold bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 rounded">
+              試合開始45分前に🎤
+            </span>
+            <button className="bg-white border border-gray-300 px-4 py-1 rounded-full text-sm">
+              1塁側チーム🎤
+            </button>
+          </div>
 
-{showExchangeModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full space-y-4 text-base">
-     {/* ✅ 注意表示ブロック */}
-      <div className="flex items-center gap-2">
-        <span className="font-semibold bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 rounded">
-        <span className="text-2xl">⚠️</span>
-          試合開始45分前に🎤
-        </span>
-        <button className="bg-white border border-gray-300 px-4 py-1 rounded-full text-sm">
-          1塁側チーム🎤
-        </button>
-      </div>
+          <div className="flex items-start leading-tight">
+            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+            <p className="whitespace-pre-line text-red-600 font-bold">
+              <strong>{tournamentName}</strong>{"\n"}
+              本日の第一試合、両チームのメンバー交換を行います。{"\n"}
+              両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
+              ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
+              ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
+              公式記録員、アナウンスもお集まりください。{"\n"}
+              メンバーチェックと道具チェックはシートノックの間に行います。
+            </p>
+          </div>
 
-      <div className="flex items-start leading-tight">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
-        <p className="whitespace-pre-line text-red-600 font-bold">
-          <strong>{tournamentName}</strong>{"\n"}
-          本日の第一試合、両チームのメンバー交換を行います。{"\n"}
-          両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表と
-          ピッチングレコードを持って本部席付近にお集まりください。{"\n"}
-          ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、
-          公式記録員、アナウンスもお集まりください。{"\n"}
-          メンバーチェックと道具チェックはシートノックの間に行います。
-        </p>
+          <div className="flex justify-end gap-2">
+            <button onClick={speakExchangeMessage} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              読み上げ
+            </button>
+            <button onClick={stopExchangeMessage} className="px-3 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">
+              停止
+            </button>
+            <button
+              onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              OK
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="flex justify-end space-x-3">
-        <button
-          onClick={speakExchangeMessage}
-          className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          読み上げ
-        </button>
-        <button
-          onClick={stopExchangeMessage}
-          className="px-3 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
-        >
-          停止
-        </button>
-        <button
-          onClick={() => {
-            stopExchangeMessage();
-            setShowExchangeModal(false);
-          }}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          OK
-        </button>
-      </div>
-    </div>
+    )}
   </div>
-)}
+);
 
-
-    </div>
-  );
 };
 
 export default MatchCreate;
