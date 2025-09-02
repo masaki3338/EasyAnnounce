@@ -182,67 +182,76 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
     })();
   }, []);
   
-// Menu コンポーネント内の return を差し替え
+  // Menu コンポーネント内の return を差し替え
 return (
-  <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center justify-start px-6 pt-12 pb-[88px]">
-    {/* ヘッダー */}
-    <div className="w-full max-w-md">
-      <h1 className="text-white text-3xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
-        ⚾️ Easyアナウンス 🎤
-      </h1>
-      <p className="text-white/80 text-center mt-1 mb-6 text-sm">～ Pony League Version ～</p>
+  <div
+    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+    style={{
+      paddingTop: "max(16px, env(safe-area-inset-top))",
+      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    }}
+  >
+    {/* ← ここを“中央寄せ”の本体ラッパで包む */}
+    <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center">
+      {/* ヘッダー */}
+      <div className="w-full mb-8 md:mb-10">
+        <h1 className="text-white text-3xl font-black tracking-widest text-center drop-shadow-lg leading-tight mb-2">
+          ⚾️ Easyアナウンス 🎤
+        </h1>
+        <p className="text-white/80 text-center mt-2 mb-4 text-sm">～ Pony League Version ～</p>
+      </div>
+
+      {/* アイコンカードのグリッド */}
+      <div className="w-full grid grid-cols-2 gap-4">
+        <button
+          onClick={() => onNavigate("teamRegister")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🧑‍🤝‍🧑</div>
+          <div className="mt-2 font-bold">チーム・選手登録</div>
+          <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("matchCreate")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🗓️</div>
+          <div className="mt-2 font-bold">試合作成</div>
+          <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("startGame")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🏁</div>
+          <div className="mt-2 font-bold">試合開始</div>
+          <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("operationSettings")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">⚙️</div>
+          <div className="mt-2 font-bold">運用設定</div>
+          <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
+        </button>
+      </div>
+
+      {/* 試合継続ボタン（存在する時のみ表示） */}
+      {canContinue && lastScreen && (
+        <button
+          onClick={() => onNavigate(lastScreen)}
+          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
+        >
+          ▶ 試合を継続する
+        </button>
+      )}
     </div>
 
-    {/* アイコンカードのグリッド */}
-    <div className="w-full max-w-md grid grid-cols-2 gap-4">
-      <button
-        onClick={() => onNavigate("teamRegister")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-      >
-        <div className="text-2xl">🧑‍🤝‍🧑</div>
-        <div className="mt-2 font-bold">チーム・選手登録</div>
-        <div className="text-xs opacity-80 mt-1">ふりがな・背番号も登録</div>
-      </button>
-
-      <button
-        onClick={() => onNavigate("matchCreate")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-      >
-        <div className="text-2xl">🗓️</div>
-        <div className="mt-2 font-bold">試合作成</div>
-        <div className="text-xs opacity-80 mt-1">対戦・先攻後攻・試合番号</div>
-      </button>
-
-      <button
-        onClick={() => onNavigate("startGame")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-      >
-        <div className="text-2xl">🏁</div>
-        <div className="mt-2 font-bold">試合開始</div>
-        <div className="text-xs opacity-80 mt-1">攻守自動遷移・読み上げ</div>
-      </button>
-
-      <button
-        onClick={() => onNavigate("operationSettings")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-      >
-        <div className="text-2xl">⚙️</div>
-        <div className="mt-2 font-bold">運用設定</div>
-        <div className="text-xs opacity-80 mt-1">ピッチ数/DH/タイブレーク等</div>
-      </button>
-    </div>
-
-    {/* 試合継続ボタン（存在する時のみ表示） */}
-    {canContinue && lastScreen && (
-      <button
-        onClick={() => onNavigate(lastScreen)}
-        className="mt-6 w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
-      >
-        ▶ 試合を継続する
-      </button>
-    )}
-
-    {/* バージョン */}
+    {/* バージョン（本体ラッパの外に出す） */}
     <div className="mt-8 text-white/60 text-sm select-none">
       Version: {APP_VERSION}
     </div>
@@ -1123,7 +1132,8 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
 {(["menu","startGame","offense","defense","operationSettings"] as ScreenType[]).includes(screen) && (
   <>
     {/* タブ分の下マージン（iOS Safe-Areaにも対応） */}
-    <div style={{ height: "calc(64px + env(safe-area-inset-bottom))" }} />
+    <div className="md:hidden" style={{ height: "calc(56px + env(safe-area-inset-bottom))" }} />
+
     <BottomTab
       current={screen}
       onNavigate={(next) => {
