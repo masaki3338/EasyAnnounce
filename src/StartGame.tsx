@@ -8,6 +8,18 @@ const resetAnnouncedIds = () => {
   localForage.removeItem("announcedIds");
 };
 
+async function clearUndoRedoHistory() {
+  const prefixReg = /^(defHistory::|defRedo::|history:|undo:|redo:)/;
+  const suffixReg = /(history|undo|redo)$/;
+
+  await localForage.iterate((value, key) => {
+    if (prefixReg.test(String(key)) || suffixReg.test(String(key))) {
+      localForage.removeItem(String(key));
+    }
+  });
+}
+
+
 const StartGame = ({
   onStart,
   onShowAnnouncement,
@@ -151,6 +163,7 @@ useEffect(() => {
 
     // ✅ 試合情報（イニング・表裏・攻守・後攻）を初期化
     const initialMatchInfo = {
+      id: Date.now(),            // ← 追加：一意な試合ID
       opponentTeam: opponentName,  // ← 対戦相手名も再保存
       inning: 1,
       isTop: true,
@@ -198,7 +211,7 @@ useEffect(() => {
     ) as Record<string, number | null>;
 
     await localForage.setItem("lineupAssignments", normalizedAssign);
-
+    await clearUndoRedoHistory();   // ← これを追加（取消・やり直しの記憶を全クリア）
 
     // 🏁 試合開始（攻撃または守備画面へ）
     onStart(isFirstAttack);

@@ -72,6 +72,86 @@ const screenMap: { [key: string]: ScreenType } = {
   "運用設定": "operationSettings",
 };
 
+// === 追加: ミニマルSVGアイコン群（外部依存なし） ===
+const IconHome = ({ active=false }) => (
+  <svg viewBox="0 0 24 24" className={`w-6 h-6 ${active ? "opacity-100" : "opacity-70"}`} fill="currentColor">
+    <path d="M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z"/>
+  </svg>
+);
+const IconGame = ({ active=false }) => (
+  <svg viewBox="0 0 24 24" className={`w-6 h-6 ${active ? "opacity-100" : "opacity-70"}`} fill="currentColor">
+    <path d="M7 6h10a3 3 0 013 3v6a3 3 0 01-3 3H7a3 3 0 01-3-3V9a3 3 0 013-3zm2 3a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2z"/>
+  </svg>
+);
+const IconDefense = ({ active=false }) => (
+  <svg viewBox="0 0 24 24" className={`w-6 h-6 ${active ? "opacity-100" : "opacity-70"}`} fill="currentColor">
+    <path d="M12 2l7 4v6c0 5-3.5 9.7-7 10-3.5-.3-7-5-7-10V6l7-4z"/>
+  </svg>
+);
+const IconSettings = ({ active=false }) => (
+  <svg viewBox="0 0 24 24" className={`w-6 h-6 ${active ? "opacity-100" : "opacity-70"}`} fill="currentColor">
+    <path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9.4 4a7.5 7.5 0 00-.2-1.8l2-1.6-2-3.5-2.4 1a7.9 7.9 0 00-1.5-.9l-.4-2.6H9.2l-.4 2.6c-.5.2-1 .5-1.5.9l-2.4-1-2 3.5 2 1.6A7.5 7.5 0 003 12c0 .6.1 1.2.2 1.8l-2 1.6 2 3.5 2.4-1c.5.4 1 .7 1.5.9l.4 2.6h5.8l.4-2.6c.5-.2 1-.5 1.5-.9l2.4 1 2-3.5-2-1.6c.1-.6.2-1.2.2-1.8z"/>
+  </svg>
+);
+
+// === 追加: タブボタン & ボトムタブバー ===
+const TabButton: React.FC<{
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+}> = ({ label, active, onClick, icon }) => (
+  <button
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center py-2 text-xs ${
+      active ? "text-blue-600 font-semibold" : "text-gray-600"
+    }`}
+    aria-current={active ? "page" : undefined}
+  >
+    <div className="mb-1">{icon}</div>
+    <span className="leading-none">{label}</span>
+  </button>
+);
+
+const BottomTab: React.FC<{
+  current: ScreenType;
+  onNavigate: (s: ScreenType) => void;
+}> = ({ current, onNavigate }) => {
+  const is = (s: ScreenType) => current === s;
+  return (
+    <nav
+      className="fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-t border-gray-200"
+      style={{ paddingBottom: "max( env(safe-area-inset-bottom), 4px )" }}
+    >
+      <div className="grid grid-cols-4 max-w-md mx-auto">
+        <TabButton
+          label="ホーム"
+          active={is("menu")}
+          onClick={() => onNavigate("menu")}
+          icon={<IconHome active={is("menu")} />}
+        />
+        <TabButton
+          label="試合"
+          active={is("startGame")}
+          onClick={() => onNavigate("startGame")}
+          icon={<IconGame active={is("startGame")} />}
+        />
+        <TabButton
+          label="守備"
+          active={is("defense")}
+          onClick={() => onNavigate("defense")}
+          icon={<IconDefense active={is("defense")} />}
+        />
+        <TabButton
+          label="設定"
+          active={is("operationSettings")}
+          onClick={() => onNavigate("operationSettings")}
+          icon={<IconSettings active={is("operationSettings")} />}
+        />
+      </div>
+    </nav>
+  );
+};
 
 
 const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
@@ -102,53 +182,73 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
     })();
   }, []);
   
-  return (
-        <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center px-6 py-10">
-          <h1 className="text-white text-4xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
-            ⚾️Easyアナウンス🎤
-          </h1>
-          <h2 className="text-white text-lg font-semibold tracking-wide text-center drop-shadow mt-1 mb-10">
-            ～ Pony League Version ～ 
-          </h2>
-        <div className="w-full max-w-sm space-y-4">
-
-        {/* 通常メニュー */}
-        {Object.keys(screenMap).map((label, i) => {
-          const colors = [
-            "bg-pink-600 hover:bg-pink-700",
-            "bg-purple-600 hover:bg-purple-700",
-            "bg-blue-600 hover:bg-blue-700",
-            "bg-green-600 hover:bg-green-700",
-          ];
-          return (
-          <button
-            key={label}
-            className={`bg-gray-700 hover:bg-gray-600 w-full py-5 rounded-2xl shadow text-white text-lg font-semibold transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-gray-300`}
-            onClick={() => onNavigate(screenMap[label])}
-          >
-            {label}
-          </button>
-
-          );
-        })}
-
-        {/* 試合継続ボタン */}
-        {canContinue && lastScreen && (
-          <button
-            onClick={() => onNavigate(lastScreen)}
-            className="bg-red-400 hover:bg-red-500 w-full py-5 rounded-2xl shadow text-white text-lg font-semibold transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-200"
-
-          >
-            ▶ 試合を継続する
-          </button>
-        )}
-      </div>
-
-      <div className="mt-12 text-white text-sm opacity-70 select-none">
-        Version: {APP_VERSION}
-      </div>
+// Menu コンポーネント内の return を差し替え
+return (
+  <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center justify-start px-6 pt-12 pb-[88px]">
+    {/* ヘッダー */}
+    <div className="w-full max-w-md">
+      <h1 className="text-white text-3xl font-black tracking-widest text-center drop-shadow-lg leading-tight">
+        ⚾️ Easyアナウンス 🎤
+      </h1>
+      <p className="text-white/80 text-center mt-1 mb-6 text-sm">～ Pony League Version ～</p>
     </div>
-  );
+
+    {/* アイコンカードのグリッド */}
+    <div className="w-full max-w-md grid grid-cols-2 gap-4">
+      <button
+        onClick={() => onNavigate("teamRegister")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🧑‍🤝‍🧑</div>
+        <div className="mt-2 font-bold">チーム・選手登録</div>
+        <div className="text-xs opacity-80 mt-1">ふりがな・背番号も登録</div>
+      </button>
+
+      <button
+        onClick={() => onNavigate("matchCreate")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🗓️</div>
+        <div className="mt-2 font-bold">試合作成</div>
+        <div className="text-xs opacity-80 mt-1">対戦・先攻後攻・試合番号</div>
+      </button>
+
+      <button
+        onClick={() => onNavigate("startGame")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">🏁</div>
+        <div className="mt-2 font-bold">試合開始</div>
+        <div className="text-xs opacity-80 mt-1">攻守自動遷移・読み上げ</div>
+      </button>
+
+      <button
+        onClick={() => onNavigate("operationSettings")}
+        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+      >
+        <div className="text-2xl">⚙️</div>
+        <div className="mt-2 font-bold">運用設定</div>
+        <div className="text-xs opacity-80 mt-1">ピッチ数/DH/タイブレーク等</div>
+      </button>
+    </div>
+
+    {/* 試合継続ボタン（存在する時のみ表示） */}
+    {canContinue && lastScreen && (
+      <button
+        onClick={() => onNavigate(lastScreen)}
+        className="mt-6 w-full max-w-md bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
+      >
+        ▶ 試合を継続する
+      </button>
+    )}
+
+    {/* バージョン */}
+    <div className="mt-8 text-white/60 text-sm select-none">
+      Version: {APP_VERSION}
+    </div>
+  </div>
+);
+
 };
 
 
@@ -1019,6 +1119,23 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
     </>    
   );
   
+{/* === 共通ボトムタブ（該当画面のみ表示） === */}
+{(["menu","startGame","offense","defense","operationSettings"] as ScreenType[]).includes(screen) && (
+  <>
+    {/* タブ分の下マージン（iOS Safe-Areaにも対応） */}
+    <div style={{ height: "calc(64px + env(safe-area-inset-bottom))" }} />
+    <BottomTab
+      current={screen}
+      onNavigate={(next) => {
+        // ゲーム文脈フラグはタブ遷移ではオフに
+        fromGameRef.current = false;
+        setScreen(next);
+      }}
+    />
+  </>
+)}
+
+
 };
 
 const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;

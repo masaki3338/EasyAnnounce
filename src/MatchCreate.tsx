@@ -11,6 +11,8 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [recentTournaments, setRecentTournaments] = useState<string[]>([""]);
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
+  // 相手チーム名のふりがな
+const [opponentTeamFurigana, setOpponentTeamFurigana] = useState("");
   const [isHome, setIsHome] = useState("先攻");
   const [benchSide, setBenchSide] = useState("1塁側");
   const [showExchangeModal, setShowExchangeModal] = useState(false);
@@ -48,6 +50,7 @@ useEffect(() => {
       setTournamentName(saved.tournamentName ?? "");
       setMatchNumber(Number(saved.matchNumber ?? 1));
       setOpponentTeam(saved.opponentTeam ?? "");
+      setOpponentTeamFurigana((saved as any).opponentTeamFurigana ?? "");
       // 既存コードは "後攻" を boolean にマッピングしているので過去互換で吸収
       setIsHome(saved.isHome ? "後攻" : "先攻");
       setBenchSide(saved.benchSide ?? "1塁側");
@@ -111,6 +114,7 @@ const handleSave = async () => {
     tournamentName,
     matchNumber,
     opponentTeam,
+    opponentTeamFurigana,
     isHome: isHome === "後攻", // ✅ booleanとして保存（既存仕様）
     benchSide,
     umpires,
@@ -204,6 +208,14 @@ const handleSave = async () => {
             className="w-full p-3 border rounded-lg text-lg"
             placeholder="相手チーム名を入力"
           />
+           {/* ★ 追加：ふりがな */}
+            <input
+              type="text"
+              value={opponentTeamFurigana}
+              onChange={(e) => setOpponentTeamFurigana(e.target.value)}
+              className="w-full p-3 border rounded-lg text-lg mt-2"
+              placeholder="相手チーム名のふりがな"
+            />
         </div>
 
         <div>
@@ -293,6 +305,7 @@ const handleSave = async () => {
               tournamentName,
               matchNumber,
               opponentTeam,
+              opponentTeamFurigana,
               isHome: isHome === "後攻",
               benchSide,
               umpires,

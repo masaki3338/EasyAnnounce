@@ -13,6 +13,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
   const [timer2TimeLeft, setTimer2TimeLeft] = useState(0);
   const [showEndModal1, setShowEndModal1] = useState(false);
   const [showEndModal2, setShowEndModal2] = useState(false);
+const [teamFurigana, setTeamFurigana] = useState("");
+const [opponentFurigana, setOpponentFurigana] = useState("");
 
 const timer1Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -31,9 +33,13 @@ const [timer2Setting, setTimer2Setting] = useState(300);
         const mi = matchInfo as any;
         setOpponentName(mi.opponentTeam || "");
         setBenchSide(mi.benchSide || "1塁側");
+        setOpponentFurigana(mi.opponentTeamFurigana || "");
       }
       if (team && typeof team === "object") {
-        setTeamName((team as any).name || "");
+        const t = team as any;
+        setTeamName(t.name || "");
+        // ★ 自チームのふりがな（チーム登録の値を優先）
+        setTeamFurigana(t.furigana ?? t.nameFurigana ?? t.nameKana ?? "");
       }
     };
     load();
@@ -41,6 +47,15 @@ const [timer2Setting, setTimer2Setting] = useState(300);
 
   const team1 = benchSide === "1塁側" ? teamName : opponentName;
   const team3 = benchSide === "3塁側" ? teamName : opponentName;
+
+  // ★ 読み上げ用（かな優先、なければ漢字名）
+const team1Read = benchSide === "1塁側"
+  ? (teamFurigana || teamName)
+  : (opponentFurigana || opponentName);
+
+const team3Read = benchSide === "3塁側"
+  ? (teamFurigana || teamName)
+  : (opponentFurigana || opponentName);
 
   const speak = (text: string, key: string) => {
     window.speechSynthesis.cancel();
@@ -131,7 +146,11 @@ const [timer2Setting, setTimer2Setting] = useState(300);
     return `${m}分${s.toString().padStart(2, "0")}秒`;
   };
 
-const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
+const MessageBlock = ({
+  text,
+  speakText,
+  keyName,
+}: { text: string; speakText?: string; keyName: string }) => (
   <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     <div className="flex items-start gap-2 mb-2">
       <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
@@ -140,7 +159,7 @@ const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
     <div className="flex gap-2">
       <button
         className={`px-4 py-1 text-white rounded ${readingKey === keyName ? "bg-green-600" : "bg-blue-600"}`}
-        onClick={() => speak(text, keyName)}
+        onClick={() => speak(speakText ?? text, keyName)} // ← ★ speakText を優先
       >
         読み上げ
       </button>
@@ -154,6 +173,7 @@ const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
     </div>
   </div>
 );
+
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 text-center">
@@ -194,10 +214,13 @@ const MessageBlock = ({ text, keyName }: { text: string; keyName: string }) => (
       </div>
 
 
-      <MessageBlock
-        text={`両チームはウォーミングアップに入って下さい。\n 1塁側 ${team1} はトスバッティング、\n 3塁側 ${team3} はキャッチボールを開始してください。`}
-        keyName="start"
-      />
+<MessageBlock
+  text={`両チームはウォーミングアップに入って下さい。\n 1塁側 ${team1} はトスバッティング、\n 3塁側 ${team3} はキャッチボールを開始してください。`}
+  // ★ 読み上げ時だけ “ふりがな” に差し替え
+  speakText={`りょうチームはウォーミングアップに入ってください。\n いちるいがわ ${team1Read} はトスバッティング、\n さんるいがわ ${team3Read} はキャッチボールを開始してください。`}
+  keyName="start"
+/>
+
 
 
       <div className="flex justify-center items-center gap-4 mt-2 font-bold">

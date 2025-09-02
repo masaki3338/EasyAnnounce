@@ -39,7 +39,9 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]);
   const [homeTeamName, setHomeTeamName] = useState<string>("");
+  const [homeTeamFurigana, setHomeTeamFurigana] = useState<string>("");
   const [awayTeamName, setAwayTeamName] = useState<string>("");
+  const [opponentTeamFurigana, setOpponentTeamFurigana] = useState<string>("");
   const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
   const [umpires, setUmpires] = useState<Umpire[]>([]);
   const [speaking, setSpeaking] = useState(false);
@@ -145,12 +147,18 @@ useEffect(() => {
     if (team) {
       setTeamPlayers((team as any).players || []);
       setHomeTeamName((team as any).name || "");
+      setHomeTeamFurigana(
+        (team as any).furigana ??
+        (team as any).nameKana ??
+        ""
+      );
     }
     if (matchInfo && typeof matchInfo === "object") {
       const mi = matchInfo as any;
       setAwayTeamName(mi.opponentTeam || "");
       setIsHomeTeamFirstAttack(!mi.isHome);
       if (Array.isArray(mi.umpires)) setUmpires(mi.umpires);
+      setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
     }
   };
   loadData();
@@ -310,11 +318,28 @@ const handleStop = () => {
           <div>
             {isHomeTeamFirstAttack && (
               <p>
-                お待たせいたしました、{homeTeamName} 対 {awayTeamName} のスターティングラインナップ並びに審判員をお知らせいたします。
+                お待たせいたしました、
+                {homeTeamFurigana
+                  ? renderFurigana(homeTeamName, homeTeamFurigana)   // ★ ふりがな表示（読みは rt）
+                  : homeTeamName
+                } 対 {
+                  opponentTeamFurigana
+                    ? renderFurigana(awayTeamName, opponentTeamFurigana)
+                    : awayTeamName
+                } のスターティングラインナップ並びに審判員をお知らせいたします。
               </p>
             )}
             <p className="mt-2 font-bold">
-              {isHomeTeamFirstAttack ? `先攻 ${homeTeamName} ` : `続きまして後攻 ${homeTeamName} `}
+              <p className="mt-2 font-bold">
+                {isHomeTeamFirstAttack
+                  ? <>先攻 {
+                      homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName
+                    }</>
+                  : <>続きまして後攻 {
+                      homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName
+                    }</>
+                }
+              </p>
             </p>
 
             {battingOrder.map((entry, idx) => {

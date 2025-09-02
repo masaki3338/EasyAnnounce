@@ -13,18 +13,25 @@ interface Props {
   const [teamName, setTeamName] = useState("");
   const [opponentName, setOpponentName] = useState("");
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
+const [teamFurigana, setTeamFurigana] = useState("");
+const [opponentFurigana, setOpponentFurigana] = useState("");
 
   useEffect(() => {
     const load = async () => {
       const team = await localForage.getItem<any>("team");
       const matchInfo = await localForage.getItem<any>("matchInfo");
 
-      if (team) setTeamName(team.name || "");
+      if (team) {
+        setTeamName(team.name || "");
+        // ★ 自チームかな（チーム登録画面の保存値を最優先）
+        setTeamFurigana(team.furigana ?? team.nameFurigana ?? team.nameKana ?? "");
+      }
       if (matchInfo) {
         setTournamentName(matchInfo.tournamentName || "");
         setMatchNumber(matchInfo.matchNumber || "〇");
         setOpponentName(matchInfo.opponentTeam || "");
         setBenchSide(matchInfo.benchSide || "1塁側");
+        setOpponentFurigana(matchInfo.opponentTeamFurigana || "");
       }
     };
     load();
@@ -32,11 +39,21 @@ interface Props {
 
   const team1st = benchSide === "1塁側" ? teamName : opponentName;
   const team3rd = benchSide === "3塁側" ? teamName : opponentName;
+// ★ 読み上げ用（かな優先、無ければ漢字名にフォールバック）
+const team1stRead = benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+const team3rdRead = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+
+// ★ 読み上げ用の文章（読みにくい語は少し“かな寄せ”）
+const messageSpeak =
+  `おまたせいたしました。${tournamentName}。` +
+  `ほんじつの だい ${matchNumber} しあい、` +
+  `いちるいがわ：${team1stRead} たい さんるいがわ：${team3rdRead} の しあい、` +
+  `まもなく かいし でございます。`;
 
   const message = `お待たせいたしました。${tournamentName} \n本日の第${matchNumber}試合、\n一塁側：${team1st}　対　三塁側：${team3rd} の試合、\nまもなく開始でございます。`;
  
   const handleSpeak = () => {
-    const utter = new SpeechSynthesisUtterance(message);
+    const utter = new SpeechSynthesisUtterance(messageSpeak); // ← ★ かな文に変更
     utter.lang = "ja-JP";
     utter.onstart = () => setReading(true);
     utter.onend = () => setReading(false);

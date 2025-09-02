@@ -1586,6 +1586,7 @@ type DefenseSnapshot = {
   pendingDisableDH: boolean;
   dhEnabledAtStart: boolean;
   initialAssignments: Record<string, number | null>;
+  usedPlayerInfo: Record<number, any>;
 };
 
 const [history, setHistory] = useState<DefenseSnapshot[]>([]);
@@ -1624,6 +1625,7 @@ const snapshotNow = (): DefenseSnapshot => ({
   pendingDisableDH,
   dhEnabledAtStart,
   initialAssignments: { ...initialAssignments },
+  usedPlayerInfo: { ...usedPlayerInfo },
 });
 
 // スナップショットを復元（state + localForageも揃える）
@@ -1644,6 +1646,11 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
   await localForage.setItem("battingOrder", s.battingOrder);
   await localForage.setItem("battingReplacements", {}); // 確定後は空で持つ運用
   await localForage.setItem("dhEnabledAtStart", s.dhEnabledAtStart);
+  // ★ 追加：usedPlayerInfo の state と storage を同期
+  if ("usedPlayerInfo" in s) {
+    setUsedPlayerInfo(s.usedPlayerInfo || {});
+    await localForage.setItem("usedPlayerInfo", s.usedPlayerInfo || {});
+  }
 };
 
 // 新しい操作の前に履歴へ積む（永続化対応）
@@ -2843,15 +2850,16 @@ const confirmChange = async () => {
     const origId = Number(origIdStr);
     const reason = (info as any)?.reason as string | undefined;
     if ((reason === "代打" || reason === "代走"|| reason === "臨時代走")  && onFieldIds.has(origId)) {
-      (usedInfo as any)[origIdStr] = { ...(info as any), hasReentered: true };
-      delete (usedInfo as any)[origIdStr].reason;   // 代打/代走フラグを消す
-      delete (usedInfo as any)[origIdStr].subId;    // 代打/代走の相手の紐付けを消す
-      delete (usedInfo as any)[origIdStr].fromPos;  // 元ポジ情報も不要
+      const keepSubId = (info as any).subId; // 👈 subIdを保持
+      (usedInfo as any)[origIdStr] = { ...(info as any), hasReentered: true, subId: keepSubId };
+      delete (usedInfo as any)[origIdStr].reason;   // 自動配置/再リエントリー検出を止める
+      delete (usedInfo as any)[origIdStr].fromPos;  // 参照しないなら消してOK
     }
   }
 }
 // （この直後に既存の保存行が続く）
 await localForage.setItem("usedPlayerInfo", usedInfo);
+setUsedPlayerInfo(usedInfo); // ★ 追加（UI 側の分類を即時反映）
 
   console.log("✅ 守備交代で登録された usedPlayerInfo：", usedInfo);
 
