@@ -38,7 +38,7 @@ import VersionInfo from "./screens/VersionInfo";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.02"
+const APP_VERSION = "1.00"
 
 // 画面の種類を列挙した型
 export type ScreenType =
