@@ -1,71 +1,139 @@
-import type { ScreenType } from "../App";
-import React, { useEffect, useState } from "react";
-import localForage from "localforage";
+// OperationSettings.tsx（全文置き換え）
 
+import type { ScreenType } from "../App";
+import React from "react";
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
-  onOpenManual?: () => void; // ← 追加（AppのManualViewerを開くコールバック）
+  onOpenManual?: () => void; // App側のマニュアル表示モーダルを開く
 };
 
+// ミニアイコン（依存なしのSVG）
+const IconChevronLeft: React.FC<{ className?: string }> = ({ className }) => (
+  <svg viewBox="0 0 24 24" className={className ?? "w-5 h-5"} fill="currentColor" aria-hidden>
+    <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+  </svg>
+);
+
+// 共通カードボタン
+const TileButton: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  desc?: string;
+  onClick: () => void;
+}> = ({ icon, title, desc, onClick }) => (
+  <button
+    onClick={onClick}
+    className="w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition flex items-center gap-4"
+  >
+    <div className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 border border-white/10 shrink-0">
+      {icon}
+    </div>
+    <div className="min-w-0">
+      <div className="font-semibold leading-tight">{title}</div>
+      {desc && <div className="text-xs opacity-80 mt-0.5 truncate">{desc}</div>}
+    </div>
+  </button>
+);
+
 export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
-
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center py-10">
-      <div className="w-full max-w-sm">
-        <button className="mb-6 px-4 py-2 bg-gray-200 rounded" onClick={() => onNavigate("menu")}>
-          ← メニューに戻る
-        </button>
+    <div
+      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      style={{
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      }}
+    >
+{/* モバイルヘッダー（置き換え） */}
+<header className="w-full max-w-md">
+  {/* 上段：戻るだけ（左右のバランス取りは右のダミー幅で） */}
+  <div className="flex items-center justify-between">
+    <button
+      onClick={() => onNavigate("menu")}
+      className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
+    >
+      {/* ← あなたの IconChevronLeft を流用 */}
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
+        <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+      </svg>
+      <span className="text-sm">メニュー</span>
+    </button>
+    <div className="w-10" /> {/* 右の見た目用スペーサ（中央寄せの安定化） */}
+  </div>
 
-        <h1 className="text-2xl font-bold text-center mb-8">運用設定</h1>
-
-        <div className="space-y-5">
-          <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-                  onClick={() => onNavigate("pitchLimit")}>
-            規定投球数
-          </button>
-          <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-                  onClick={() => onNavigate("tiebreakRule")}>
-            タイブレークルール
-          </button>
-
-          {/* ▼ 連盟アナウンスマニュアル（Appのモーダルを開く） */}
-          <button
-            className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-            onClick={() => {
-              if (onOpenManual) {
-                onOpenManual(); // App.tsx の ManualViewer モーダルを起動
-              } else {
-                // フォールバック（props未提供なら別タブで開く）
-                const url = `${window.location.origin}/manual.pdf#zoom=page-fit`;
-                const win = window.open(url, "_blank", "noopener");
-                if (!win) window.location.href = url;
-              }
-            }}
-          >
-            連盟アナウンスマニュアル
-          </button>
+  {/* 下段：タイトルを大きく中央に */}
+  <div className="mt-3 text-center select-none">
+    <h1 className="
+      inline-flex items-center gap-2
+      text-3xl md:text-4xl font-extrabold tracking-wide leading-tight
+    ">
+      <span className="text-2xl md:text-3xl">⚙️</span>
+      <span className="
+        bg-clip-text text-transparent
+        bg-gradient-to-r from-white via-blue-100 to-blue-400
+        drop-shadow
+      ">
+        運用設定
+      </span>
+    </h1>
+    {/* デコレーションライン（任意）：細いグラデ棒で締める */}
+    <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+  </div>
+</header>
 
 
-          {/* ▼ 読み上げ設定（別画面へ） */}
-          <button
-            className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-            onClick={() => onNavigate?.("tts-settings")}
-          >
-            読み上げ設定
-          </button>
+      {/* 中央配置の本体 */}
+      <div className="flex-1 w-full max-w-md flex flex-col justify-center gap-4">
+        <TileButton
+          icon={<span className="text-2xl">⚾️</span>}
+          title="規定投球数"
+          desc="学年別・大会別の上限"
+          onClick={() => onNavigate("pitchLimit")}
+        />
 
+        <TileButton
+          icon={<span className="text-2xl">🔀</span>}
+          title="タイブレークルール"
+          desc="開始回・無死満塁など"
+          onClick={() => onNavigate("tiebreakRule")}
+        />
 
+        <TileButton
+          icon={<span className="text-2xl">📘</span>}
+          title="連盟アナウンスマニュアル"
+          desc="PDFをアプリ内で表示"
+          onClick={() => {
+            if (onOpenManual) {
+              onOpenManual();
+            } else {
+              const url = `${window.location.origin}/manual.pdf#zoom=page-fit`;
+              const win = window.open(url, "_blank", "noopener");
+              if (!win) window.location.href = url;
+            }
+          }}
+        />
 
-          <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-                  onClick={() => onNavigate("contact")}>
-            お問い合わせ
-          </button>
-          <button className="w-full py-5 rounded-2xl bg-gray-600 text-white font-semibold shadow active:scale-95"
-                  onClick={() => onNavigate("versionInfo")}>
-            バージョン情報
-          </button>
-        </div>
+        <TileButton
+          icon={<span className="text-2xl">🔊</span>}
+          title="読み上げ設定"
+          desc="VOICEVOX / 音量 / 話速"
+          onClick={() => onNavigate("tts-settings")}
+        />
+
+        <TileButton
+          icon={<span className="text-2xl">✉️</span>}
+          title="お問い合わせ"
+          desc="不具合・要望はこちら"
+          onClick={() => onNavigate("contact")}
+        />
+
+        <TileButton
+          icon={<span className="text-2xl">ℹ️</span>}
+          title="バージョン情報"
+          desc="ビルド番号・更新履歴"
+          onClick={() => onNavigate("versionInfo")}
+        />
       </div>
     </div>
   );
