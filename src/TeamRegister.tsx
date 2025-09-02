@@ -375,9 +375,9 @@ const saveTeam = async () => {
                   </p>
                   <p className="text-xs text-white/70">{p.lastNameKana} {p.firstNameKana}</p>
                 </div>
-+   <div className="flex gap-2 text-sm">
-+     <button onClick={() => editPlayer(p)} className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 active:scale-95">✏️ 編集</button>
-+     <button onClick={() => deletePlayer(p)} className="px-3 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white active:scale-95">🗑️ 削除</button>
+   <div className="flex gap-2 text-sm">
+     <button onClick={() => editPlayer(p)} className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 active:scale-95">✏️ 編集</button>
+     <button onClick={() => deletePlayer(p)} className="px-3 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white active:scale-95">🗑️ 削除</button>
                 </div>
               </li>
             ))}
