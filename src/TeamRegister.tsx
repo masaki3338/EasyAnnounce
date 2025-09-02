@@ -290,7 +290,7 @@ const saveTeam = async () => {
       {/* チーム情報入力 */}
       <div className="space-y-4 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <div>
-          <label htmlFor="teamName" className="block text-sm font-semibold text-gray-700">
+          <label htmlFor="teamName" className="block text-sm font-semibold text-white/90 drop-shadow">
             チーム名
           </label>
           <input
@@ -304,7 +304,7 @@ const saveTeam = async () => {
           />
         </div>
         <div>
-          <label htmlFor="teamFurigana" className="block text-sm font-semibold text-gray-700">
+          <label htmlFor="teamFurigana" className="block text-sm font-semibold text-white/90 drop-shadow">
             ふりがな
           </label>
           <input
@@ -313,7 +313,10 @@ const saveTeam = async () => {
             name="furigana"
             value={team.furigana}
             onChange={handleTeamChange}
-            className="border border-gray-300 rounded px-3 py-2 w-full mt-1"
+              className="w-full mt-1 px-3 py-2 rounded-xl
++             bg-white/90 text-gray-900 placeholder-gray-600
++             border border-white/70 shadow-sm
++             focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="例：ひろしまかーぷ"
           />
         </div>
@@ -327,7 +330,7 @@ const saveTeam = async () => {
       
         {FIELDS.map(({ id, label, placeholder }) => (
           <div key={id} className="mb-3">
-            <label htmlFor={id} className="block text-sm font-semibold text-gray-700">
+            <label htmlFor={id} className="block text-sm font-semibold text-white/90 drop-shadow">
               {label}
             </label>
             <input
@@ -336,7 +339,10 @@ const saveTeam = async () => {
               ref={inputRefs[id]}
               value={(editingPlayer as any)[id] || ""}
               onChange={handlePlayerChange}
-              className="border border-gray-300 rounded px-3 py-2 w-full mt-1"
+              className="w-full mt-1 px-3 py-2 rounded-xl
++             bg-white/90 text-gray-900 placeholder-gray-600
++             border border-white/70 shadow-sm
++             focus:outline-none focus:ring-2 focus:ring-sky-400"
               placeholder={placeholder}
             />
           </div>
