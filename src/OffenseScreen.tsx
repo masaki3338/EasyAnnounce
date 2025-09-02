@@ -6,7 +6,6 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
-import { Undo2, Redo2 } from "lucide-react";
 
 type OffenseScreenProps = {
   onSwitchToDefense: () => void;
@@ -940,7 +939,7 @@ useEffect(() => {
                 className={`px-3 py-1 rounded ${history.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
                 title="直前の確定を取り消す"
               >
-                <Undo2 className="w-5 h-5 mr-1" />
+                取消
               </button>
               <button
                 onClick={handleRedo}
@@ -948,7 +947,7 @@ useEffect(() => {
                 className={`px-3 py-1 rounded ${redo.length ? "bg-gray-700 text-white" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
                 title="取り消しをやり直す"
               >
-                <Redo2 className="w-5 h-5 mr-1" />
+                やり直し
               </button>
             </div>
 
