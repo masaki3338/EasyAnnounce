@@ -2,6 +2,39 @@ import React, { useEffect, useState } from "react";
 import localForage from "localforage";
 
 
+// --- ミニSVGアイコン（依存なし） ---
+const IconPlay = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
+const IconInfo = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M11 17h2v-6h-2v6zm0-8h2V7h-2v2zm1-7a10 10 0 100 20 10 10 0 000-20z"/>
+  </svg>
+);
+const IconUsers = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M16 11a4 4 0 10-8 0 4 4 0 008 0zm-9 7a6 6 0 1112 0v2H7v-2z"/>
+  </svg>
+);
+const IconVs = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M7 7h4l-4 10H3L7 7zm14 0l-5 10h-4l5-10h4z"/>
+  </svg>
+);
+const IconUmpire = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 2a4 4 0 110 8 4 4 0 010-8zM5 20a7 7 0 0114 0v2H5v-2z"/>
+  </svg>
+);
+
+
 
 const resetAnnouncedIds = () => {
   setAnnouncedIds([]);
@@ -228,115 +261,154 @@ useEffect(() => {
   const pitcher = pitcherId ? players.find((p) => Number(p.id) === Number(pitcherId)) : undefined;
 
 
-  return (
-    <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 bg-gradient-to-b from-blue-50 via-white to-gray-50 min-h-screen">
-      <h1 className="text-2xl sm:text-3xl font-bold text-center text-blue-800 mb-6 flex items-center justify-center gap-2">
-        <span>⚾</span> <span>試合開始</span>
+return (
+  <div
+    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+    style={{
+      paddingTop: "max(16px, env(safe-area-inset-top))",
+      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    }}
+  >
+    {/* ヘッダー：中央大タイトル＋細ライン */}
+    <header className="w-full max-w-md text-center select-none mt-1">
+      <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+        <span className="text-2xl md:text-3xl">🏁</span>
+        <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
+          試合開始
+        </span>
       </h1>
+      <div className="mx-auto mt-2 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+    </header>
 
+    {/* 本体：カード群 */}
+    <main className="w-full max-w-md mt-5 space-y-5">
       {/* 試合情報 */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold text-blue-700 mb-2 flex items-center gap-2">
-          <span>📋</span> <span>試合情報</span>
-        </h2>
-        <div className="bg-white rounded-xl shadow-md px-4 py-3 text-gray-700">
-          <p className="text-lg font-medium">{teamName} vs {opponentName}</p>
-          <p className="text-sm text-gray-600 mt-1">
-            ベンチ位置：{firstBaseSide}　（{isFirstAttack ? "先攻" : "後攻"}）
-          </p>
-        </div>
-      </section>
-
-      {/* 審判情報 */}
-      <section className="mb-6">
-        <h2 className="text-lg font-semibold text-blue-700 mb-2 flex items-center gap-2">
-          <span>🧑‍⚖️</span> <span>審判</span>
-        </h2>
-        <div className="bg-white rounded-xl shadow-md px-4 py-3 text-sm text-gray-700 space-y-1">
-          <p>球審：{umpires["球審"] || "未設定"}</p>
-          <p>1塁審：{umpires["1塁審"] || "未設定"}</p>
-          <p>2塁審：{umpires["2塁審"] || "未設定"}</p>
-          <p>3塁審：{umpires["3塁審"] || "未設定"}</p>
-        </div>
-      </section>
-
-{/* スタメン・控え表示 */}
-<section className="mb-10">
-  <h2 className="text-lg font-semibold text-blue-700 mb-3 flex items-center gap-2">
-    <span>👥</span> <span>スターティングメンバー</span>
-  </h2>
-  <div className="grid sm:grid-cols-2 gap-6">
-    {/* 左：スタメン */}
-    <div>
-      <div className="text-sm text-gray-800 space-y-0 leading-tight">
-        {battingOrder.slice(0, 9).map((entry, index) => {
-          const pos = Object.keys(assignments).find((p) => assignments[p] === entry.id);
-          const player = getPlayer(entry.id);
-          return (
-            <div key={entry.id ?? index} className="flex gap-2">
-              <span className="w-8">{index + 1}番</span>
-              <span className="w-10">{pos ?? "未設定"}</span>
-              <span className="w-24">{player?.name ?? "未設定"}</span>
-              <span>#{player?.number ?? "-"}</span>
-            </div>
-          );
-        })}
-        {dhId && pitcher && (
-          <div className="flex gap-2 mt-1">
-            <span className="w-8"></span>
-            <span className="w-10">投</span>
-            <span className="w-24">{pitcher.name}</span>
-            <span>#{pitcher.number}</span>
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <IconInfo />
+            <div className="font-semibold">試合情報</div>
           </div>
-        )}
+          <div className="text-xs text-white/70">
+            {isFirstAttack ? "先攻" : "後攻"} / ベンチ：{firstBaseSide}
+          </div>
+        </div>
 
-      </div>
-    </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+              <span className="font-medium truncate max-w-[12rem]">{teamName || "未設定"}</span>
+            </span>
+            <IconVs />
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
+              <span className="font-medium truncate max-w-[12rem]">{opponentName || "未設定"}</span>
+            </span>
+          </div>
+        </div>
+      </section>
 
-    {/* 右：控え選手 */}
-    <div>
-      <h3 className="text-base font-semibold mb-1">控え選手</h3>
-      <div className="text-sm text-gray-800 space-y-0 leading-tight">
-        {players
-          .filter(
-            (p) =>
-              // 打順に入っていない
-              !battingOrder.some((entry) => entry.id === p.id) &&
-              // 守備にも就いていない（←ココを追加：投手などは控えに出ない）
-              !assignedIds.includes(p.id) &&
-              // ベンチ外でもない
-              !benchOutIds.includes(p.id)
-          )
-          .map((player) => (
-            <div key={player.id} className="flex gap-2">
-              <span className="w-28">{player.name}</span>
-              <span>#{player.number}</span>
+      {/* 審判 */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <IconUmpire />
+          <div className="font-semibold">審判</div>
+        </div>
+        <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
+          <li>球審：<span className="font-medium">{umpires["球審"] || "未設定"}</span></li>
+          <li>1塁審：<span className="font-medium">{umpires["1塁審"] || "未設定"}</span></li>
+          <li>2塁審：<span className="font-medium">{umpires["2塁審"] || "未設定"}</span></li>
+          <li>3塁審：<span className="font-medium">{umpires["3塁審"] || "未設定"}</span></li>
+        </ul>
+      </section>
+
+      {/* スタメン */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <IconUsers />
+          <div className="font-semibold">スターティングメンバー</div>
+        </div>
+
+        <div className="text-sm leading-tight space-y-1">
+          {battingOrder.slice(0, 9).map((entry, index) => {
+            const pos = Object.keys(assignments).find((p) => assignments[p] === entry.id) ?? "—";
+            const player = getPlayer(entry.id);
+            return (
+              <div key={entry.id ?? index} className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-9 h-6 rounded-full bg-white/10 border border-white/10">
+                  {index + 1}番
+                </span>
+                <span className="w-10 text-white/90">{pos}</span>
+                <span className="flex-1 font-medium truncate">{player?.name ?? "未設定"}</span>
+                <span className="opacity-90">#{player?.number ?? "-"}</span>
+              </div>
+            );
+          })}
+
+          {/* DH時の投手名を追記（元コード踏襲） */}
+          {dhId && pitcher && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="inline-flex items-center justify-center w-9 h-6 rounded-full bg-white/10 border border-white/10">
+                投
+              </span>
+              <span className="flex-1 font-medium truncate">{pitcher.name}</span>
+              <span className="opacity-90">#{(pitcher as any).number}</span>
             </div>
-          ))}
-      </div>
-    </div>
-  </div>
-</section>
+          )}
+        </div>
+      </section>
 
-
+      {/* 控え選手 */}
+      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <IconUsers />
+          <div className="font-semibold">控え選手</div>
+        </div>
+        <div className="text-sm leading-tight grid grid-cols-1 gap-1">
+          {players
+            .filter(
+              (p) =>
+                !battingOrder.some((e) => e.id === p.id) &&
+                !Object.values(assignments).filter((v) => v !== null).map(Number).includes(p.id) &&
+                !benchOutIds.includes(p.id)
+            )
+            .map((p) => (
+              <div key={p.id} className="flex items-center gap-2">
+                <span className="flex-1 truncate">{p.name}</span>
+                <span className="opacity-90">#{p.number}</span>
+              </div>
+            ))}
+          {/* 0人のとき */}
+          {players.filter(
+            (p) =>
+              !battingOrder.some((e) => e.id === p.id) &&
+              !Object.values(assignments).filter((v) => v !== null).map(Number).includes(p.id) &&
+              !benchOutIds.includes(p.id)
+          ).length === 0 && (
+            <div className="text-white/70">（該当なし）</div>
+          )}
+        </div>
+      </section>
 
       {/* 操作ボタン */}
-      <div className="grid gap-4">
+      <div className="grid gap-3 pt-1">
         <button
           onClick={handleStart}
-          className="bg-green-600 hover:bg-green-700 text-white text-lg font-semibold py-4 rounded-xl shadow-md transition"
+          className="w-full px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
         >
-          🟢 試合を開始する
+          <IconPlay /> 試合を開始する
         </button>
         <button
           onClick={onShowAnnouncement}
-          className="bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold py-4 rounded-xl shadow-md transition"
+          className="w-full px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
         >
-          📣 試合前アナウンス
+          <IconMic /> 試合前アナウンス
         </button>
       </div>
-    </div>
-  );
+    </main>
+  </div>
+);
+
+
 };
 
 export default StartGame;
