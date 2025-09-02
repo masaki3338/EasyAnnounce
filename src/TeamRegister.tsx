@@ -243,18 +243,32 @@ const saveTeam = async () => {
 
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6 bg-gray-50 min-h-screen">
-    <h1 className="text-2xl font-bold text-center text-blue-700 mb-6">🧢 チーム／選手登録</h1>
+ <div
+   className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+   style={{
+     paddingTop: "max(16px, env(safe-area-inset-top))",
+     paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+   }}
+ >
+ <div className="mt-2 text-center select-none mb-3">
+   <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
+     <span className="text-2xl">🧢</span>
+     <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+       チーム／選手登録
+     </span>
+   </h1>
+   <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+ </div>
 
     <div className="flex gap-3 justify-center mt-4 mb-2">
       <button
         onClick={handleBackup}
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+         className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow active:scale-95"
       >
         💾 記憶
       </button>
 
-      <label className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded cursor-pointer">
+      <label className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl shadow active:scale-95 cursor-pointer">
         📂 復元
         <input
           type="file"
@@ -265,12 +279,16 @@ const saveTeam = async () => {
       </label>
     </div>
 
-    {restoreMessage && (
-      <p className="text-sm text-center text-red-600 mb-4">{restoreMessage}</p>
-    )}
+ {restoreMessage && (
+   <div className="text-sm text-center mb-4">
+     <span className="inline-block px-3 py-2 rounded-xl bg-white/10 border border-white/10">
+       {restoreMessage}
+     </span>
+   </div>
+ )}
 
       {/* チーム情報入力 */}
-      <div className="space-y-4 bg-white rounded-xl shadow p-4 mb-6">
+      <div className="space-y-4 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <div>
           <label htmlFor="teamName" className="block text-sm font-semibold text-gray-700">
             チーム名
@@ -281,7 +299,7 @@ const saveTeam = async () => {
             name="name"
             value={team.name}
             onChange={handleTeamChange}
-            className="border border-gray-300 rounded px-3 py-2 w-full mt-1"
+             className="w-full mt-1 px-3 py-2 rounded-xl bg-white/90 text-gray-900 border border-white/70 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="例：広島カープ"
           />
         </div>
@@ -303,7 +321,7 @@ const saveTeam = async () => {
 
 
       {/* 選手追加フォーム */}      
-      <div className="bg-white rounded-xl shadow p-4 mb-6">
+       <div className="rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <h2 className="text-lg font-bold text-blue-600 mb-4">{editingPlayer.id ? "選手を編集" : "選手を追加"}</h2>
         
       
@@ -324,7 +342,7 @@ const saveTeam = async () => {
           </div>
         ))}
 
-        <label className="inline-flex items-center mt-2 mb-4">
+        <label className="inline-flex items-center gap-2 mt-2 mb-4">
           <input
             type="checkbox"
             name="isFemale"
@@ -337,33 +355,29 @@ const saveTeam = async () => {
 
         <button
           onClick={addOrUpdatePlayer}
-          className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl text-lg font-semibold transition"
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl text-lg font-semibold shadow active:scale-95"
         >
           {editingPlayer.id ? "✅ 更新" : "➕ 追加"}
         </button>
       </div>
 
       {/* 選手一覧 */}
-      <div className="bg-white rounded-xl shadow p-4 mb-6">
+       <div className="rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <h2 className="text-lg font-bold text-blue-600 mb-4">👥 登録済み選手</h2>
         <ul className="space-y-3">
           {team.players
             .sort((a, b) => Number(a.number) - Number(b.number))
             .map((p) => (
-              <li key={p.id} className="border rounded-lg p-3 flex justify-between items-center">
+              <li key={p.id} className="rounded-xl p-3 flex justify-between items-center bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10">
                 <div>
                   <p className="text-sm font-medium">
                     背番号 {p.number}：{p.lastName} {p.firstName} {p.isFemale ? "(女子)" : ""}
                   </p>
-                  <p className="text-xs text-gray-500">{p.lastNameKana} {p.firstNameKana}</p>
+                  <p className="text-xs text-white/70">{p.lastNameKana} {p.firstNameKana}</p>
                 </div>
-                <div className="flex gap-3 text-sm">
-                  <button onClick={() => editPlayer(p)} className="text-blue-600 font-semibold">
-                    編集
-                  </button>
-                  <button onClick={() => deletePlayer(p)} className="text-red-500 font-semibold">
-                    削除
-                  </button>
++   <div className="flex gap-2 text-sm">
++     <button onClick={() => editPlayer(p)} className="px-3 py-1 rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 active:scale-95">✏️ 編集</button>
++     <button onClick={() => deletePlayer(p)} className="px-3 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-700 text-white active:scale-95">🗑️ 削除</button>
                 </div>
               </li>
             ))}
@@ -372,7 +386,7 @@ const saveTeam = async () => {
 
       <button
         onClick={saveTeam}
-        className="w-full bg-blue-700 hover:bg-blue-800 text-white py-4 rounded-xl text-lg font-bold"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl text-lg font-bold shadow active:scale-95"
       >
         💾 保存する
       </button>
