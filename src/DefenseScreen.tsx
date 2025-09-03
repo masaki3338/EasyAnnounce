@@ -1,6 +1,29 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 
+// --- マージ保存ヘルパー ---
+type MatchInfo = {
+  tournamentName?: string;
+  matchNumber?: number;
+  opponentTeam?: string;
+  opponentTeamFurigana?: string;
+  isHome?: boolean;
+  benchSide?: string;
+  umpires?: { role: string; name: string; furigana: string }[];
+  inning?: number;
+  isTop?: boolean;
+  isDefense?: boolean;
+  teamName?: string;
+};
+
+const saveMatchInfo = async (patch: Partial<MatchInfo>) => {
+  const prev = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+  const next = { ...prev, ...patch };
+  await localForage.setItem("matchInfo", next);
+  return next;
+};
+
+
 type Player = {
   id: number;
   lastName?: string;
@@ -623,13 +646,22 @@ const confirmScore = async () => {
   const nextInning = isTop ? inning : inning + 1;
 
   // 🟡 matchInfo 更新
-  await localForage.setItem("matchInfo", {
-    opponentTeam: opponentTeamName,
-    inning: nextInning,
-    isTop: nextIsTop,
-    isDefense: true,
-    isHome,
-  });
+// 🟡 最新の matchInfo から isHome を堅牢に取得（初回OKで未反映を防ぐ）
+const mi = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+const home = typeof mi?.isHome === "boolean" ? mi.isHome : isHome;
+
+// 🟡 次が攻撃回か？（先攻=top、後攻=bottom）
+const willSwitchToOffense  = (nextIsTop && !home) || (!nextIsTop && home);
+
+// 🟡 マージ保存（ふりがな等の既存フィールドを保持）
+await saveMatchInfo({
+  // opponentTeam は書かなくてもOK（ opponentTeamFurigana も維持される）
+  inning: nextInning,
+  isTop: nextIsTop,
+  isDefense: !willSwitchToOffense , // ← 攻撃に回るタイミングでは false に
+  isHome: home,
+});
+
 
   setIsTop(nextIsTop);
   if (!isTop) setInning(nextInning);

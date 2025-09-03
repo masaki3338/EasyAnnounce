@@ -7,19 +7,35 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
 
+
 type OffenseScreenProps = {
   onSwitchToDefense: () => void;
   onGoToSeatIntroduction: () => void;
   onBack?: () => void;
 };
 
+
 type MatchInfo = {
-  opponentTeam: string;
+  tournamentName?: string;
+  matchNumber?: number;
+  opponentTeam?: string;
+  opponentTeamFurigana?: string;
+  isHome?: boolean;
+  benchSide?: string;
+  umpires?: { role: string; name: string; furigana: string }[];
   inning?: number;
   isTop?: boolean;
   isDefense?: boolean;
-  isHome?: boolean; // ✅ ←追加
+  teamName?: string;
 };
+
+const saveMatchInfo = async (patch: Partial<MatchInfo>) => {
+  const prev = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+  const next = { ...prev, ...patch };
+  await localForage.setItem("matchInfo", next);
+  return next;
+};
+
 
 
 
@@ -554,12 +570,12 @@ const restoreSnapshot = async (s: OffenseSnapshot) => {
   await localForage.setItem("replacedRunners", s.replacedRunners);
   await localForage.setItem("tempRunnerFlags", s.tempRunnerFlags);
   await localForage.setItem("selectedRunnerByBase", s.selectedRunnerByBase);
-  await localForage.setItem("matchInfo", {
-    opponentTeam,
-    inning: s.inning,
-    isTop: s.isTop,
-    isHome: s.isHome,
+  await saveMatchInfo({
+    inning,        // or nextInning
+    isTop: false,  // or true（分岐に応じて）
+    isHome,        // 既存値を維持
   });
+
 };
 
 // 変更前に履歴へ積む
@@ -666,22 +682,22 @@ const confirmScore = async () => {
 
   if (isTop) {
     setIsTop(false);
-    await localForage.setItem("matchInfo", {
-      opponentTeam,
-      inning,
-      isTop: false,
-      isHome,
+    await saveMatchInfo({
+      inning,        // or nextInning
+      isTop: false,  // or true（分岐に応じて）
+      isHome,        // 既存値を維持
     });
+
   } else {
     const nextInning = inning + 1;
     setIsTop(true);
     setInning(nextInning);
-    await localForage.setItem("matchInfo", {
-      opponentTeam,
-      inning: nextInning,
-      isTop: true,
-      isHome,
+    await saveMatchInfo({
+      inning,        // or nextInning
+      isTop: false,  // or true（分岐に応じて）
+      isHome,        // 既存値を維持
     });
+
   }
 
   if (score > 0) {
