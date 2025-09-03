@@ -91,7 +91,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
       }}
     >
       {/* ヘッダー */}
-      <header className="w-full max-w-md pt-2">
+      <header className="w-[100svw] -mx-6 md:mx-0 md:w-full pt-2">
         <div className="flex items-center justify-between">
           <button
             className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
@@ -117,8 +117,8 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
       </header>
 
       {/* 本体カード */}
-      <main className="w-full max-w-md mt-6">
-        <section className="rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
+      <main className="w-[100svw] -mx-6 md:mx-0 md:w-full mt-6">
+        <section className="rounded-none md:rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
           <div className="space-y-5 text-base">
             {/* 75球 */}
             <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -163,7 +163,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
               <input type="radio" className="hidden" checked={isChecked("custom")} onChange={chooseCustom} />
 
               <span className="mr-1 cursor-default whitespace-nowrap shrink-0 inline-flex items-center gap-1">
-                <IconCustom /> <span className="font-medium">カスタム：</span>
+                 <span className="font-medium">カスタム：</span>
               </span>
 
               {/* − ［現在値］ ＋ */}
