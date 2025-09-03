@@ -575,14 +575,16 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                  px-2 sm:px-2.5 h-8 sm:h-9
                  rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
                  backdrop-blur-[2px] text-center
-                 flex items-center justify-center select-none"
+                 flex items-center justify-center select-none touch-none"
     >
       {player ? (
         <div
-          draggable                             // ← 追加：中央でも掴める
-          onDragStart={(e) => handleDragStart(e, player.id, pos)}  // ← 追加
-          className="relative font-semibold whitespace-nowrap overflow-hidden text-ellipsis
-                    text-sm sm:text-base leading-none translate-y-[1px] select-none">
+          draggable
+          onDragStart={(e) => handleDragStart(e, player.id, pos)}
+          style={{ WebkitUserDrag: "element" }}
+          className="relative w-full h-full flex items-center justify-center
+                      font-semibold whitespace-nowrap overflow-hidden text-ellipsis
+                      text-sm sm:text-base leading-none select-none">
           {player.lastName}{player.firstName} #{player.number}
         </div>
       ) : (
