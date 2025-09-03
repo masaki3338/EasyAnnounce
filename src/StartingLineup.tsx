@@ -73,6 +73,19 @@ const StartingLineup = () => {
     { id: number; reason: "スタメン" }[]
   >([]);
 
+  // タッチ（スマホ）用：選手選択を保持
+const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(null);
+const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null);
+
+// 既存の handleDrop... を流用するためのダミーDragEvent
+const makeFakeDragEvent = (payload: Record<string, string>) =>
+  ({
+    preventDefault: () => {},
+    dataTransfer: {
+      getData: (key: string) => payload[key] ?? "",
+    },
+  } as unknown as React.DragEvent<HTMLDivElement>);
+
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
@@ -541,6 +554,17 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
         player.id, pos)}
       onDragOver={allowDrop}
       onDrop={(e) => handleDropToPosition(e, pos)}
+       onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
+      onTouchEnd={() => {
+        if (!touchDrag) return;
+        const fake = makeFakeDragEvent({
+          playerId: String(touchDrag.playerId),
+          "text/plain": String(touchDrag.playerId),
+          fromPosition: touchDrag.fromPos ?? "",
+        });
+        handleDropToPosition(fake, pos);
+        setTouchDrag(null);
+      }}
       style={{
         ...positionStyles[pos],
         position: "absolute",
