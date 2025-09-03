@@ -432,49 +432,51 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   const playerId = Number(
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain")
   );
-  const fromPos = e.dataTransfer.getData("fromPosition") || "";
+  if (!playerId) return;
+
+  // 端末によって fromPosition が来ないことがあるのでフォールバック
+  const fromPosRaw = e.dataTransfer.getData("fromPosition") || "";
+  const fromPos =
+    fromPosRaw ||
+    (Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? "");
 
   // ① ベンチ外 → 控え（従来どおり）
   setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
 
-  // ② フィールド → 控え は「DH」だけ許可（他守備は何もしない）
+  // ② フィールド → 控え は「DH」だけ許可
   if (fromPos !== DH) return;
 
   // ③ DH を守備から外す
-  const oldDhId = assignments[DH] ?? null;         // 外す前のDH
-  if (oldDhId !== playerId) {
-    // 念のため：ドラッグ元と一致しない場合は何もしない
-    // （一致しなくても続けたい場合はこのifを消してOK）
-  }
+  const oldDhId = assignments[DH] ?? null;
   const next = { ...assignments, [DH]: null };
   setAssignments(next);
 
-  // ④ 打順（固定）：DHがいなくなったら投手を打順に入れる
+  // ④ 打順（固定）：DHがいなくなったら投手をDHの枠に戻す
   setBattingOrder((prev) => {
     let updated = [...prev];
     const pitcherId = next["投"] ?? null;
 
     if (pitcherId) {
-      // DHが打順に居た枠を特定して、その枠を投手に置換（順序は変えない）
       const dIdx = oldDhId ? updated.findIndex((e) => e.id === oldDhId) : -1;
       if (dIdx !== -1) {
         updated[dIdx] = { id: pitcherId, reason: "スタメン" };
       } else if (!updated.some((e) => e.id === pitcherId)) {
-        // 念のため：DHが打順に居なかったケース。投手が不在なら末尾に追加。
-        // （基本はdIdxが見つかるはず）
         updated.push({ id: pitcherId, reason: "スタメン" });
       }
     }
 
     // 重複除去 & 9人制限
     const seen = new Set<number>();
-    updated = updated
-      .filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
-      .slice(0, 9);
+    updated = updated.filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    }).slice(0, 9);
 
     return updated;
   });
 };
+
 
 
 
@@ -619,6 +621,16 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
             className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
             onDragOver={allowDrop}
             onDrop={handleDropToBench}
+            onTouchEnd={() => {
+              if (!touchDrag) return;
+              const fake = makeFakeDragEvent({
+                playerId: String(touchDrag.playerId),
+                "text/plain": String(touchDrag.playerId),
+                fromPosition: touchDrag.fromPos ?? "",
+              });
+              handleDropToBench(fake);
+              setTouchDrag(null);
+            }}
           >
             {teamPlayers
               .filter((p) => !assignedIds.includes(p.id) && !benchOutIds.includes(p.id))
