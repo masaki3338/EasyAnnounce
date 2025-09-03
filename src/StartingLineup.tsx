@@ -495,7 +495,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
    <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden><path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z"/></svg>
      <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-       スタメン設定（守備配置/打順配置）
+       スタメン設定
      </span>
    </h1>
    <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
@@ -506,7 +506,18 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 
       {/* フィールド配置 */}
  {/* フィールド配置（カード） */}
- <section className="w-full max-w-2xl mx-auto mb-6 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
+ <section
+   className="
+     mb-6
+     w-[100svw] -mx-6 md:mx-auto md:w-full md:max-w-2xl
+     p-3 md:p-4
+     bg-white/5 md:bg-white/10
+     border-x-0 md:border md:border-white/10
+     rounded-none md:rounded-2xl
+     ring-0 md:ring-1 md:ring-inset md:ring-white/10
+     shadow
+   "
+ >
    <div className="flex items-center gap-2 mb-3">
      <span className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
        {/* フィールドアイコン（見た目だけ） */}
@@ -518,8 +529,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
           <img
             src="/field.jpg"
             alt="フィールド図"
-            className="w-full rounded shadow select-none pointer-events-none"
-          />
+            className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
           {allSlots.map((pos) => {
             const playerId = assignments[pos];
             const player = teamPlayers.find((p) => p.id === playerId);
@@ -534,9 +544,11 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                   transform: "translate(-50%, -50%)",
                   cursor: player ? "move" : "default",
                 }}
-                className="min-w-[96px] max-w-[160px] px-2.5 py-1.5 rounded-xl
+                className="z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
+                px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl
                 bg-white/90 text-gray-900 shadow border border-white/70
-                backdrop-blur-[2px] text-center"
+                backdrop-blur-[2px] text-center
+                text-[11px] sm:text-sm leading-tight"
               >
                 {player ? (
                   <div
