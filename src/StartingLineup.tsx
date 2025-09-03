@@ -536,6 +536,9 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
   return (
     <div
       key={pos}
+      draggable={!!player}                                   // ← これを追加
+      onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
+        player.id, pos)}
       onDragOver={allowDrop}
       onDrop={(e) => handleDropToPosition(e, pos)}
       style={{
