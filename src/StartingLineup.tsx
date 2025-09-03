@@ -530,41 +530,38 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
             src="/field.png"
             alt="フィールド図"
             className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
-          {allSlots.map((pos) => {
-            const playerId = assignments[pos];
-            const player = teamPlayers.find((p) => p.id === playerId);
-            return (
-              <div
-                key={pos}
-                onDragOver={allowDrop}
-                onDrop={(e) => handleDropToPosition(e, pos)}
-                style={{
-                  ...positionStyles[pos],
-                  position: "absolute",
-                  transform: "translate(-50%, -50%)",
-                  cursor: player ? "move" : "default",
-                }}
-                className="z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
-                px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl
-                bg-white/90 text-gray-900 shadow border border-white/70
-                backdrop-blur-[2px] text-center
-                text-xs sm:text-base leading-tight"
-              >
-                {player ? (
-                  <div
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, player.id, pos)}
-                    className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis"
-                  >
-                    {player.lastName}{player.firstName} #{player.number}
-                  </div>
-                ) : (
-                  <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
-                )}
+{allSlots.map((pos) => {
+  const playerId = assignments[pos];
+  const player = teamPlayers.find((p) => p.id === playerId);
+  return (
+    <div
+      key={pos}
+      onDragOver={allowDrop}
+      onDrop={(e) => handleDropToPosition(e, pos)}
+      style={{
+        ...positionStyles[pos],
+        position: "absolute",
+        transform: "translate(-50%, -50%)",
+        cursor: player ? "move" : "default",
+      }}
+      className="z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
+                 px-2 sm:px-2.5 h-8 sm:h-9
+                 rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
+                 backdrop-blur-[2px] text-center
+                 flex items-center justify-center"
+    >
+      {player ? (
+        <div className="relative font-semibold whitespace-nowrap overflow-hidden text-ellipsis
+                        text-sm sm:text-base leading-none translate-y-[1px]">
+          {player.lastName}{player.firstName} #{player.number}
+        </div>
+      ) : (
+        <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
+      )}
+    </div>
+  );
+})}
 
-              </div>
-            );
-          })}
       </div>
       </section>
 
