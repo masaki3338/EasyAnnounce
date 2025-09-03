@@ -416,8 +416,15 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
             ← 試合開始画面に戻る
           </button>
           <PreGameAnnouncement
-            onNavigate={setScreen}
-            onBack={() => setScreen("startGame")} // ← ここで必須のonBackを渡す
+            onNavigate={async (next) => {
+              // ★ 試合前アナウンス→シート紹介のときは“試合中からではない”扱いにする
+              if (next === "seatIntroduction") {
+                fromGameRef.current = false;
+                lastOffenseRef.current = false;
+              }
+              setScreen(next);
+            }}
+            onBack={() => setScreen("startGame")}
           />
         </>
       )}

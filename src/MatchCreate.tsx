@@ -57,6 +57,7 @@ type MatchCreateProps = {
 const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [tournamentName, setTournamentName] = useState("");
   const [recentTournaments, setRecentTournaments] = useState<string[]>([""]);
+  const [lastPickedName, setLastPickedName] = useState<string>("");
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
   // 相手チーム名のふりがな
@@ -123,13 +124,24 @@ const upsertRecentTournaments = async (name: string) => {
   }
 
   // 現在のリストから空白と重複を取り除き、先頭に今回を追加
-  let list = recentTournaments.filter((t) => t !== "" && t !== trimmed);
-  list.unshift(trimmed);                // 先頭に新規
-  list = list.slice(0, 5);              // 最大5件
-  const finalList = ["", ...list];      // 先頭は必ず空白
+  const saved = await localForage.getItem<string[]>("recentTournaments");
+  let base = (saved && Array.isArray(saved) ? saved : recentTournaments).filter((t) => t !== "");
+
+  let list: string[];
+  // リストから選んで編集した（＝元の選択肢が残っている）なら“置換”
+  if (lastPickedName && lastPickedName !== "" && lastPickedName !== trimmed && base.includes(lastPickedName)) {
+    list = base.map((t) => (t === lastPickedName ? trimmed : t));
+  } else {
+    // それ以外は従来どおり：重複を除いて先頭に追加
+    list = [trimmed, ...base.filter((t) => t !== trimmed)];
+  }
+
+  list = list.slice(0, 5);
+  const finalList = ["", ...list];
 
   setRecentTournaments(finalList);
   await localForage.setItem("recentTournaments", finalList);
+  setLastPickedName(""); // 次回に持ち越さない
 };
 
 // 置き換え：読み上げ開始
@@ -246,8 +258,12 @@ return (
           {/* 左：大会名セレクト＋上書き入力 */}
           <div className="flex-1 space-y-2">
             <select
-              value={tournamentName}
-              onChange={(e) => setTournamentName(e.target.value)}
+            value={tournamentName}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTournamentName(v);
+              setLastPickedName(v); // ← これを“編集元”として記録
+            }}
               className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
             >
               {recentTournaments.map((name, i) => (

@@ -405,6 +405,36 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   </StepCard>
 </main>
 
+{/* ✅ モーダル（残り2分） */}
+{showTwoMinModal && (
+  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
+      <p className="text-lg font-semibold mb-4 whitespace-nowrap">残り2分です。</p>
+      <button
+        className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
+        onClick={() => setShowTwoMinModal(false)}
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
+
+{/* ✅ モーダル（タイマー終了） */}
+{showEndModal && (
+  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
+      <p className="text-lg font-semibold mb-4">タイマーが終了しました。</p>
+      <button
+        className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
+        onClick={() => setShowEndModal(false)}
+      >
+        OK
+      </button>
+    </div>
+  </div>
+)}
+
     </div>
   );
 };

@@ -203,7 +203,8 @@ useEffect(() => {
       isDefense: !isFirstAttack,
       isHome: isHome,
     };
-    await localForage.setItem("matchInfo", initialMatchInfo);
+    const prev = await localForage.getItem<any>("matchInfo");
+    await localForage.setItem("matchInfo", { ...(prev || {}), ...initialMatchInfo });
 
     // 代打/代走・再入場・交代表示の残骸を全削除
     await localForage.setItem("usedPlayerInfo", {});  // （既存）代打/代走の紐づけを初期化

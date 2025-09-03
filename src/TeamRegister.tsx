@@ -250,7 +250,7 @@ const saveTeam = async () => {
      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
    }}
  >
- <div className="mt-2 text-center select-none mb-3">
+ <div className="mt-2 text-center select-none mb-3 w-full">
    <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
      <span className="text-2xl">🧢</span>
      <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
@@ -260,7 +260,7 @@ const saveTeam = async () => {
    <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
  </div>
 
-    <div className="flex gap-3 justify-center mt-4 mb-2">
+    <div className="flex gap-3 justify-center mt-4 mb-2 w-full">
       <button
         onClick={handleBackup}
          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow active:scale-95"
@@ -288,7 +288,7 @@ const saveTeam = async () => {
  )}
 
       {/* チーム情報入力 */}
-      <div className="space-y-4 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
+      <div className="w-full space-y-4 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <div>
           <label htmlFor="teamName" className="block text-sm font-semibold text-white/90 drop-shadow">
             チーム名
@@ -324,7 +324,7 @@ const saveTeam = async () => {
 
 
       {/* 選手追加フォーム */}      
-       <div className="rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
+       <div className="w-full rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <h2 className="text-lg font-bold text-blue-600 mb-4">{editingPlayer.id ? "選手を編集" : "選手を追加"}</h2>
         
       
@@ -368,7 +368,7 @@ const saveTeam = async () => {
       </div>
 
       {/* 選手一覧 */}
-       <div className="rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
+       <div className="w-full rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
         <h2 className="text-lg font-bold text-blue-600 mb-4">👥 登録済み選手</h2>
         <ul className="space-y-3">
           {team.players

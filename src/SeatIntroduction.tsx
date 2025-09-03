@@ -38,11 +38,31 @@ const IconMic = () => (
   </svg>
 );
 
+// 追加：戻り先をストレージから都度解決
+const resolveBackTarget = async (): Promise<ScreenType> => {
+  const [last, matchInfo] = await Promise.all([
+    localForage.getItem<string>("lastScreen"),
+    localForage.getItem<any>("matchInfo"),
+  ]);
+  const s = (last || "").toLowerCase();
+  const isFromPreAnnounce =
+    s.includes("announce") || s.includes("warmup") || s.includes("greet") ||
+    s.includes("knock") || s.includes("gather") || s.includes("seat");
+  const isFromOffense =
+    s.includes("offen") || s.includes("attack") || s.includes("bat");
+
+  if (isFromPreAnnounce) return "announcement" as ScreenType;
+  if (isFromOffense) return "defense" as ScreenType;
+  if (matchInfo && matchInfo.isDefense === false) return "defense" as ScreenType; // 保険
+  return "startGame" as ScreenType;
+};
+
 const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [teamName, setTeamName] = useState("");
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
+  const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
 
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -65,9 +85,24 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       const team = await localForage.getItem<any>("team");
       const assignments = await localForage.getItem<{ [pos: string]: number }>("lineupAssignments");
       const matchInfo = await localForage.getItem<any>("matchInfo");
+      const last = (await localForage.getItem<string>("lastScreen")) || "";
+
+      console.log("SeatIntro lastScreen=", last, " isDefense=", matchInfo?.isDefense);
 
       if (team) setTeamName(team.name || "");
       if (matchInfo) setIsHome(matchInfo.isHome ?? true);
+
+      // 戻り先の判定（大小無視の部分一致＋保険）
+      const s = (last || "").toLowerCase();
+      const isFromPreAnnounce =
+        s.includes("announce") || s.includes("warmup") || s.includes("greet") ||        s.includes("knock") || s.includes("gather") || s.includes("seat");
+      const isFromOffense =
+        s.includes("offen") || s.includes("attack") || s.includes("bat");
+
+      setBackTarget(await resolveBackTarget());
+      const tgt = await resolveBackTarget();
+      setBackTarget(tgt);
+      console.log("SeatIntro backTarget(init)=", tgt, " lastScreen=", last, " isDefense=", matchInfo?.isDefense);
 
       if (assignments && team?.players) {
         const posMap: { [key: string]: PositionInfo } = {};
@@ -149,8 +184,12 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => (onBack ? onBack() : onNavigate("startGame"))}
+        <button
+            onClick={async () => {
+              const tgt = await resolveBackTarget();
+              console.log("SeatIntro back ->", tgt);
+              onNavigate(tgt);
+            }}
             className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
           >
             <IconBack />

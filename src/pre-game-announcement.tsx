@@ -196,10 +196,14 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
   ];
 
   // 担当外でも遷移OK（確認付き）
-const handleStepClick = (s: typeof steps[number]) => {
+const handleStepClick = async (s: typeof steps[number]) => {
   if (!s.enabled) {
     const ok = window.confirm(`${s.title} は現在の担当外です。開きますか？`);
     if (!ok) return;
+  }
+  // 📝 シート紹介に入る前だけ「どこから来たか」を保存
+  if (s.key === "seatIntroduction") {
+    await localForage.setItem("lastScreen", "announcement");
   }
   onNavigate(s.key);
 };

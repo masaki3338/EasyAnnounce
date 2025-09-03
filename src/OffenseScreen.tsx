@@ -23,6 +23,7 @@ type MatchInfo = {
 
 
 
+
 const DraggablePlayer = ({ player }: { player: any }) => {
   const [, drag] = useDrag({
     type: "player",
@@ -223,7 +224,16 @@ const findReentryCandidateForCurrentSpot = () => {
   return { A, B: null, order1 };
 };
 
-
+// Offense → SeatIntroduction へ行くときの共通ナビ（保存してから遷移）
+const goSeatIntroFromOffense = async () => {
+  await localForage.setItem("lastScreen", "offense");
+  const mi = (await localForage.getItem<any>("matchInfo")) || {};
+  // 攻撃中フラグを明示（SeatIntroduction 側の保険にも効かせる）
+  if (mi.isDefense !== false) {
+    await localForage.setItem("matchInfo", { ...mi, isDefense: false });
+  }
+  onGoToSeatIntroduction();
+};
 
   const handleStartGame = () => {
     const now = new Date();
@@ -691,7 +701,7 @@ const confirmScore = async () => {
     onSwitchToDefense();
   } else {
     await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-    onGoToSeatIntroduction();
+    await goSeatIntroFromOffense();
   }
 } else {
   onSwitchToDefense();
@@ -1343,13 +1353,13 @@ useEffect(() => {
           停止
         </button>
 <button
-  onClick={() => {
+  onClick={async () => {
     setShowScorePopup(false);
     if (pendingGroundPopup) {
       setPendingGroundPopup(false);
       setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
     } else if (inning === 1 && isTop) {
-      onGoToSeatIntroduction();
+      await goSeatIntroFromOffense();
     } else {
       onSwitchToDefense();
     }

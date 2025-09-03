@@ -438,8 +438,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       {/* モーダル（タイマー終了） */}
       {showEndModal1 && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-72">
-            <p className="text-lg font-semibold mb-4">タイマー（1回目）が終了しました。</p>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
+            <p className="text-lg font-semibold mb-4 whitespace-nowrap">タイマー（1回目）が終了しました。</p>
             <button
               className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
               onClick={() => setShowEndModal1(false)}
@@ -451,8 +451,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       )}
       {showEndModal2 && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-72">
-            <p className="text-lg font-semibold mb-4">タイマー（2回目）が終了しました。</p>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
+            <p className="text-lg font-semibold mb-4 whitespace-nowrap">タイマー（2回目）が終了しました。</p>
             <button
               className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
               onClick={() => setShowEndModal2(false)}
