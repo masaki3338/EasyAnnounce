@@ -300,7 +300,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
               const honorific = getHonorific(p);
               return (
                 <p key={entry.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                  {idx + 1}番　{posName}　{renderFullName(p)}{honorific}、　{posName}　{renderLastName(p)}{honorific}、背番号{p.number}、
+                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、{posName} {renderLastName(p)}{honorific} 背番号{p.number}
                 </p>
               );
             })}

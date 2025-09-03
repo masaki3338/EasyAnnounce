@@ -527,7 +527,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
    </div>
    <div className="relative">
           <img
-            src="/field.jpg"
+            src="/field.png"
             alt="フィールド図"
             className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
           {allSlots.map((pos) => {
@@ -548,7 +548,7 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
                 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl
                 bg-white/90 text-gray-900 shadow border border-white/70
                 backdrop-blur-[2px] text-center
-                text-[11px] sm:text-sm leading-tight"
+                text-xs sm:text-base leading-tight"
               >
                 {player ? (
                   <div

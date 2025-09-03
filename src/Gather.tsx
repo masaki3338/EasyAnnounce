@@ -123,7 +123,6 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
         >
           <div className="flex items-start gap-2 mb-2">
             <img src="/icons/mic-red.png" alt="Mic" className="w-6 h-6" />
-            <div className="text-rose-50/90 text-[11px]">アナウンス文言（表示どおり読み上げ）</div>
           </div>
           <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
             {message}
