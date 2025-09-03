@@ -133,6 +133,21 @@ useEffect(() => {
     
   }, []);
 
+  // iOS判定 & 透明1pxゴースト画像
+const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
+
+useEffect(() => {
+  if (!ghostImgRef.current) {
+    const img = new Image();
+    // 1x1完全透明PNG
+    img.src =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
+    ghostImgRef.current = img;
+  }
+}, []);
+
+
 useEffect(() => {
   const loadInitialData = async () => {
     const team = await localForage.getItem<{ players: Player[] }>("team");
@@ -251,26 +266,17 @@ const handleDragStart = (
   if (fromPos) e.dataTransfer.setData("fromPosition", fromPos);
   e.dataTransfer.effectAllowed = "move";
 
-  // 👇 iOS 原点ズレ対策：ドラッグ画像の原点を指先に補正
+  // 👉 iOS Safari対策：透明1pxゴーストを使って原点ズレを根本回避
   try {
-    const target = e.currentTarget as HTMLElement; // ドラッグしている名前ラベル
+    if (isIOS && e.dataTransfer.setDragImage && ghostImgRef.current) {
+      e.dataTransfer.setDragImage(ghostImgRef.current, 0, 0);
+      return;
+    }
+    // iOS以外は従来どおり要素をゴーストに（中央基準）
+    const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
-
-    // dragstart 時点のポインタ座標（Reactのラッパ越しもカバー）
-    const clientX = (e as any).clientX ?? (e as any).nativeEvent?.clientX;
-    const clientY = (e as any).clientY ?? (e as any).nativeEvent?.clientY;
-
-    // 取得できない場合の保険：中央
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const offsetX =
-      typeof clientX === "number" ? clientX - rect.left : rect.width / 2;
-    const offsetY =
-      typeof clientY === "number" ? clientY - rect.top : rect.height / 2;
-
-    // iOS でまだブレる場合は、中央固定にするとさらに安定
-    const ox = isIOS ? rect.width / 2 : offsetX;
-    const oy = isIOS ? rect.height / 2 : offsetY;
-
+    const ox = rect.width / 2;
+    const oy = rect.height / 2;
     if (e.dataTransfer.setDragImage) {
       e.dataTransfer.setDragImage(target, ox, oy);
     }
