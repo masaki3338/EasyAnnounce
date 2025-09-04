@@ -934,9 +934,19 @@ useEffect(() => {
 
 </div>
     <div className="max-w-4xl mx-auto p-4">
-        <h2 className="text-xl font-bold mb-2">
-          {teamName || '自チーム'} vs {opponentTeam || '対戦相手'}
-        </h2>
+      <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
+        <img
+          src="/icons/Ofence.png"   // ← public/icons/Ofence.png に置く
+          alt=""
+          width={24}
+          height={24}
+          className="w-6 h-6 object-contain align-middle select-none"
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+        />
+        <span>{teamName || "自チーム"} vs {opponentTeam || "対戦相手"}</span>
+      </h2>
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
             <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
@@ -1032,15 +1042,35 @@ useEffect(() => {
                 className={`border text-center cursor-pointer hover:bg-gray-200 ${
                   isNow ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
                 }`}
-                onClick={() => {
-                  // ✅ 現在イニングまたは未来の回は編集禁止
-                  if (isNow || i + 1 >= inning) return;
-                  setEditInning(i + 1);
-                  setEditTopBottom(target);
-                  const existing = scores[i]?.[target];
-                  setInputScore(existing !== undefined ? String(existing) : "");
-                  setShowModal(true);
-                }}
+onClick={() => {
+  const clickedInning = i + 1;
+  const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
+
+  // 半回の序列: 表=0, 裏=1
+  const currentHalfIndex = isTop ? 0 : 1;
+  const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
+
+  // いま進行中の半回は編集禁止
+  const isCurrentHalf =
+    clickedInning === inning && clickedHalfIndex === currentHalfIndex;
+
+  // 未来（現在より後）の半回は編集禁止
+  const isFuture =
+    clickedInning > inning ||
+    (clickedInning === inning && clickedHalfIndex > currentHalfIndex);
+
+  if (isCurrentHalf || isFuture) return;
+
+  // ここまで来たら「過去の半回」= 編集OK
+  setEditInning(clickedInning);
+  setEditTopBottom(clickedHalf);
+  const existing = scores[i]?.[clickedHalf];
+  setInputScore(
+    existing !== undefined ? String(existing) : ""
+  );
+  setShowModal(true);
+}}
+
               >
                 {isNow ? "" : (i + 1 > inning ? "" : val ?? "")}
               </td>
@@ -1825,7 +1855,19 @@ await localForage.setItem("lineupAssignments", newAssignments);
 {showRunnerModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center overflow-y-auto p-2">
     <div className="bg-white p-4 rounded-xl shadow-xl w-full max-w-md space-y-4">
-      <h2 className="text-2xl font-bold text-center">代走</h2>
+<h2 className="text-2xl font-bold flex items-center justify-center gap-2">
+  <img
+    src="/icons/Runner.png"   // ← public/icons/Runner.png に置く
+    alt="ランナーアイコン"
+    width={48}
+    height={48}
+    className="w-6 h-6 object-contain align-middle select-none"
+    loading="lazy"
+    decoding="async"
+    draggable="false"
+  />
+  <span>代走</span>
+</h2>
       {/* === STEP 1 === */}
       {selectedRunnerIndex === null && (
         <div className="space-y-4">

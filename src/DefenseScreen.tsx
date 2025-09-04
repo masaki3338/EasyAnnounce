@@ -757,9 +757,19 @@ const handlePitchLimitSpeak = () => {
     
     <div className="max-w-4xl mx-auto p-4">
       <section className="mb-4">
-        <h2 className="text-xl font-bold mb-2">
-          {myTeamName || '自チーム'} vs {opponentTeamName || '対戦相手'}
-        </h2>
+      <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
+        <img
+          src="/icons/Defence.png"   // ← public/icons/Defence.png に置く
+          alt=""
+          width={24}
+          height={24}
+          className="w-6 h-6 object-contain align-middle select-none"
+          loading="lazy"
+          decoding="async"
+          draggable="false"
+        />
+        <span>{myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}</span>
+      </h2>
 <div className="mb-2">
   <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
     {/* 左：状態（縮む・折り返さない） */}
@@ -850,15 +860,35 @@ const handlePitchLimitSpeak = () => {
               className={`border cursor-pointer text-center hover:bg-gray-200 ${
                 isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
               }`}
-              onClick={() => {
-                // ✅ 現在のイニング（黄色）または未来の回は無効
-                if (isHighlight || i + 1 >= inning) return;
-                setEditInning(i + 1);
-                setEditTopBottom(target);
-                const existing = scores[i]?.[target];
-                setInputScore(existing !== undefined ? String(existing) : "");
-                setShowModal(true);
-              }}
+onClick={() => {
+  const clickedInning = i + 1;
+
+  // そのセルが表/裏どちらか（この行＋ホーム/ビジターから既に算出済みの target を使う）
+  const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
+
+  // 半回の序列: 表=0, 裏=1
+  const currentHalfIndex = isTop ? 0 : 1;
+  const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
+
+  // いま進行中の半回は編集禁止
+  const isCurrentHalf =
+    clickedInning === inning && clickedHalfIndex === currentHalfIndex;
+
+  // 未来（現在より後）の半回は編集禁止
+  const isFuture =
+    clickedInning > inning ||
+    (clickedInning === inning && clickedHalfIndex > currentHalfIndex);
+
+  if (isCurrentHalf || isFuture) return;
+
+  // ここまで来たら「過去の半回」= 編集OK（同回のもう片方もOK）
+  setEditInning(clickedInning);
+  setEditTopBottom(clickedHalf);
+  const existing = scores[i]?.[clickedHalf];
+  setInputScore(existing !== undefined ? String(existing) : "");
+  setShowModal(true);
+}}
+
             >
               {i + 1 > inning ? "" : display}
             </td>
