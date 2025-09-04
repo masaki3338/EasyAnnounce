@@ -3035,7 +3035,7 @@ return (
     </div>
 
     {/* コンテンツカード（スマホ感のある白カード） */}
-    <div className="max-w-4xl mx-auto px-4 py-4 pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-4">
+    <div className="max-w-4xl mx-auto px-4 py-4 pb-[calc(112px+env(safe-area-inset-bottom))] md:pb-4">
       <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 p-4">
         {/* フィールド図 + 札（そのまま） */}
         <div className="relative w-full max-w-5xl xl:max-w-6xl mx-auto mb-6">
@@ -3088,7 +3088,7 @@ return (
                 onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
                 onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
                 className={`${className} whitespace-nowrap text-center`}
-                style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}
+                style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "64px" }}
               >
                 {player ? (
                   <div
@@ -3103,7 +3103,7 @@ return (
                   {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
                 </div>
                 ) : (
-                  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "80px" }}>
+                  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
                     DHなし
                   </span>
                 )}
