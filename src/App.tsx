@@ -1101,7 +1101,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
   </div>
 )}
 
-{/* 投球数ボトムシート（スマホっぽいUI・機能変更なし） */}
+{/* ✅ 投球数ポップアップ（中央表示・スマホっぽいUI・機能変更なし） */}
 {showPitchListPopup && (
   <div className="fixed inset-0 z-50">
     {/* 背景オーバーレイ（タップで閉じる） */}
@@ -1110,17 +1110,17 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
       onClick={() => setShowPitchListPopup(false)}
     />
 
-    {/* SP: 下から／md+: 中央 */}
-    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+    {/* 画面中央にカード配置（SP/PC共通） */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
         className="
           bg-white shadow-2xl
-          rounded-t-2xl md:rounded-2xl
-          w-full md:max-w-md
+          rounded-2xl
+          w-full max-w-md
           max-h-[80vh]
           overflow-hidden
+          flex flex-col
         "
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         role="dialog"
         aria-modal="true"
         aria-label="投球数"
@@ -1148,7 +1148,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
         </div>
 
         {/* 本文（スクロール領域） */}
-        <div className="px-4 py-3 overflow-y-auto max-h-[calc(80vh-112px)]">
+        <div className="px-4 py-3 overflow-y-auto">
           {pitchList.length === 0 ? (
             <div className="text-center text-slate-500 py-8">記録がありません</div>
           ) : (
@@ -1163,7 +1163,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
                     border-slate-200
                   "
                 >
-                  {/* 左：名前＋背番号（番号は絶対改行しない） */}
+                  {/* 左：名前＋背番号（番号は改行しない） */}
                   <div className="min-w-0 flex items-baseline gap-2">
                     <span className="font-medium text-slate-900 truncate">{r.name}</span>
                     {r.number && (
@@ -1196,6 +1196,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
     </div>
   </div>
 )}
+
 
 
     </>    
