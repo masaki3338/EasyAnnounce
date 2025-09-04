@@ -1101,32 +1101,98 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
   </div>
 )}
 
+{/* 投球数ボトムシート（スマホっぽいUI・機能変更なし） */}
 {showPitchListPopup && (
-  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 w-[340px]">
-      <h2 className="text-xl font-bold">投球数</h2>
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ（タップで閉じる） */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowPitchListPopup(false)}
+    />
 
-      <div className="text-left font-medium leading-8">
-        {pitchList.length === 0 ? (
-          <div className="text-gray-500">記録がありません</div>
-        ) : (
-          pitchList.map((r, i) => (
-            <div key={i} className="flex justify-between gap-3">
-              <span className="flex-1">
-                {r.name} {r.number ?? ""}
-              </span>
-              <span className="w-16 text-right">{r.total}球</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <button
-        className="mt-2 bg-gray-600 text-white px-6 py-2 rounded"
-        onClick={() => setShowPitchListPopup(false)}
+    {/* SP: 下から／md+: 中央 */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[80vh]
+          overflow-hidden
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="投球数"
       >
-        OK
-      </button>
+        {/* ヘッダー（グラデ＋白文字＋ハンドル） */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <span className="text-xl">⚾</span>
+              <span>投球数</span>
+            </h2>
+            <button
+              onClick={() => setShowPitchListPopup(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-3 overflow-y-auto max-h-[calc(80vh-112px)]">
+          {pitchList.length === 0 ? (
+            <div className="text-center text-slate-500 py-8">記録がありません</div>
+          ) : (
+            <div className="space-y-2">
+              {pitchList.map((r, i) => (
+                <div
+                  key={i}
+                  className="
+                    flex items-center justify-between gap-3
+                    px-3 py-2 rounded-xl border
+                    bg-white hover:bg-emerald-50 active:scale-[0.99] transition
+                    border-slate-200
+                  "
+                >
+                  {/* 左：名前＋背番号（番号は絶対改行しない） */}
+                  <div className="min-w-0 flex items-baseline gap-2">
+                    <span className="font-medium text-slate-900 truncate">{r.name}</span>
+                    {r.number && (
+                      <span className="text-xs text-slate-600 shrink-0 whitespace-nowrap">
+                        {r.number}
+                      </span>
+                    )}
+                  </div>
+                  {/* 右：投球数（改行なし） */}
+                  <span className="shrink-0 whitespace-nowrap font-bold text-emerald-700">
+                    {r.total}球
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* フッター（OKだけ・親のまま） */}
+        <div className="px-4 pb-4">
+          <button
+            className="w-full px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
+                       shadow-md shadow-amber-300/40 active:scale-[0.99] transition"
+            onClick={() => setShowPitchListPopup(false)}
+          >
+            OK
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 )}

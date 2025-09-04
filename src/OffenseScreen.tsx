@@ -2236,7 +2236,7 @@ await localForage.setItem("lineupAssignments", newAssignments);
                         className="w-5 h-5 translate-y-0.5"
                       />
                     {/* 本文は白、ルビ(rt)は薄赤で可読性UP */}
-                    <div className="space-y-1 font-bold text-red-600 [&_rt]:text-red-100">
+                    <div className="space-y-1 font-bold text-red-600 [&_rt]:text-red-700">
                       {["1塁", "2塁", "3塁"].map((base) => {
                         const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
                         return runnerAnnouncement
