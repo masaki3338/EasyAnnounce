@@ -1092,49 +1092,7 @@ onClick={() => {
 
 
 
-{showModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4">
-      <h2 className="text-lg font-bold">得点を入力してください</h2>
-      <div className="text-2xl border p-2 w-24 mx-auto">{inputScore || "0"}</div>
-      <div className="grid grid-cols-3 gap-2">
-        {[..."1234567890"].map((digit) => (
-          <button
-            key={digit}
-            onClick={() => handleScoreInput(digit)}
-            className="bg-blue-500 text-white p-2 rounded"
-          >
-            {digit}
-          </button>
-        ))}
-      </div>
-    <div className="flex justify-center gap-4 mt-4">
-      <button
-        onClick={confirmScore}
-        className="bg-green-600 text-white px-4 py-2 rounded"
-      >
-        OK
-      </button>
-      <button
-        onClick={() => setInputScore("")}
-        className="bg-yellow-600 text-white px-4 py-2 rounded"
-      >
-        クリア
-      </button>
-      <button
-        onClick={() => {
-          setInputScore("");
-          setShowModal(false);
-        }}
-        className="bg-gray-600 text-white px-4 py-2 rounded"
-      >
-        キャンセル
-      </button>
-    </div>
-    </div>
-    
-  </div>
-)}
+
 
     
 <div className="space-y-1 text-sm font-bold text-gray-800">
@@ -1375,51 +1333,191 @@ onClick={() => {
   );
 })()}
 
+{/* ✅ 得点入力時のポップアップ（スマホ風・機能そのまま） */}
+{showModal && (
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
- {/* ✅ 得点ポップアップここに挿入 */}
-{showScorePopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
-      <div className="flex items-center mb-4">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />        
-      </div>
-      <p>{popupMessage}</p>
-      <div className="flex justify-center gap-4">
-        <button
-          onClick={() => {
-            const uttr = new SpeechSynthesisUtterance(popupMessage);
-            speechSynthesis.speak(uttr);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          読み上げ
-        </button>
-        <button
-          onClick={() => speechSynthesis.cancel()}
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-        >
-          停止
-        </button>
-<button
-  onClick={async () => {
-    setShowScorePopup(false);
-    if (pendingGroundPopup) {
-      setPendingGroundPopup(false);
-      setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
-    } else if (inning === 1 && isTop) {
-      await goSeatIntroFromOffense();
-    } else {
-      onSwitchToDefense();
-    }
-  }}
-  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
->
-  OK
-</button>
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-sm
+          max-h-[80vh] md:max-h-[75vh]
+          overflow-hidden
+          flex flex-col
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* 固定ヘッダー（他モーダルと統一） */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide">得点を入力してください</h2>
+          <div className="w-9 h-9" />
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* 現在入力中のスコア表示（7セグ風カード） */}
+          <div className="mx-auto w-full max-w-[220px]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4 text-center shadow-sm">
+              <div className="text-4xl md:text-5xl font-extrabold tabular-nums tracking-wider text-slate-900">
+                {inputScore || "0"}
+              </div>
+            </div>
+          </div>
+
+          {/* 数字キー（3列グリッド／0は横長） */}
+          <div className="grid grid-cols-3 gap-2">
+            {[..."1234567890"].map((digit) => (
+              <button
+                key={digit}
+                onClick={() => handleScoreInput(digit)}
+                aria-label={`数字${digit}`}
+                className={[
+                  "h-14 md:h-16 rounded-xl text-xl font-bold text-white",
+                  "bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition shadow-md",
+                  digit === "0" ? "col-span-3" : ""
+                ].join(" ")}
+              >
+                {digit}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 固定フッター操作（OK / クリア / キャンセル） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={confirmScore}
+              className="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md"
+            >
+              OK
+            </button>
+            <button
+              onClick={() => setInputScore("")}
+              className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-md"
+            >
+              クリア
+            </button>
+            <button
+              onClick={() => {
+                setInputScore("");
+                setShowModal(false);
+              }}
+              className="h-12 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-semibold shadow-md"
+            >
+              キャンセル
+            </button>
+          </div>
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
+
+{/* ✅ 得点入った時のポップアップ */}
+{showScorePopup && (
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[70vh] md:max-h-[70vh]
+          overflow-hidden
+          flex flex-col
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* 固定ヘッダー */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <div className="flex items-center gap-2">
+            <img
+              src="/icons/mic-red.png"
+              alt="mic"
+              width={28}
+              height={28}
+              className="w-7 h-7 object-contain select-none drop-shadow"
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+            />
+            <h2 className="text-xl font-extrabold tracking-wide">得点</h2>
+          </div>
+          <div className="w-9 h-9" />
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* アナウンス文言エリア（薄い赤） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+            <p className="text-xl font-bold text-red-700 text-center">{popupMessage}</p>
+
+            {/* 読み上げ・停止（枠の中に残す） */}
+            <div className="flex justify-center gap-3 mt-4">
+              <button
+                onClick={() => {
+                  const uttr = new SpeechSynthesisUtterance(popupMessage);
+                  speechSynthesis.speak(uttr);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-md"
+              >
+                読み上げ
+              </button>
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl shadow-md"
+              >
+                停止
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 固定フッター（OKはアナウンス枠の外） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={async () => {
+              setShowScorePopup(false);
+              if (pendingGroundPopup) {
+                setPendingGroundPopup(false);
+                setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
+              } else if (inning === 1 && isTop) {
+                await goSeatIntroFromOffense();
+              } else {
+                onSwitchToDefense();
+              }
+            }}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
 
 {showDefensePrompt && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1439,169 +1537,230 @@ onClick={() => {
   </div>
 )}
 
+{/* ✅ リエントリーモーダル（スマホ風・カラフル・機能は既存のまま） */}
 {showReEntryModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-gray-200 p-6 rounded-xl shadow-xl text-center max-w-3xl w-full space-y-6">
-      <h2 className="text-3xl font-bold text-black">リエントリー</h2>
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* アナウンス表示（ルビ付き） */}
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <div className="absolute -top-4 left-4 text-2xl">🎤📢</div>
-        <span
-          className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block mt-2 ml-6"
-          dangerouslySetInnerHTML={{
-            __html: `
-            ${teamName || "自チーム"}、選手の交代をお知らせいたします。
-            ${reEntryOrder1 ?? "?"}番 ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。
-            バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
-                        `.trim()
-          }}
-        />
-      </div>
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[85vh] md:max-h-[80vh]
+          overflow-y-auto
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* 固定ヘッダー（グラデ＋白文字） */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <div className="flex items-center gap-2">
+            <img
+              src="/icons/mic-red.png"
+              alt="mic"
+              width={24}
+              height={24}
+              className="w-6 h-6 object-contain select-none drop-shadow"
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+            />
+            <h2 className="text-xl font-extrabold tracking-wide">リエントリー</h2>
+          </div>
+          <button
+            onClick={() => {
+              setShowReEntryModal(false);
+              // 必要ならここで個別リセット（reEntry系のstate）
+            }}
+            aria-label="閉じる"
+            className="rounded-full w-9 h-9 flex items-center justify-center
+                       bg-white/15 hover:bg-white/25 active:bg-white/30
+                       text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            ×
+          </button>
+        </div>
 
-      {/* 操作 */}
-      <div className="flex justify-center gap-3">
-        <button
-          onClick={() => {
-            if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
-            const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
-            const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
-            const kanaAFull = `${reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || ""}${reEntryFromPlayer.firstNameKana || reEntryFromPlayer.firstName || ""}`;
-            const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
-            const kanaBFull = `${reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || ""}${reEntryTargetPlayer.firstNameKana || reEntryTargetPlayer.firstName || ""}`;
-            const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
-            announce(
-              `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
-              `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
-              `${kanaBLast}${honorB} がリエントリーで戻ります。` +
-              `バッターは ${kanaBLast}${honorB}。`
-            );
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          読み上げ
-        </button>
-        <button
-          onClick={() => speechSynthesis.cancel()}
-          className="bg-red-600 text-white px-4 py-2 rounded"
-        >
-          停止
-        </button>
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4">
 
-        {/* 確定：メモリ更新（打順／守備位置／退場情報） */}
-        <button
-          onClick={async () => {
-            pushHistory(); // ← 追加（リエントリー確定前に退避）
+          {/* アナウンス表示（薄い赤背景・rtも赤） */}
+          <div className="mb-3 rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
+            <div className="mb-3 flex items-start gap-2">
+              <img
+                src="/icons/mic-red.png"
+                alt="mic"
+                className="w-5 h-5 translate-y-0.5"
+              />
+              <span
+                className="space-y-1 font-bold text-red-700 leading-relaxed [&_rt]:text-red-700"
+                dangerouslySetInnerHTML={{
+                  __html: `
+                  ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
+                  ${reEntryOrder1 ?? "?"}番
+                  ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして
+                  ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。<br/>
+                  バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
+                  `.trim()
+                }}
+              />
+            </div>
 
-            if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
-            const idx = reEntryOrder1 - 1;
+            {/* 読み上げ・停止（配色：青／赤） */}
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => {
+                  if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
+                  const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
+                  const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+                  const kanaAFull = `${reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || ""}${reEntryFromPlayer.firstNameKana || reEntryFromPlayer.firstName || ""}`;
+                  const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
+                  const kanaBFull = `${reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || ""}${reEntryTargetPlayer.firstNameKana || reEntryTargetPlayer.firstName || ""}`;
+                  const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
+                  announce(
+                    `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
+                    `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
+                    `${kanaBLast}${honorB} がリエントリーで戻ります。` +
+                    `バッターは ${kanaBLast}${honorB}。`
+                  );
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-1 ring-white/40"
+              >
+                読み上げ
+              </button>
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md ring-1 ring-white/25"
+              >
+                停止
+              </button>
+            </div>
+          </div>
 
-            // 1) 打順：元スタメン（B）で上書き（reason=リエントリー）
-            const newOrder = [...battingOrder];
-            newOrder[idx] = { id: reEntryTargetPlayer.id, reason: "リエントリー" };
-            setBattingOrder(newOrder);
-            await localForage.setItem("battingOrder", newOrder);
+          {/* 操作ボタン（確定／キャンセル） */}
+          <div className="flex justify-end gap-2 sticky bottom-0">
+            {/* 確定：メモリ更新（打順／守備位置／退場情報） */}
+            <button
+              onClick={async () => {
+                pushHistory(); // ← 追加（リエントリー確定前に退避）
 
-            // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
-            // 守備配置の現在値を取得
-// 守備配置の現在値を取得
-const curAssignments =
-  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
-  || assignments || {};
-const newAssignments = { ...curAssignments };
+                if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
+                const idx = reEntryOrder1 - 1;
 
-// いま A（戻される側）が就いている“現在の守備位置”を探す
-const posOfA =
-  Object.entries(newAssignments).find(([, id]) => Number(id) === Number(reEntryFromPlayer?.id))?.[0];
+                // 1) 打順：元スタメン（B）で上書き（reason=リエントリー）
+                const newOrder = [...battingOrder];
+                newOrder[idx] = { id: reEntryTargetPlayer.id, reason: "リエントリー" };
+                setBattingOrder(newOrder);
+                await localForage.setItem("battingOrder", newOrder);
 
-// 念のため：B がどこかに残っていたら外す（重複防止）
-for (const [pos, id] of Object.entries(newAssignments)) {
-  if (Number(id) === Number(reEntryTargetPlayer.id)) {
-    newAssignments[pos] = null;
-  }
-}
+                // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
+                // 守備配置の現在値を取得
+                const curAssignments =
+                  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
+                  || assignments || {};
+                const newAssignments = { ...curAssignments };
 
-// 置換：A が現在いる守備位置 → B を入れる
-if (posOfA) {
-  newAssignments[posOfA] = reEntryTargetPlayer.id;
-} else {
-  // A が守備にいない（代打のみ／DHのみ等）の場合はフォールバックで「Bの元ポジション」へ
-  const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
-  if (fromPos) newAssignments[fromPos] = reEntryTargetPlayer.id;
-}
+                // いま A（戻される側）が就いている“現在の守備位置”を探す
+                const posOfA =
+                  Object.entries(newAssignments).find(([, id]) => Number(id) === Number(reEntryFromPlayer?.id))?.[0];
 
-// state とストレージを更新
-setAssignments(newAssignments);
-await localForage.setItem("lineupAssignments", newAssignments);
+                // 念のため：B がどこかに残っていたら外す（重複防止）
+                for (const [pos, id] of Object.entries(newAssignments)) {
+                  if (Number(id) === Number(reEntryTargetPlayer.id)) {
+                    newAssignments[pos] = null;
+                  }
+                }
 
+                // 置換：A が現在いる守備位置 → B を入れる
+                if (posOfA) {
+                  newAssignments[posOfA] = reEntryTargetPlayer.id;
+                } else {
+                  // A が守備にいない（代打のみ／DHのみ等）の場合はフォールバックで「Bの元ポジション」へ
+                  const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
+                  if (fromPos) newAssignments[fromPos] = reEntryTargetPlayer.id;
+                }
 
-            // 3) 退場情報：Aは「退場として残す」/ 元スタメンBは「退場解除」（= usedPlayerInfo から削除）
-            const newUsed = { ...(usedPlayerInfo || {}) };
+                // state とストレージを更新
+                setAssignments(newAssignments);
+                await localForage.setItem("lineupAssignments", newAssignments);
 
-            // Bの以前の記録（fromPosなど）を保険で拾っておく
-            const prevB = (usedPlayerInfo || {})[reEntryTargetPlayer.id] as
-              | { fromPos?: string; order?: number; subId?: number; wasStarter?: boolean }
-              | undefined;
+                // 3) 退場情報：Aは「退場として残す」/ 元スタメンBは「退場解除」（= usedPlayerInfo から削除）
+                const newUsed = { ...(usedPlayerInfo || {}) };
 
-            // Aの fromPos を推定（Bの元ポジ or いまAが居た守備）
-            const fromPosForA =
-              prevB?.fromPos ||
-              (Object.entries(newAssignments).find(([, id]) => id === reEntryFromPlayer?.id)?.[0] ?? "");
+                // Bの以前の記録（fromPosなど）を保険で拾っておく
+                const prevB = (usedPlayerInfo || {})[reEntryTargetPlayer.id] as
+                  | { fromPos?: string; order?: number; subId?: number; wasStarter?: boolean }
+                  | undefined;
 
-            // 🔴 A（交代で退場）をキーに退場記録を残す
-            if (reEntryFromPlayer) {
-              (newUsed as any)[reEntryFromPlayer.id] = {
-                fromPos: fromPosForA,
-                subId: reEntryTargetPlayer.id,     // AをBが置き換えた
-                reason: "リエントリー",
-                order: reEntryOrder1,              // 何番の話か
-                wasStarter: false,
-              };
-            }
+                // Aの fromPos を推定（Bの元ポジ or いまAが居た守備）
+                const fromPosForA =
+                  prevB?.fromPos ||
+                  (Object.entries(newAssignments).find(([, id]) => id === reEntryFromPlayer?.id)?.[0] ?? "");
 
-            // 🟢 B（元スタメン）は退場解除（＝usedから削除）
-            delete (newUsed as any)[reEntryTargetPlayer.id];
+                // 🔴 A（交代で退場）をキーに退場記録を残す
+                if (reEntryFromPlayer) {
+                  (newUsed as any)[reEntryFromPlayer.id] = {
+                    fromPos: fromPosForA,
+                    subId: reEntryTargetPlayer.id,     // AをBが置き換えた
+                    reason: "リエントリー",
+                    order: reEntryOrder1,              // 何番の話か
+                    wasStarter: false,
+                  };
+                }
 
-            setUsedPlayerInfo(newUsed);
-            await localForage.setItem("usedPlayerInfo", newUsed);
+                // 🟢 B（元スタメン）は退場解除（＝usedから削除）
+                delete (newUsed as any)[reEntryTargetPlayer.id];
 
+                setUsedPlayerInfo(newUsed);
+                await localForage.setItem("usedPlayerInfo", newUsed);
 
-            // （任意）チーム配列にいなければ追加
-            if (!players.some(p => p.id === reEntryTargetPlayer.id)) {
-              setPlayers(prev => [...prev, reEntryTargetPlayer]);
-            }
+                // （任意）チーム配列にいなければ追加
+                if (!players.some(p => p.id === reEntryTargetPlayer.id)) {
+                  setPlayers(prev => [...prev, reEntryTargetPlayer]);
+                }
 
-            // B をベンチから除外し、A を未登録ならベンチに追加
-            setBenchPlayers(prev => {
-              const withoutB = prev.filter(p => p.id !== reEntryTargetPlayer.id);
-              if (reEntryFromPlayer && !withoutB.some(p => p.id === reEntryFromPlayer.id)) {
-                return [...withoutB, reEntryFromPlayer];
-              }
-              return withoutB;
-            });
+                // B をベンチから除外し、A を未登録ならベンチに追加
+                setBenchPlayers(prev => {
+                  const withoutB = prev.filter(p => p.id !== reEntryTargetPlayer.id);
+                  if (reEntryFromPlayer && !withoutB.some(p => p.id === reEntryFromPlayer.id)) {
+                    return [...withoutB, reEntryFromPlayer];
+                  }
+                  return withoutB;
+                });
 
+                // 後片付け
+                setShowReEntryModal(false);
+                setReEntryFromPlayer(null);
+                setReEntryTargetPlayer(null);
+                setReEntryOrder1(null);
+              }}
+              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
+                         shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+            >
+              確定
+            </button>
 
-            // 後片付け
-            setShowReEntryModal(false);
-            setReEntryFromPlayer(null);
-            setReEntryTargetPlayer(null);
-            setReEntryOrder1(null);
-          }}
-          className="bg-orange-600 text-white px-4 py-2 rounded"
-        >
-          確定
-        </button>
-        <button
-          onClick={() => {
-            setShowReEntryModal(false);
-            setReEntryFromPlayer(null);
-            setReEntryTargetPlayer(null);
-            setReEntryOrder1(null);
-          }}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
-          キャンセル
-        </button>
+            <button
+              onClick={() => {
+                setShowReEntryModal(false);
+                setReEntryFromPlayer(null);
+                setReEntryTargetPlayer(null);
+                setReEntryOrder1(null);
+              }}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
+                         shadow-md shadow-amber-300/40"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+
+        {/* セーフエリア確保（iPhone下部） */}
+        <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
       </div>
     </div>
   </div>
@@ -2439,120 +2598,222 @@ await localForage.setItem("lineupAssignments", newAssignments);
 
 
 
-{/* ✅ グラウンド整備　モーダル */}
+{/* ✅ グラウンド整備モーダル（スマホ風・薄赤背景・読み上げは青） */}
 {showGroundPopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-6 border-4 border-red-500 max-w-md w-full">
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* 🔶 マイク＋注意メッセージ（マイクは外） */}
-      <div className="flex items-center gap-2">
-        <img src="icons/mic-red.png" alt="マイク" className="w-6 h-6" />
-        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left flex items-center gap-2 w-full">
-          <span className="text-2xl">⚠️</span>
-          <span>4回終了後🎤</span>
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[85vh] md:max-h-[80vh]
+          overflow-y-auto
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-xl font-extrabold tracking-wide">グラウンド整備</h2>
+          <button
+            onClick={() => { stopSpeech(); setShowGroundPopup(false); }}
+            aria-label="閉じる"
+            className="rounded-full w-9 h-9 flex items-center justify-center
+                       bg-white/15 hover:bg-white/25 active:bg-white/30
+                       text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            ×
+          </button>
         </div>
-      </div>
 
-      {/* 上段：お願い */}
-      <div className="flex items-center justify-center gap-4">
-        <h2 className="text-lg font-bold text-red-600">両チームはグランド整備をお願いします。</h2>
-      </div>
-      <div className="flex justify-center gap-4">
-        <button
-          onClick={() => speakText("両チームはグランド整備をお願いします。")}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded"
-        >
-          読み上げ
-        </button>
-        <button
-          onClick={stopSpeech}
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-        >
-          停止
-        </button>
-      </div>
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-6">
 
-      <hr />
+          {/* 上段：お願い */}
+          <div className="space-y-3">
+            {/* 注意チップ */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+                            bg-amber-100 text-amber-900 border border-amber-200">
+              <span className="text-xl">⚠️</span>
+              <span>4回終了後🎤</span>
+            </div>
 
-      {/* 下段：お礼 */}
-      <div>
-          {/* 🔶 注意メッセージ（終了後） */}
-        <div className="flex items-center gap-2">
-          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-3 py-1 text-sm font-semibold flex items-center gap-2 rounded">
-            <span className="text-xl">⚠️</span>
-            <span>整備終了後🎤</span>
+            {/* アナウンス文言エリア（薄い赤） */}
+            <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+              <div className="flex items-start gap-2">
+                <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+                <p className="text-red-700 font-bold">
+                  両チームはグランド整備をお願いします。
+                </p>
+              </div>
+              <div className="mt-3 flex justify-center gap-3">
+                <button
+                  onClick={() => speakText("両チームはグランド整備をお願いします。")}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                >
+                  読み上げ
+                </button>
+                <button
+                  onClick={stopSpeech}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                  停止
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 下段：お礼 */}
+          <div className="space-y-3">
+            {/* 注意チップ */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+                            bg-amber-100 text-amber-900 border border-amber-200">
+              <span className="text-xl">⚠️</span>
+              <span>整備終了後🎤</span>
+            </div>
+
+            {/* アナウンス文言エリア（薄い赤） */}
+            <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+              <div className="flex items-start gap-2">
+                <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+                <p className="text-red-700 font-bold">
+                  グランド整備、ありがとうございました。
+                </p>
+              </div>
+              <div className="mt-3 flex justify-center gap-3">
+                <button
+                  onClick={() => speakText("グランド整備、ありがとうございました。")}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                >
+                  読み上げ
+                </button>
+                <button
+                  onClick={stopSpeech}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                  停止
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* OKボタン */}
+          <div className="pt-1 flex justify-center">
+            <button
+              onClick={() => {
+                stopSpeech();
+                setShowGroundPopup(false);
+                onSwitchToDefense(); // ✅ 守備画面へ
+              }}
+              className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+            >
+              OK
+            </button>
           </div>
         </div>
-        <h2 className="text-lg font-bold text-red-600">グランド整備、ありがとうございました。</h2>
-        <div className="flex justify-center gap-4 mt-2">
-          <button
-            onClick={() => speakText("グランド整備、ありがとうございました。")}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded"
-          >
-            読み上げ
-          </button>
-          <button
-            onClick={stopSpeech}
-            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          >
-            停止
-          </button>
-        </div>
-      </div>
 
-      {/* OKボタン */}
-      <div className="pt-2">
-        <button
-          onClick={() => {
-            stopSpeech();
-            setShowGroundPopup(false);
-            onSwitchToDefense(); // ✅ 守備画面に遷移！
-          }}
-          className="bg-green-500 hover:bg-green-600 text-white px-6 py-1.5 rounded font-bold"
-        >
-          OK
-        </button>
+        {/* セーフエリア */}
+        <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
       </div>
     </div>
   </div>
 )}
 
 
-{/* ✅ 開始時刻　モーダル */}
+{/* ✅ 開始時刻モーダル（スマホ風・機能そのまま） */}
 {showStartTimePopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-pink-200 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-md w-full">
-      <div className="flex items-center gap-2">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
-        <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-3 py-1 text-sm font-semibold inline-flex items-center gap-2 w-fit rounded">
-          <span className="text-2xl">⚠️</span>2番バッター紹介前に🎤
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[75vh] md:max-h-[70vh]
+          overflow-y-auto
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* 固定ヘッダー（グラデ＋白） */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <div className="flex items-center gap-2">
+            <img
+              src="/icons/mic-red.png"
+              alt="mic"
+              className="w-6 h-6 object-contain select-none drop-shadow"
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+            />
+            <h2 className="text-xl font-extrabold tracking-wide">開始時刻</h2>
+          </div>
+          <button
+            onClick={() => setShowStartTimePopup(false)}
+            aria-label="閉じる"
+            className="rounded-full w-9 h-9 flex items-center justify-center
+                       bg-white/15 hover:bg-white/25 active:bg-white/30
+                       text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            ×
+          </button>
         </div>
-      </div>
-      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2">
-        この試合の開始時刻は {gameStartTime} です。
-      </div>
-      <div className="flex justify-center gap-4">
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-          onClick={() => {
-            const msg = new SpeechSynthesisUtterance(`この試合の開始時刻は${gameStartTime}です`);
-            speechSynthesis.speak(msg);
-          }}
-        >
-          読み上げ
-        </button>
-        <button
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          onClick={() => speechSynthesis.cancel()}
-        >
-          停止
-        </button>
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded"
-          onClick={() => setShowStartTimePopup(false)}
-        >
-          OK
-        </button>
+
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4">
+          {/* 注意チップ */}
+          <div className="flex items-center gap-2">
+            <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5" />
+            <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
+              <span className="text-xl">⚠️</span>
+              <span>2番バッター紹介前に🎤</span>
+            </div>
+          </div>
+
+          {/* アナウンス文言エリア（薄い赤） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <p className="text-lg font-bold text-red-700 text-center">
+              この試合の開始時刻は {gameStartTime} です。
+            </p>
+
+            {/* ボタン行 */}
+            <div className="mt-4 flex justify-center gap-3">
+              <button
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                onClick={() => {
+                  const msg = new SpeechSynthesisUtterance(`この試合の開始時刻は${gameStartTime}です`);
+                  speechSynthesis.speak(msg);
+                }}
+              >
+                読み上げ
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
+                onClick={() => speechSynthesis.cancel()}
+              >
+                停止
+              </button>
+              <button
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+                onClick={() => setShowStartTimePopup(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* セーフエリア確保（iPhone下部） */}
+        <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
       </div>
     </div>
   </div>
