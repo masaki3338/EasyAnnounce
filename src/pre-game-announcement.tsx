@@ -24,38 +24,54 @@ interface Props {
 }
 
 /* ---- ミニSVGアイコン（依存なし） ---- */
+const commonSvgProps = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  className: "w-6 h-6 shrink-0",     // ← 明示サイズ
+  "aria-hidden": "true",
+  focusable: "false",
+} as const;
+
 const IconWarmup = () => (
-<svg viewBox="0 0 24 24">
-    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M5 20l5-.5l1-2m7 2.5v-5h-5.5L15 8.5l-5.5 1l1.5 2"/>
-</svg>
+  <svg {...commonSvgProps} fill="none" stroke="currentColor">
+    <path
+      strokeLinecap="round"                 // ← camelCase
+      strokeLinejoin="round"
+      strokeWidth="2"
+      d="M15 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M5 20l5-.5l1-2m7 2.5v-5h-5.5L15 8.5l-5.5 1l1.5 2"
+    />
+  </svg>
 );
+
 const IconKnock = () => (
-<svg viewBox="0 0 24 24">
-    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" color="currentColor">
-        <path d="M5.46 20L20.556 8.69a3.738 3.738 0 1 0-5.246-5.247L4 18.541"/>
-        <path d="M5.578 21.843c1.502-2.072-1.332-4.932-3.42-3.418a.38.38 0 0 0-.046.577L5 21.888c.166.166.44.144.578-.045M10 17l-3-3"/>
-        <circle cx="2.5" cy="2.5" r="2.5" transform="matrix(-1 0 0 1 21 16)"/>
+  <svg {...commonSvgProps} fill="none" stroke="currentColor">
+    <g strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5">
+      <path d="M5.46 20L20.556 8.69a3.738 3.738 0 1 0-5.246-5.247L4 18.541" />
+      <path d="M5.578 21.843c1.502-2.072-1.332-4.932-3.42-3.418a.38.38 0 0 0-.046.577L5 21.888c.166.166.44.144.578-.045M10 17l-3-3" />
+      <circle cx="2.5" cy="2.5" r="2.5" transform="matrix(-1 0 0 1 21 16)" />
     </g>
-</svg>
+  </svg>
 );
 const IconMegaphone = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+  <svg {...commonSvgProps} fill="currentColor">
     <path d="M2 10v4l10-3V7L2 10zm12-3v10l6 2V5l-6 2z" />
   </svg>
 );
+
 const IconUsers = () => (
-  <svg viewBox="0 0 24 24">
-      <path fill="currentColor" d="M3.5 7a5 5 0 1 1 10 0a5 5 0 0 1-10 0M5 14a5 5 0 0 0-5 5v2h17v-2a5 5 0 0 0-5-5zm19 7h-5v-2c0-1.959-.804-3.73-2.1-5H19a5 5 0 0 1 5 5zm-8.5-9a5 5 0 0 1-1.786-.329A6.97 6.97 0 0 0 15.5 7a6.97 6.97 0 0 0-1.787-4.671A5 5 0 1 1 15.5 12"/>
+  <svg {...commonSvgProps} fill="currentColor">
+    <path d="M3.5 7a5 5 0 1 1 10 0a5 5 0 0 1-10 0M5 14a5 5 0 0 0-5 5v2h17v-2a5 5 0 0 0-5-5zm19 7h-5v-2c0-1.959-.804-3.73-2.1-5H19a5 5 0 0 1 5 5zm-8.5-9a5 5 0 0 1-1.786-.329A6.97 6.97 0 0 0 15.5 7a6.97 6.97 0 0 0-1.787-4.671A5 5 0 1 1 15.5 12"/>
   </svg>
 );
 
 const Greeting = () => (
-<svg  viewBox="0 0 24 24">
-    <path fill="currentColor" d="M1.5 4v1.5c0 4.15 2.21 7.78 5.5 9.8V20h15v-2c0-2.66-5.33-4-8-4h-.25C9 14 5 10 5 5.5V4m9 0a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z"/>
-</svg>
+  <svg {...commonSvgProps} fill="currentColor">
+    <path d="M1.5 4v1.5c0 4.15 2.21 7.78 5.5 9.8V20h15v-2c0-2.66-5.33-4-8-4h-.25C9 14 5 10 5 5.5V4m9 0a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z"/>
+  </svg>
 );
+
 const IconMic = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+  <svg {...commonSvgProps} fill="currentColor">
     <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
   </svg>
 );
