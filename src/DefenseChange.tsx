@@ -3035,7 +3035,7 @@ return (
     </div>
 
     {/* コンテンツカード（スマホ感のある白カード） */}
-    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-4">
+    <div className="max-w-4xl mx-auto px-4 py-4 pb-[calc(96px+env(safe-area-inset-bottom))] md:pb-4">
       <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 p-4">
         {/* フィールド図 + 札（そのまま） */}
         <div className="relative w-full max-w-5xl xl:max-w-6xl mx-auto mb-6">
@@ -3097,7 +3097,7 @@ return (
                     className="cursor-move whitespace-nowrap text-center
                               bg-black/60 text-white font-bold rounded
                               px-2 py-1 leading-tight
-                              text-[clamp(15px,2.1vw,30px)]"
+                              text-[clamp(13px,2.1vw,30px)]"
                     style={{ minWidth: "78px", maxWidth: "38vw" }}
                   >
                   {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
