@@ -753,8 +753,7 @@ const handlePitchLimitSpeak = () => {
     if (synthRef.current?.speaking) synthRef.current.cancel();
   };
 
-  return (
-    
+  return (    
     <div className="max-w-4xl mx-auto p-4">
       <section className="mb-4">
       <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
@@ -770,44 +769,44 @@ const handlePitchLimitSpeak = () => {
         />
         <span>{myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}</span>
       </h2>
-<div className="mb-2">
-  <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-    {/* 左：状態（縮む・折り返さない） */}
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
-        {[...Array(9)].map((_, i) => (
-          <option key={i} value={i + 1}>{i + 1}</option>
-        ))}
-      </select>
-      <span className="whitespace-nowrap">回</span>
-      <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-        <option value="表">表</option>
-        <option value="裏">裏</option>
-      </select>
-      <span className="whitespace-nowrap">
-        {isDefense ? "守備中" : "攻撃中"}
-      </span>
-    </div>
+      <div className="mb-2">
+        <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+          {/* 左：状態（縮む・折り返さない） */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <select value={inning} onChange={(e) => setInning(Number(e.target.value))}>
+              {[...Array(9)].map((_, i) => (
+                <option key={i} value={i + 1}>{i + 1}</option>
+              ))}
+            </select>
+            <span className="whitespace-nowrap">回</span>
+            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
+              <option value="表">表</option>
+              <option value="裏">裏</option>
+            </select>
+            <span className="whitespace-nowrap">
+              {isDefense ? "守備中" : "攻撃中"}
+            </span>
+          </div>
 
-    {/* 右：ボタン群（縮ませない・折り返さない） */}
-<div className="flex items-center gap-2 shrink-0">
-  {inning === 1 && isTop && (
-    <button
-      onClick={handleStartGame}
-      className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"
-    >
-      試合開始
-    </button>
-  )}
-  <button
-    onClick={() => setShowModal(true)}
-    className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-orange-700 text-white rounded hover:bg-orange-800 text-xs sm:text-sm whitespace-nowrap"
-  >
-    イニング終了
-  </button>
-</div>
-  </div>
-</div>
+          {/* 右：ボタン群（縮ませない・折り返さない） */}
+          <div className="flex items-center gap-2 shrink-0">
+            {inning === 1 && isTop && (
+              <button
+                onClick={handleStartGame}
+                className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"
+              >
+                試合開始
+              </button>
+            )}
+            <button
+              onClick={() => setShowModal(true)}
+              className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-orange-700 text-white rounded hover:bg-orange-800 text-xs sm:text-sm whitespace-nowrap"
+            >
+              イニング終了
+            </button>
+          </div>
+        </div>
+      </div>
 
 
         <table className="w-full border border-gray-400 text-center text-sm">
@@ -860,35 +859,34 @@ const handlePitchLimitSpeak = () => {
               className={`border cursor-pointer text-center hover:bg-gray-200 ${
                 isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
               }`}
-onClick={() => {
-  const clickedInning = i + 1;
+              onClick={() => {
+                const clickedInning = i + 1;
 
-  // そのセルが表/裏どちらか（この行＋ホーム/ビジターから既に算出済みの target を使う）
-  const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
+                // そのセルが表/裏どちらか（この行＋ホーム/ビジターから既に算出済みの target を使う）
+                const clickedHalf: "top" | "bottom" = target as "top" | "bottom";
 
-  // 半回の序列: 表=0, 裏=1
-  const currentHalfIndex = isTop ? 0 : 1;
-  const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
+                // 半回の序列: 表=0, 裏=1
+                const currentHalfIndex = isTop ? 0 : 1;
+                const clickedHalfIndex = clickedHalf === "top" ? 0 : 1;
 
-  // いま進行中の半回は編集禁止
-  const isCurrentHalf =
-    clickedInning === inning && clickedHalfIndex === currentHalfIndex;
+                // いま進行中の半回は編集禁止
+                const isCurrentHalf =
+                  clickedInning === inning && clickedHalfIndex === currentHalfIndex;
 
-  // 未来（現在より後）の半回は編集禁止
-  const isFuture =
-    clickedInning > inning ||
-    (clickedInning === inning && clickedHalfIndex > currentHalfIndex);
+                // 未来（現在より後）の半回は編集禁止
+                const isFuture =
+                  clickedInning > inning ||
+                  (clickedInning === inning && clickedHalfIndex > currentHalfIndex);
 
-  if (isCurrentHalf || isFuture) return;
+                if (isCurrentHalf || isFuture) return;
 
-  // ここまで来たら「過去の半回」= 編集OK（同回のもう片方もOK）
-  setEditInning(clickedInning);
-  setEditTopBottom(clickedHalf);
-  const existing = scores[i]?.[clickedHalf];
-  setInputScore(existing !== undefined ? String(existing) : "");
-  setShowModal(true);
-}}
-
+                // ここまで来たら「過去の半回」= 編集OK（同回のもう片方もOK）
+                setEditInning(clickedInning);
+                setEditTopBottom(clickedHalf);
+                const existing = scores[i]?.[clickedHalf];
+                setInputScore(existing !== undefined ? String(existing) : "");
+                setShowModal(true);
+              }}
             >
               {i + 1 > inning ? "" : display}
             </td>
@@ -909,7 +907,7 @@ onClick={() => {
         </tr>
       );
     })}
-</tbody>
+  </tbody>
         </table>
       </section>
       <div className="relative w-full max-w-2xl mx-auto my-6">
@@ -962,7 +960,7 @@ onClick={() => {
 
 
 
-      {/* 🔽 マイクアイコン付きアナウンスエリア */}
+{/* 🔽 マイクアイコン付きアナウンスエリア */}
 {announceMessages.length > 0 && (
   <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     {/* 🔴 上段：マイクアイコン + 注意書き */}
@@ -1002,326 +1000,489 @@ onClick={() => {
   </div>
 )}
 
-      {/* 🔽 守備交代ボタン */}
-      <div className="my-6 text-center">
-        <button
-          onClick={onChangeDefense}
-          className="px-4 py-2 bg-orange-500 text-white rounded shadow hover:bg-orange-600"
-        >
-          守備交代
-        </button>
-      </div>
+{/* 🔽 守備交代ボタン */}
+<div className="my-6 text-center">
+  <button
+    onClick={onChangeDefense}
+    className="px-4 py-2 bg-orange-500 text-white rounded shadow hover:bg-orange-600"
+  >
+    守備交代
+  </button>
+</div>
 
-{/* 🔽 臨時代走確認モーダル*/}
+{/* ✅ 臨時代走確認モーダル（スマホ風・中央表示・機能そのまま） */}
 {showTempReentryModal && (
-  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
-      <h2 className="text-xl font-bold text-red-600">臨時代走の戻り</h2>
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* 🎤 マイクアイコン + 赤字の文言エリア */}
-      <div className="flex items-start gap-2">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-1" />
-        <div className="whitespace-pre-wrap text-left border border-red-400 rounded p-3 bg-red-50 min-h-[64px] text-red-600 font-bold">
-          {reEntryMessage || "対象選手なし"}
+    {/* 画面中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-md
+          max-h-[80vh]
+          overflow-hidden
+          flex flex-col
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label="臨時代走の戻り"
+      >
+        {/* ヘッダー（グラデ＋白） */}
+        <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide text-center">臨時代走の戻り</h2>
         </div>
-      </div>
-      <div className="flex flex-wrap gap-2 justify-center">
-        <button className="px-3 py-2 bg-blue-600 text-white rounded" onClick={() => speak(reEntryMessage)}>読み上げ</button>
-        <button className="px-3 py-2 bg-gray-700 text-white rounded" onClick={() => window.speechSynthesis?.cancel()}>停止</button>
 
-        <button
-          className="px-3 py-2 bg-indigo-600 text-white rounded"
-          onClick={async () => {
-            // ▼臨時代走フラグを消す（既存ロジックのまま）
-            const key = "tempRunnerByOrder";
-            const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* 🎤 マイクアイコン + 文言エリア（薄赤） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-start gap-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <div className="whitespace-pre-wrap text-left min-h-[64px] font-bold text-red-700">
+                {reEntryMessage || "対象選手なし"}
+              </div>
+            </div>
 
-            if (typeof reEntryTarget?.index === "number") {
-              delete map[reEntryTarget.index];
-              await localForage.setItem(key, map);
+            {/* 読み上げ・停止（青／赤） */}
+            <div className="mt-3 flex justify-center gap-2">
+              <button
+                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => speak(reEntryMessage)}
+              >
+                読み上げ
+              </button>
+              <button
+                className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                onClick={() => window.speechSynthesis?.cancel()}
+              >
+                停止
+              </button>
+            </div>
+          </div>
+        </div>
 
-              const order: Array<{ id: number; reason?: string }> =
-                (await localForage.getItem("battingOrder")) || [];
-              if (order[reEntryTarget.index]) {
-                // 代打に戻ったので reason を "代打" に固定
-                order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
-                await localForage.setItem("battingOrder", order);
-                setBattingOrder(order);
-              }
-            } else {
-              //（該当インデックス不明時は保険で全打順から「臨時代走」を一掃）
-              const order: Array<{ id: number; reason?: string }> =
-                (await localForage.getItem("battingOrder")) || [];
-              let changed = false;
-              order.forEach((e, i) => {
-                if (e?.reason === "臨時代走") {
-                  delete map[i];
-                  // TR解除後は “代打として残っている打者” に戻る
-                  order[i] = { id: e.id, reason: "代打" };
-                  changed = true;
+        {/* フッター（確定／キャンセル） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className="px-3 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              onClick={async () => {
+                // ▼臨時代走フラグを消す（既存ロジックのまま）
+                const key = "tempRunnerByOrder";
+                const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+
+                if (typeof reEntryTarget?.index === "number") {
+                  delete map[reEntryTarget.index];
+                  await localForage.setItem(key, map);
+
+                  const order: Array<{ id: number; reason?: string }> =
+                    (await localForage.getItem("battingOrder")) || [];
+                  if (order[reEntryTarget.index]) {
+                    // 代打に戻ったので reason を "代打" に固定
+                    order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
+                    await localForage.setItem("battingOrder", order);
+                    setBattingOrder(order);
+                  }
+                } else {
+                  //（該当インデックス不明時は保険で全打順から「臨時代走」を一掃）
+                  const order: Array<{ id: number; reason?: string }> =
+                    (await localForage.getItem("battingOrder")) || [];
+                  let changed = false;
+                  order.forEach((e, i) => {
+                    if (e?.reason === "臨時代走") {
+                      delete map[i];
+                      // TR解除後は “代打として残っている打者” に戻る
+                      order[i] = { id: e.id, reason: "代打" };
+                      changed = true;
+                    }
+                  });
+                  await localForage.setItem(key, map);
+                  if (changed) {
+                    await localForage.setItem("battingOrder", order);
+                    setBattingOrder(order);
+                  }
                 }
-              });
-              await localForage.setItem(key, map);
-              if (changed) {
-                await localForage.setItem("battingOrder", order);
-                setBattingOrder(order);
-              }
-            }
 
-            // ▼共通の後片付け
-            setReEntryMessage("");
-            setReEntryTarget(null);
-            window.speechSynthesis?.cancel();
-            setShowTempReentryModal(false);
+                // ▼共通の後片付け
+                setReEntryMessage("");
+                setReEntryTarget(null);
+                window.speechSynthesis?.cancel();
+                setShowTempReentryModal(false);
 
-            // ★ 分岐：他に「代打／代走」が残っていれば確認モーダル、無ければ守備交代画面へ
-            const orderNow: Array<{ id: number; reason?: string }> =
-              (await localForage.getItem("battingOrder")) || [];
-            const hasOtherSubs = orderNow.some(
-              (e) => e?.reason === "代打" || e?.reason === "代走"
-            );
+                // ★ 分岐：他に「代打／代走」が残っていれば確認モーダル、無ければ守備交代画面へ
+                const orderNow: Array<{ id: number; reason?: string }> =
+                  (await localForage.getItem("battingOrder")) || [];
+                const hasOtherSubs = orderNow.some(
+                  (e) => e?.reason === "代打" || e?.reason === "代走"
+                );
 
-            if (hasOtherSubs) {
-              setShowConfirmModal(true);
-            } else {
-              setShowConfirmModal(false);  // → そのまま守備“画面”に留まる（遷移しない）
-            }
-          }}
+                if (hasOtherSubs) {
+                  setShowConfirmModal(true);
+                } else {
+                  setShowConfirmModal(false);  // → そのまま守備“画面”に留まる（遷移しない）
+                }
+              }}
+            >
+              確定
+            </button>
 
+            <button
+              className="px-3 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold"
+              // （臨時代走モーダル内）キャンセル
+              onClick={async () => {
+                // ▼ 臨時代走の記憶をクリア
+                const key = "tempRunnerByOrder";
+                const map = (await localForage.getItem<Record<number, number>>(key)) || {};
 
-        >
-          確定
-        </button>
+                if (typeof reEntryTarget?.index === "number") {
+                  delete map[reEntryTarget.index];
+                  await localForage.setItem(key, map);
 
-        <button
-          className="px-3 py-2 bg-gray-400 text-white rounded"
-// （臨時代走モーダル内）キャンセル
-onClick={async () => {
-  // ▼ 臨時代走の記憶をクリア
-  const key = "tempRunnerByOrder";
-  const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+                  const order: Array<{ id: number; reason?: string }> =
+                    (await localForage.getItem("battingOrder")) || [];
+                  if (order[reEntryTarget.index]?.reason === "臨時代走") {
+                    // TR解除後は代打扱いに戻す
+                    order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
+                    await localForage.setItem("battingOrder", order);
+                    setBattingOrder(order);
+                  }
+                }
 
-  if (typeof reEntryTarget?.index === "number") {
-    delete map[reEntryTarget.index];
-    await localForage.setItem(key, map);
-
-    const order: Array<{ id: number; reason?: string }> =
-      (await localForage.getItem("battingOrder")) || [];
-    if (order[reEntryTarget.index]?.reason === "臨時代走") {
-    // TR解除後は代打扱いに戻す
-      order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
-      await localForage.setItem("battingOrder", order);
-      setBattingOrder(order);
-    }
-  }
-
-  // ▼既存の閉じ動作
-  setReEntryMessage("");
-  setReEntryTarget(null);
-  window.speechSynthesis?.cancel();
-  setShowTempReentryModal(false);
-  setShowConfirmModal(true);
-}}
-
-        >
-          キャンセル
-        </button>
+                // ▼既存の閉じ動作
+                setReEntryMessage("");
+                setReEntryTarget(null);
+                window.speechSynthesis?.cancel();
+                setShowTempReentryModal(false);
+                setShowConfirmModal(true);
+              }}
+            >
+              キャンセル
+            </button>
+          </div>
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
 
-{/* 🔽 代打/代走確認モーダル*/}
+
+{/* ✅ 代打/代走確認モーダル（スマホ風・中央表示・機能そのまま） */}
 {showConfirmModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm">
-      <h2 className="text-xl font-bold text-red-600 leading-tight text-center">
-        <span>代打/代走の選手の守備位置を</span>{" "}
-        <span className="whitespace-nowrap">設定して下さい</span>
-      </h2>
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ（タップでは閉じない＝機能そのまま） */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
+    {/* 画面中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-md
+          max-h-[80vh]
+          overflow-hidden
+          flex flex-col
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label="代打・代走 守備位置設定の確認"
+      >
+        {/* ヘッダー（グラデ＋白） */}
+        <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide text-center">守備位置の設定</h2>
+        </div>
 
-      <div className="flex justify-center gap-4 mt-4">
-        {/* 守備交代へ */}
-        <button
-          onClick={() => {
-            setShowConfirmModal(false);
-            onChangeDefense();
-          }}
-          className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700"
-        >
-          ＯＫ
-        </button>
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          <h3 className="text-xl font-bold text-red-600 leading-tight text-center">
+            <span>代打/代走の選手の守備位置を</span>{" "}
+            <span className="whitespace-nowrap">設定して下さい</span>
+          </h3>
 
+          {/* ▼ ここに結果をその場表示（機能は既存のまま） */}
+          {reEntryMessage && (
+            <div className="mt-1 space-y-3">
+              {(!reEntryTarget || reEntryMessage === "対象選手なし") ? (
+                <div className="text-sm text-slate-700 border rounded-xl p-3 bg-slate-50 text-center">
+                  対象選手なし
+                </div>
+              ) : (
+                <>
+                  <div className="whitespace-pre-wrap text-left border rounded-xl p-3 bg-slate-50">
+                    {reEntryMessage}
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <button
+                      className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => speak(reEntryMessage)}
+                    >
+                      読み上げ
+                    </button>
+                    <button
+                      className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                      onClick={() => window.speechSynthesis?.cancel()}
+                    >
+                      停止
+                    </button>
+                    <button
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={async () => {
+                        if (!reEntryTarget) return;
+                        if (reEntryTarget.fromPos === "投") {
+                          alert("投手は投手としてのリエントリーはできません。守備位置を調整してください。");
+                          return;
+                        }
+                        const curAssign: Record<string, number | null> =
+                          (await localForage.getItem("lineupAssignments")) || assignments || {};
+                        const nextAssign = { ...curAssign };
+                        nextAssign[reEntryTarget.fromPos] = reEntryTarget.id;
+                        setAssignments(nextAssign);
+                        await localForage.setItem("lineupAssignments", nextAssign);
 
-      </div>
+                        const usedNow: Record<number, any> =
+                          (await localForage.getItem("usedPlayerInfo")) || {};
+                        usedNow[reEntryTarget.id] = {
+                          ...(usedNow[reEntryTarget.id] || {}),
+                          hasReentered: true,
+                        };
+                        await localForage.setItem("usedPlayerInfo", usedNow);
 
-      {/* ▼ ここに結果をその場表示 */}
-      {reEntryMessage && (
-        <div className="mt-3 space-y-3">
-          {(!reEntryTarget || reEntryMessage === "対象選手なし") ? (
-            <div className="text-sm text-gray-700 border rounded p-3 bg-gray-50">
-              対象選手なし
+                        // 閉じる処理（この確認モーダルは用途次第で閉じてもOK）
+                        setReEntryMessage("");
+                        setReEntryTarget(null);
+                        window.speechSynthesis?.cancel();
+                      }}
+                    >
+                      確定
+                    </button>
+                    <button
+                      className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+                      onClick={() => {
+                        setReEntryMessage("");
+                        setReEntryTarget(null);
+                        window.speechSynthesis?.cancel();
+                      }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              <div className="whitespace-pre-wrap text-left border rounded p-3 bg-gray-50">
-                {reEntryMessage}
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <button
-                  className="px-3 py-2 bg-green-600 text-white rounded"
-                  onClick={() => speak(reEntryMessage)}
-                >
-                  読み上げ
-                </button>
-                <button
-                  className="px-3 py-2 bg-gray-700 text-white rounded"
-                  onClick={() => window.speechSynthesis?.cancel()}
-                >
-                  停止
-                </button>
-                <button
-                  className="px-3 py-2 bg-indigo-600 text-white rounded"
-                  onClick={async () => {
-                    if (!reEntryTarget) return;
-                    if (reEntryTarget.fromPos === "投") {
-                      alert("投手は投手としてのリエントリーはできません。守備位置を調整してください。");
-                      return;
-                    }
-                    const curAssign: Record<string, number | null> =
-                      (await localForage.getItem("lineupAssignments")) || assignments || {};
-                    const nextAssign = { ...curAssign };
-                    nextAssign[reEntryTarget.fromPos] = reEntryTarget.id;
-                    setAssignments(nextAssign);
-                    await localForage.setItem("lineupAssignments", nextAssign);
-
-                    const usedNow: Record<number, any> =
-                      (await localForage.getItem("usedPlayerInfo")) || {};
-                    usedNow[reEntryTarget.id] = {
-                      ...(usedNow[reEntryTarget.id] || {}),
-                      hasReentered: true,
-                    };
-                    await localForage.setItem("usedPlayerInfo", usedNow);
-
-                    // 閉じる処理（この確認モーダルは用途次第で閉じてもOK）
-                    setReEntryMessage("");
-                    setReEntryTarget(null);
-                    window.speechSynthesis?.cancel();
-                  }}
-                >
-                  確定
-                </button>
-                <button
-                  className="px-3 py-2 bg-gray-400 text-white rounded"
-                  onClick={() => {
-                    setReEntryMessage("");
-                    setReEntryTarget(null);
-                    window.speechSynthesis?.cancel();
-                  }}
-                >
-                  キャンセル
-                </button>
-              </div>
-            </>
           )}
         </div>
-      )}
+
+        {/* フッター（OK＝守備交代へ） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => {
+              setShowConfirmModal(false);
+              onChangeDefense(); // モーダル経由で守備画面へ
+            }}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl shadow-md font-semibold"
+          >
+            ＯＫ
+          </button>
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
     </div>
   </div>
 )}
 
 
+{/* ✅ 投球制限数のお知らせ（スマホ風・中央表示・機能変更なし） */}
+{showPitchLimitModal && (
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
+    {/* 画面中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-md
+          max-h-[80vh]
+          overflow-hidden
+          flex flex-col
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label="投球制限数のお知らせ"
+      >
+        {/* ヘッダー（グラデ＋白） */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide">投球制限数のお知らせ</h2>
+          <button
+            onClick={() => { setShowPitchLimitModal(false); setPitchLimitMessages([]); }}
+            aria-label="閉じる"
+            className="rounded-full w-9 h-9 flex items-center justify-center
+                       bg-white/15 hover:bg-white/25 active:bg-white/30
+                       text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            ×
+          </button>
+        </div>
 
-      {showPitchLimitModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-red-200 p-6 rounded-xl shadow-xl text-center space-y-4">
-            <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
-            <div className="text-red-600 text-lg font-bold space-y-2">
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* アナウンス枠（薄い赤） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-start gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            <div className="text-red-700 text-base font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
                 <p key={idx}>{msg}</p>
               ))}
             </div>
 
-            {/* ★ 読み上げ／停止ボタンを追加 */}
-            <div className="flex justify-center gap-4 mt-4">
+            {/* 読み上げ／停止 */}
+            <div className="flex justify-center gap-3 mt-4">
               <button
                 onClick={handlePitchLimitSpeak}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
               >
                 読み上げ
               </button>
               <button
                 onClick={handleStop}
-                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
               >
                 停止
               </button>
-              <button
-                onClick={() => {
-                  setShowPitchLimitModal(false);
-                  setPitchLimitMessages([]);
-                }}
-                className="bg-green-600 text-white px-4 py-2 rounded ml-16" // ← 停止との間に余白を追加
-              >
-                OK
-              </button>
             </div>
-
           </div>
         </div>
-      )}
 
-
-      {showModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4">
-      <h2 className="text-lg font-bold">得点を入力してください</h2>
-      <div className="text-2xl border p-2 w-24 mx-auto">{inputScore || "0"}</div>
-      <div className="grid grid-cols-3 gap-2">
-        {[..."1234567890"].map((digit) => (
+        {/* フッター（OKは枠の外） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
           <button
-            key={digit}
             onClick={() => {
-              if (inputScore.length < 2) {
-                setInputScore(prev => prev + digit);
-              }
+              setShowPitchLimitModal(false);
+              setPitchLimitMessages([]);
             }}
-            className="bg-blue-500 text-white p-2 rounded"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
           >
-            {digit}
+            OK
           </button>
-        ))}
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
-<div className="flex justify-center gap-4 mt-4">
-  <button
-    onClick={confirmScore}
-    className="bg-green-600 text-white px-4 py-2 rounded"
-  >
-    OK
-  </button>
-  <button
-    onClick={() => setInputScore("")}
-    className="bg-yellow-600 text-white px-4 py-2 rounded"
-  >
-    クリア
-  </button>
-  <button
-    onClick={() => {
-      setInputScore("");
-      setShowModal(false);
-      setEditInning(null);
-      setEditTopBottom(null);
-    }}
-    className="bg-gray-600 text-white px-4 py-2 rounded"
-  >
-    キャンセル
-  </button>
-</div>
     </div>
   </div>
-      )}
+)}
+
+
+{/* ✅ 得点入力時のポップアップ（スマホ風・中央配置・機能そのまま） */}
+{showModal && (
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    {/* 画面中央にカード配置 */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full max-w-sm
+          max-h-[80vh]
+          overflow-hidden
+          flex flex-col
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* 固定ヘッダー（他モーダルと統一トーン） */}
+        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
+                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold tracking-wide">得点を入力してください</h2>
+          {/* ×は置かず機能据え置き */}
+          <div className="w-9 h-9" />
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* 現在入力中のスコア表示 */}
+          <div className="mx-auto w-full max-w-[220px]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4 text-center shadow-sm">
+              <div className="text-4xl font-extrabold tabular-nums tracking-wider text-slate-900">
+                {inputScore || "0"}
+              </div>
+            </div>
+          </div>
+
+          {/* 数字キー（3列／0は横長） */}
+          <div className="grid grid-cols-3 gap-2">
+            {[..."1234567890"].map((digit) => (
+              <button
+                key={digit}
+                onClick={() => {
+                  if (inputScore.length < 2) {
+                    setInputScore((prev) => prev + digit);
+                  }
+                }}
+                aria-label={`数字${digit}`}
+                className={[
+                  "h-14 rounded-xl text-xl font-bold text-white",
+                  "bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition shadow-md",
+                  digit === "0" ? "col-span-3" : ""
+                ].join(" ")}
+              >
+                {digit}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 固定フッター（OK / クリア / キャンセル） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={confirmScore}
+              className="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md"
+            >
+              OK
+            </button>
+            <button
+              onClick={() => setInputScore("")}
+              className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-md"
+            >
+              クリア
+            </button>
+            <button
+              onClick={() => {
+                setInputScore("");
+                setShowModal(false);
+                setEditInning(null);
+                setEditTopBottom(null);
+              }}
+              className="h-12 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-semibold shadow-md"
+            >
+              キャンセル
+            </button>
+          </div>
+          {/* iPhone セーフエリア */}
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
 
     </div>
   );

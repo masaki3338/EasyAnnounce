@@ -3026,7 +3026,7 @@ return (
             aria-label="戻る"
             title="戻る"
           >
-            ←
+
           </button>
           <div className="font-extrabold text-lg tracking-wide">守備交代</div>
           <span className="w-9" />
