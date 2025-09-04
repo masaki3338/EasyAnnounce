@@ -3025,7 +3025,9 @@ return (
             className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="戻る"
             title="戻る"
-          />
+          >
+
+          </button>
           <div className="font-extrabold text-lg tracking-wide">守備交代</div>
           <span className="w-9" />
         </div>
@@ -3033,10 +3035,10 @@ return (
     </div>
 
     {/* コンテンツカード（スマホ感のある白カード） */}
-    <div className="max-w-4xl mx-auto px-4 py-4">
+    <div className="max-w-screen-xl mx-auto px-4 md:px-6 py-4">
       <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 p-4">
-        {/* フィールド図 + 札（拡大＆札を自動縮小） */}
-        <div className="relative w-full max-w-4xl mx-auto mb-6">
+        {/* フィールド図 + 札（そのまま） */}
+        <div className="relative w-full max-w-5xl xl:max-w-6xl mx-auto mb-6">
           <img
             src="/field.jpg"
             alt="フィールド図"
@@ -3048,6 +3050,7 @@ return (
           {positions.map((pos) => {
             const currentId = assignments[pos];
             const initialId = initialAssignments[pos];
+
             const player = currentId ? teamPlayers.find((p) => p.id === currentId) ?? null : null;
 
             // 出場理由の補完（battingOrder or usedPlayerInfo）
@@ -3074,50 +3077,35 @@ return (
             const isChanged = currentId !== initialId;
             const isSub = reason === "代打" || reason === "臨時代走" || reason === "代走";
 
-            // 札の共通スタイル（文字は自動縮小／行間タイト／幅制限＆省略）
-            const badgeBase =
-              "absolute font-bold leading-tight rounded cursor-move " +
-              "px-1.5 py-0.5 text-white bg-black/60 " +
-              "text-[clamp(10px,2.8vw,13px)] md:text-[13px] " +
-              "whitespace-nowrap text-center truncate " +
-              "drop-shadow";
-
-            const className =
-              `${badgeBase} ` +
-              (isSub
-                ? "ring-2 ring-yellow-400 text-yellow-300 bg-black/90"
-                : isChanged
-                  ? "ring-2 ring-yellow-400"
-                  : "");
+            const className = `absolute text-sm font-bold px-2 py-1 rounded cursor-move 
+              ${isSub ? "text-yellow-300 bg-black/90 ring-2 ring-yellow-400"
+                      : isChanged ? "text-white bg-black/60 ring-2 ring-yellow-400"
+                                  : "text-white bg-black/60"}`;
 
             return (
               <div
                 key={pos}
                 onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
                 onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
-                className={className}
-                style={{
-                  ...positionStyles[pos],
-                  transform: 'translate(-50%, -50%)',
-                  zIndex: 10,
-                  minWidth: "64px",
-                  maxWidth: "28vw" // 画面幅に応じて省スペース化
-                }}
-                title={player ? `${player.lastName ?? ""}${player.firstName ?? ""} #${player.number}` : ""}
+                className={`${className} whitespace-nowrap text-center`}
+                style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}
               >
                 {player ? (
                   <div
                     draggable
                     onDragStart={(e) => handlePositionDragStart(e, pos)}
-                    className="cursor-move"
+                    className="cursor-move whitespace-nowrap text-center
+                              bg-black/60 text-white font-bold rounded
+                              px-2 py-1 leading-tight
+                              text-[clamp(15px,2.1vw,30px)]"
+                    style={{ minWidth: "78px", maxWidth: "38vw" }}
                   >
-                    {/* 表示テキストも省スペース＆省略 */}
-                    <span className="inline-block align-middle">
-                      {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
-                    </span>
-                  </div>
+                  {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
+                </div>
                 ) : (
-                  <span className="text-gray-300">DHなし</span>
+                  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "80px" }}>
+                    DHなし
+                  </span>
                 )}
               </div>
             );
@@ -3271,18 +3259,22 @@ return (
               })}
 
               {(() => {
+                // DHが使われていなければ出さない
                 const dhActive = !!assignments["指"];
                 if (!dhActive) return null;
 
+                // 先発投手
                 const starterPitcherId =
                   typeof initialAssignments?.["投"] === "number"
                     ? (initialAssignments["投"] as number)
                     : null;
                 if (!starterPitcherId) return null;
 
+                // 先発投手が打順に含まれているときは出さない（DH時のみ表示）
                 const inBatting = battingOrder.some((e) => e.id === starterPitcherId);
                 if (inBatting) return null;
 
+                // 現在の投手
                 const currentPitcherId =
                   typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
 
@@ -3469,6 +3461,8 @@ return (
                   return null;
                 }).filter(Boolean) as { key: string; type: number; pos: string; jsx: JSX.Element }[];
 
+                // --- 追加: DHありで打順に投手が居ないケースでも投手交代を表示する ---
+                // --- 追加: 先発投手が「投」以外の守備に就いている場合も1行出す ---
                 (() => {
                   const initP = initialAssignments?.["投"];
                   if (typeof initP !== "number") return;
@@ -3522,6 +3516,7 @@ return (
                   }
                 })();
 
+                // 優先順位に従ってソート
                 changes.sort((a, b) => {
                   if (a.type !== b.type) return a.type - b.type;
                   const ap = posPriority[a.pos] ?? 99;
@@ -3669,7 +3664,6 @@ return (
     )}
   </div>
 );
-
 
 };
 
