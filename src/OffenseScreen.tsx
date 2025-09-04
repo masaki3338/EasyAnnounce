@@ -1092,7 +1092,49 @@ onClick={() => {
 
 
 
-
+{showModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4">
+      <h2 className="text-lg font-bold">得点を入力してください</h2>
+      <div className="text-2xl border p-2 w-24 mx-auto">{inputScore || "0"}</div>
+      <div className="grid grid-cols-3 gap-2">
+        {[..."1234567890"].map((digit) => (
+          <button
+            key={digit}
+            onClick={() => handleScoreInput(digit)}
+            className="bg-blue-500 text-white p-2 rounded"
+          >
+            {digit}
+          </button>
+        ))}
+      </div>
+    <div className="flex justify-center gap-4 mt-4">
+      <button
+        onClick={confirmScore}
+        className="bg-green-600 text-white px-4 py-2 rounded"
+      >
+        OK
+      </button>
+      <button
+        onClick={() => setInputScore("")}
+        className="bg-yellow-600 text-white px-4 py-2 rounded"
+      >
+        クリア
+      </button>
+      <button
+        onClick={() => {
+          setInputScore("");
+          setShowModal(false);
+        }}
+        className="bg-gray-600 text-white px-4 py-2 rounded"
+      >
+        キャンセル
+      </button>
+    </div>
+    </div>
+    
+  </div>
+)}
 
     
 <div className="space-y-1 text-sm font-bold text-gray-800">
@@ -1333,191 +1375,51 @@ onClick={() => {
   );
 })()}
 
-{/* ✅ 得点入力時のポップアップ（中央モーダル・機能そのまま） */}
-{showModal && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-    {/* 背景オーバーレイ */}
-    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-    {/* ★ 画面中央に配置 */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-      <div
-        className="
-          bg-white shadow-2xl
-          rounded-2xl
-          w-full max-w-sm
-          max-h-[80vh]
-          overflow-hidden
-          flex flex-col
-        "
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {/* 固定ヘッダー（他モーダルと統一） */}
-        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
-                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <h2 className="text-lg font-extrabold tracking-wide">得点を入力してください</h2>
-          <div className="w-9 h-9" />
-        </div>
-
-        {/* 本文（スクロール領域） */}
-        <div className="px-4 py-4 space-y-4 overflow-y-auto">
-          {/* 現在入力中のスコア表示 */}
-          <div className="mx-auto w-full max-w-[220px]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-4 text-center shadow-sm">
-              <div className="text-4xl md:text-5xl font-extrabold tabular-nums tracking-wider text-slate-900">
-                {inputScore || "0"}
-              </div>
-            </div>
-          </div>
-
-          {/* 数字キー（3列グリッド／0は横長） */}
-          <div className="grid grid-cols-3 gap-2">
-            {[..."1234567890"].map((digit) => (
-              <button
-                key={digit}
-                onClick={() => handleScoreInput(digit)}
-                aria-label={`数字${digit}`}
-                className={[
-                  "h-14 md:h-16 rounded-xl text-xl font-bold text-white",
-                  "bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition shadow-md",
-                  digit === "0" ? "col-span-3" : ""
-                ].join(" ")}
-              >
-                {digit}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 固定フッター操作（OK / クリア / キャンセル） */}
-        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={confirmScore}
-              className="h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md"
-            >
-              OK
-            </button>
-            <button
-              onClick={() => setInputScore("")}
-              className="h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-md"
-            >
-              クリア
-            </button>
-            <button
-              onClick={() => {
-                setInputScore("");
-                setShowModal(false);
-              }}
-              className="h-12 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-semibold shadow-md"
-            >
-              キャンセル
-            </button>
-          </div>
-          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
-
-{/* ✅ 得点入った時のポップアップ（中央モーダル版・機能そのまま） */}
+ {/* ✅ 得点ポップアップここに挿入 */}
 {showScorePopup && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-    {/* 背景オーバーレイ */}
-    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-
-    {/* ★ 画面中央に配置 */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-      <div
-        className="
-          bg-white shadow-2xl
-          rounded-2xl
-          w-full max-w-md
-          max-h-[70vh]
-          overflow-hidden
-          flex flex-col
-        "
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {/* 固定ヘッダー */}
-        <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
-                        bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <div className="flex items-center gap-2">
-            <img
-              src="/icons/mic-red.png"
-              alt="mic"
-              width={28}
-              height={28}
-              className="w-7 h-7 object-contain select-none drop-shadow"
-              loading="lazy"
-              decoding="async"
-              draggable="false"
-            />
-            <h2 className="text-xl font-extrabold tracking-wide">得点</h2>
-          </div>
-          <div className="w-9 h-9" />
-        </div>
-
-        {/* 本文（スクロール領域） */}
-        <div className="px-4 py-4 space-y-4 overflow-y-auto">
-          {/* アナウンス文言エリア（薄い赤） */}
-          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
-            <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
-            </div>
-            <p className="text-xl font-bold text-red-700 text-center">{popupMessage}</p>
-
-            {/* 読み上げ・停止（枠の中に残す） */}
-            <div className="flex justify-center gap-3 mt-4">
-              <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(popupMessage);
-                  speechSynthesis.speak(uttr);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-md"
-              >
-                読み上げ
-              </button>
-              <button
-                onClick={() => speechSynthesis.cancel()}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl shadow-md"
-              >
-                停止
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 固定フッター（OKはアナウンス枠の外） */}
-        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
-          <button
-            onClick={async () => {
-              setShowScorePopup(false);
-              if (pendingGroundPopup) {
-                setPendingGroundPopup(false);
-                setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
-              } else if (inning === 1 && isTop) {
-                await goSeatIntroFromOffense();
-              } else {
-                onSwitchToDefense();
-              }
-            }}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
-          >
-            OK
-          </button>
-          {/* iPhone セーフエリア */}
-          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
-        </div>
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
+      <div className="flex items-center mb-4">
+        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />        
+      </div>
+      <p>{popupMessage}</p>
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => {
+            const uttr = new SpeechSynthesisUtterance(popupMessage);
+            speechSynthesis.speak(uttr);
+          }}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          読み上げ
+        </button>
+        <button
+          onClick={() => speechSynthesis.cancel()}
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+        >
+          停止
+        </button>
+<button
+  onClick={async () => {
+    setShowScorePopup(false);
+    if (pendingGroundPopup) {
+      setPendingGroundPopup(false);
+      setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
+    } else if (inning === 1 && isTop) {
+      await goSeatIntroFromOffense();
+    } else {
+      onSwitchToDefense();
+    }
+  }}
+  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+>
+  OK
+</button>
       </div>
     </div>
   </div>
 )}
-
-
 
 {showDefensePrompt && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1537,20 +1439,20 @@ onClick={() => {
   </div>
 )}
 
-{/* ✅ リエントリーモーダル（中央配置・スマホ風・機能は既存のまま） */}
+{/* ✅ リエントリーモーダル（スマホ風・カラフル・機能は既存のまま） */}
 {showReEntryModal && (
-  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+  <div className="fixed inset-0 z-50">
     {/* 背景オーバーレイ */}
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-    {/* ★ 画面中央に配置 */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
       <div
         className="
           bg-white shadow-2xl
-          rounded-2xl
-          w-full max-w-md
-          max-h-[85vh]
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-md
+          max-h-[85vh] md:max-h-[80vh]
           overflow-y-auto
         "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -1574,6 +1476,7 @@ onClick={() => {
           <button
             onClick={() => {
               setShowReEntryModal(false);
+              // 必要ならここで個別リセット（reEntry系のstate）
             }}
             aria-label="閉じる"
             className="rounded-full w-9 h-9 flex items-center justify-center
@@ -1586,32 +1489,39 @@ onClick={() => {
 
         {/* 本文 */}
         <div className="px-4 py-4 space-y-4">
+
           {/* アナウンス表示（薄い赤背景・rtも赤） */}
           <div className="mb-3 rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
             <div className="mb-3 flex items-start gap-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <img
+                src="/icons/mic-red.png"
+                alt="mic"
+                className="w-5 h-5 translate-y-0.5"
+              />
               <span
                 className="space-y-1 font-bold text-red-700 leading-relaxed [&_rt]:text-red-700"
                 dangerouslySetInnerHTML={{
                   __html: `
-                    ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
-                    ${reEntryOrder1 ?? "?"}番
-                    ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして
-                    ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。<br/>
-                    バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
+                  ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
+                  ${reEntryOrder1 ?? "?"}番
+                  ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして
+                  ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。<br/>
+                  バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
                   `.trim()
                 }}
               />
             </div>
 
-            {/* 読み上げ・停止 */}
+            {/* 読み上げ・停止（配色：青／赤） */}
             <div className="flex justify-center gap-3">
               <button
                 onClick={() => {
                   if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
                   const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
                   const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+                  const kanaAFull = `${reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || ""}${reEntryFromPlayer.firstNameKana || reEntryFromPlayer.firstName || ""}`;
                   const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
+                  const kanaBFull = `${reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || ""}${reEntryTargetPlayer.firstNameKana || reEntryTargetPlayer.firstName || ""}`;
                   const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
                   announce(
                     `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
@@ -1634,69 +1544,88 @@ onClick={() => {
           </div>
 
           {/* 操作ボタン（確定／キャンセル） */}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 sticky bottom-0">
+            {/* 確定：メモリ更新（打順／守備位置／退場情報） */}
             <button
               onClick={async () => {
-                // 既存ロジック：確定処理（そのまま）
-                pushHistory();
+                pushHistory(); // ← 追加（リエントリー確定前に退避）
+
                 if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
                 const idx = reEntryOrder1 - 1;
 
+                // 1) 打順：元スタメン（B）で上書き（reason=リエントリー）
                 const newOrder = [...battingOrder];
                 newOrder[idx] = { id: reEntryTargetPlayer.id, reason: "リエントリー" };
                 setBattingOrder(newOrder);
                 await localForage.setItem("battingOrder", newOrder);
 
+                // 2) 守備位置：今回は変更しない（オフェンス画面仕様）。必要ならここで assignments 更新。
+                // 守備配置の現在値を取得
                 const curAssignments =
-                  (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ||
-                  assignments || {};
+                  (await localForage.getItem<Record<string, number | null>>("lineupAssignments"))
+                  || assignments || {};
                 const newAssignments = { ...curAssignments };
 
-                const posOfA = Object.entries(newAssignments)
-                  .find(([, id]) => Number(id) === Number(reEntryFromPlayer?.id))?.[0];
+                // いま A（戻される側）が就いている“現在の守備位置”を探す
+                const posOfA =
+                  Object.entries(newAssignments).find(([, id]) => Number(id) === Number(reEntryFromPlayer?.id))?.[0];
 
+                // 念のため：B がどこかに残っていたら外す（重複防止）
                 for (const [pos, id] of Object.entries(newAssignments)) {
-                  if (Number(id) === Number(reEntryTargetPlayer.id)) newAssignments[pos] = null;
+                  if (Number(id) === Number(reEntryTargetPlayer.id)) {
+                    newAssignments[pos] = null;
+                  }
                 }
 
+                // 置換：A が現在いる守備位置 → B を入れる
                 if (posOfA) {
                   newAssignments[posOfA] = reEntryTargetPlayer.id;
                 } else {
+                  // A が守備にいない（代打のみ／DHのみ等）の場合はフォールバックで「Bの元ポジション」へ
                   const fromPos = (usedPlayerInfo?.[reEntryTargetPlayer.id]?.fromPos) as string | undefined;
                   if (fromPos) newAssignments[fromPos] = reEntryTargetPlayer.id;
                 }
 
+                // state とストレージを更新
                 setAssignments(newAssignments);
                 await localForage.setItem("lineupAssignments", newAssignments);
 
+                // 3) 退場情報：Aは「退場として残す」/ 元スタメンBは「退場解除」（= usedPlayerInfo から削除）
                 const newUsed = { ...(usedPlayerInfo || {}) };
+
+                // Bの以前の記録（fromPosなど）を保険で拾っておく
                 const prevB = (usedPlayerInfo || {})[reEntryTargetPlayer.id] as
                   | { fromPos?: string; order?: number; subId?: number; wasStarter?: boolean }
                   | undefined;
 
+                // Aの fromPos を推定（Bの元ポジ or いまAが居た守備）
                 const fromPosForA =
                   prevB?.fromPos ||
                   (Object.entries(newAssignments).find(([, id]) => id === reEntryFromPlayer?.id)?.[0] ?? "");
 
+                // 🔴 A（交代で退場）をキーに退場記録を残す
                 if (reEntryFromPlayer) {
                   (newUsed as any)[reEntryFromPlayer.id] = {
                     fromPos: fromPosForA,
-                    subId: reEntryTargetPlayer.id,
+                    subId: reEntryTargetPlayer.id,     // AをBが置き換えた
                     reason: "リエントリー",
-                    order: reEntryOrder1,
+                    order: reEntryOrder1,              // 何番の話か
                     wasStarter: false,
                   };
                 }
 
+                // 🟢 B（元スタメン）は退場解除（＝usedから削除）
                 delete (newUsed as any)[reEntryTargetPlayer.id];
 
                 setUsedPlayerInfo(newUsed);
                 await localForage.setItem("usedPlayerInfo", newUsed);
 
+                // （任意）チーム配列にいなければ追加
                 if (!players.some(p => p.id === reEntryTargetPlayer.id)) {
                   setPlayers(prev => [...prev, reEntryTargetPlayer]);
                 }
 
+                // B をベンチから除外し、A を未登録ならベンチに追加
                 setBenchPlayers(prev => {
                   const withoutB = prev.filter(p => p.id !== reEntryTargetPlayer.id);
                   if (reEntryFromPlayer && !withoutB.some(p => p.id === reEntryFromPlayer.id)) {
@@ -1705,6 +1634,7 @@ onClick={() => {
                   return withoutB;
                 });
 
+                // 後片付け
                 setShowReEntryModal(false);
                 setReEntryFromPlayer(null);
                 setReEntryTargetPlayer(null);
@@ -1741,20 +1671,20 @@ onClick={() => {
 
 
 
-{/* ✅ 代打モーダル（スマホ風・中央配置・機能は既存のまま） */}
+{/* ✅ 代打モーダル（スマホ風・カラフル・機能は既存のまま） */}
 {showSubModal && (
   <div className="fixed inset-0 z-50">
     {/* 背景オーバーレイ */}
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-    {/* ★ 画面中央に配置（全ブレイクポイントで中央） */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
       <div
         className="
           bg-white shadow-2xl
-          rounded-2xl
-          w-full max-w-3xl
-          max-h-[85vh]
+          rounded-t-2xl md:rounded-2xl
+          w-full md:max-w-3xl
+          max-h-[85vh] md:max-h-[80vh]
           overflow-y-auto
         "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -1928,17 +1858,26 @@ onClick={() => {
           <div className="flex flex-col sm:flex-row justify-center gap-3">
             <button
               onClick={async () => {
-                // 既存ロジック（変更なし）
-                pushHistory();
+                pushHistory(); // ← 追加（代打確定前に退避）
 
+                // 2. UsedPlayerInfo に元選手情報を登録
                 const replacedId = battingOrder[currentBatterIndex].id;
                 const replaced = getPlayer(replacedId);
                 const isStarter = battingOrder.find(e => e.id === replacedId)?.reason === "スタメン";
 
                 if (replaced && selectedSubPlayer) {
-                  const usedInfo: Record<number, { fromPos: string; subId: number; reason: "代打" | "代走" | "守備交代"; order: number; wasStarter: boolean; }>
-                    = (await localForage.getItem("usedPlayerInfo")) || {};
+                  const usedInfo: Record<
+                    number,
+                    {
+                      fromPos: string;
+                      subId: number;
+                      reason: "代打" | "代走" | "守備交代";
+                      order: number;
+                      wasStarter: boolean;
+                    }
+                  > = (await localForage.getItem("usedPlayerInfo")) || {};
 
+                  // ✅ フル→略称変換マップ
                   const posMap: Record<string, string> = {
                     "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一",
                     "セカンド": "二", "サード": "三", "ショート": "遊",
@@ -1947,7 +1886,7 @@ onClick={() => {
                     "遊": "遊", "左": "左", "中": "中", "右": "右",
                   };
 
-                  const fullFromPos = getPosition(replaced.id);
+                  const fullFromPos = getPosition(replaced.id); // 例: "サード"
                   const fromPos = posMap[fullFromPos ?? ""] ?? fullFromPos ?? "";
 
                   usedInfo[replaced.id] = {
@@ -1960,26 +1899,42 @@ onClick={() => {
 
                   await localForage.setItem("usedPlayerInfo", usedInfo);
                   setUsedPlayerInfo(usedInfo);
+                  console.log("✅ 攻撃画面で登録された usedPlayerInfo：", usedInfo);
                 }
 
                 if (selectedSubPlayer) {
+                  // 1. 打順の入れ替え
                   const newOrder = [...battingOrder];
-                  newOrder[currentBatterIndex] = { id: selectedSubPlayer.id, reason: "代打" };
+                  newOrder[currentBatterIndex] = {
+                    id: selectedSubPlayer.id,
+                    reason: "代打",
+                  };
+
                   setBattingOrder(newOrder);
                   await localForage.setItem("battingOrder", newOrder);
 
-                  if (!players.some(p => p.id === selectedSubPlayer.id)) setPlayers(prev => [...prev, selectedSubPlayer]);
-                  if (!allPlayers.some(p => p.id === selectedSubPlayer.id)) setAllPlayers(prev => [...prev, selectedSubPlayer]);
-                  if (!substitutedIndices.includes(currentBatterIndex)) setSubstitutedIndices(prev => [...prev, currentBatterIndex]);
+                  if (!players.some(p => p.id === selectedSubPlayer.id)) {
+                    setPlayers(prev => [...prev, selectedSubPlayer]);
+                  }
+                  if (!allPlayers.some(p => p.id === selectedSubPlayer.id)) {
+                    setAllPlayers(prev => [...prev, selectedSubPlayer]);
+                  }
+                  if (!substitutedIndices.includes(currentBatterIndex)) {
+                    setSubstitutedIndices(prev => [...prev, currentBatterIndex]);
+                  }
 
+                  // 下部のアナウンス欄へ反映（既存ロジック）
                   const replaced2 = getPlayer(battingOrder[currentBatterIndex]?.id);
                   const sub2 = selectedSubPlayer;
                   if (replaced2 && sub2) {
                     const honorBef = replaced2.isFemale ? "さん" : "くん";
                     const honorSub = sub2.isFemale ? "さん" : "くん";
-                    const prefix = isLeadingBatter ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>` : "";
+                    const prefix = isLeadingBatter
+                      ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>`
+                      : "";
                     const html =
-                      `${prefix}${currentBatterIndex + 1}番 ` +
+                      `${prefix}` +
+                      `${currentBatterIndex + 1}番 ` +
                       `${rubyLast(replaced2)} ${honorBef} に代わりまして ` +
                       `${rubyLast(sub2)} ${rubyFirst(sub2)} ${honorSub}、` +
                       `バッターは ${rubyLast(sub2)} ${honorSub}、` +
@@ -2013,18 +1968,18 @@ onClick={() => {
 )}
 
 
-{/* ✅ 代走モーダル（中央配置・カラフル・背番号は改行しない） */}
+{/* ✅ 代走モーダル（カラフル版・背番号は改行しない） */}
 {showRunnerModal && (
   <div className="fixed inset-0 z-50">
     {/* 背景オーバーレイ */}
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-    {/* ★ 全デバイスで中央配置 */}
-    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+    {/* ボトムシート（SP）／中央カード（md+） */}
+    <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
       <div
         className="
           bg-white shadow-2xl
-          rounded-2xl
+          rounded-t-2xl md:rounded-2xl
           w-full md:max-w-md
           max-h-[85vh] md:max-h-[80vh]
           overflow-y-auto
@@ -2335,11 +2290,13 @@ onClick={() => {
               {runnerAnnouncement && runnerAnnouncement.length > 0 && (
                 <div className="mb-3 rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
                   <div className="mb-3 flex items-start gap-2">
+                    {/* アイコンを白反転（赤地で見やすく） */}
                     <img
                         src="/icons/mic-red.png"
                         alt="mic"
                         className="w-5 h-5 translate-y-0.5"
                       />
+                    {/* 本文は白、ルビ(rt)は薄赤で可読性UP */}
                     <div className="space-y-1 font-bold text-red-600 [&_rt]:text-red-700">
                       {["1塁", "2塁", "3塁"].map((base) => {
                         const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
@@ -2380,7 +2337,7 @@ onClick={() => {
                       読み上げ
                     </button>
 
-                    {/* 停止＝赤 */}
+                    {/* 停止＝赤（赤地でも見えるよう白リング） */}
                     <button
                       onClick={() => speechSynthesis.cancel()}
                       className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
@@ -2391,6 +2348,9 @@ onClick={() => {
                   </div>
                 </div>
               )}
+
+
+
 
               {/* 操作ボタン行（色をしっかり差別化） */}
               <div className="flex justify-between gap-3 sticky bottom-0">
@@ -2425,7 +2385,6 @@ onClick={() => {
                   {/* 確定（Primary=Emerald） */}
                   <button
                     onClick={async () => {
-                      // 既存ロジック（変更なし）
                       pushHistory();
 
                       const newOrder = [...battingOrder];
@@ -2538,7 +2497,6 @@ onClick={() => {
     </div>
   </div>
 )}
-
 
 
 

@@ -393,17 +393,18 @@ return (
       {/* 操作ボタン */}
       <div className="grid gap-3 pt-1">
         <button
-          onClick={handleStart}
-          className="w-full px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
-        >
-          <IconPlay /> 試合を開始する
-        </button>
-        <button
           onClick={onShowAnnouncement}
           className="w-full px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
         >
           <IconMic /> 試合前アナウンス
         </button>
+        <button
+          onClick={handleStart}
+          className="w-full px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
+        >
+          <IconPlay /> 試合を開始する
+        </button>
+
       </div>
     </main>
   </div>

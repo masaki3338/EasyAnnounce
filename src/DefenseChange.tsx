@@ -3013,623 +3013,655 @@ onConfirmed?.();
   const effectiveLogs = getEffectiveSubstitutionLogs(substitutionLogs);
 
   
-  return (
-    <div className="p-4 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">守備交代</h1>
-
- <div className="relative w-full max-w-2xl mx-auto mb-6">
- <img
-  src="/field.jpg"
-  alt="フィールド図"
-  className="w-full rounded shadow pointer-events-none"
-  draggable={false}
-/>  
-  
-{/* 通常の描画（スタメンや通常交代） */}
-{positions.map((pos) => {
-  const currentId = assignments[pos];
-  const initialId = initialAssignments[pos];
- 
-  const player = currentId ? teamPlayers.find((p) => p.id === currentId) ?? null : null;
-
-  // 出場理由の補完（battingOrder or usedPlayerInfo）
-  let reason: string | undefined;
-  if (currentId) {
-    const battingEntry = battingOrder.find(e => e.id === currentId);
-    reason = battingEntry?.reason;
-
-    if (!reason) {
-      const entry = Object.entries(usedPlayerInfo).find(
-        ([, info]) => info.subId === currentId
-      );
-      if (entry) {
-        const originalId = Number(entry[0]);
-        const originalReason = battingOrder.find(e => e.id === originalId)?.reason;
-        reason = originalReason;
-      }
-      console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
-      console.warn("usedPlayerInfo:", usedPlayerInfo);
-      console.warn("battingOrder:", battingOrder);
-    }
-  }
-
-  const isChanged = currentId !== initialId;
-  const isSub = reason === "代打" || reason === "臨時代走"|| reason === "代走";
-
-  const className = `absolute text-sm font-bold px-2 py-1 rounded cursor-move 
-    ${isSub ? "text-yellow-300 bg-black bg-opacity-90 ring-2 ring-yellow-400" 
-            : isChanged ? "text-white bg-black bg-opacity-60 ring-2 ring-yellow-400"
-                        : "text-white bg-black bg-opacity-60"}`;
-
-  return (
-  <div
-    key={pos}
-    onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
-    onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
-
-    className={`${className} whitespace-nowrap text-center`}   // ← 追加
-    style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}  // ← 追加
-  >
-
-   {player ? (
-    <div
-      draggable
-      onDragStart={(e) => handlePositionDragStart(e, pos)}
-      className="cursor-move text-base whitespace-nowrap text-center bg-black bg-opacity-60 text-white font-bold rounded px-1 py-0.5"
-      style={{ minWidth: "80px" }}
-    >
-      {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
-    </div>
-  ) : (
-  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "80px" }}>
-    DHなし
-  </span>
-  )}
-    </div>
-  );
-})}
-</div>
-
-<div className="flex items-center mb-2">
-  <h2 className="text-lg font-semibold">控え選手</h2>
-  <span className="ml-2 text-red-600 text-sm inline-flex items-center whitespace-nowrap">
-    ⚠️ 交代する選手にドロップ
-  </span>
-</div>
-  <div
-    className="flex flex-col gap-2 mb-6"
-    onDragOver={(e) => e.preventDefault()}
-    onDrop={(e) => handleDrop(BENCH, e)}
-  >
-  {/* 未出場の控え */}
-  {benchNeverPlayed.length === 0 ? (
-    <div className="text-xs text-gray-400 mb-1">（なし）</div>
-  ) : (
-    <div className="flex flex-wrap gap-2 mb-2">
-      {benchNeverPlayed.map((p) => (
-        <div
-          key={`bench-${p.id}`}
-          draggable
-          onDragStart={(e) => handleBenchDragStart(e, p.id)}
-          className="px-2 py-1 bg-gray-200 rounded cursor-move select-none"
-        >
-          {formatPlayerLabel(p)}
-        </div>
-      ))}
-    </div>
-  )}
-
-  {/* 出場済み（いまはベンチ） */}
-  <div className="text-xs font-semibold text-gray-600 mt-1">出場済み選手</div>
-  {benchPlayedOut.length === 0 ? (
-    <div className="text-xs text-gray-400">（なし）</div>
-  ) : (
-    <div className="flex flex-wrap gap-2">
-      {benchPlayedOut.map((p) => (
-        <div
-          key={`played-${p.id}`}
-          draggable
-          onDragStart={(e) => handleBenchDragStart(e, p.id)}
-          className="px-2 py-1 bg-gray-100 text-gray-600 border border-gray-300 rounded cursor-move select-none"
-          title="一度出場済みの選手"
-        >
-          {formatPlayerLabel(p)}
-        </div>
-      ))}
-    </div>
-  )}
-</div>
-
-
-<div className="mt-8 flex flex-col lg:flex-row gap-6">
-  {/* 打順一覧（左） */}
-  <div className="flex-1">
-    <h2 className="text-lg font-semibold mb-2">打順（1番〜9番）</h2>
-    <ul className="space-y-1 text-sm border border-gray-300 p-2 rounded">
-{battingOrder.map((entry, index) => {
-  const displayId = battingReplacements[index]?.id ?? entry.id;
-
-   const starter = teamPlayers.find(p => p.id === entry.id);
-  const player  = teamPlayers.find(p => p.id === displayId);
-  if (!starter || !player) return null;
-
-  const currentPos = getPositionName(assignments, displayId);
-  const initialPos = getPositionName(initialAssignments, entry.id);
-
-  const playerChanged   = displayId !== entry.id;
-  const positionChanged = currentPos !== initialPos;
-
-  const isPinchHitter = entry.reason === "代打";
-  const isPinchRunner = entry.reason === "代走";
-  const isPinch = isPinchHitter || isPinchRunner;
-  const pinchLabel = isPinchHitter ? "代打" : isPinchRunner ? "代走" : "";
-
-  return (
-    <li key={`${index}-${displayId}`} className="border px-2 py-1 rounded bg-white">
-      <div className="flex items-start gap-2">
-        <span className="w-8">{index + 1}番</span>
-        <div>
-          {isPinch && playerChanged ? (
-            // 代打/代走の選手が別人に交代した（=displayIdが変わった）
-            <>
-              <div className="line-through text-gray-500 text-sm">
-                {pinchLabel} {starter.lastName}{starter.firstName} #{starter.number}
-              </div>
-              <div className="text-red-600 font-bold">
-                {currentPos}　{player.lastName}{player.firstName} #{player.number}
-              </div>
-            </>
-          ) : isPinch ? (
-            // 代打/代走のまま（同一ID）で守備入り or 位置だけ変わった
-            <>
-              <div>
-                <span className="line-through">{pinchLabel}</span>&nbsp;
-                {starter.lastName}{starter.firstName} #{starter.number}
-              </div>
-              <div className="pl-0 text-red-600 font-bold">
-                {currentPos}
-              </div>
-            </>
-          ) : playerChanged ? (
-            // スタメンから別選手に交代
-            <>
-              <div className="line-through text-gray-500 text-sm">
-                {initialPos}　{starter.lastName}{starter.firstName} #{starter.number}
-              </div>
-              <div className="text-red-600 font-bold">
-                {currentPos}　{player.lastName}{player.firstName} #{player.number}
-              </div>
-            </>
-) : positionChanged ? (
-  // 守備だけの入替（DH中の「投⇄捕」など）は打順は据え置き。
-  // 上段はそのまま（取り消し線なし）、下段に“ポジション名だけ”を赤字で出す。
-  (() => {
-    const dhActive = !!assignments["指"];
-    const isOnlyDefSwap =
-      dhActive &&
-      ((initialPos === "捕" && currentPos === "投") ||
-       (initialPos === "投" && currentPos === "捕"));
-
-    if (isOnlyDefSwap) {
-      return (
-        <>
-          {/* 上段：元の選手だけ（そのまま） */}
-          <div>{initialPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
-          {/* 下段：相手の“名前”は出さず、ポジション名だけ赤字で */}
-          <div className="text-red-600 font-bold">{currentPos}</div>
-        </>
-      );
-    }
-
-    // ↑以外の通常の“位置だけ変更”は従来表示
-    return (
-      <>
-        <div className="line-through text-gray-500 text-sm">{initialPos}</div>
-        <div>
-          <span className="text-red-600 font-bold">{currentPos}</span>　{starter.lastName}{starter.firstName} #{starter.number}
-        </div>
-      </>
-    );
-  })()
-) : (
-  // 変更なし
-  <div>{currentPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
-)}
-
+return (
+  <div className="min-h-screen bg-slate-50">
+    {/* スマホ風ヘッダー */}
+    <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+      <div className="max-w-4xl mx-auto px-4">
+        <div className="h-14 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="rounded-full w-9 h-9 flex items-center justify-center bg-white/15 hover:bg-white/25 active:bg-white/30 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            aria-label="戻る"
+            title="戻る"
+          >
+            ←
+          </button>
+          <div className="font-extrabold text-lg tracking-wide">守備交代</div>
+          <span className="w-9" />
         </div>
       </div>
-    </li>
-  );
-})}
-
-{(() => {
-  // DHが使われていなければ出さない
-  const dhActive = !!assignments["指"];
-  if (!dhActive) return null;
-
-  // 先発（試合開始時）の投手IDを基準に表示
-  const starterPitcherId =
-    typeof initialAssignments?.["投"] === "number"
-      ? (initialAssignments["投"] as number)
-      : null;
-  if (!starterPitcherId) return null;
-
-  // 先発投手が打順に含まれているときは出さない（DH時のみ表示）
-  const inBatting = battingOrder.some((e) => e.id === starterPitcherId);
-  if (inBatting) return null;
-
-  // 現在の投手（控えから交代後を含む）
-  const currentPitcherId =
-    typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
-
-  const oldP = teamPlayers.find((p) => p.id === starterPitcherId);
-  const newP = currentPitcherId
-    ? teamPlayers.find((p) => p.id === currentPitcherId)
-    : undefined;
-  if (!oldP) return null;
-
-  // 交代が起きたか？（先発投手IDと現在投手IDが異なる）
-  const replaced = !!newP && currentPitcherId !== starterPitcherId;
-
-  return (
-<li key="pitcher-under-9" className="border px-2 py-1 rounded bg-white">
-  <div className="flex items-start gap-2">
-    <span className="w-8" />
-    <div>
-      {replaced ? (
-        (() => {
-          // 安全に取得
-          const oldPosNow =
-            Object.entries(assignments).find(([k, v]) => v === oldP?.id)?.[0] ?? "投";
-          const isSwapWithFielder = oldPosNow !== "投";
-
-          // データ欠落時は何も出さずに保護
-          if (!oldP) return null;
-
-          if (isSwapWithFielder) {
-            // 守備だけ入替：上段=旧投手、下段=旧投手の新守備（略号だけ）
-            return (
-              <>
-                <div>
-                  投　{oldP.lastName}{oldP.firstName} #{oldP.number}
-                </div>
-                <div className="text-red-600 font-bold">{oldPosNow}</div>
-              </>
-            );
-          }
-
-          // 通常の投手交代：新投手が未取得なら安全にスキップ
-          if (!newP) {
-            return (
-              <div>
-                投　{oldP.lastName}{oldP.firstName} #{oldP.number}
-              </div>
-            );
-          }
-          return (
-            <>
-              <div className="line-through text-gray-500 text-sm">
-                投　{oldP.lastName}{oldP.firstName} #{oldP.number}
-              </div>
-              <div className="text-red-600 font-bold">
-                投　{newP.lastName}{newP.firstName} #{newP.number}
-              </div>
-            </>
-          );
-        })()
-      ) : (
-        // 交代なし（保険）
-        (() => {
-          if (!oldP) return null;
-          const posSym =
-            Object.entries(assignments).find(([k, v]) => v === oldP.id)?.[0] ?? "投";
-          return (
-            <div>
-              {posSym}　{oldP.lastName}{oldP.firstName} #{oldP.number}
-            </div>
-          );
-        })()
-      )}
     </div>
-  </div>
-</li>
 
+    {/* コンテンツカード（スマホ感のある白カード） */}
+    <div className="max-w-4xl mx-auto px-4 py-4">
+      <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 p-4">
+        {/* フィールド図 + 札（そのまま） */}
+        <div className="relative w-full max-w-2xl mx-auto mb-6">
+          <img
+            src="/field.jpg"
+            alt="フィールド図"
+            className="w-full rounded-xl shadow pointer-events-none select-none"
+            draggable={false}
+          />
 
+          {/* 通常の描画（スタメンや通常交代） */}
+          {positions.map((pos) => {
+            const currentId = assignments[pos];
+            const initialId = initialAssignments[pos];
 
-  );
-})()}
+            const player = currentId ? teamPlayers.find((p) => p.id === currentId) ?? null : null;
 
+            // 出場理由の補完（battingOrder or usedPlayerInfo）
+            let reason: string | undefined;
+            if (currentId) {
+              const battingEntry = battingOrder.find(e => e.id === currentId);
+              reason = battingEntry?.reason;
 
-
-    </ul>
-  </div>
-
-  {/* 交代内容（右） */}
-  <div className="w-full lg:w-1/2">
-    <h2 className="text-lg font-semibold mb-2">交代内容</h2>
-    <ul className="text-sm border border-gray-300 p-3 rounded bg-white space-y-1">
-      {(() => {
-        const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
-
-        const changes = battingOrder.map((entry, index) => {
-          const starter = teamPlayers.find((p) => p.id === entry.id);
-          if (!starter) return null;
-
-          let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
-          const currentId = replaced?.id ?? entry.id;
-          const currentPlayer = replaced ?? starter;
-
-          const currentPos = getPositionName(assignments, currentId);
-          const initialPos = getPositionName(initialAssignments, entry.id);
-
-          const playerChanged = replaced && replaced.id !== entry.id;
-          const positionChanged = currentPos !== initialPos;
-          const isPinchHitter = entry.reason === "代打";
-          const isPinchRunner = entry.reason === "代走";
-          const isPinch = isPinchHitter || isPinchRunner;
-
-          if (isPinchHitter && replaced && !Object.values(assignments).includes(replaced.id)) {
-            return {
-              key: `pinch-${index}`,
-              type: 1,
-              pos: "", // 代打は守備位置未定
-              jsx: (
-                <li key={`pinch-${index}`}>
-                  代打 ➡ {replaced.lastName}{replaced.firstName} #{replaced.number}
-                </li>
-              )
-            };
-          }
-          
-          if (isPinchHitter && playerChanged && currentPos) {
-            const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
-            const replacedPlayer = replaced;
-
-            return {
-              key: `pinch-replaced-${index}`,
-              type: 1,
-              pos: currentPos,
-              jsx: (
-                <li key={`pinch-replaced-${index}`}>
-                  代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
-                </li>
-              )
-            };
-          }
-
-          if (isPinchHitter && currentPos) {
-            // 🆕 replacedが未定義でも代打選手が存在するなら補完
-            if (!replaced) {
-              replaced = teamPlayers.find(p => p.id === entry.id);
+              if (!reason) {
+                const entry = Object.entries(usedPlayerInfo).find(
+                  ([, info]) => info.subId === currentId
+                );
+                if (entry) {
+                  const originalId = Number(entry[0]);
+                  const originalReason = battingOrder.find(e => e.id === originalId)?.reason;
+                  reason = originalReason;
+                }
+                console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
+                console.warn("usedPlayerInfo:", usedPlayerInfo);
+                console.warn("battingOrder:", battingOrder);
+              }
             }
-            return {
-              key: `pinch-assigned-${index}`,
-              type: 1,
-              pos: currentPos,
-              jsx: (
-                <li key={`pinch-assigned-${index}`}>
-                  代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
 
-          if (isPinchRunner && replaced) {
-            return {
-              key: `runner-${index}`,
-              type: 2,
-              pos: currentPos,
-              jsx: (
-                <li key={`runner-${index}`}>
-                  代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
+            const isChanged = currentId !== initialId;
+            const isSub = reason === "代打" || reason === "臨時代走" || reason === "代走";
 
-          if (playerChanged) {
-            return {
-              key: `replaced-${index}`,
-              type: 3,
-              pos: currentPos,
-              jsx: (
-                <li key={`replaced-${index}`}>
-                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}：
-                  {currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
-                </li>
-              )
-            };
-          }
+            const className = `absolute text-sm font-bold px-2 py-1 rounded cursor-move 
+              ${isSub ? "text-yellow-300 bg-black/90 ring-2 ring-yellow-400"
+                      : isChanged ? "text-white bg-black/60 ring-2 ring-yellow-400"
+                                  : "text-white bg-black/60"}`;
 
-          if (positionChanged) {
-            return {
-              key: `shift-${index}`,
-              type: 4,
-              pos: currentPos,
-              jsx: (
-                <li key={`shift-${index}`}>
-                  {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}
-                </li>
-              )
-            };
-          }
+            return (
+              <div
+                key={pos}
+                onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
+                onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
+                className={`${className} whitespace-nowrap text-center`}
+                style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "80px" }}
+              >
+                {player ? (
+                  <div
+                    draggable
+                    onDragStart={(e) => handlePositionDragStart(e, pos)}
+                    className="cursor-move text-base whitespace-nowrap text-center bg-black/60 text-white font-bold rounded px-2 py-1"
+                    style={{ minWidth: "80px" }}
+                  >
+                    {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
+                  </div>
+                ) : (
+                  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "80px" }}>
+                    DHなし
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-          return null;
-        }).filter(Boolean) as { key: string; type: number; pos: string; jsx: JSX.Element }[];
+        {/* 控え選手（スマホっぽい見出しとタグ） */}
+        <div className="mb-4">
+          <div className="flex items-center mb-2">
+            <h2 className="text-lg font-bold text-slate-900">控え選手</h2>
+            <span className="ml-2 text-amber-600 text-sm inline-flex items-center whitespace-nowrap">
+              ⚠️ 交代する選手にドロップ
+            </span>
+          </div>
 
-        // --- 追加: DHありで打順に投手が居ないケースでも投手交代を表示する ---
-        // --- 追加: 先発投手が「投」以外の守備に就いている場合も1行出す ---
-(() => {
-  const initP = initialAssignments?.["投"];
-  // 先発投手が打順にいない（DH時）前提。重複回避で既存行を確認。
-  if (typeof initP !== "number") return;
+          <div
+            className="flex flex-col gap-2 mb-6"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleDrop(BENCH, e)}
+          >
+            {/* 未出場の控え */}
+            {benchNeverPlayed.length === 0 ? (
+              <div className="text-xs text-gray-400 mb-1">（なし）</div>
+            ) : (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {benchNeverPlayed.map((p) => (
+                  <div
+                    key={`bench-${p.id}`}
+                    draggable
+                    onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
+                  >
+                    {formatPlayerLabel(p)}
+                  </div>
+                ))}
+              </div>
+            )}
 
-  // 先発投手が今どの守備に就いているか
-  const nowPos =
-    Object.entries(assignments).find(([pos, id]) => id === initP)?.[0];
+            {/* 出場済み（いまはベンチ） */}
+            <div className="text-xs font-semibold text-slate-600 mt-1">出場済み選手</div>
+            {benchPlayedOut.length === 0 ? (
+              <div className="text-xs text-gray-400">（なし）</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {benchPlayedOut.map((p) => (
+                  <div
+                    key={`played-${p.id}`}
+                    draggable
+                    onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    className="px-3 py-1.5 text-sm bg-slate-50 text-slate-600 border border-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
+                    title="一度出場済みの選手"
+                  >
+                    {formatPlayerLabel(p)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
-  // 「投」以外の守備に移っていたら表示（既に同じposのshift行があれば出さない）
-  if (nowPos && nowPos !== "投" && !changes.some(c => c.type === 4 && c.pos === nowPos)) {
-    const from = teamPlayers.find(p => p.id === initP);
-    if (from) {
-      changes.push({
-        key: "pitcher-shift-extra",
-        type: 4,            // 守備位置変更（shift）扱い
-        pos: nowPos,        // 並び順は移動先の守備でソート
-        jsx: (
-          <li key="pitcher-shift-extra">
-            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
-            {" "}➡ {withFull(nowPos)}
-          </li>
-        ),
-      });
-    }
-  }
-})();
+        {/* 2カラム（スマホでは縦積み） */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 打順一覧 */}
+          <div className="flex-1">
+            <h2 className="text-lg font-bold mb-2 text-slate-900">打順（1番〜9番）</h2>
+            <ul className="space-y-1 text-sm border border-slate-200 rounded-xl bg-white p-2">
+              {battingOrder.map((entry, index) => {
+                const displayId = battingReplacements[index]?.id ?? entry.id;
 
-(() => {
-  const initP = initialAssignments?.["投"];
-  const curP  = assignments?.["投"];
+                const starter = teamPlayers.find(p => p.id === entry.id);
+                const player  = teamPlayers.find(p => p.id === displayId);
+                if (!starter || !player) return null;
 
-  // 両方とも数値で、かつ別人、かつ既に投手の行が無いときだけ追加
-  if (
-    typeof initP === "number" &&
-    typeof curP === "number" &&
-    initP !== curP &&
-    !changes.some(c => c.pos === "投")
-  ) {
-    const from = teamPlayers.find(p => p.id === initP);
-    const to   = teamPlayers.find(p => p.id === curP);
-    if (from && to) {
-      changes.push({
-        key: "pitcher-change-extra",
-        type: 3,             // 通常の「交代」扱い
-        pos: "投",
-        jsx: (
-          <li key="pitcher-change-extra">
-            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
-            {" "}➡ {withFull("投")}：{to.lastName}{to.firstName} #{to.number}
-          </li>
-        ),
-      });
-    }
-  }
-})();
+                const currentPos = getPositionName(assignments, displayId);
+                const initialPos = getPositionName(initialAssignments, entry.id);
 
-        // 優先順位に従ってソート
-        changes.sort((a, b) => {
-          if (a.type !== b.type) return a.type - b.type;
-          const ap = posPriority[a.pos] ?? 99;
-          const bp = posPriority[b.pos] ?? 99;
-          return ap - bp;
-        });
+                const playerChanged   = displayId !== entry.id;
+                const positionChanged = currentPos !== initialPos;
 
-        return changes.map(c => c.jsx);
-      })()}
-    </ul>
-  </div>
-</div>
+                const isPinchHitter = entry.reason === "代打";
+                const isPinchRunner = entry.reason === "代走";
+                const isPinch = isPinchHitter || isPinchRunner;
+                const pinchLabel = isPinchHitter ? "代打" : isPinchRunner ? "代走" : "";
 
+                return (
+                  <li key={`${index}-${displayId}`} className="border border-slate-200 px-2 py-1 rounded bg-white">
+                    <div className="flex items-start gap-2">
+                      <span className="w-10 shrink-0 text-center">{index + 1}番</span>
+                      <div className="min-w-0">
+                        {isPinch && playerChanged ? (
+                          <>
+                            <div className="line-through text-gray-500 text-xs">
+                              {pinchLabel} {starter.lastName}{starter.firstName} #{starter.number}
+                            </div>
+                            <div className="text-rose-600 font-bold">
+                              {currentPos}　{player.lastName}{player.firstName} #{player.number}
+                            </div>
+                          </>
+                        ) : isPinch ? (
+                          <>
+                            <div>
+                              <span className="line-through">{pinchLabel}</span>&nbsp;
+                              {starter.lastName}{starter.firstName} #{starter.number}
+                            </div>
+                            <div className="pl-0 text-rose-600 font-bold">
+                              {currentPos}
+                            </div>
+                          </>
+                        ) : playerChanged ? (
+                          <>
+                            <div className="line-through text-gray-500 text-xs">
+                              {initialPos}　{starter.lastName}{starter.firstName} #{starter.number}
+                            </div>
+                            <div className="text-rose-600 font-bold">
+                              {currentPos}　{player.lastName}{player.firstName} #{player.number}
+                            </div>
+                          </>
+                        ) : positionChanged ? (
+                          (() => {
+                            const dhActive = !!assignments["指"];
+                            const isOnlyDefSwap =
+                              dhActive &&
+                              ((initialPos === "捕" && currentPos === "投") ||
+                               (initialPos === "投" && currentPos === "捕"));
 
+                            if (isOnlyDefSwap) {
+                              return (
+                                <>
+                                  <div>{initialPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
+                                  <div className="text-rose-600 font-bold">{currentPos}</div>
+                                </>
+                              );
+                            }
 
-<div className="mt-8 text-center flex justify-center gap-4">
-<button
-  onClick={handleUndo}
-  disabled={!history.length}
-  className={`bg-gray-700 text-white px-6 py-2 rounded transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
->
-  ↻
-</button>
-<button
-  onClick={handleRedo}
-  disabled={!redo.length}
-  className={`bg-gray-700 text-white px-6 py-2 rounded transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
->
-   ↺
-</button>
+                            return (
+                              <>
+                                <div className="line-through text-gray-500 text-xs">{initialPos}</div>
+                                <div>
+                                  <span className="text-rose-600 font-bold">{currentPos}</span>　{starter.lastName}{starter.firstName} #{starter.number}
+                                </div>
+                              </>
+                            );
+                          })()
+                        ) : (
+                          <div>{currentPos}　{starter.lastName}{starter.firstName} #{starter.number}</div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
 
-  <button
-    onClick={confirmChange}
-    className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition"
-  >
-    交代確定
-  </button>
+              {(() => {
+                // DHが使われていなければ出さない
+                const dhActive = !!assignments["指"];
+                if (!dhActive) return null;
 
-<button
-  type="button"
-  onClick={handleDisableDH}
-  disabled={!assignments?.["指"]}
-  className="bg-gray-800 text-white px-6 py-2 rounded disabled:bg-gray-300"
->
-  DH解除
-</button>
+                // 先発投手
+                const starterPitcherId =
+                  typeof initialAssignments?.["投"] === "number"
+                    ? (initialAssignments["投"] as number)
+                    : null;
+                if (!starterPitcherId) return null;
 
+                // 先発投手が打順に含まれているときは出さない（DH時のみ表示）
+                const inBatting = battingOrder.some((e) => e.id === starterPitcherId);
+                if (inBatting) return null;
 
+                // 現在の投手
+                const currentPitcherId =
+                  typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
 
-  <button
-    onClick={showAnnouncement}
-    className="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700 transition"
-  >
-    🎤表示
-  </button>
-</div>
+                const oldP = teamPlayers.find((p) => p.id === starterPitcherId);
+                const newP = currentPitcherId
+                  ? teamPlayers.find((p) => p.id === currentPitcherId)
+                  : undefined;
+                if (!oldP) return null;
 
-{showSaveModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-   {/* ① 高さを 90 vh に制限＋縦スクロール可 */}
-   <div className="bg-white rounded p-6 max-w-md w-full text-left
-                   flex flex-col max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center mb-4">
-        <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />        
+                const replaced = !!newP && currentPitcherId !== starterPitcherId;
+
+                return (
+                  <li key="pitcher-under-9" className="border border-slate-200 px-2 py-1 rounded bg-white">
+                    <div className="flex items-start gap-2">
+                      <span className="w-10 shrink-0" />
+                      <div className="min-w-0">
+                        {replaced ? (
+                          (() => {
+                            const oldPosNow =
+                              Object.entries(assignments).find(([k, v]) => v === oldP?.id)?.[0] ?? "投";
+                            const isSwapWithFielder = oldPosNow !== "投";
+
+                            if (!oldP) return null;
+
+                            if (isSwapWithFielder) {
+                              return (
+                                <>
+                                  <div>
+                                    投　{oldP.lastName}{oldP.firstName} #{oldP.number}
+                                  </div>
+                                  <div className="text-rose-600 font-bold">{oldPosNow}</div>
+                                </>
+                              );
+                            }
+
+                            if (!newP) {
+                              return (
+                                <div>
+                                  投　{oldP.lastName}{oldP.firstName} #{oldP.number}
+                                </div>
+                              );
+                            }
+                            return (
+                              <>
+                                <div className="line-through text-gray-500 text-xs">
+                                  投　{oldP.lastName}{oldP.firstName} #{oldP.number}
+                                </div>
+                                <div className="text-rose-600 font-bold">
+                                  投　{newP.lastName}{newP.firstName} #{newP.number}
+                                </div>
+                              </>
+                            );
+                          })()
+                        ) : (
+                          (() => {
+                            if (!oldP) return null;
+                            const posSym =
+                              Object.entries(assignments).find(([k, v]) => v === oldP.id)?.[0] ?? "投";
+                            return (
+                              <div>
+                                {posSym}　{oldP.lastName}{oldP.firstName} #{oldP.number}
+                              </div>
+                            );
+                          })()
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })()}
+
+            </ul>
+          </div>
+
+          {/* 交代内容（右） */}
+          <div className="w-full">
+            <h2 className="text-lg font-bold mb-2 text-slate-900">交代内容</h2>
+            <ul className="text-sm border border-slate-200 p-3 rounded-xl bg-white space-y-1">
+              {(() => {
+                const posPriority = { "投": 1, "捕": 2, "一": 3, "二": 4, "三": 5, "遊": 6, "左": 7, "中": 8, "右": 9 };
+
+                const changes = battingOrder.map((entry, index) => {
+                  const starter = teamPlayers.find((p) => p.id === entry.id);
+                  if (!starter) return null;
+
+                  let replaced = battingReplacements[index] ?? teamPlayers.find(p => p.id === entry.id);
+                  const currentId = replaced?.id ?? entry.id;
+                  const currentPlayer = replaced ?? starter;
+
+                  const currentPos = getPositionName(assignments, currentId);
+                  const initialPos = getPositionName(initialAssignments, entry.id);
+
+                  const playerChanged = replaced && replaced.id !== entry.id;
+                  const positionChanged = currentPos !== initialPos;
+                  const isPinchHitter = entry.reason === "代打";
+                  const isPinchRunner = entry.reason === "代走";
+                  const isPinch = isPinchHitter || isPinchRunner;
+
+                  if (isPinchHitter && replaced && !Object.values(assignments).includes(replaced.id)) {
+                    return {
+                      key: `pinch-${index}`,
+                      type: 1,
+                      pos: "",
+                      jsx: (
+                        <li key={`pinch-${index}`}>
+                          代打 ➡ {replaced.lastName}{replaced.firstName} #{replaced.number}
+                        </li>
+                      )
+                    };
+                  }
+
+                  if (isPinchHitter && playerChanged && currentPos) {
+                    const pinchPlayer = teamPlayers.find(p => p.id === entry.id);
+                    const replacedPlayer = replaced;
+
+                    return {
+                      key: `pinch-replaced-${index}`,
+                      type: 1,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`pinch-replaced-${index}`}>
+                          代打：{pinchPlayer?.lastName}{pinchPlayer?.firstName} #{pinchPlayer?.number} ➡ {withFull(currentPos)}：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}
+                        </li>
+                      )
+                    };
+                  }
+
+                  if (isPinchHitter && currentPos) {
+                    if (!replaced) {
+                      replaced = teamPlayers.find(p => p.id === entry.id);
+                    }
+                    return {
+                      key: `pinch-assigned-${index}`,
+                      type: 1,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`pinch-assigned-${index}`}>
+                          代打：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
+
+                  if (isPinchRunner && replaced) {
+                    return {
+                      key: `runner-${index}`,
+                      type: 2,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`runner-${index}`}>
+                          代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
+
+                  if (playerChanged) {
+                    return {
+                      key: `replaced-${index}`,
+                      type: 3,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`replaced-${index}`}>
+                          {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}：
+                          {currentPlayer.lastName}{currentPlayer.firstName} #{currentPlayer.number}
+                        </li>
+                      )
+                    };
+                  }
+
+                  if (positionChanged) {
+                    return {
+                      key: `shift-${index}`,
+                      type: 4,
+                      pos: currentPos,
+                      jsx: (
+                        <li key={`shift-${index}`}>
+                          {withFull(initialPos)}：{starter.lastName}{starter.firstName} #{starter.number} ➡ {withFull(currentPos)}
+                        </li>
+                      )
+                    };
+                  }
+
+                  return null;
+                }).filter(Boolean) as { key: string; type: number; pos: string; jsx: JSX.Element }[];
+
+                // --- 追加: DHありで打順に投手が居ないケースでも投手交代を表示する ---
+                // --- 追加: 先発投手が「投」以外の守備に就いている場合も1行出す ---
+                (() => {
+                  const initP = initialAssignments?.["投"];
+                  if (typeof initP !== "number") return;
+
+                  const nowPos =
+                    Object.entries(assignments).find(([pos, id]) => id === initP)?.[0];
+
+                  if (nowPos && nowPos !== "投" && !changes.some(c => c.type === 4 && c.pos === nowPos)) {
+                    const from = teamPlayers.find(p => p.id === initP);
+                    if (from) {
+                      changes.push({
+                        key: "pitcher-shift-extra",
+                        type: 4,
+                        pos: nowPos,
+                        jsx: (
+                          <li key="pitcher-shift-extra">
+                            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
+                            {" "}➡ {withFull(nowPos)}
+                          </li>
+                        ),
+                      });
+                    }
+                  }
+                })();
+
+                (() => {
+                  const initP = initialAssignments?.["投"];
+                  const curP  = assignments?.["投"];
+
+                  if (
+                    typeof initP === "number" &&
+                    typeof curP === "number" &&
+                    initP !== curP &&
+                    !changes.some(c => c.pos === "投")
+                  ) {
+                    const from = teamPlayers.find(p => p.id === initP);
+                    const to   = teamPlayers.find(p => p.id === curP);
+                    if (from && to) {
+                      changes.push({
+                        key: "pitcher-change-extra",
+                        type: 3,
+                        pos: "投",
+                        jsx: (
+                          <li key="pitcher-change-extra">
+                            {withFull("投")}：{from.lastName}{from.firstName} #{from.number}
+                            {" "}➡ {withFull("投")}：{to.lastName}{to.firstName} #{to.number}
+                          </li>
+                        ),
+                      });
+                    }
+                  }
+                })();
+
+                // 優先順位に従ってソート
+                changes.sort((a, b) => {
+                  if (a.type !== b.type) return a.type - b.type;
+                  const ap = posPriority[a.pos] ?? 99;
+                  const bp = posPriority[b.pos] ?? 99;
+                  return ap - bp;
+                });
+
+                return changes.map(c => c.jsx);
+              })()}
+            </ul>
+          </div>
+        </div>
       </div>
-
-{/* ✅ アナウンス文言表示（ルビ対応） */}
-     {/* ② 文章部分だけも独立してスクロールできるよう flex-1 を付与 */}
-     {announcementText && (
-       <div className="flex-1 mt-4 px-4 py-3 border rounded bg-white overflow-y-auto">
-    <div
-      ref={modalTextRef} 
-      className="text-red-600 text-lg font-bold whitespace-pre-wrap"
-      dangerouslySetInnerHTML={{ __html: announcementText }}
-    />
-  </div>
-)}
-
-{/* いつでも見える操作フッター */}
-<div className="sticky bottom-0 left-0 right-0 bg-white pt-3 pb-2">
-  <div className="flex justify-center gap-4">
-    <button
-      onClick={speakVisibleAnnouncement}
-      className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-    >
-      読み上げ
-    </button>
-    <button
-      onClick={stopSpeaking}
-      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-    >
-      停止
-    </button>
-  </div>
-</div>
-
-
-      <button
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full"
-        onClick={() => {
-          setShowSaveModal(false);
-          navigate(-1);
-        }}
-      >
-        閉じる
-      </button>
     </div>
-  </div>
-)}
 
+    {/* スマホ風のフッターアクション（小画面で固定） */}
+    <div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
+      <div className="mx-auto max-w-4xl">
+        <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
+          <div className="flex flex-wrap gap-2 justify-center">
+            <button
+              onClick={handleUndo}
+              disabled={!history.length}
+              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
+              title="Undo"
+            >
+              ↻
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!redo.length}
+              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
+              title="Redo"
+            >
+              ↺
+            </button>
 
+            <button
+              onClick={confirmChange}
+              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
+            >
+              交代確定
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDisableDH}
+              disabled={!assignments?.["指"]}
+              className="px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
+            >
+              DH解除
+            </button>
+
+            <button
+              onClick={showAnnouncement}
+              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.98] transition"
+            >
+              🎤表示
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
-  );
+
+    {/* 🎤 アナウンス表示モーダル（スマホはボトムシート／md+は中央カード） */}
+    {showSaveModal && (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+          <div
+            className="
+              bg-white shadow-2xl
+              rounded-t-2xl md:rounded-2xl
+              w-full md:max-w-md
+              max-h-[90vh] md:max-h-[85vh]
+              overflow-hidden flex flex-col
+            "
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
+            {/* ヘッダー（グラデ＋白文字＋ハンドル） */}
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+              <div className="h-5 flex items-center justify-center">
+                <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+              </div>
+              <div className="px-4 py-3 flex items-center justify-between">
+                <h3 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+                  <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+                  アナウンス
+                </h3>
+                <button
+                  onClick={() => { setShowSaveModal(false); navigate(-1); }}
+                  aria-label="閉じる"
+                  className="rounded-full w-9 h-9 flex items-center justify-center
+                             bg-white/15 hover:bg-white/25 active:bg-white/30
+                             text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* 本文（スクロール領域） */}
+            <div className="px-4 py-3 overflow-y-auto flex-1">
+              {announcementText && (
+                <div className="px-4 py-3 border rounded-xl bg-white">
+                  <div
+                    ref={modalTextRef}
+                    className="text-rose-600 text-lg font-bold whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ __html: announcementText }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* フッター操作（常に見える） */}
+            <div className="px-4 pb-4">
+              <div className="flex justify-center gap-3">
+                <button
+                  onClick={speakVisibleAnnouncement}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-[0.98] transition"
+                >
+                  読み上げ
+                </button>
+                <button
+                  onClick={stopSpeaking}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md active:scale-[0.98] transition"
+                >
+                  停止
+                </button>
+              </div>
+
+              <button
+                className="mt-3 w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-[0.98] transition"
+                onClick={() => {
+                  setShowSaveModal(false);
+                  navigate(-1);
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 };
 
 
