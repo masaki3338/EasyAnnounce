@@ -680,25 +680,27 @@ const confirmScore = async () => {
   setShowModal(false);
   await localForage.setItem("lastBatterIndex", currentBatterIndex);
 
-  if (isTop) {
-    setIsTop(false);
-    await saveMatchInfo({
-      inning,        // or nextInning
-      isTop: false,  // or true（分岐に応じて）
-      isHome,        // 既存値を維持
-    });
+// ★ 次の状態を計算してから、1回だけ saveMatchInfo する
+const nextIsTop = !isTop;
+const nextInning = isTop ? inning : inning + 1;
 
-  } else {
-    const nextInning = inning + 1;
-    setIsTop(true);
-    setInning(nextInning);
-    await saveMatchInfo({
-      inning,        // or nextInning
-      isTop: false,  // or true（分岐に応じて）
-      isHome,        // 既存値を維持
-    });
+// 次の状態で自チームが守備か？（相手が攻撃なら守備）
+// 先攻: isHome=false → 表=攻撃/裏=守備
+// 後攻: isHome=true  → 表=守備/裏=攻撃
+const willBeDefense = (nextIsTop && isHome) || (!nextIsTop && !isHome);
 
-  }
+// 画面の内部状態も更新
+setIsTop(nextIsTop);
+if (!isTop) setInning(nextInning);
+
+// 正しい「次の状態」を保存（←ここが重要）
+await saveMatchInfo({
+  inning: nextInning,
+  isTop: nextIsTop,
+  isHome,
+  isDefense: willBeDefense,
+});
+
 
   if (score > 0) {
     setPopupMessage(`${teamName}、この回の得点は${score}点です。`);

@@ -324,24 +324,44 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
 
 
 
-  // 2行目：Bが入った位置から“どこへ動いたか”のシフトを拾う（あれば）
+// 2行目：Bが入った位置（= posNowSym）に“元々いた選手”の処理 —— ★mixedを最優先★
+const mixedR = mixed.find(m => m.fromPos === posNowSym && !handledPlayerIds.has(m.from.id));
+
+if (mixedR) {
+  // 例：「レフト 河村…に代わりまして 6番に 小池…が入り サード」
+  const orderTo = battingOrder.findIndex(e => e.id === mixedR.to.id) + 1;
+  const orderPart = orderTo > 0 ? `${orderTo}番に ` : "";
+  result.push(
+    `${posFull} ${lastWithHonor(mixedR.from)}に代わりまして` +
+    `${orderPart}${fullNameHonor(mixedR.to)}が入り${posJP[mixedR.toPos]}、`
+  );
+
+  // 打順エリア（6番サード小池…）を必ず積む
+  if (orderTo > 0 && !lineupLines.some(l => l.order === orderTo && l.text.includes(posJP[mixedR.toPos]))) {
+    lineupLines.push({
+      order: orderTo,
+      text: `${orderTo}番 ${posJP[mixedR.toPos]} ${fullNameHonor(mixedR.to)} 背番号 ${mixedR.to.number}`,
+    });
+  }
+
+  // 後続の通常出力に載らないようにブロック
+  handledPlayerIds.add(mixedR.from.id);
+  handledPlayerIds.add(mixedR.to.id);
+  handledPositions.add(mixedR.fromPos);
+} else {
+  // フォールバック：純粋なシフト（元々いた選手が他守備へ動いた）だけのとき
   const move = shift.find(s => s.fromPos === posNowSym);
   if (move) {
     result.push(`${posFull}の ${lastWithHonor(move.player)}が ${posJP[move.toPos]}、`);
     skipShiftPairs.add(`${move.player.id}|${move.fromPos}|${move.toPos}`);
-  }
 
-  // 打順行（苗字＋敬称／番号なし）
-  const orderB = battingOrder.findIndex(e => e.id === B.id) + 1;
-  if (orderB > 0 && !lineupLines.some(l => l.order === orderB && l.text.includes(posFull))) {
-    lineupLines.push({ order: orderB, text: `${orderB}番 ${posFull} ${lastWithHonor(B)}` });
-  }
-  if (move) {
     const orderM = battingOrder.findIndex(e => e.id === move.player.id) + 1;
     if (orderM > 0 && !lineupLines.some(l => l.order === orderM && l.text.includes(posJP[move.toPos]))) {
       lineupLines.push({ order: orderM, text: `${orderM}番 ${posJP[move.toPos]} ${lastWithHonor(move.player)}` });
     }
   }
+}
+
 
   // 後続の通常出力に載らないように最低限ブロック
   handledPlayerIds.add(B.id);
@@ -428,10 +448,13 @@ if (isBOnField) continue;
     const reasonText = entry.reason === "代打" ? "代打致しました" : "代走致しました";
 
     // 1行目：控えが別守備に入る
-    lines.push(
-      `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
-      `${idx + 1}番に ${fullNameHonor(subIn)} が入り ${posJP[subInPos]}へ、`
-    );
+const movedOrder2 = battingOrder.findIndex(e => e.id === movedPlayer.id) + 1;
+const ordText = movedOrder2 > 0 ? `${movedOrder2}番に ` : "";
+lines.push(
+  `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
+  `${ordText}${fullNameHonor(subIn)} が入り ${posJP[subInPos]}、`
+);
+
 
     // 2行目：元選手が元ポジへシフト
     lines.push(
@@ -451,11 +474,14 @@ if (isBOnField) continue;
     // 打順行
   // 打順行は lines ではなく lineupLines に積む（あとで一括出力）
 const lineup: { order: number; txt: string }[] = [];
-lineup.push({
-  order: idx + 1,
-  txt: `${idx + 1}番 ${posJP[subInPos]} ${fullNameHonor(subIn)} 背番号 ${subIn.number}`,
-});
 const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
+if (movedOrder >= 0) {
+  lineup.push({
+    order: movedOrder + 1,
+    txt: `${movedOrder + 1}番 ${posJP[subInPos]} ${fullNameHonor(subIn)} 背番号 ${subIn.number}`,
+  });
+}
+
 if (movedOrder >= 0) {
   lineup.push({
     order: movedOrder + 1,

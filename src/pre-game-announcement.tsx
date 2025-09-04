@@ -25,14 +25,18 @@ interface Props {
 
 /* ---- ミニSVGアイコン（依存なし） ---- */
 const IconWarmup = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-    <path d="M13 5a2 2 0 11-4 0 2 2 0 014 0zM4 20l2-5 3-2 2 2 3-1 2 2v4H4z" />
-  </svg>
+<svg viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5a1 1 0 1 0 2 0a1 1 0 1 0-2 0M5 20l5-.5l1-2m7 2.5v-5h-5.5L15 8.5l-5.5 1l1.5 2"/>
+</svg>
 );
 const IconKnock = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-    <path d="M12 2l7 4v5c0 5-3.5 9.5-7 10-3.5-.5-7-5-7-10V6l7-4zM8 11h8v2H8v-2z" />
-  </svg>
+<svg viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" color="currentColor">
+        <path d="M5.46 20L20.556 8.69a3.738 3.738 0 1 0-5.246-5.247L4 18.541"/>
+        <path d="M5.578 21.843c1.502-2.072-1.332-4.932-3.42-3.418a.38.38 0 0 0-.046.577L5 21.888c.166.166.44.144.578-.045M10 17l-3-3"/>
+        <circle cx="2.5" cy="2.5" r="2.5" transform="matrix(-1 0 0 1 21 16)"/>
+    </g>
+</svg>
 );
 const IconMegaphone = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -40,9 +44,15 @@ const IconMegaphone = () => (
   </svg>
 );
 const IconUsers = () => (
-  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-    <path d="M16 11a4 4 0 10-8 0 4 4 0 008 0zM5 20a7 7 0 0114 0v2H5v-2z" />
+  <svg viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3.5 7a5 5 0 1 1 10 0a5 5 0 0 1-10 0M5 14a5 5 0 0 0-5 5v2h17v-2a5 5 0 0 0-5-5zm19 7h-5v-2c0-1.959-.804-3.73-2.1-5H19a5 5 0 0 1 5 5zm-8.5-9a5 5 0 0 1-1.786-.329A6.97 6.97 0 0 0 15.5 7a6.97 6.97 0 0 0-1.787-4.671A5 5 0 1 1 15.5 12"/>
   </svg>
+);
+
+const Greeting = () => (
+<svg  viewBox="0 0 24 24">
+    <path fill="currentColor" d="M1.5 4v1.5c0 4.15 2.21 7.78 5.5 9.8V20h15v-2c0-2.66-5.33-4-8-4h-.25C9 14 5 10 5 5.5V4m9 0a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z"/>
+</svg>
 );
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -183,7 +193,7 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
       key: "startGreeting" as const,
       title: "試合開始挨拶",
       note: "先攻チーム 🎤",
-      icon: <IconMic />,
+      icon: <Greeting />,
       enabled: isFirst,
     },
     {
