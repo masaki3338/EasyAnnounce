@@ -383,13 +383,23 @@ if (team && typeof team === "object") {
     starterIds.add(pitcherStarterId);
   }
 
-  const benchOutIds: number[] = await localForage.getItem("benchOutIds") || [];
+// ✅ スタメン設定の控え指定を優先しつつ、従来の benchOutIds も併用
+const startingBenchOut =
+  (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
+const benchOut =
+  (await localForage.getItem<number[]>("benchOutIds")) ?? [];
 
-  const bench = all.filter((p: any) =>
-    !starterIds.has(p.id) && !benchOutIds.includes(p.id)
-  );
+// 数値に正規化＆重複排除
+const benchOutIds = Array.from(
+  new Set([...startingBenchOut, ...benchOut].map((v) => Number(v)).filter(Number.isFinite))
+);
 
-  setBenchPlayers(bench);
+// 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（ベンチ外指定）」
+// ※ starterIds は直前で作っている Set（打順＋DH時の投手追加）
+const bench = all.filter((p: any) => !starterIds.has(p.id) && !benchOutIds.includes(p.id));
+
+setBenchPlayers(bench);
+
 }
 
 

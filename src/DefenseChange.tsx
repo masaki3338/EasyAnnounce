@@ -1588,6 +1588,8 @@ useEffect(() => {
   // DH解除を確定時にまとめて適用するための保留フラグ
   const [pendingDisableDH, setPendingDisableDH] = useState(false);
   const [dhDisableDirty, setDhDisableDirty] = useState(false);
+  const [dhDisableSnapshot, setDhDisableSnapshot] =
+  useState<{ dhId: number; pitcherId: number } | null>(null);
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
@@ -1669,7 +1671,9 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
   setInitialAssignments(s.initialAssignments);
 
   await localForage.setItem("lineupAssignments", s.assignments);
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
   await localForage.setItem("battingOrder", s.battingOrder);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
   await localForage.setItem("battingReplacements", {}); // 確定後は空で持つ運用
   await localForage.setItem("dhEnabledAtStart", s.dhEnabledAtStart);
   // ★ 追加：usedPlayerInfo の state と storage を同期
@@ -1742,11 +1746,14 @@ const handleDisableDH = async () => {
   if (!dhId) { window.alert("現在DHは使用していません。"); return; }
   if (!pitcherId) { window.alert("投手が未設定です。先に投手を設定してください。"); return; }
 
+  // ✅ 押下時点のIDを保持（確定時の参照元）
+  setDhDisableSnapshot({ dhId: Number(dhId), pitcherId: Number(pitcherId) });
+
   // DHが打順のどこにいるか
   const idx = battingOrder.findIndex(e => e.id === dhId);
   if (idx === -1) { window.alert("打順に指名打者が見つかりませんでした。"); return; }
 
-  // ① 守備の「指」を空欄にしてDHなし表示へ（＝9番下の投手行も消える）
+  // ① UIは従来どおり「指」を空にして見せる（スナップがあるので確定時に困らない）
   setAssignments(prev => ({ ...prev, "指": null }));
 
 // ② 解除は“保留”にする（UI上は『指』は引き続き有効：確定まではドロップOK）
@@ -2208,6 +2215,7 @@ useEffect(() => {
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
 // ✅ ベンチは“常に最新の assignments”から再計算する
+// ✅ ベンチは“常に最新の assignments”から再計算する
 useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
 
@@ -2215,16 +2223,27 @@ useEffect(() => {
     .filter((id): id is number => typeof id === "number");
 
   (async () => {
-    const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    // ← ここから置換
+    // スタメン設定画面でのベンチ外IDを最優先に採用し、なければ従来の benchOutIds を併用
+    const startingBenchOut = await localForage.getItem<number[]>("startingBenchOutIds");
+    const benchOut = await localForage.getItem<number[]>("benchOutIds");
 
-    // ここでベンチ外を除外する
+    const benchOutIds: number[] = [
+      ...new Set([...(startingBenchOut ?? []), ...(benchOut ?? [])]
+        .map(Number)
+        .filter(Number.isFinite))
+    ];
+
+    // ここでベンチ外を除外する（スタメン集合から外れていて、かつベンチ外でもない人だけ）
     setBenchPlayers(
       teamPlayers.filter(
         (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
       )
     );
+    // ← ここまで置換
   })();
 }, [assignments, teamPlayers]);
+
 
 
 
@@ -2335,7 +2354,18 @@ const handlePositionDragStart = (
     // 置換を入れる打順スロット（退場した元先発のスロット）
     const idx = battingOrder.findIndex(e => e.id === replacedId);
     if (idx >= 0) {
-      const candidateId = nonPitcherNonBattingStarters[0] ?? currentPitcherId;
+      // 置換を入れる打順スロット（退場した元先発のスロット）
+      const idx = battingOrder.findIndex(e => e.id === replacedId);
+      if (idx >= 0) {
+        const candidateId = currentPitcherId; // ← 常に投手を入れる（DH解除規則）
+        if (typeof candidateId === "number") {
+          const candidate = teamPlayers.find(tp => tp.id === candidateId);
+          if (candidate) {
+            setBattingReplacements(prevRep => ({ ...prevRep, [idx]: candidate }));
+          }
+        }
+      }
+
       if (typeof candidateId === "number") {
         const candidate = teamPlayers.find(tp => tp.id === candidateId);
         if (candidate) {
@@ -2414,21 +2444,25 @@ const handlePositionDragStart = (
       }
 
       // ▼ 指名打者（DH）→守備 のときは、落とした先の“元スタメン”の打順枠に
-      //    DH選手を置換として登録しておく（打順エリアが正しく赤字になるように）
-      if (draggingFrom === "指" && fromId != null && toId != null) {
-        // toId は落とした守備位置に“元々”いたスタメンのID（例：米山）
-        const targetIndex = battingOrder.findIndex(e => e.id === toId);
-        if (targetIndex !== -1) {
-          const dhPlayer = teamPlayers.find(p => p.id === fromId); // 例：吉川
-          if (dhPlayer) {
-            setBattingReplacements((prev) => ({
-              ...prev,
-              [targetIndex]: dhPlayer,
-            }));
-            lastVacatedStarterIndexRef.current = null; // ← 使い切りなのでリセット
-          }
-        }
-      }
+// ▼ 指名打者（DH）→守備 のときは、落とした先の“元スタメン”の打順枠には【投手】を立てる
+if (draggingFrom === "指" && fromId != null && toId != null) {
+  const targetIndex = battingOrder.findIndex(e => e.id === toId); // 例: 秋本(8番)
+  if (targetIndex !== -1) {
+    const pitcherId =
+      typeof prev["投"] === "number" ? prev["投"] :
+      (typeof assignments?.["投"] === "number" ? assignments["投"] : null);
+    const pitcher = pitcherId != null ? teamPlayers.find(p => p.id === pitcherId) : null;
+
+    setBattingReplacements(prevRep => {
+      const next = { ...prevRep };
+      if (pitcher) next[targetIndex] = pitcher;   // 8番枠＝投手（百目鬼）を赤字に
+      else delete next[targetIndex];
+      return next;
+    });
+    lastVacatedStarterIndexRef.current = null;
+  }
+}
+
 
 // ★ オンフィールド同士の入替では打順は触らない
 //    影響しうる打順スロット（from/to の元スタメン）だけ置換を消す
@@ -2683,27 +2717,52 @@ if (targetIndex === -1 && toPos === "投" && lastVacatedStarterIndexRef.current 
         return starterPos === toPos; // toPos の元先発の打順
       });
 
-      if (affectedStarterIndex !== -1) {
-        const starter = battingOrder[affectedStarterIndex];
-        const starterPos = getPositionName(initialAssignments, starter.id);
-        const assignedId = newAssignments[starterPos];
+if (affectedStarterIndex !== -1) {
+  const starter = battingOrder[affectedStarterIndex];
+  const starterPos = getPositionName(initialAssignments, starter.id);
+  const assignedId = newAssignments[starterPos];
 
-        const starterStillOnField = onFieldIds.has(starter.id);
-        const isAssignedStarter =
-          typeof assignedId === "number" && battingOrder.some((e) => e.id === assignedId);
+  const starterStillOnField = onFieldIds.has(starter.id);
+  const isAssignedStarter =
+    typeof assignedId === "number" && battingOrder.some(e => e.id === assignedId);
 
-        if (
-          assignedId &&
-          assignedId !== starter.id &&
-          !isAssignedStarter &&
-          !starterStillOnField
-        ) {
-          const p = teamPlayers.find((pl) => pl.id === assignedId);
-          if (p) rebuilt[affectedStarterIndex] = p; // 置換として登録/更新
-        } else {
-          delete rebuilt[affectedStarterIndex]; // 置換条件を満たさないなら削除
-        }
-      }
+  // 🆕 直前のその守備(toPos)に居たのが DH だったか？（＝今回の bench→守備 で DH をどかした）
+  const wasPrevDH = typeof replacedId === "number" && prev["指"] === replacedId;
+
+  // 🆕 DH→守備の直後、そのDH（= replacedId）を控えでどかしたケース：
+//   控えは DH の打順へ入れる。元守備の打順（投手が入る）は触らない。
+if (wasPrevDH) {
+  // DH の打順 index（= replacedId の元の打順）
+  const dhIndex = battingOrder.findIndex(e => e.id === replacedId);
+  // いま toPos に入った控え
+  const subId = newAssignments[toPos];
+  const sub = typeof subId === "number" ? teamPlayers.find(p => p.id === subId) : undefined;
+
+  if (dhIndex !== -1 && sub) {
+    rebuilt[dhIndex] = sub;           // 控えは DH の打順へ
+  }
+  return rebuilt;                      // ← 8番など“元守備”側は既存のまま（= 投手のまま）
+}
+
+
+  if (!starterStillOnField && assignedId && assignedId !== starter.id && !isAssignedStarter) {
+    if (wasPrevDH) {
+      // ★ このケースは「元スタメンの枠＝投手」を入れる（清水を入れない）
+      const pitcherIdNow = newAssignments["投"];
+      const pp = typeof pitcherIdNow === "number" ? teamPlayers.find(pl => pl.id === pitcherIdNow) : null;
+      if (pp) rebuilt[affectedStarterIndex] = pp;
+      else delete rebuilt[affectedStarterIndex];
+    } else {
+      // 従来どおり：通常の“元スタメン枠には現在そこに居る選手”を入れる
+      const p = teamPlayers.find(pl => pl.id === assignedId);
+      if (p) rebuilt[affectedStarterIndex] = p;
+      else delete rebuilt[affectedStarterIndex];
+    }
+  } else {
+    delete rebuilt[affectedStarterIndex];
+  }
+}
+
 
       return rebuilt;
     });
@@ -2801,8 +2860,9 @@ const confirmChange = async () => {
   let finalDhEnabledAtStart = dhEnabledAtStart;
 
   if (pendingDisableDH) {
-    const dhId = finalAssignments["指"];
-    const pitcherId = finalAssignments["投"];
+    // ✅ 「指」をUIで空にしていても、押下時スナップショットがあればそれを使う
+    const dhId = dhDisableSnapshot?.dhId ?? finalAssignments["指"];
+    const pitcherId = dhDisableSnapshot?.pitcherId ?? finalAssignments["投"];
 
     if (typeof dhId === "number" && typeof pitcherId === "number") {
       const idx = finalBattingOrder.findIndex(e => e.id === dhId);
@@ -2818,7 +2878,11 @@ const confirmChange = async () => {
     // 守備の「指」を空にしてDHなしへ
     finalAssignments["指"] = null;
     finalDhEnabledAtStart = false; // 以後“指”へのD&Dは禁止・9番下の投手表示も出なくなる
-  }
+    // 後始末
+    setDhDisableSnapshot(null);
+    setPendingDisableDH(false);
+    setDhDisableDirty(false);
+ }
   // ▲ ここまで追加
 
   // ★ ここで一度だけ取得（ループ内で await しない）
@@ -2957,6 +3021,7 @@ await localForage.setItem("lineupAssignments", assignments);
 // ★ここを {} に固定する（非空は保存しない）
 await localForage.setItem("battingReplacements", {});
 await localForage.setItem("battingOrder", updatedOrder);
+localStorage.setItem("battingOrderVersion", String(Date.now()));
 await localForage.setItem("dhEnabledAtStart", dhEnabledAtStart);
 
 // 画面状態もあわせて空にしておく
@@ -3036,13 +3101,13 @@ return (
 
     {/* コンテンツカード（スマホ感のある白カード） */}
     <div className="max-w-4xl mx-auto px-4 py-4 pb-[calc(112px+env(safe-area-inset-bottom))] md:pb-4">
-      <div className="bg-white rounded-2xl shadow-lg ring-1 ring-black/5 p-4">
+      <div className="p-0">
         {/* フィールド図 + 札（そのまま） */}
-        <div className="relative w-full max-w-5xl xl:max-w-6xl mx-auto mb-6">
+        <div className="relative mb-6 w-[100svw] -mx-4 md:mx-auto md:w-full md:max-w-2xl">
           <img
             src="/field.jpg"
             alt="フィールド図"
-            className="w-full rounded-xl shadow pointer-events-none select-none"
+            className="w-full rounded-none md:rounded-xl shadow pointer-events-none select-none"
             draggable={false}
           />
 
