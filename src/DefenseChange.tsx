@@ -3581,17 +3581,17 @@ return (
       </div>
     </div>
 
-    {/* 🎤 アナウンス表示モーダル（スマホはボトムシート／md+は中央カード） */}
+    {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
     {showSaveModal && (
       <div className="fixed inset-0 z-50">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-        <div className="absolute inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center overflow-hidden">
+        <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
           <div
             className="
               bg-white shadow-2xl
-              rounded-t-2xl md:rounded-2xl
+              rounded-2xl
               w-full md:max-w-md
-              max-h-[90vh] md:max-h-[85vh]
+              max-h-[85vh]
               overflow-hidden flex flex-col
             "
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
