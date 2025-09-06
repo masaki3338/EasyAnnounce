@@ -167,17 +167,11 @@ const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
       if (saved && typeof saved === "string") {
-        const validScreens: ScreenType[] = [
-          "offense",
-          "defense",
-          "defenseChange",
-          "startGame",
-          "announcement"
-        ];
-        if (validScreens.includes(saved as ScreenType)) {
-          setCanContinue(true);
-          setLastScreen(saved as ScreenType);
-        }
+ // “開始系”は除外（初期化の副作用を避ける）
+ const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+ const preferred = ok.includes(saved as ScreenType) ? (saved as ScreenType) : "defense";
+ setCanContinue(true);
+ setLastScreen(preferred);
       }
     })();
   }, []);

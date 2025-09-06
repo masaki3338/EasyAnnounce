@@ -153,7 +153,7 @@ useEffect(() => {
     const team = await localForage.getItem<{ players: Player[] }>("team");
     setTeamPlayers(team?.players || []);
 
-    const savedBenchOut = await localForage.getItem<number[]>("benchOutIds");
+    const savedBenchOut = await localForage.getItem<number[]>("startingBenchOutIds");
     if (savedBenchOut) setBenchOutIds(savedBenchOut);
 
     // ✅ まず保存済みの完全な守備配置/打順から復元
@@ -177,22 +177,24 @@ useEffect(() => {
     }
 
     // ↙ フォールバック：初回保存時の初期記録から復元
-    const initialOrder = await localForage.getItem<
-      { id: number; order: number; position: string }[]
-    >("initialBattingOrder");
+// ↙ フォールバック：スタメン画面“専用”の初期記録から復元
+const initialOrder = await localForage.getItem<
+  { id: number; order: number; position: string }[]
+>("startingInitialSnapshot");
 
-    if (initialOrder && initialOrder.length > 0) {
-      const newAssignments: { [pos: string]: number | null } =
-        Object.fromEntries(allSlots.map((p) => [p, null]));
-      const newBattingOrder: { id: number; reason: "スタメン" }[] = [];
+if (initialOrder && initialOrder.length > 0) {
+  const newAssignments: { [pos: string]: number | null } =
+    Object.fromEntries(allSlots.map((p) => [p, null]));
+  const newBattingOrder: { id: number; reason: "スタメン" }[] = [];
 
-      for (const entry of initialOrder) {
-        newAssignments[entry.position] = entry.id;
-        newBattingOrder[entry.order - 1] = { id: entry.id, reason: "スタメン" };
-      }
-      setAssignments(newAssignments);
-      setBattingOrder(newBattingOrder.slice(0, 9));
-    }
+  for (const entry of initialOrder) {
+    newAssignments[entry.position] = entry.id;
+    newBattingOrder[entry.order - 1] = { id: entry.id, reason: "スタメン" };
+  }
+  setAssignments(newAssignments);
+  setBattingOrder(newBattingOrder.slice(0, 9));
+}
+
   };
 
   loadInitialData();
@@ -201,47 +203,30 @@ useEffect(() => {
 
 
 
-const handleApplyToGlobal = async () => {
-  const a = (await localForage.getItem<Record<string, number|null>>("startingassignments")) ?? assignments;
-  const o = (await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder")) ?? battingOrder;
 
-  await localForage.setItem("lineupAssignments", a);
-  await localForage.setItem("battingOrder", o);
-  // 任意：初期スナップショットを更新しておく
-  await localForage.setItem("initialBattingOrder", o);
 
-  alert("スタメンを全画面に適用しました");
+const saveAssignments = async () => {
+  await localForage.setItem("startingBenchOutIds", benchOutIds);
+  await localForage.setItem("startingassignments", assignments);
+  await localForage.setItem("startingBattingOrder", battingOrder);
+
+  // ✅ 初期記録は専用の参考情報としてのみ保持（必要なら）
+  const initialOrder = battingOrder.map((entry, index) => {
+    const position = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] ?? "－";
+    return { id: entry.id, order: index + 1, position };
+  });
+  await localForage.setItem("startingInitialSnapshot", initialOrder); // ← new（参照用）
+
+  alert("スタメン（専用領域）を保存しました！");
 };
 
-  const saveAssignments = async () => {
-    await localForage.setItem("benchOutIds", benchOutIds);
-    await localForage.setItem("lineupAssignments", assignments);
-    await localForage.setItem("battingOrder", battingOrder);
-    await localForage.setItem("startingBattingOrder", battingOrder);
-    await localForage.setItem("startingassignments", assignments);
-
-    // 🔽 追加：スタメン情報（打順・守備位置）を初期記録として保存
-    const initialOrder = battingOrder.map((entry, index) => {
-      const position = Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] ?? "－";
-      return {
-        id: entry.id,
-        order: index + 1,
-        position,
-      };
-    });
-    await localForage.setItem("initialBattingOrder", initialOrder);
-    alert("守備配置と打順を保存しました！");
-  };
 
   const clearAssignments = async () => {
     const emptyAssignments = Object.fromEntries(allSlots.map((p) => [p, null])); // ← 変更
     setAssignments(emptyAssignments);
     setBattingOrder([]);
     setBenchOutIds([]);
-    await localForage.removeItem("lineupAssignments");
-    await localForage.removeItem("battingOrder");
-    await localForage.removeItem("initialBattingOrder");
-    await localForage.removeItem("benchOutIds");
+
 
     const emptyA = Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
     setAssignments(emptyA);
@@ -249,6 +234,7 @@ const handleApplyToGlobal = async () => {
 
     await localForage.removeItem("startingassignments");
     await localForage.removeItem("startingBattingOrder");
+    await localForage.removeItem("startingBenchOutIds");   // ← これを追加
     alert("スタメンと守備位置をクリアしました！");
   };
 

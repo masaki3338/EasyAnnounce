@@ -178,21 +178,35 @@ const handleSave = async () => {
   await upsertRecentTournaments(tournamentName);
 
   // 既存の試合情報保存は維持
-  const team = await localForage.getItem<any>("team"); 
-  const matchInfo = {
-    tournamentName,
-    matchNumber,
-    opponentTeam,
-    opponentTeamFurigana,
-    isHome: isHome === "後攻", // ✅ booleanとして保存（既存仕様）
-    benchSide,
-    umpires,
-    inning: 1,         // ✅ 初期イニング
-    isTop: true,       // ✅ 初期は表
-    teamName: team?.name ?? ""
-  };
+ const team = await localForage.getItem<any>("team");
+ const existing = await localForage.getItem<any>("matchInfo");
+ const scores   = await localForage.getItem<any>("scores");
 
-  await localForage.setItem("matchInfo", matchInfo);
+ // 進行中かどうか（スコアがある or 1回裏以降へ進んでいる）
+ const hasProgress =
+   (scores && Object.keys(scores).length > 0) ||
+   (existing && (
+     Number(existing?.inning) > 1 ||
+     (Number(existing?.inning) === 1 && existing?.isTop === false)
+   ));
+
+ // 進行中なら inning/isTop は絶対に触らない
+ const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
+
+ const matchInfo = {
+   ...base,
+   tournamentName,
+   matchNumber,
+   opponentTeam,
+   opponentTeamFurigana,
+   isHome: isHome === "後攻",
+   benchSide,
+   umpires,
+   teamName: (base as any)?.teamName ?? team?.name ?? ""
+ };
+
+ await localForage.setItem("matchInfo", matchInfo);
+
   await localForage.setItem("matchNumberStash", matchNumber);
 
   alert("✅ 試合情報を保存しました");
@@ -430,20 +444,31 @@ return (
         <button
           onClick={async () => {
             await upsertRecentTournaments(tournamentName);
-            const team = await localForage.getItem<any>("team");
-            const matchInfo = {
-              tournamentName,
-              matchNumber,
-              opponentTeam,
-              opponentTeamFurigana,
-              isHome: isHome === "後攻",
-              benchSide,
-              umpires,
-              inning: 1,
-              isTop: true,
-              teamName: team?.name ?? "",
-            };
-            await localForage.setItem("matchInfo", matchInfo);
+ const team = await localForage.getItem<any>("team");
+ const existing = await localForage.getItem<any>("matchInfo");
+ const scores   = await localForage.getItem<any>("scores");
+
+ const hasProgress =
+   (scores && Object.keys(scores).length > 0) ||
+   (existing && (
+     Number(existing?.inning) > 1 ||
+     (Number(existing?.inning) === 1 && existing?.isTop === false)
+   ));
+ const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
+
+ const matchInfo = {
+   ...base,
+   tournamentName,
+   matchNumber,
+   opponentTeam,
+   opponentTeamFurigana,
+   isHome: isHome === "後攻",
+   benchSide,
+   umpires,
+   teamName: (base as any)?.teamName ?? team?.name ?? "",
+ };
+ await localForage.setItem("matchInfo", matchInfo);
+ 
             await localForage.setItem("matchNumberStash", matchNumber);
             onGoToLineup();
           }}
@@ -459,7 +484,7 @@ return (
   <div className="fixed inset-0 z-50">
     {/* 背景（タップで閉じる） */}
     <div
-      className="absolute inset-0 bg-black/60"
+      className="absolute inset-0 bg-black/90 backdrop-blur-sm"
       onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
     />
 
