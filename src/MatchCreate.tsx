@@ -73,6 +73,8 @@ const [speakingExchange, setSpeakingExchange] = useState(false);
     { role: "2塁審", name: "", furigana: "" },
     { role: "3塁審", name: "", furigana: "" },
   ]);
+ // ✅ 2審制フラグ（true: 球審＋1塁審のみ表示）
+ const [isTwoUmp, setIsTwoUmp] = useState<boolean>(false);
 
 useEffect(() => {
   const loadMatchInfo = async () => {
@@ -108,6 +110,8 @@ useEffect(() => {
       if (saved.umpires?.length === 4) {
         setUmpires(saved.umpires);
       }
+      // ✅ 保存済みの 2審制 を復元（無ければ false）
+      setIsTwoUmp(Boolean((saved as any).twoUmpires));
     }
   };
   loadMatchInfo();
@@ -202,6 +206,7 @@ const handleSave = async () => {
    isHome: isHome === "後攻",
    benchSide,
    umpires,
+   twoUmpires: isTwoUmp, 
    teamName: (base as any)?.teamName ?? team?.name ?? ""
  };
 
@@ -321,6 +326,7 @@ return (
         </div>
       </section>
 
+
       {/* 相手チーム名＋ふりがな */}
       <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
         <div className="flex items-center gap-3 mb-3">
@@ -392,16 +398,30 @@ return (
       </section>
 
 {/* 審判 */}
-<section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+ <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
   <div className="flex items-center gap-3 mb-3">
     <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
       <IconUmpire />
     </div>
     <div className="font-semibold">審判</div>
+    {/* 2審制 チェック（審判の右隣に少し間を空けて配置） */}
+    <label className="ml-3 inline-flex items-center gap-2 text-sm select-none">
+      <input
+        type="checkbox"
+        className="w-4 h-4 accent-emerald-600"
+        checked={isTwoUmp}
+        onChange={(e) => setIsTwoUmp(e.target.checked)}
+        aria-label="2審制"
+      />
+      2審制
+    </label>
+    <span className="ml-2 text-xs text-white/70 whitespace-nowrap">
+      後攻チームのみ使用
+    </span>
   </div>
 
   <div className="space-y-3">
-    {umpires.map((umpire, index) => (
+    {umpires.slice(0, isTwoUmp ? 2 : 4).map((umpire, index) => (
       // ✅ レイアウトを刷新：役割は左（md以上）／上（モバイル）
       <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
         {/* 役割ラベル */}
@@ -465,6 +485,7 @@ return (
    isHome: isHome === "後攻",
    benchSide,
    umpires,
+   twoUmpires: isTwoUmp,          // ✅ 2審制を記憶
    teamName: (base as any)?.teamName ?? team?.name ?? "",
  };
  await localForage.setItem("matchInfo", matchInfo);
