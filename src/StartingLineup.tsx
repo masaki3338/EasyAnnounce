@@ -590,7 +590,7 @@ const handleDropToBattingOrder = (
 
   return (
  <div
-   className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+   className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6 select-none"
    style={{
      paddingTop: "max(16px, env(safe-area-inset-top))",
      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -782,7 +782,7 @@ const handleDropToBattingOrder = (
                 key={entry.id}
                  data-role="posrow"             // ★ 追加：行全体もドロップ対象にする
                  data-player-id={entry.id}      // ★ 追加：誰の行か
-                className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move"
+                className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none"
                 draggable
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
@@ -796,7 +796,7 @@ const handleDropToBattingOrder = (
   className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
              cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
   title={pos ? "この守備を他の行と入替" : "守備なし"}
-  draggable={!('ontouchstart' in window) && !!pos}
+  draggable={!!pos} 
   onDragStart={(e) => handlePosDragStart(e, entry.id)}
   onDragOver={allowDrop}
   onDrop={(e) => handleDropToPosSpan(e, entry.id)}
