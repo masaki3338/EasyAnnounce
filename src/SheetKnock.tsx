@@ -241,13 +241,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-          >
-            <IconBack />
-            <span className="text-sm">戻る</span>
-          </button>
+
           <div className="w-10" />
         </div>
 
@@ -403,6 +397,19 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
       onStop={stopSpeak}
     />
   </StepCard>
+
+  {/* ▼ ⑥のカードの下：横幅いっぱいの「戻る」ボタン */}
+  <div className="mt-2">
+    <button
+      onClick={onBack}
+      className="w-full py-3 rounded-xl font-semibold
+                bg-white/90 text-gray-900
+                hover:bg-white active:scale-95
+                shadow-lg border border-white/60"
+    >
+      ← 戻る
+    </button>
+  </div>
 </main>
 
 {/* ✅ モーダル（残り2分） */}

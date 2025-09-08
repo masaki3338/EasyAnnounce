@@ -82,9 +82,12 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   useEffect(() => {
     const loadData = async () => {
-      const team = await localForage.getItem<any>("team");
-      const assignments = await localForage.getItem<{ [pos: string]: number }>("lineupAssignments");
-      const matchInfo = await localForage.getItem<any>("matchInfo");
+ const team = await localForage.getItem<any>("team");
+ // ✅ まずスタメン専用キーを読む。無ければ従来キーにフォールバック
+ const starting = await localForage.getItem<Record<string, number | null>>("startingassignments");
+ const fallback = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+ const assignments: Record<string, number | null> = starting ?? fallback ?? {};
+ const matchInfo = await localForage.getItem<any>("matchInfo");
       const last = (await localForage.getItem<string>("lastScreen")) || "";
 
       console.log("SeatIntro lastScreen=", last, " isDefense=", matchInfo?.isDefense);
@@ -104,20 +107,22 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       setBackTarget(tgt);
       console.log("SeatIntro backTarget(init)=", tgt, " lastScreen=", last, " isDefense=", matchInfo?.isDefense);
 
-      if (assignments && team?.players) {
-        const posMap: { [key: string]: PositionInfo } = {};
-        Object.entries(assignments).forEach(([pos, playerId]) => {
-          const player = team.players.find((p: any) => p.id === playerId);
-          if (player) {
-            posMap[pos] = {
-              lastName: player.lastName,
-              lastNameKana: player.lastNameKana,
-              honorific: player.isFemale ? "さん" : "くん",
-            };
-          }
-        });
-        setPositions(posMap);
-      }
+ if (team?.players) {
+   const FIELD_POS = ["投","捕","一","二","三","遊","左","中","右"]; // ← フィールドだけ
+   const posMap: { [key: string]: PositionInfo } = {};
+   for (const pos of FIELD_POS) {
+     const playerId = assignments[pos];
+     if (typeof playerId !== "number") continue;
+     const player = team.players.find((p: any) => p.id === playerId);
+     if (!player) continue;
+     posMap[pos] = {
+       lastName: player.lastName,
+       lastNameKana: player.lastNameKana,
+       honorific: player.isFemale ? "さん" : "くん",
+     };
+   }
+   setPositions(posMap);
+ }
     };
     loadData();
     return () => {
@@ -184,17 +189,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-        <button
-            onClick={async () => {
-              const tgt = await resolveBackTarget();
-              console.log("SeatIntro back ->", tgt);
-              onNavigate(tgt);
-            }}
-            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-          >
-            <IconBack />
-            <span className="text-sm">戻る</span>
-          </button>
+
           <div className="w-10" />
         </div>
 
@@ -265,6 +260,22 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
             </button>
           </div>
         </section>
+
+        {/* 戻るボタン（読み上げ・停止の下に横幅いっぱいで配置） */}
+        <div className="mt-3">
+          <button
+            onClick={async () => {
+              const tgt = await resolveBackTarget();
+              console.log("SeatIntro back ->", tgt);
+              onNavigate(tgt);
+            }}
+            className="w-full px-6 py-4 rounded-2xl bg-white/90 hover:bg-white
+                      text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
+          >
+            ← 戻る
+          </button>
+        </div>
+
       </main>
     </div>
   );

@@ -70,13 +70,13 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
   const messageSpeak =
     `おまたせいたしました。${tournamentName}。` +
     `ほんじつの だい ${matchNumber} しあい、` +
-    `いちるいがわ：${team1stRead} たい さんるいがわ：${team3rdRead} の しあい、` +
+    `${team1stRead} たい ${team3rdRead} の しあい、` +
     `まもなく かいし でございます。`;
 
   const message =
     `お待たせいたしました。${tournamentName}\n` +
     `本日の第${matchNumber}試合、\n` +
-    `一塁側：${team1st}　対　三塁側：${team3rd} の試合、\n` +
+    `${team1st} 対 ${team3rd} の試合、\n` +
     `まもなく開始でございます。`;
 
   const handleSpeak = () => {
@@ -104,13 +104,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => (onBack ? onBack() : onNavigate("startGame"))}
-            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-          >
-            <IconBack />
-            <span className="text-sm">戻る</span>
-          </button>
+
           <div className="w-10" />
         </div>
 
@@ -176,6 +170,17 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
             </button>
           </div>
         </section>
+
+        {/* 戻るボタン（操作ボタンの下に横幅いっぱいで配置） */}
+        <div className="mt-3">
+          <button
+            onClick={() => (onBack ? onBack() : onNavigate("startGame"))}
+            className="w-full px-6 py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
+          >
+            ← 戻る
+          </button>
+        </div>
+
       </main>
     </div>
   );

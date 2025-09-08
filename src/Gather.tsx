@@ -71,13 +71,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => onNavigate("announcement")}
-            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-          >
-            <IconBack />
-            <span className="text-sm">戻る</span>
-          </button>
+
           <div className="w-10" />
         </div>
 
@@ -144,6 +138,17 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
             </button>
           </div>
         </section>  
+
+        {/* ▼ 戻るボタン（カードの下に横幅いっぱい配置） */}
+        <div className="mt-4">
+          <button
+            onClick={() => onNavigate("announcement")}
+            className="w-full py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
+          >
+            ← 戻る
+          </button>
+        </div>
+
       </main>
     </div>
   );

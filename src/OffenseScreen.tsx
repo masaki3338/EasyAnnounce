@@ -266,6 +266,10 @@ const goSeatIntroFromOffense = async () => {
     localForage.setItem("gameStartTime", formatted);
   };
   const hasShownStartTimePopup = useRef(false);
+// 初回アラートを1度だけ出すためのフラグ
+const firstOpenAlertShownRef = useRef(false);
+
+
 
   const [gameStartTime, setGameStartTime] = useState<string | null>(null);
   const [showStartTimePopup, setShowStartTimePopup] = useState(false);
@@ -289,6 +293,9 @@ useEffect(() => {
   });
 }, []);
 
+
+
+const [hydrated, setHydrated] = useState(false);
 const toggleAnnounced = (id: number) => {
   setAnnouncedIds((prev) => {
     const updated = prev.includes(id)
@@ -357,52 +364,49 @@ const handleFoulStop = () => {
       const order = await localForage.getItem("battingOrder");
       const lineup = await localForage.getItem("lineupAssignments");
       const matchInfo = await localForage.getItem<MatchInfo>("matchInfo");
-        const loadBattingOrder = async () => {
-    const order = await localForage.getItem<number[]>("battingOrder");
-    if (order) setBattingOrder(order);
-  };
-  //loadBattingOrder();
+    
+      const loadBattingOrder = async () => {
+        const order = await localForage.getItem<number[]>("battingOrder");
+        if (order) setBattingOrder(order);    
+      };
+    //loadBattingOrder();
 
+      if (team && typeof team === "object") {
+        const all = (team as any).players || [];
+        setAllPlayers(all);
+        setPlayers(all);
+        setTeamName((team as any).name || "");
 
+        // 打順に載っている9人
+        const starterIds = new Set(
+          (order as { id: number; reason: string }[]).map(e => e.id)
+        );
 
-if (team && typeof team === "object") {
-  const all = (team as any).players || [];
-  setAllPlayers(all);
-  setPlayers(all);
-  setTeamName((team as any).name || "");
+        // ✅ DH稼働中なら「投手」もスタメン扱いに含める
+        const dhActive = Boolean((lineup as any)?.["指"]);
+        const pitcherStarterId = (lineup as any)?.["投"];
+        if (dhActive && typeof pitcherStarterId === "number") {
+          starterIds.add(pitcherStarterId);
+        }
 
-  // 打順に載っている9人
-  const starterIds = new Set(
-    (order as { id: number; reason: string }[]).map(e => e.id)
-  );
+      // ✅ スタメン設定の控え指定を優先しつつ、従来の benchOutIds も併用
+      const startingBenchOut =
+        (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
+      const benchOut =
+        (await localForage.getItem<number[]>("benchOutIds")) ?? [];
 
-  // ✅ DH稼働中なら「投手」もスタメン扱いに含める
-  const dhActive = Boolean((lineup as any)?.["指"]);
-  const pitcherStarterId = (lineup as any)?.["投"];
-  if (dhActive && typeof pitcherStarterId === "number") {
-    starterIds.add(pitcherStarterId);
-  }
+      // 数値に正規化＆重複排除
+      const benchOutIds = Array.from(
+        new Set([...startingBenchOut, ...benchOut].map((v) => Number(v)).filter(Number.isFinite))
+      );
 
-// ✅ スタメン設定の控え指定を優先しつつ、従来の benchOutIds も併用
-const startingBenchOut =
-  (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
-const benchOut =
-  (await localForage.getItem<number[]>("benchOutIds")) ?? [];
+      // 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（ベンチ外指定）」
+      // ※ starterIds は直前で作っている Set（打順＋DH時の投手追加）
+      const bench = all.filter((p: any) => !starterIds.has(p.id) && !benchOutIds.includes(p.id));
 
-// 数値に正規化＆重複排除
-const benchOutIds = Array.from(
-  new Set([...startingBenchOut, ...benchOut].map((v) => Number(v)).filter(Number.isFinite))
-);
+      setBenchPlayers(bench);
 
-// 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（ベンチ外指定）」
-// ※ starterIds は直前で作っている Set（打順＋DH時の投手追加）
-const bench = all.filter((p: any) => !starterIds.has(p.id) && !benchOutIds.includes(p.id));
-
-setBenchPlayers(bench);
-
-}
-
-
+      }      
       if (order && Array.isArray(order)) {
         setBattingOrder(order as { id: number; reason: string }[]);
 
@@ -414,7 +418,6 @@ setBenchPlayers(bench);
           setIsLeadingBatter(true); // 先頭打者として認識
         }
       }
-
       if (lineup && typeof lineup === "object") {
         setAssignments(lineup as { [pos: string]: number | null });
       }
@@ -423,8 +426,8 @@ setBenchPlayers(bench);
         setInning(matchInfo.inning || 1);
         setIsTop(matchInfo.isTop ?? true);
         setIsHome(matchInfo.isHome ?? false);
-      }
-    
+      }  
+
       const savedScores = await localForage.getItem("scores");
       if (savedScores && typeof savedScores === "object") {
         setScores(savedScores as any);
@@ -432,6 +435,7 @@ setBenchPlayers(bench);
       const savedAnnouncedIds = await localForage.getItem<number[]>("announcedPlayerIds");
       if (savedAnnouncedIds) setAnnouncedPlayerIds(savedAnnouncedIds);
     };
+    setHydrated(true);
     loadData();
   }, []);
 
@@ -651,6 +655,7 @@ const setAnnouncementHTML = (html: string) => {
 
 
 
+
 const confirmScore = async () => {
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
@@ -787,11 +792,6 @@ const getPosition = (id: number): string | null => {
 };
 
 
-
-
-
-
-
 const getFullName = (player: Player) => {
   return `${player.lastName ?? ""}${player.firstName ?? ""}`;
 };
@@ -920,6 +920,7 @@ const stopSpeech = () => {
   if (synth.speaking) synth.cancel();
 };
 
+
 useEffect(() => {
   updateAnnouncement(); // currentBatterIndexが変わるたびに実行
 }, [currentBatterIndex]);
@@ -974,7 +975,7 @@ useEffect(() => {
             {/* 試合開始ボタン */}
             {inning === 1 && isTop  && (
               <button
-                className="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600"
+                className="w-full bg-green-500 text-white font-bold text-lg py-3 rounded hover:bg-green-600 whitespace-nowrap"
                 onClick={handleStartGame}
               >
                 試合開始
@@ -1192,6 +1193,7 @@ onClick={() => {
     </button>
   </div>
 </div>
+
 
 
       {isLeadingBatter && (

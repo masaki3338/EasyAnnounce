@@ -106,11 +106,17 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   /* === データロード === */
   useEffect(() => {
     const loadA = async () => {
-      const benchOut = await localForage.getItem<number[]>("benchOutIds");
-      if (Array.isArray(benchOut)) setBenchOutIds(benchOut);
+      // ✅ まずスタメン設定のキーを読む。なければ従来キーにフォールバック
+      const sb = await localForage.getItem<number[]>("startingBenchOutIds");
+      const fb = await localForage.getItem<number[]>("benchOutIds");
+      const raw = Array.isArray(sb) ? sb : Array.isArray(fb) ? fb : [];
+      // 念のため number 正規化
+      const normalized = raw.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      setBenchOutIds(normalized);
     };
     loadA();
   }, []);
+  
   useEffect(() => {
     const loadB = async () => {
       const [team, matchInfo] = await Promise.all([
@@ -216,13 +222,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => onNavigate("announcement")}
-            className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-          >
-            <IconBack />
-            <span className="text-sm">戻る</span>
-          </button>
+
           <div className="w-10" />
         </div>
 
@@ -358,6 +358,18 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
             停止
           </button>
         </div>
+
+        {/* 戻るボタン（操作ボタンの下に横幅いっぱいで配置） */}
+        <div className="pt-2">
+          <button
+            onClick={() => onNavigate("announcement")}
+            className="w-full px-6 py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 text-lg font-semibold shadow-lg active:scale-95"
+          >
+            ← 戻る
+          </button>
+        </div>
+
+
       </main>
     </div>
   );

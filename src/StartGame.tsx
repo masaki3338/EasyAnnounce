@@ -65,6 +65,7 @@ const StartGame = ({
   const [firstBaseSide, setFirstBaseSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [isFirstAttack, setIsFirstAttack] = useState(true);
   const [umpires, setUmpires] = useState<{ [key: string]: string }>({});
+  const [isTwoUmpires, setIsTwoUmpires] = useState<boolean>(false);
   const [players, setPlayers] = useState<{ id: number; number: string | number; name: string }[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>({});
   const [battingOrder, setBattingOrder] = useState<
@@ -117,10 +118,12 @@ useEffect(() => {
         (await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder"));
             const team = await localForage.getItem("team");
 
-      const benchOut = await localForage.getItem<number[]>("benchOutIds");
-      if (Array.isArray(benchOut)) {
-        setBenchOutIds(benchOut);
-      }
+      const sb = await localForage.getItem<number[]>("startingBenchOutIds");
+      const fb = await localForage.getItem<number[]>("benchOutIds");
+      const raw = Array.isArray(sb) ? sb : Array.isArray(fb) ? fb : [];
+      // 念のため number 正規化＆重複除去
+      const normalized = [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v)))];
+      setBenchOutIds(normalized);
 
       if (team && typeof team === "object") {
         setTeamName((team as any).name || "");
@@ -137,7 +140,7 @@ useEffect(() => {
         setOpponentName(mi.opponentTeam || "");
         setFirstBaseSide(mi.benchSide === "3塁側" ? "3塁側" : "1塁側");
         setIsFirstAttack(mi.isHome === false); // 先攻 = isHomeがfalse
-
+        setIsTwoUmpires(Boolean(mi.twoUmpires));  
         if (Array.isArray(mi.umpires)) {
           const umpireMap: { [key: string]: string } = {};
           mi.umpires.forEach((u: { role: string; name: string }) => {
@@ -169,7 +172,16 @@ useEffect(() => {
   };
 
   const handleStart = async () => {
+    alert('球審の「プレイ」で【試合開始】ボタンを押下して下さい。');
+
     const isHome = !isFirstAttack; // ← 🆕 自チームが後攻かをここで判定
+
+    // ★ 先攻×初回のみ：開始ボタン押下時に一度だけ注意を表示
+  const already = await localForage.getItem<boolean>("shownFirstPlayAlertAtStartGame");
+  if (!already && isFirstAttack) {
+    alert('球審の「プレイ」で【試合開始】ボタンを押下して下さい。');
+    await localForage.setItem("shownFirstPlayAlertAtStartGame", true);
+  }
 
     // 🧹 各種リセット
     await localForage.removeItem("announcedPlayerIds");
@@ -308,18 +320,30 @@ return (
         </div>
       </section>
 
-      {/* 審判 */}
+      {/* 審判（2審制なら右隣に表示＋球審・1塁審のみ） */}
       <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
         <div className="flex items-center gap-2 mb-2">
           <IconUmpire />
           <div className="font-semibold">審判</div>
+          {isTwoUmpires && (
+            <span className="ml-3 text-xs px-2 py-0.5 rounded-full bg-white/10 border border-white/10">
+              2審制
+            </span>
+          )}
         </div>
-        <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
-          <li>球審：<span className="font-medium">{umpires["球審"] || "未設定"}</span></li>
-          <li>1塁審：<span className="font-medium">{umpires["1塁審"] || "未設定"}</span></li>
-          <li>2塁審：<span className="font-medium">{umpires["2塁審"] || "未設定"}</span></li>
-          <li>3塁審：<span className="font-medium">{umpires["3塁審"] || "未設定"}</span></li>
-        </ul>
+        {isTwoUmpires ? (
+          <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
+            <li>球審：<span className="font-medium">{umpires["球審"] || "未設定"}</span></li>
+            <li>1塁審：<span className="font-medium">{umpires["1塁審"] || "未設定"}</span></li>
+          </ul>
+        ) : (
+          <ul className="text-sm text-white/90 grid grid-cols-2 gap-x-4 gap-y-1">
+            <li>球審：<span className="font-medium">{umpires["球審"] || "未設定"}</span></li>
+            <li>1塁審：<span className="font-medium">{umpires["1塁審"] || "未設定"}</span></li>
+            <li>2塁審：<span className="font-medium">{umpires["2塁審"] || "未設定"}</span></li>
+            <li>3塁審：<span className="font-medium">{umpires["3塁審"] || "未設定"}</span></li>
+          </ul>
+        )}
       </section>
 
       {/* スタメン */}
