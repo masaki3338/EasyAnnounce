@@ -779,7 +779,10 @@ const handleDropToBattingOrder = (
 </span>
 
 
-                  <span className="w-28">{player.lastName}{player.firstName}</span>
+                   {/* 選手名 → 右にずらす */}
+                  <span className="ml-4 whitespace-nowrap">
+                    {player.lastName}{player.firstName}
+                  </span>
                   <span className="w-12">#{player.number}</span>
                 </div>
               </div>
