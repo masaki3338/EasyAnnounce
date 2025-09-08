@@ -288,7 +288,7 @@ const saveAssignments = async () => {
   });
   await localForage.setItem("startingInitialSnapshot", initialOrder); // ← new（参照用）
 
-  alert("スタメン（専用領域）を保存しました！");
+  alert("スタメンを保存しました！");
 };
 
 

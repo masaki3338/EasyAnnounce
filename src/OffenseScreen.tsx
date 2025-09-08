@@ -973,7 +973,7 @@ useEffect(() => {
 
           </div>
             {/* 試合開始ボタン */}
-            {inning === 1 && isTop  && (
+            {inning === 1 && isTop && !isHome && (
               <button
                className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
                 onClick={handleStartGame}

@@ -790,7 +790,7 @@ const handlePitchLimitSpeak = () => {
 
           {/* 右：ボタン群（縮ませない・折り返さない） */}
           <div className="flex items-center gap-2 shrink-0">
-            {inning === 1 && isTop && (
+            {inning === 1 && isTop && isHome && (
               <button
                 onClick={handleStartGame}
                 className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-green-500 text-white font-bold rounded hover:bg-green-600 text-xs sm:text-sm whitespace-nowrap"

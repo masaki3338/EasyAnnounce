@@ -200,6 +200,18 @@ const proceedStart = async () => {
   // usedPlayerInfo / runnerAssignments / lineupAssignments の保存、
   // clearUndoRedoHistory() など、元の handleStart にあった処理をここへ移動
 
+  // ★ 相手チーム名など既存の情報は残しつつ、回・表裏・攻守だけ初期化
+  const prev = (await localForage.getItem("matchInfo")) || {};
+  const nextMatchInfo = {
+    ...prev,
+    inning: 1,
+    isTop: true,        // 常に1回表
+    isHome,             // 後攻なら true
+    isDefense: isHome,  // 後攻=守備から / 先攻=攻撃から
+  };
+  await localForage.setItem("matchInfo", nextMatchInfo);
+
+
   // 🏁 画面遷移
   onStart(isFirstAttack);
 
