@@ -183,7 +183,7 @@ useEffect(() => {
   };
 
   // キャプチャ段階で拾うと安定（バブリング前に確保）
-  window.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
+  window.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
   return () => window.removeEventListener('touchend', onTouchEnd, true);
 }, [touchDrag]);
 
@@ -796,11 +796,11 @@ const handleDropToBattingOrder = (
   className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
              cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
   title={pos ? "この守備を他の行と入替" : "守備なし"}
-  draggable={!!pos}
+  draggable={!('ontouchstart' in window) && !!pos}
   onDragStart={(e) => handlePosDragStart(e, entry.id)}
   onDragOver={allowDrop}
   onDrop={(e) => handleDropToPosSpan(e, entry.id)}
-  onTouchStart={() => pos && setTouchDrag({ playerId: entry.id })}  // ← 開始は保持だけ
+  onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
   /* ← onTouchEnd は削除：グローバルでまとめて処理 */
 >
   {pos ? positionNames[pos] : "控え"}
@@ -846,14 +846,7 @@ const handleDropToBattingOrder = (
 const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
 const StartingLineupWrapped = () => {
   return (
-    <DndProvider
-      backend={isTouchDevice() ? TouchBackend : HTML5Backend}
-      options={isTouchDevice() ? {
-        enableTouchEvents: true,
-        enableMouseEvents: true,
-        touchSlop: 10,
-      } : undefined}
-    >
+    <DndProvider backend={HTML5Backend}>
       <StartingLineup />
     </DndProvider>
   );
