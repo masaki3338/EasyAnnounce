@@ -309,8 +309,9 @@ const saveAssignments = async () => {
     alert("スタメンと守備位置をクリアしました！");
   };
 
-  const allowDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const allowDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    try { e.dataTransfer!.dropEffect = "move"; } catch {}
   };
 
 const handleDragStart = (
@@ -557,6 +558,7 @@ const swapPositionsByPlayers = (idA: number, idB: number) => {
 
 // 守備ラベルからドラッグ開始
 const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
+  e.stopPropagation(); // ★ 親のdragstartを発火させない（ズレ防止）
   e.dataTransfer.setData("dragKind", "swapPos");
   e.dataTransfer.setData("swapSourceId", String(playerId));
   e.dataTransfer.setData("text/plain", String(playerId));
@@ -815,10 +817,11 @@ const handleDropToBattingOrder = (
                  data-role="posrow"             // ★ 追加：行全体もドロップ対象にする
                  data-player-id={entry.id}      // ★ 追加：誰の行か
                 className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none"
-                draggable
+                draggable={false} 
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
                 onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
+                onDragEnter={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
               >
                 <div className="flex items-center gap-2 flex-nowrap">
                   <span className="w-10 font-bold">{i + 1}番</span>
