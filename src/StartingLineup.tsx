@@ -158,8 +158,8 @@ useEffect(() => {
     const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
     if (!el) { setTouchDrag(null); return; }
 
-    // data-role="poslabel" を持つ最近傍のターゲットを探す
-    const target = el.closest('[data-role="poslabel"]') as HTMLElement | null;
+    // ラベル or 行 いずれかの最近傍ターゲットを探す
+    const target = el.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
     if (!target) { setTouchDrag(null); return; }
 
     const targetPlayerId = Number(target.getAttribute('data-player-id'));
@@ -780,6 +780,8 @@ const handleDropToBattingOrder = (
             return (
               <div
                 key={entry.id}
+                 data-role="posrow"             // ★ 追加：行全体もドロップ対象にする
+                 data-player-id={entry.id}      // ★ 追加：誰の行か
                 className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move"
                 draggable
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
