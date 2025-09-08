@@ -3610,54 +3610,60 @@ return (
       </div>
     </div>
 
-    {/* スマホ風のフッターアクション（小画面で固定） */}
-    <div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
-      <div className="mx-auto max-w-4xl">
-        <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
-          <div className="flex flex-wrap gap-2 justify-center">
-            <button
-              onClick={handleUndo}
-              disabled={!history.length}
-              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
-              title="Undo"
-            >
-              ↻
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={!redo.length}
-              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
-              title="Redo"
-            >
-              ↺
-            </button>
+{/* スマホ風のフッターアクション（小画面で固定） */}
+<div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
+  <div className="mx-auto max-w-4xl">
+    <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
+      {/* 上段：4つの操作ボタン */}
+      <div className="flex flex-wrap gap-2 justify-center">
+        <button
+          onClick={handleUndo}
+          disabled={!history.length}
+          className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
+          title="Undo"
+        >
+          ↻
+        </button>
 
-            <button
-              onClick={confirmChange}
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
-            >
-              交代確定
-            </button>
+        <button
+          onClick={handleRedo}
+          disabled={!redo.length}
+          className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
+          title="Redo"
+        >
+          ↺
+        </button>
 
-            <button
-              type="button"
-              onClick={handleDisableDH}
-              disabled={!assignments?.["指"]}
-              className="px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
-            >
-              DH解除
-            </button>
+        <button
+          onClick={confirmChange}
+          className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
+        >
+          交代確定
+        </button>
 
-            <button
-              onClick={showAnnouncement}
-              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.98] transition"
-            >
-              🎤表示
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleDisableDH}
+          disabled={!assignments?.["指"]}
+          className="px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
+        >
+          DH解除
+        </button>
+      </div>
+
+      {/* 下段：横幅いっぱいの 🎤表示 */}
+      <div className="mt-3">
+        <button
+          onClick={showAnnouncement}
+          className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold active:scale-[0.98] transition"
+        >
+          🎤表示
+        </button>
       </div>
     </div>
+  </div>
+</div>
+
 
     {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
     {showSaveModal && (
