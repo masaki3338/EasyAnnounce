@@ -756,9 +756,28 @@ const handleDropToBattingOrder = (
   onDragStart={(e) => handlePosDragStart(e, entry.id)}
   onDragOver={allowDrop}
   onDrop={(e) => handleDropToPosSpan(e, entry.id)}
+  // 👇 追加：Androidタッチ対応
+  onTouchStart={() => pos && setTouchDrag({ playerId: entry.id })}
+  onTouchEnd={() => {
+    if (!touchDrag) return;
+    const fake = {
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      dataTransfer: {
+        getData: (key: string) => {
+          if (key === "dragKind") return "swapPos";
+          if (key === "swapSourceId" || key === "text/plain") return String(touchDrag.playerId);
+          return "";
+        },
+      },
+    } as unknown as React.DragEvent<HTMLSpanElement>;
+    handleDropToPosSpan(fake, entry.id);
+    setTouchDrag(null);
+  }}
 >
   {pos ? positionNames[pos] : "控え"}
 </span>
+
 
                   <span className="w-28">{player.lastName}{player.firstName}</span>
                   <span className="w-12">#{player.number}</span>
