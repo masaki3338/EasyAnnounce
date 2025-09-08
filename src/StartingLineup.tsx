@@ -76,6 +76,8 @@ const StartingLineup = () => {
   // タッチ（スマホ）用：選手選択を保持
 const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(null);
 const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null);
+// タッチの最終座標（フォールバック用）
+const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 
 // 既存の handleDrop... を流用するためのダミーDragEvent
 const makeFakeDragEvent = (payload: Record<string, string>) =>
@@ -149,23 +151,19 @@ useEffect(() => {
 
 // 👉 グローバル touchend：指を離した位置の守備ラベルを自動検出して入替
 useEffect(() => {
-  const onTouchEnd = (ev: TouchEvent) => {
+  const pickTargetAndSwap = (clientX: number, clientY: number) => {
     if (!touchDrag) return;
-    const t = ev.changedTouches && ev.changedTouches[0];
-    if (!t) return;
-
-    // 指を離した座標の要素を取得
-    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
     if (!el) { setTouchDrag(null); return; }
 
-    // ラベル or 行 いずれかの最近傍ターゲットを探す
+    // ラベル or 行 いずれかの最近傍ターゲット
     const target = el.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
     if (!target) { setTouchDrag(null); return; }
 
     const targetPlayerId = Number(target.getAttribute('data-player-id'));
     if (!targetPlayerId) { setTouchDrag(null); return; }
 
-    // 既存の drop ハンドラを“疑似DragEvent”で呼び出し
+    // 既存 drop ハンドラを疑似DragEventで呼び出し
     const fake = {
       preventDefault: () => {},
       stopPropagation: () => {},
@@ -182,10 +180,38 @@ useEffect(() => {
     setTouchDrag(null);
   };
 
-  // キャプチャ段階で拾うと安定（バブリング前に確保）
-  window.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
-  return () => window.removeEventListener('touchend', onTouchEnd, true);
+  // 1) 指の移動で座標を記録（ネイティブDnDに変換された場合の保険）
+  const onTouchMove = (ev: TouchEvent) => {
+    const t = ev.touches && ev.touches[0];
+    if (!t) return;
+    lastTouchRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  // 2) 通常ケース：touchend で発火
+  const onTouchEnd = (ev: TouchEvent) => {
+    const t = ev.changedTouches && ev.changedTouches[0];
+    if (!t) return;
+    pickTargetAndSwap(t.clientX, t.clientY);
+  };
+
+  // 3) 変換ケース：ドラッグが dragend で終わる端末向けフォールバック
+  const onDragEnd = (_ev: DragEvent) => {
+    if (!touchDrag) return;
+    const p = lastTouchRef.current;
+    if (!p) { setTouchDrag(null); return; }
+    pickTargetAndSwap(p.x, p.y);
+  };
+
+  window.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
+  window.addEventListener('touchend', onTouchEnd,   { passive: false, capture: true });
+  window.addEventListener('dragend',  onDragEnd,    { passive: true,  capture: true });
+  return () => {
+    window.removeEventListener('touchmove', onTouchMove, true);
+    window.removeEventListener('touchend',  onTouchEnd,  true);
+    window.removeEventListener('dragend',   onDragEnd,   true);
+  };
 }, [touchDrag]);
+
 
 
 useEffect(() => {
@@ -529,6 +555,7 @@ const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: numbe
   e.dataTransfer.setData("dragKind", "swapPos");
   e.dataTransfer.setData("swapSourceId", String(playerId));
   e.dataTransfer.setData("text/plain", String(playerId));
+  setTouchDrag((prev) => prev ?? { playerId });
 };
 
 // 守備ラベルへドロップ
