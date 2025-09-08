@@ -1004,7 +1004,7 @@ const handlePitchLimitSpeak = () => {
 <div className="my-6 text-center">
   <button
     onClick={onChangeDefense}
-    className="px-4 py-2 bg-orange-500 text-white rounded shadow hover:bg-orange-600"
+    className="w-full py-3 bg-orange-500 text-white rounded shadow hover:bg-orange-600 font-semibold"
   >
     守備交代
   </button>
