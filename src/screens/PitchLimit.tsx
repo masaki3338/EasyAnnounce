@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
 
-type Choice = "75" | "45" | "custom";
+type Choice = "85" | "75" | "45" | "custom";
 
 // ---- 見た目用の小さなSVG（ロジック非依存） ----
 const IconBack = () => (
@@ -34,22 +34,27 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
       const savedSelected = await localForage.getItem<number>("rule.pitchLimit.selected");
       const legacy = await localForage.getItem<number>("rule.pitchLimit"); // 旧キー互換
 
-      const nextChoice: Choice =
-        savedChoice ?? (legacy === 45 ? "45" : legacy === 75 ? "75" : "custom");
-      const nextCustom =
-        typeof savedCustom === "number"
-          ? savedCustom
-          : legacy && legacy !== 45 && legacy !== 75
-          ? legacy
-          : 85;
-      const nextSelected =
-        typeof savedSelected === "number"
-          ? savedSelected
-          : nextChoice === "custom"
-          ? nextCustom
-          : nextChoice === "45"
-          ? 45
-          : 75;
+  const nextChoice: Choice =
+    savedChoice ??
+    (legacy === 45 ? "45" : legacy === 75 ? "75" : legacy === 85 ? "85" : "custom");
+
+  const nextCustom =
+    typeof savedCustom === "number"
+      ? savedCustom
+      : legacy && legacy !== 45 && legacy !== 75 && legacy !== 85
+      ? legacy
+      : 85;
+
+  const nextSelected =
+    typeof savedSelected === "number"
+      ? savedSelected
+      : nextChoice === "custom"
+      ? nextCustom
+      : nextChoice === "45"
+      ? 45
+      : nextChoice === "85"
+      ? 85
+      : 75;
 
       setChoice(nextChoice);
       setCustom(nextCustom);
@@ -66,6 +71,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
     await localForage.setItem("rule.pitchLimit.selected", sel);
   };
 
+  const choose85 = () => persist("85", custom, 85);
   const choose75 = () => persist("75", custom, 75);
   const choose45 = () => persist("45", custom, 45);
   const chooseCustom = () => persist("custom", custom, custom);
@@ -120,6 +126,22 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
       <main className="w-[100svw] -mx-6 md:mx-0 md:w-full mt-6">
         <section className="rounded-none md:rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
           <div className="space-y-5 text-base">
+          {/* 85球 */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="radio"
+              className="hidden"
+              checked={isChecked("85")}
+              onChange={choose85}
+            />
+            <span
+              className={`inline-block w-4 h-4 rounded-full border-2 ${
+                isChecked("85") ? "bg-blue-600 border-blue-600" : "border-white/60"
+              }`}
+            />
+            <span className="font-medium">85球（コルト大会）</span>
+          </label>
+
             {/* 75球 */}
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <input type="radio" className="hidden" checked={isChecked("75")} onChange={choose75} />
