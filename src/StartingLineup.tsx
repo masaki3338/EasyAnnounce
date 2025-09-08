@@ -147,6 +147,46 @@ useEffect(() => {
   }
 }, []);
 
+// 👉 グローバル touchend：指を離した位置の守備ラベルを自動検出して入替
+useEffect(() => {
+  const onTouchEnd = (ev: TouchEvent) => {
+    if (!touchDrag) return;
+    const t = ev.changedTouches && ev.changedTouches[0];
+    if (!t) return;
+
+    // 指を離した座標の要素を取得
+    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+    if (!el) { setTouchDrag(null); return; }
+
+    // data-role="poslabel" を持つ最近傍のターゲットを探す
+    const target = el.closest('[data-role="poslabel"]') as HTMLElement | null;
+    if (!target) { setTouchDrag(null); return; }
+
+    const targetPlayerId = Number(target.getAttribute('data-player-id'));
+    if (!targetPlayerId) { setTouchDrag(null); return; }
+
+    // 既存の drop ハンドラを“疑似DragEvent”で呼び出し
+    const fake = {
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      dataTransfer: {
+        getData: (key: string) => {
+          if (key === "dragKind") return "swapPos";
+          if (key === "swapSourceId" || key === "text/plain") return String(touchDrag.playerId);
+          return "";
+        },
+      },
+    } as unknown as React.DragEvent<HTMLSpanElement>;
+
+    handleDropToPosSpan(fake, targetPlayerId);
+    setTouchDrag(null);
+  };
+
+  // キャプチャ段階で拾うと安定（バブリング前に確保）
+  window.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
+  return () => window.removeEventListener('touchend', onTouchEnd, true);
+}, [touchDrag]);
+
 
 useEffect(() => {
   const loadInitialData = async () => {
@@ -746,37 +786,24 @@ const handleDropToBattingOrder = (
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
                 onDragOver={allowDrop}
               >
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2 flex-nowrap">
                   <span className="w-10 font-bold">{i + 1}番</span>
 <span
-  className="w-24 px-1 rounded bg-white/10 border border-white/10
-             cursor-move select-none text-center"
+  data-role="poslabel"                 // ★ 追加：ターゲット識別
+  data-player-id={entry.id}            // ★ 追加：誰の行か
+  className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
+             cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
   title={pos ? "この守備を他の行と入替" : "守備なし"}
   draggable={!!pos}
   onDragStart={(e) => handlePosDragStart(e, entry.id)}
   onDragOver={allowDrop}
   onDrop={(e) => handleDropToPosSpan(e, entry.id)}
-  // 👇 追加：Androidタッチ対応
-  onTouchStart={() => pos && setTouchDrag({ playerId: entry.id })}
-  onTouchEnd={() => {
-    if (!touchDrag) return;
-    const fake = {
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      dataTransfer: {
-        getData: (key: string) => {
-          if (key === "dragKind") return "swapPos";
-          if (key === "swapSourceId" || key === "text/plain") return String(touchDrag.playerId);
-          return "";
-        },
-      },
-    } as unknown as React.DragEvent<HTMLSpanElement>;
-    handleDropToPosSpan(fake, entry.id);
-    setTouchDrag(null);
-  }}
+  onTouchStart={() => pos && setTouchDrag({ playerId: entry.id })}  // ← 開始は保持だけ
+  /* ← onTouchEnd は削除：グローバルでまとめて処理 */
 >
   {pos ? positionNames[pos] : "控え"}
 </span>
+
 
 
                    {/* 選手名 → 右にずらす */}
