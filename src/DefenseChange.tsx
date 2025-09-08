@@ -1335,12 +1335,14 @@ if (
 }
 
 
-// ==== 本文終端の統一：最後の1本だけを「正しい日本語」で閉じる ====
+// ==== 本文終端の統一：最後の1本だけを「に入ります。」で閉じる ====
 // ・末尾が「…リエントリーで ポジション、」→「…リエントリーで ポジションに入ります。」
-// ・末尾が「…が ポジション、」なら「…が ポジション に入ります。」
-// ・末尾が「…へ、」/「…に、」なら「…へ入ります。」/「…に入ります。」
+// ・末尾が「…が ポジション、/。」→「…が ポジションに入ります。」
+// ・末尾が「…へ、/。」/「…に、/。」→「…へ入ります。」/「…に入ります。」
 // ・それ以外で「、」なら「。」を付与
 {
+  const POS_JA = "(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)";
+
   // 末尾の“本文行”インデックスを取得（打順行・ヘッダー・「以上に代わります。」は除外）
   const lastBodyIndex = (() => {
     for (let i = result.length - 1; i >= 0; i--) {
@@ -1348,43 +1350,53 @@ if (
       if (/^\d+番 /.test(t)) continue;                  // 打順行は除外
       if (t.endsWith("以上に代わります。")) continue;    // しめ行は除外
       if (/お知らせいたします。$/.test(t)) continue;     // ヘッダーは除外
+      if (!t) continue;
       return i;
     }
     return -1;
   })();
 
-  // リエントリー行が末尾なら、終端調整を必ず有効化（抑止フラグを無効化）
+  // リエントリー行が末尾なら、終端調整を必ず有効化（抑止フラグは無効化）
   const reentryTail =
     lastBodyIndex >= 0 &&
-    /リエントリーで\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/
-      .test(result[lastBodyIndex].trim());
+    new RegExp(`リエントリーで\\s*${POS_JA}\\s*[、。]?$`).test(result[lastBodyIndex].trim());
   if (reentryTail) suppressTailClose = false;
 
   if (!suppressTailClose && lastBodyIndex >= 0) {
     const line = result[lastBodyIndex].trim();
 
-    // ★ NEW: リエントリー末尾 → 「…ポジションに入ります。」
-    const reentryPos =
-      /リエントリーで\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*[、。]?$/;
+    // 1) 「…リエントリーで ◯◯、/。」→「…リエントリーで ◯◯に入ります。」
+    const reentryPos = new RegExp(`リエントリーで\\s*${POS_JA}\\s*[、。]?$`);
     if (reentryPos.test(line)) {
       result[lastBodyIndex] = line.replace(
         reentryPos,
         (_m, pos) => `リエントリーで ${pos}に入ります。`
       );
     } else {
-      // ★ 既存の「が入り …」の正規化
-      const gaIriPos =
-        /(が\s*入り)\s*(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)\s*(?:へ|に)?\s*[、。]?$/;
-      if (gaIriPos.test(line)) {
-        result[lastBodyIndex] = line.replace(gaIriPos, (_m, head, pos) => `${head} ${pos}。`);
-      } else if (line.endsWith("、")) {
-        result[lastBodyIndex] = line.slice(0, -1) + "。";
-      } else if (!/[。]$/.test(line)) {
-        result[lastBodyIndex] = line + "。";
+      // 2) 「…が ◯◯ 、/。」→「…が ◯◯に入ります。」
+      const gaPos = new RegExp(`が\\s*${POS_JA}\\s*[、。]?$`);
+      if (gaPos.test(line)) {
+        result[lastBodyIndex] = line.replace(
+          gaPos,
+          (_m, pos) => `が ${pos}に入ります。`
+        );
+      } else {
+        // 3) 「…(へ|に) 、/。」→「…(へ|に)入ります。」
+        const toHeNi = /(へ|に)\s*[、。]?$/;
+        if (toHeNi.test(line)) {
+          result[lastBodyIndex] = line.replace(
+            toHeNi,
+            (_m, pp) => `${pp}入ります。`
+          );
+        } else {
+          // 4) 末尾が読点だけなら句点
+          result[lastBodyIndex] = line.replace(/、$/, "。");
+        }
       }
     }
   }
 }
+
 
 
 
@@ -1423,7 +1435,7 @@ lineupLines
 
 
 const positionStyles: Record<string, React.CSSProperties> = {
-  投: { top: "66%", left: "50%" },
+  投: { top: "63%", left: "50%" },
   捕: { top: "88%", left: "50%" },
   一: { top: "66%", left: "82%" },
   二: { top: "44%", left: "66%" },
@@ -3106,7 +3118,7 @@ return (
         {/* フィールド図 + 札（そのまま） */}
         <div className="relative mb-6 w-[100svw] -mx-4 md:mx-auto md:w-full md:max-w-2xl">
           <img
-            src="/field.jpg"
+            src="/field.png"
             alt="フィールド図"
             className="w-full rounded-none md:rounded-xl shadow pointer-events-none select-none"
             draggable={false}
@@ -3163,7 +3175,7 @@ return (
                     className="cursor-move whitespace-nowrap text-center
                               bg-black/60 text-white font-bold rounded
                               px-2 py-1 leading-tight
-                              text-[clamp(13px,2.1vw,30px)]"
+                              text-[clamp(13px,2.1vw,20px)]"
                     style={{ minWidth: "78px", maxWidth: "38vw" }}
                   >
                   {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}

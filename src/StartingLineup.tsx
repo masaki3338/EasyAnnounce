@@ -464,27 +464,85 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
 };
 
 
+// 2選手の“現在の守備”を入替える（打順は触らない）
+const swapPositionsByPlayers = (idA: number, idB: number) => {
+  if (!idA || !idB || idA === idB) return;
+
+  const posA = Object.entries(assignments).find(([, v]) => v === idA)?.[0] as string | undefined;
+  const posB = Object.entries(assignments).find(([, v]) => v === idB)?.[0] as string | undefined;
+  if (!posA || !posB) return;
+
+  const next = { ...assignments };
+  next[posA] = idB;
+  next[posB] = idA;
+
+  // DH 二重登録の解消
+  const DH = "指";
+  if (posA !== DH && next[DH] === idB) next[DH] = null;
+  if (posB !== DH && next[DH] === idA) next[DH] = null;
+
+  setAssignments(next);
+};
+
+// 守備ラベルからドラッグ開始
+const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
+  e.dataTransfer.setData("dragKind", "swapPos");
+  e.dataTransfer.setData("swapSourceId", String(playerId));
+  e.dataTransfer.setData("text/plain", String(playerId));
+};
+
+// 守備ラベルへドロップ
+const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
+  e.preventDefault();
+  e.stopPropagation(); // 行の onDrop にバブらせない
+  const kind = e.dataTransfer.getData("dragKind");
+  if (kind !== "swapPos") return;
+
+  const srcStr = e.dataTransfer.getData("swapSourceId") || e.dataTransfer.getData("text/plain");
+  const srcId = Number(srcStr);
+  if (!srcId) return;
+
+  swapPositionsByPlayers(srcId, targetPlayerId);
+};
 
 
-  const handleDropToBattingOrder = (
-    e: React.DragEvent<HTMLDivElement>,
-    targetPlayerId: number
-  ) => {
-    e.preventDefault();
-    const draggedStr =
-      e.dataTransfer.getData("battingPlayerId") || e.dataTransfer.getData("text/plain");
-    const draggedPlayerId = Number(draggedStr);
 
-    setBattingOrder((prev) => {
-      const fromIndex = prev.findIndex((entry) => entry.id === draggedPlayerId);
-      const toIndex = prev.findIndex((entry) => entry.id === targetPlayerId);
-      if (fromIndex === -1 || toIndex === -1) return prev;
+const handleDropToBattingOrder = (
+  e: React.DragEvent<HTMLDivElement>,
+  targetPlayerId: number
+) => {
+  e.preventDefault();
 
-      const updated = [...prev];
-      [updated[fromIndex], updated[toIndex]] = [updated[toIndex], updated[fromIndex]];
-      return updated;
-    });
-  };
+  // ★ 守備入替モードなら打順は触らず守備だけ入替
+  const kind = e.dataTransfer.getData("dragKind");
+  if (kind === "swapPos") {
+    const srcStr =
+      e.dataTransfer.getData("swapSourceId") ||
+      e.dataTransfer.getData("battingPlayerId") ||
+      e.dataTransfer.getData("text/plain");
+    const srcId = Number(srcStr);
+    if (srcId && srcId !== targetPlayerId) {
+      swapPositionsByPlayers(srcId, targetPlayerId);
+    }
+    return;
+  }
+
+  // ↓↓ 既存の打順入替処理 ↓↓
+  const draggedStr =
+    e.dataTransfer.getData("battingPlayerId") || e.dataTransfer.getData("text/plain");
+  const draggedPlayerId = Number(draggedStr);
+
+  setBattingOrder((prev) => {
+    const fromIndex = prev.findIndex((entry) => entry.id === draggedPlayerId);
+    const toIndex = prev.findIndex((entry) => entry.id === targetPlayerId);
+    if (fromIndex === -1 || toIndex === -1) return prev;
+
+    const updated = [...prev];
+    [updated[fromIndex], updated[toIndex]] = [updated[toIndex], updated[fromIndex]];
+    return updated;
+  });
+};
+
 
   const assignedIds = Object.values(assignments).filter(Boolean) as number[];
   const availablePlayers = teamPlayers.filter((p) => !assignedIds.includes(p.id));
@@ -690,7 +748,18 @@ const handleDropToBench = (e: React.DragEvent<HTMLDivElement>) => {
               >
                 <div className="flex gap-2">
                   <span className="w-10 font-bold">{i + 1}番</span>
-                  <span className="w-24">{pos ? positionNames[pos] : "控え"}</span>
+<span
+  className="w-24 px-1 rounded bg-white/10 border border-white/10
+             cursor-move select-none text-center"
+  title={pos ? "この守備を他の行と入替" : "守備なし"}
+  draggable={!!pos}
+  onDragStart={(e) => handlePosDragStart(e, entry.id)}
+  onDragOver={allowDrop}
+  onDrop={(e) => handleDropToPosSpan(e, entry.id)}
+>
+  {pos ? positionNames[pos] : "控え"}
+</span>
+
                   <span className="w-28">{player.lastName}{player.firstName}</span>
                   <span className="w-12">#{player.number}</span>
                 </div>

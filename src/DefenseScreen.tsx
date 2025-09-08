@@ -911,7 +911,7 @@ const handlePitchLimitSpeak = () => {
         </table>
       </section>
       <div className="relative w-full max-w-2xl mx-auto my-6">
-        <img src="/field.jpg" alt="フィールド図" className="w-full rounded shadow" />
+        <img src="/field.png" alt="フィールド図" className="w-full rounded shadow" />
         {positions.map(pos => {
           const playerId = assignmentsForDisplay[pos]; // ★ 表示用に差し替え
           const playerNameNum = getPlayerNameNumber(playerId);
