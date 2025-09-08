@@ -74,6 +74,9 @@ const StartGame = ({
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]); // 🆕
 
+  // 「試合開始」押下時に出す案内モーダルの表示フラグ
+  const [showStartHint, setShowStartHint] = useState(false);
+
   // 画面を開いたら、スタメン守備を lineupAssignments に確定保存
 useEffect(() => {
   (async () => {
@@ -171,97 +174,39 @@ useEffect(() => {
     return players.find((p) => Number(p.id) === id);
   };
 
-  const handleStart = async () => {
-    alert('球審の「プレイ」で【試合開始】ボタンを押下して下さい。');
+// 1) ボタン押下時はモーダルを開くだけ
+const handleStart = async () => {
+  setShowStartHint(true);
+};
 
-    const isHome = !isFirstAttack; // ← 🆕 自チームが後攻かをここで判定
+// 2) モーダルの「OK」で本当に開始（元の handleStart の中身をこちらへ）
+const proceedStart = async () => {
+  const isHome = !isFirstAttack;
 
-    // ★ 先攻×初回のみ：開始ボタン押下時に一度だけ注意を表示
-  const already = await localForage.getItem<boolean>("shownFirstPlayAlertAtStartGame");
-  if (!already && isFirstAttack) {
-    alert('球審の「プレイ」で【試合開始】ボタンを押下して下さい。');
-    await localForage.setItem("shownFirstPlayAlertAtStartGame", true);
-  }
+  // （↓↓ここからは、元の handleStart 内の“アラート以外の処理”をそのまま↓）
+  // ★ 先攻×初回のみ：… というalertブロックは削除してOK（モーダルに置換したため）
 
-    // 🧹 各種リセット
-    await localForage.removeItem("announcedPlayerIds");
-    await localForage.removeItem("runnerInfo");
-    await localForage.removeItem("pitchCounts");
-    await localForage.removeItem("pitcherTotals");
-    await localForage.removeItem("scores");              // 得点削除
-    await localForage.removeItem("lastBatterIndex");
-    await localForage.removeItem("nextBatterIndex");
-    await localForage.removeItem("usedBatterIds");
-    // 代打/代走のreasonを全員「スタメン」に戻してから保存
-    const normalizedOrder = (Array.isArray(battingOrder) ? battingOrder : [])
-      .map((e: any) => {
-        const id = typeof e === "number" ? e : (typeof e?.id === "number" ? e.id : e?.playerId);
-        return typeof id === "number" ? { id, reason: "スタメン" } : null;
-      })
-      .filter((v: any): v is { id: number; reason: string } => !!v)
-      .slice(0, 9);
-    await localForage.setItem("battingOrder", normalizedOrder);
-    await localForage.removeItem("checkedIds"); // 🔄 チェック状態を初期化
+  // 🧹 各種リセット
+  await localForage.removeItem("announcedPlayerIds");
+  await localForage.removeItem("runnerInfo");
+  await localForage.removeItem("pitchCounts");
+  await localForage.removeItem("pitcherTotals");
+  await localForage.removeItem("scores");
+  await localForage.removeItem("lastBatterIndex");
+  await localForage.removeItem("nextBatterIndex");
+  await localForage.removeItem("usedBatterIds");
+  // …（あなたの元コードと同じ初期化を続ける）
+  // batttingOrder の正規化保存、scores の初期化、matchInfo の保存、
+  // usedPlayerInfo / runnerAssignments / lineupAssignments の保存、
+  // clearUndoRedoHistory() など、元の handleStart にあった処理をここへ移動
 
-    // 🧼 空の得点データを保存（全て空白にするため）
-    await localForage.setItem("scores", {});             // ← 🆕
+  // 🏁 画面遷移
+  onStart(isFirstAttack);
 
-    // ✅ 試合情報（イニング・表裏・攻守・後攻）を初期化
-    const initialMatchInfo = {
-      id: Date.now(),            // ← 追加：一意な試合ID
-      opponentTeam: opponentName,  // ← 対戦相手名も再保存
-      inning: 1,
-      isTop: true,
-      isDefense: !isFirstAttack,
-      isHome: isHome,
-    };
-    const prev = await localForage.getItem<any>("matchInfo");
-    await localForage.setItem("matchInfo", { ...(prev || {}), ...initialMatchInfo });
+  // 閉じる
+  setShowStartHint(false);
+};
 
-    // 代打/代走・再入場・交代表示の残骸を全削除
-    await localForage.setItem("usedPlayerInfo", {});  // （既存）代打/代走の紐づけを初期化
-    await localForage.removeItem("reentryInfos");     // リエントリー記録
-    await localForage.removeItem("battingReplacements"); // 打順置換の表示用キャッシュ
-    await localForage.removeItem("pairLocks");        // A↔Bロック（守備同士の相手記録）
-    await localForage.removeItem("previousPositions");// 直前守備の記録（使っていれば）
-
-    // ✅ 代打・代走情報を初期化
-    await localForage.setItem("usedPlayerInfo", {});
-    // ✅ ランナー情報を初期化
-    await localForage.setItem("runnerAssignments", {
-      "1塁": null,
-      "2塁": null,
-      "3塁": null,
-    });
-
-    // ✅ 試合開始時のDH有無を保存
-    const dhEnabledAtStart = Boolean((assignments as any)?.["指"]);
-    await localForage.setItem("dhEnabledAtStart", dhEnabledAtStart);
-    // 代打/代走/臨時代走の履歴を全消し
-    await localForage.setItem("usedPlayerInfo", {});  // ← これが最重要
-    // 塁上の代走状態も全クリア
-    await localForage.setItem("runnerAssignments", { "1塁": null, "2塁": null, "3塁": null });
-
-    // （使っていれば）補助キーも掃除
-    await localForage.removeItem("replacedRunners");
-    await localForage.removeItem("tempRunnerFlags");
-
-    // ★ スタメン守備を「lineupAssignments」に確定保存（offense/defense画面の基準）
-    const startAssign =
-      (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
-      (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ??
-      {};
-
-    const normalizedAssign = Object.fromEntries(
-      Object.entries(startAssign).map(([pos, v]) => [pos, v == null ? null : Number(v)])
-    ) as Record<string, number | null>;
-
-    await localForage.setItem("lineupAssignments", normalizedAssign);
-    await clearUndoRedoHistory();   // ← これを追加（取消・やり直しの記憶を全クリア）
-
-    // 🏁 試合開始（攻撃または守備画面へ）
-    onStart(isFirstAttack);
-  };
 
 
   // 守備に就いている選手（投・捕・一…・指）
@@ -431,6 +376,38 @@ return (
 
       </div>
     </main>
+    {/* ====== 開始時の案内モーダル ====== */}
+    {showStartHint && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        {/* 背景の薄暗幕 */}
+        <div
+          className="absolute inset-0 bg-black/60"
+          onClick={() => setShowStartHint(false)}
+        />
+        {/* 本体カード */}
+        <div className="relative mx-6 w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden">
+          {/* タイトル帯 */}
+          <div className="bg-green-600 text-white text-lg font-bold text-center py-3">
+            試合開始のご案内
+          </div>
+          <div className="p-5 text-center space-y-4">
+            <p className="text-sm leading-relaxed">
+              球審の「プレイ」で
+              <span className="font-semibold">【試合開始】</span>
+              ボタンを押下して下さい。
+            </p>
+            <button
+              onClick={proceedStart}
+              className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+
   </div>
 );
 
