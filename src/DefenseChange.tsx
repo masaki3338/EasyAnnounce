@@ -2269,6 +2269,7 @@ const handlePositionDragStart = (
   pos: string
 ) => {
   e.dataTransfer.setData("fromPos", pos);
+  e.dataTransfer.setData("text/plain", pos); // ← これを追加（Android必須）
   e.dataTransfer.effectAllowed = "move";
   setDraggingFrom(pos);
 
