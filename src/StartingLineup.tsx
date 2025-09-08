@@ -78,6 +78,7 @@ const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string 
 const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null);
 // タッチの最終座標（フォールバック用）
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
+const hoverTargetRef = React.useRef<number | null>(null);
 
 // 既存の handleDrop... を流用するためのダミーDragEvent
 const makeFakeDragEvent = (payload: Record<string, string>) =>
@@ -151,19 +152,8 @@ useEffect(() => {
 
 // 👉 グローバル touchend：指を離した位置の守備ラベルを自動検出して入替
 useEffect(() => {
-  const pickTargetAndSwap = (clientX: number, clientY: number) => {
-    if (!touchDrag) return;
-    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    if (!el) { setTouchDrag(null); return; }
-
-    // ラベル or 行 いずれかの最近傍ターゲット
-    const target = el.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
-    if (!target) { setTouchDrag(null); return; }
-
-    const targetPlayerId = Number(target.getAttribute('data-player-id'));
-    if (!targetPlayerId) { setTouchDrag(null); return; }
-
-    // 既存 drop ハンドラを疑似DragEventで呼び出し
+  const dropTo = (targetPlayerId: number) => {
+    if (!touchDrag || !targetPlayerId) { setTouchDrag(null); return; }
     const fake = {
       preventDefault: () => {},
       stopPropagation: () => {},
@@ -175,42 +165,57 @@ useEffect(() => {
         },
       },
     } as unknown as React.DragEvent<HTMLSpanElement>;
-
     handleDropToPosSpan(fake, targetPlayerId);
+    hoverTargetRef.current = null;
     setTouchDrag(null);
   };
 
-  // 1) 指の移動で座標を記録（ネイティブDnDに変換された場合の保険）
+  const pickByPoint = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    const t = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
+    const pid = t ? Number(t.getAttribute('data-player-id')) : 0;
+    if (pid) dropTo(pid); else setTouchDrag(null);
+  };
+
+  // 指の移動で座標とホバー先を更新
   const onTouchMove = (ev: TouchEvent) => {
     const t = ev.touches && ev.touches[0];
     if (!t) return;
     lastTouchRef.current = { x: t.clientX, y: t.clientY };
+    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+    const h = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
+    const pid = h ? Number(h.getAttribute('data-player-id')) : 0;
+    if (pid) hoverTargetRef.current = pid;
   };
 
-  // 2) 通常ケース：touchend で発火
+  // 通常：touchend → まずホバー記録、無ければ座標で確定
   const onTouchEnd = (ev: TouchEvent) => {
+    if (!touchDrag) return;
+    const pid = hoverTargetRef.current;
+    if (pid) return dropTo(pid);
     const t = ev.changedTouches && ev.changedTouches[0];
-    if (!t) return;
-    pickTargetAndSwap(t.clientX, t.clientY);
+    if (t) pickByPoint(t.clientX, t.clientY); else setTouchDrag(null);
   };
 
-  // 3) 変換ケース：ドラッグが dragend で終わる端末向けフォールバック
+  // 変換ケース：dragend → まずホバー記録、無ければ最後の座標
   const onDragEnd = (_ev: DragEvent) => {
     if (!touchDrag) return;
+    const pid = hoverTargetRef.current;
+    if (pid) return dropTo(pid);
     const p = lastTouchRef.current;
-    if (!p) { setTouchDrag(null); return; }
-    pickTargetAndSwap(p.x, p.y);
+    if (p) pickByPoint(p.x, p.y); else setTouchDrag(null);
   };
 
-  window.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
-  window.addEventListener('touchend', onTouchEnd,   { passive: false, capture: true });
-  window.addEventListener('dragend',  onDragEnd,    { passive: true,  capture: true });
+  window.addEventListener('touchmove', onTouchMove, { passive: true,  capture: true });
+  window.addEventListener('touchend',  onTouchEnd,  { passive: false, capture: true });
+  window.addEventListener('dragend',   onDragEnd,   { passive: true,  capture: true });
   return () => {
     window.removeEventListener('touchmove', onTouchMove, true);
     window.removeEventListener('touchend',  onTouchEnd,  true);
     window.removeEventListener('dragend',   onDragEnd,   true);
   };
 }, [touchDrag]);
+
 
 
 
@@ -813,7 +818,7 @@ const handleDropToBattingOrder = (
                 draggable
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
-                onDragOver={allowDrop}
+                onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
               >
                 <div className="flex items-center gap-2 flex-nowrap">
                   <span className="w-10 font-bold">{i + 1}番</span>
@@ -825,7 +830,7 @@ const handleDropToBattingOrder = (
   title={pos ? "この守備を他の行と入替" : "守備なし"}
   draggable={!!pos} 
   onDragStart={(e) => handlePosDragStart(e, entry.id)}
-  onDragOver={allowDrop}
+  onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
   onDrop={(e) => handleDropToPosSpan(e, entry.id)}
   onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
   /* ← onTouchEnd は削除：グローバルでまとめて処理 */
