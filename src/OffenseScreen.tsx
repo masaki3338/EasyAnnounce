@@ -975,10 +975,10 @@ useEffect(() => {
             {/* 試合開始ボタン */}
             {inning === 1 && isTop  && (
               <button
-                className="w-full bg-green-500 text-white font-bold text-lg py-3 rounded hover:bg-green-600 whitespace-nowrap"
+               className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
                 onClick={handleStartGame}
               >
-                試合開始
+                <span className="break-keep leading-tight">試合<wbr/>開始</span>
               </button>
             )}
             <div className="flex items-center gap-2 mr-2">
@@ -1006,7 +1006,7 @@ useEffect(() => {
               onClick={() => setShowModal(true)}
               className="px-3 py-1 bg-orange-700 text-white rounded"
             >
-              イニング終了
+              <span className="break-keep leading-tight">イニング<wbr/>終了</span>
             </button>
         </div>
 
