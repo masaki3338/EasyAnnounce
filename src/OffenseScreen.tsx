@@ -976,7 +976,21 @@ useEffect(() => {
 
 
 </div>
-    <div className="max-w-4xl mx-auto p-4">
+      <div
+        className="max-w-4xl mx-auto p-4 select-none"
+        onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
+        onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
+        onPointerDown={(e) => {
+          // 入力系だけは許可（必要なければこの if ごと消してOK）
+          const el = e.target as HTMLElement;
+          if (el.closest('input, textarea, [contenteditable="true"]')) return;
+        }}
+        style={{
+          WebkitTouchCallout: "none",  // iOSの長押し呼び出し抑止
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        }}
+      >
       <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
         <img
           src="/icons/Ofence.png"   // ← public/icons/Ofence.png に置く
