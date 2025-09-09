@@ -753,8 +753,18 @@ const handlePitchLimitSpeak = () => {
     if (synthRef.current?.speaking) synthRef.current.cancel();
   };
 
-  return (    
-    <div className="max-w-4xl mx-auto p-4">
+    return (    
+      <div
+        className="max-w-4xl mx-auto p-4 select-none"
+        onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
+        onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
+        style={{
+          WebkitTouchCallout: "none",   // iOSの長押し呼び出し抑止
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        }}
+      >
+
       <section className="mb-4">
       <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
         <img
