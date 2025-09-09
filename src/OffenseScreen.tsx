@@ -1160,7 +1160,9 @@ useEffect(() => {
       })
       .map((row, rowIdx) => (
         <tr key={rowIdx} className={row.isMyTeam ? "bg-gray-100" : ""}>
-          <td className="border">{row.name}</td>
+          <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
+            {row.name}
+          </td>
           {[...Array(9).keys()].map(i => {
             /* 表裏に応じてスコアを取り出す */
             const val = row.isMyTeam
@@ -1289,13 +1291,13 @@ onClick={() => {
     onClick={handlePrev}
     className="col-span-1 w-full h-10 rounded bg-green-500 text-white"
   >
-    前の打者
+    ⬅ 前の打者
   </button>
   <button
     onClick={handleNext}
     className="col-span-2 w-full h-10 rounded bg-green-500 text-white"
   >
-    次の打者
+    ➡️ 次の打者
   </button>
 </div>
 
@@ -1371,24 +1373,29 @@ onClick={() => {
   </button>
 
   {/* リエントリー */}
-  <button
-    onClick={() => {
-      const { A, B, order1 } = findReentryCandidateForCurrentSpot();
-      if (!B) {
-        setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-        alert("この打順にリエントリー可能な選手はいません。");
-        return;
-      }
-      setReEntryFromPlayer(A || null);
-      setReEntryTargetPlayer(B);
-      setReEntryOrder1(order1);
-      setShowReEntryModal(true);
-    }}
-    className="w-full h-10 rounded bg-purple-600 text-white"
-    title="リエントリー"
-  >
+<button
+  onClick={() => {
+    const { A, B, order1 } = findReentryCandidateForCurrentSpot();
+    if (!B) {
+      setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+      alert("この打順にリエントリー可能な選手はいません。");
+      return;
+    }
+    setReEntryFromPlayer(A || null);
+    setReEntryTargetPlayer(B);
+    setReEntryOrder1(order1);
+    setShowReEntryModal(true);
+  }}
+  className="w-full h-10 rounded bg-purple-600 text-white px-2
+             inline-flex items-center justify-center"  // ← 横並び中央
+  title="リエントリー"
+>
+  <span className="whitespace-nowrap leading-none
+                   text-[clamp(12px,3.6vw,16px)] tracking-tight">
     リエントリー
-  </button>
+  </span>
+</button>
+
 
   {/* 代走 */}
   <button
@@ -1396,7 +1403,7 @@ onClick={() => {
     className="w-full h-10 rounded bg-orange-600 text-white"
     title="代走"
   >
-    代走
+    🏃‍♂️代走
   </button>
 
   {/* 代打 */}
@@ -1405,7 +1412,7 @@ onClick={() => {
     className="w-full h-10 rounded bg-orange-600 text-white"
     title="代打"
   >
-    代打
+    🏏代打
   </button>
 </div>
 
@@ -2856,20 +2863,26 @@ onClick={async () => {
                   両チームはグランド整備をお願いします。
                 </p>
               </div>
-              <div className="mt-3 flex justify-center gap-3">
+              {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => speakText("両チームはグランド整備をお願いします。")}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                            inline-flex items-center justify-center gap-2 shadow-md"
                 >
-                  <IconMic /> 読み上げ
+                  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span className="whitespace-nowrap leading-none">読み上げ</span>
                 </button>
+
                 <button
                   onClick={stopSpeech}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                  className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                            inline-flex items-center justify-center"
                 >
-                  停止
+                  <span className="whitespace-nowrap leading-none">停止</span>
                 </button>
               </div>
+
             </div>
           </div>
 
@@ -2890,36 +2903,43 @@ onClick={async () => {
                   グランド整備、ありがとうございました。
                 </p>
               </div>
-              <div className="mt-3 flex justify-center gap-3">
+              {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => speakText("グランド整備、ありがとうございました。")}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                            inline-flex items-center justify-center gap-2 shadow-md"
                 >
-                  <IconMic /> 読み上げ
+                  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span className="whitespace-nowrap leading-none">読み上げ</span>
                 </button>
+
                 <button
                   onClick={stopSpeech}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+                  className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                            inline-flex items-center justify-center"
                 >
-                  停止
+                  <span className="whitespace-nowrap leading-none">停止</span>
                 </button>
               </div>
+
             </div>
           </div>
 
           {/* OKボタン */}
-          <div className="pt-1 flex justify-center">
+          <div className="pt-1">
             <button
               onClick={() => {
                 stopSpeech();
                 setShowGroundPopup(false);
                 onSwitchToDefense(); // ✅ 守備画面へ
               }}
-              className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+              className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
             >
               OK
             </button>
           </div>
+
         </div>
 
         {/* セーフエリア */}
@@ -2936,7 +2956,7 @@ onClick={async () => {
     {/* 背景オーバーレイ */}
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-    {/* ★ 全デバイスで常に画面中央に配置 */}
+    {/* 画面中央に配置 */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
         className="
@@ -2944,24 +2964,17 @@ onClick={async () => {
           rounded-2xl
           w-full md:max-w-md
           max-h-[75vh] md:max-h-[70vh]
-          overflow-y-auto
+          overflow-hidden flex flex-col
         "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="開始時刻"
       >
-        {/* 固定ヘッダー（グラデ＋白） */}
+        {/* 固定ヘッダー（マイク画像は削除して文言エリアへ移動） */}
         <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-          <div className="flex items-center gap-2">
-            <img
-              src="/icons/mic-red.png"
-              alt="mic"
-              className="w-6 h-6 object-contain select-none drop-shadow"
-              loading="lazy"
-              decoding="async"
-              draggable="false"
-            />
-            <h2 className="text-xl font-extrabold tracking-wide">開始時刻</h2>
-          </div>
+          <h2 className="text-xl font-extrabold tracking-wide">開始時刻</h2>
           <button
             onClick={() => setShowStartTimePopup(false)}
             aria-label="閉じる"
@@ -2974,51 +2987,64 @@ onClick={async () => {
         </div>
 
         {/* 本文 */}
-        <div className="px-4 py-4 space-y-4">
-          {/* 注意チップ */}
+        <div className="px-4 py-4 space-y-4 overflow-y-auto">
+          {/* 注意チップ（そのまま） */}
           <div className="flex items-center gap-2">
-            <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5" />
             <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
               <span className="text-xl">⚠️</span>
               <span>2番バッター紹介前に🎤</span>
             </div>
           </div>
 
-          {/* アナウンス文言エリア（薄い赤） */}
+          {/* 🔴 アナウンス文言エリア（ここにマイク画像・読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            {/* 見出し（マイク画像をここへ移動） */}
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            {/* 文言 */}
             <p className="text-lg font-bold text-red-700 text-center">
               この試合の開始時刻は {gameStartTime} です。
             </p>
 
-            {/* ボタン行 */}
-            <div className="mt-4 flex justify-center gap-3">
+            {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2 shadow-md"
                 onClick={() => {
                   const msg = new SpeechSynthesisUtterance(`この試合の開始時刻は${gameStartTime}です`);
+                  speechSynthesis.cancel(); // 直前を止めてから開始
                   speechSynthesis.speak(msg);
                 }}
               >
-                <IconMic /> 読み上げ
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
               </button>
+
               <button
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
                 onClick={() => speechSynthesis.cancel()}
               >
-                停止
-              </button>
-              <button
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
-                onClick={() => setShowStartTimePopup(false)}
-              >
-                OK
+                <span className="whitespace-nowrap leading-none">停止</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* セーフエリア確保（iPhone下部） */}
-        <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
+        {/* （任意）フッターにOK をまとめたい場合 */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowStartTimePopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),12px)]" />
+        </div>
       </div>
     </div>
   </div>

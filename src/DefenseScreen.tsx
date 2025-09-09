@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
 
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
+
 // --- マージ保存ヘルパー ---
 type MatchInfo = {
   tournamentName?: string;
@@ -48,6 +54,8 @@ const positionStyles: { [key: string]: React.CSSProperties } = {
 };
 
 const positions = Object.keys(positionStyles);
+
+
 
 type Scores = {
   [inning: number]: { top: number; bottom: number };
@@ -842,7 +850,10 @@ const handlePitchLimitSpeak = () => {
     .map((row, rowIndex) => {
       return (
         <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
-          <td className="border text-center">{row.name}</td>
+        <td className={`border text-center ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
+          {row.name}
+        </td>
+
           {[...Array(9).keys()].map((i) => {
             const value = row.isMyTeam
               ? isHome
@@ -941,32 +952,37 @@ const handlePitchLimitSpeak = () => {
         })}
       </div>
 
-<div className="flex items-center justify-center gap-2 sm:gap-4 flex-nowrap overflow-x-auto">
+{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率は 1:2 */}
+<div className="w-full grid grid-cols-12 items-center gap-2 sm:gap-3 my-2">
+  {/* －1（1/3幅 = 3/12） */}
   <button
     onClick={subtractPitch}
-    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 shrink-0"
+    className="col-span-3 w-full h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
   >
-    投球数－１
+    ⚾︎投球数－１
   </button>
 
-  <div className="min-w-0 text-xs sm:text-sm leading-tight">
-    <p className="whitespace-nowrap">
-      <span className="font-bold text-sm sm:text-base">この回の投球数:</span>{"\u00A0"}
+  {/* 中央の表示（3/12） */}
+  <div className="col-span-3 min-w-0 text-center leading-tight">
+    <p className="text-xs sm:text-sm whitespace-nowrap">
+      <span className="font-semibold">この回の投球数:</span>{" "}
       <strong className="tabular-nums">{currentPitchCount}</strong>
     </p>
-    <p className="whitespace-nowrap">
-      <span className="font-bold text-sm sm:text-base">累計投球数:</span>{"\u00A0"}
+    <p className="text-xs sm:text-sm whitespace-nowrap">
+      <span className="font-semibold">累計投球数:</span>{" "}
       <strong className="tabular-nums">{totalPitchCount}</strong>
     </p>
   </div>
 
+  {/* ＋1（2/3幅 = 6/12） */}
   <button
     onClick={addPitch}
-    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 shrink-0"
+    className="col-span-6 w-full h-10 rounded bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
   >
-    投球数＋１
+    ⚾️投球数＋１
   </button>
 </div>
+
 
 
 
@@ -992,20 +1008,29 @@ const handlePitchLimitSpeak = () => {
       ))}
 
       {/* ボタン（横並び） */}
-      <div className="flex gap-2 mt-2">
+      {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
         <button
           onClick={handleSpeak}
-          className="bg-blue-600 text-white px-4 py-1 rounded hover:bg-blue-700"
+          className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                    inline-flex items-center justify-center gap-2"
         >
-          読み上げ
+          <span className="inline-flex items-center gap-2 whitespace-nowrap align-middle">
+            <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+            <span className="leading-none">読み上げ</span>
+          </span>
+
         </button>
+
         <button
           onClick={handleStop}
-          className="bg-red-600 text-white px-4 py-1 rounded hover:bg-red-700"
+          className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
+                    inline-flex items-center justify-center"
         >
-          停止
+          <span className="whitespace-nowrap leading-none">停止</span>
         </button>
       </div>
+
     </div>
   </div>
 )}
@@ -1016,7 +1041,7 @@ const handlePitchLimitSpeak = () => {
     onClick={onChangeDefense}
     className="w-full py-3 bg-orange-500 text-white rounded shadow hover:bg-orange-600 font-semibold"
   >
-    守備交代
+    🔀守備交代
   </button>
 </div>
 
