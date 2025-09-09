@@ -195,6 +195,13 @@ const proceedStart = async () => {
   await localForage.removeItem("lastBatterIndex");
   await localForage.removeItem("nextBatterIndex");
   await localForage.removeItem("usedBatterIds");
+  // 打順チェックボックスをクリア
+  await localForage.removeItem("checkedIds");
+  // アナウンス済みチェックをクリア
+  await localForage.removeItem("announcedIds");
+  // 出場済み（リエントリー判定などに使う）をクリア
+  await localForage.removeItem("usedPlayerInfo");
+
   // …（あなたの元コードと同じ初期化を続ける）
   // batttingOrder の正規化保存、scores の初期化、matchInfo の保存、
   // usedPlayerInfo / runnerAssignments / lineupAssignments の保存、

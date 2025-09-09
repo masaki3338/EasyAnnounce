@@ -293,6 +293,23 @@ useEffect(() => {
   });
 }, []);
 
+// ✅ 試合開始トークンを検知してチェック類をリセット
+useEffect(() => {
+  const resetOnGameStart = async () => {
+    const token = await localForage.getItem("gameStartToken");
+    if (token != null) {
+      setCheckedIds([]);
+      setAnnouncedIds([]);
+      setUsedPlayerInfo({});
+      await localForage.removeItem("checkedIds");
+      await localForage.removeItem("announcedIds");
+      await localForage.removeItem("usedPlayerInfo");
+      // リセット済みの合図を消す（次回の再読込でまた動くように）
+      await localForage.removeItem("gameStartToken");
+    }
+  };
+  resetOnGameStart();
+}, []);
 
 
 const [hydrated, setHydrated] = useState(false);
@@ -361,10 +378,25 @@ const handleFoulStop = () => {
     localForage.setItem("lastGameScreen", "offense");
     const loadData = async () => {
       const team = await localForage.getItem("team");
-      const order = await localForage.getItem("battingOrder");
-      const lineup = await localForage.getItem("lineupAssignments");
+      let order  = await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder");
+      let lineup = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
       const matchInfo = await localForage.getItem<MatchInfo>("matchInfo");
     
+      // ★ スタメン最優先：未初期化なら starting* で初期化
+      const startingOrder =
+        (await localForage.getItem<{ id:number; reason?:string }[]>("startingBattingOrder")) || [];
+      const startingAssign =
+        (await localForage.getItem<Record<string, number | null>>("startingassignments")) || {};
+
+      if (!order || !Array.isArray(order) || order.length === 0) {
+        order = startingOrder.slice(0, 9);                 // 念のため9人に制限
+        if (order.length) await localForage.setItem("battingOrder", order);
+      }
+      if (!lineup || Object.keys(lineup).length === 0) {
+        lineup = { ...startingAssign };
+        if (Object.keys(lineup).length) await localForage.setItem("lineupAssignments", lineup);
+}
+
       const loadBattingOrder = async () => {
         const order = await localForage.getItem<number[]>("battingOrder");
         if (order) setBattingOrder(order);    

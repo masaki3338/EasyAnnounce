@@ -288,6 +288,9 @@ const saveAssignments = async () => {
   });
   await localForage.setItem("startingInitialSnapshot", initialOrder); // ← new（参照用）
 
+  await localForage.setItem("lineupAssignments", assignments); // ← ミラー保存
+  await localForage.setItem("battingOrder", battingOrder);     // ← ミラー保存
+
   alert("スタメンを保存しました！");
 };
 
@@ -814,41 +817,41 @@ const handleDropToBattingOrder = (
             return (
               <div
                 key={entry.id}
-                 data-role="posrow"             // ★ 追加：行全体もドロップ対象にする
-                 data-player-id={entry.id}      // ★ 追加：誰の行か
+                data-role="posrow"
+                data-player-id={entry.id}
                 className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none"
-                draggable={false} 
+                draggable   // ✅ ← true にする（もしくは単純に属性指定）
                 onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
                 onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
                 onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
                 onDragEnter={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
               >
-                <div className="flex items-center gap-2 flex-nowrap">
-                  <span className="w-10 font-bold">{i + 1}番</span>
+              <div className="flex items-center gap-2 flex-nowrap">
+                <span className="w-10 font-bold">{i + 1}番</span>
 <span
-  data-role="poslabel"                 // ★ 追加：ターゲット識別
-  data-player-id={entry.id}            // ★ 追加：誰の行か
-  className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
-             cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
-  title={pos ? "この守備を他の行と入替" : "守備なし"}
-  draggable={!!pos} 
-  onDragStart={(e) => handlePosDragStart(e, entry.id)}
-  onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
-  onDrop={(e) => handleDropToPosSpan(e, entry.id)}
-  onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
-  /* ← onTouchEnd は削除：グローバルでまとめて処理 */
+data-role="poslabel"                 // ★ 追加：ターゲット識別
+data-player-id={entry.id}            // ★ 追加：誰の行か
+className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
+            cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
+title={pos ? "この守備を他の行と入替" : "守備なし"}
+draggable={!!pos} 
+onDragStart={(e) => handlePosDragStart(e, entry.id)}
+onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
+onDrop={(e) => handleDropToPosSpan(e, entry.id)}
+onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
+/* ← onTouchEnd は削除：グローバルでまとめて処理 */
 >
-  {pos ? positionNames[pos] : "控え"}
+{pos ? positionNames[pos] : "控え"}
 </span>
 
 
 
-                   {/* 選手名 → 右にずらす */}
-                  <span className="ml-4 whitespace-nowrap">
-                    {player.lastName}{player.firstName}
-                  </span>
-                  <span className="w-12">#{player.number}</span>
-                </div>
+                  {/* 選手名 → 右にずらす */}
+                <span className="ml-4 whitespace-nowrap">
+                  {player.lastName}{player.firstName}
+                </span>
+                <span className="w-12">#{player.number}</span>
+              </div>
               </div>
             );
           })}
