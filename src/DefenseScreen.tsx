@@ -952,36 +952,45 @@ const handlePitchLimitSpeak = () => {
         })}
       </div>
 
-{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率は 1:2 */}
+{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率 1:1 */}
 <div className="w-full grid grid-cols-12 items-center gap-2 sm:gap-3 my-2">
-  {/* －1（1/3幅 = 3/12） */}
+  {/* －1（4/12） */}
   <button
     onClick={subtractPitch}
-    className="col-span-3 w-full h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
+    className="col-span-4 w-full h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
   >
     ⚾︎投球数－１
   </button>
 
-  {/* 中央の表示（3/12） */}
-  <div className="col-span-3 min-w-0 text-center leading-tight">
-    <p className="text-xs sm:text-sm whitespace-nowrap">
-      <span className="font-semibold">この回の投球数:</span>{" "}
-      <strong className="tabular-nums">{currentPitchCount}</strong>
-    </p>
-    <p className="text-xs sm:text-sm whitespace-nowrap">
-      <span className="font-semibold">累計投球数:</span>{" "}
-      <strong className="tabular-nums">{totalPitchCount}</strong>
-    </p>
-  </div>
+  {/* 中央表示（4/12） */}
+<div className="col-span-4 min-w-0 text-center leading-tight">
+  {/* この回の投球数 */}
+  <p className="whitespace-nowrap leading-none tracking-tight text-[clamp(13px,3.6vw,18px)]">
+    <span className="font-semibold align-middle">この回の投球数:</span>{" "}
+    <strong className="tabular-nums align-middle text-[clamp(14px,4.2vw,20px)]">
+      {currentPitchCount}
+    </strong>
+  </p>
 
-  {/* ＋1（2/3幅 = 6/12） */}
+  {/* 累計投球数 */}
+  <p className="mt-0.5 whitespace-nowrap leading-none tracking-tight text-[clamp(12px,3.2vw,16px)]">
+    <span className="font-semibold align-middle">累計投球数:</span>{" "}
+    <strong className="tabular-nums align-middle text-[clamp(13px,3.8vw,18px)]">
+      {totalPitchCount}
+    </strong>
+  </p>
+</div>
+
+
+  {/* ＋1（4/12） */}
   <button
     onClick={addPitch}
-    className="col-span-6 w-full h-10 rounded bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
+    className="col-span-4 w-full h-10 rounded bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
   >
     ⚾️投球数＋１
   </button>
 </div>
+
 
 
 
