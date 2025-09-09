@@ -1436,7 +1436,7 @@ lineupLines
 
 
 const positionStyles: Record<string, React.CSSProperties> = {
-  投: { top: "63%", left: "50%" },
+  投: { top: "64%", left: "50%" },
   捕: { top: "88%", left: "50%" },
   一: { top: "66%", left: "82%" },
   二: { top: "44%", left: "66%" },
@@ -3192,8 +3192,7 @@ onConfirmed?.();
     <div
       draggable
       onDragStart={(e) => handlePositionDragStart(e, pos)}
-      className={`text-sm font-bold rounded px-2 py-1 leading-tight
-        text-white bg-black/80
+      className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight        text-white bg-black/80 whitespace-nowrap
         ${isSub || isChanged ? "ring-2 ring-inset ring-yellow-400" : ""}`}
       style={{ minWidth: "78px", maxWidth: "38vw" }}
       title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
