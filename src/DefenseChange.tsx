@@ -65,6 +65,7 @@ const posNameToSymbol: Record<string, string> = {
   指名打者: "指",
 };
 
+
 // ─────────────────────────────────────────────
 // 代打/代走の“連鎖”を末端まで辿って最終subIdを返す
 // （先発 -> 代打A -> 代打B -> ... 最後のBを返す）
@@ -1589,6 +1590,7 @@ useEffect(() => {
 
 
   const [assignments, setAssignments] = useState<Record<string, number | null>>({});
+  const hasDH = Boolean(assignments?.["指"]);
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]); // ✅ 攻撃画面の打順
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
@@ -3168,31 +3170,43 @@ onConfirmed?.();
                                   : "text-white bg-black/60"}`;
 
             return (
-              <div
-                key={pos}
-                onDragOver={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault(); }}
-                onDrop={(e) => { if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e); }}
-                className={`${className} whitespace-nowrap text-center`}
-                style={{ ...positionStyles[pos], transform: 'translate(-50%, -50%)', zIndex: 10, minWidth: "64px" }}
-              >
-                {player ? (
-                  <div
-                    draggable
-                    onDragStart={(e) => handlePositionDragStart(e, pos)}
-                    className="cursor-move whitespace-nowrap text-center
-                              bg-black/60 text-white font-bold rounded
-                              px-2 py-1 leading-tight
-                              text-[clamp(13px,2.1vw,20px)]"
-                    style={{ minWidth: "78px", maxWidth: "38vw" }}
-                  >
-                  {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
-                </div>
-                ) : (
-                  <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
-                    DHなし
-                  </span>
-                )}
-              </div>
+<div
+  key={pos}
+  onDragOver={(e) => {
+    if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault();
+  }}
+  onDrop={(e) => {
+    if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e);
+  }}
+  // ★ 外側は位置決め専用：bg/ring/shadow は付けない
+  className="absolute whitespace-nowrap text-center cursor-move"
+  style={{
+    ...positionStyles[pos],
+    transform: "translate(-50%, -50%)",
+    zIndex: 10,
+    minWidth: "64px",
+  }}
+>
+  {player ? (
+    // ★ 内側チップに見た目を集約（黒地＋細い内側リング）
+    <div
+      draggable
+      onDragStart={(e) => handlePositionDragStart(e, pos)}
+      className={`text-sm font-bold rounded px-2 py-1 leading-tight
+        text-white bg-black/80
+        ${isSub || isChanged ? "ring-2 ring-inset ring-yellow-400" : ""}`}
+      style={{ minWidth: "78px", maxWidth: "38vw" }}
+      title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
+    >
+      {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
+    </div>
+  ) : (
+    <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
+      DHなし
+    </span>
+  )}
+</div>
+
             );
           })}
         </div>
@@ -3644,22 +3658,30 @@ onConfirmed?.();
         >
           ↺
         </button>
+<button
+  onClick={confirmChange}
+  className={`${hasDH ? "col-span-4" : "col-span-6"} px-5 py-2 rounded-xl
+              bg-emerald-600 hover:bg-emerald-700 text-white shadow-md
+              shadow-emerald-300/40 active:scale-[0.98] transition`}
+>
+  交代確定
+</button>
 
-        <button
-          onClick={confirmChange}
-          className="col-span-4 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
-        >
-          交代確定
-        </button>
+{hasDH && (
+  <button
+    type="button"
+    onClick={handleDisableDH}
+    className="col-span-2 h-12 rounded-xl bg-slate-800 text-white
+               inline-flex flex-col items-center justify-center
+               active:scale-[0.98] transition"
+    title="DH解除"
+  >
+    <span className="block leading-tight">DH</span>
+    <span className="block leading-tight">解除</span>
+  </button>
+)}
 
-        <button
-          type="button"
-          onClick={handleDisableDH}
-          disabled={!assignments?.["指"]}
-          className="col-span-2 px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
-        >
-          DH解除
-        </button>
+
       </div>
 
       {/* 下段：🎤表示ボタン（横いっぱい） */}
