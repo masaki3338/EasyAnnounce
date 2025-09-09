@@ -1393,21 +1393,26 @@ const handlePitchLimitSpeak = () => {
               ))}
             </div>
 
-            {/* 読み上げ／停止 */}
-            <div className="flex justify-center gap-3 mt-4">
+            {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 onClick={handlePitchLimitSpeak}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                          inline-flex items-center justify-center gap-2 shadow-md"
               >
-                読み上げ
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
               </button>
+
               <button
                 onClick={handleStop}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                          inline-flex items-center justify-center shadow-md"
               >
-                停止
+                <span className="whitespace-nowrap leading-none">停止</span>
               </button>
             </div>
+
           </div>
         </div>
 

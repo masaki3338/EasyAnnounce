@@ -1365,12 +1365,17 @@ onClick={() => {
   <button
     onClick={() => setShowDhDisableModal(true)}
     disabled={!isDhTurn || !dhActive || !pitcherId}
-    className="w-full h-10 rounded bg-gray-800 text-white
-               disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
+    className="w-full h-10 rounded bg-gray-800 text-white px-2
+              inline-flex items-center justify-center
+              disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
     title="DH解除"
   >
-    DH解除
+    <span className="whitespace-nowrap leading-none tracking-tight
+                    text-[clamp(10px,3.2vw,16px)]">
+      DH解除
+    </span>
   </button>
+
 
   {/* リエントリー */}
 <button

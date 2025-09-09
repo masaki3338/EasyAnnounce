@@ -3617,6 +3617,9 @@ onConfirmed?.();
       </div>
     </div>
 
+{/* ↓ フッターに隠れないための底上げスペーサー（モバイルのみ） ↓ */}
+<div className="md:hidden h-[calc(env(safe-area-inset-bottom)+72px)]" aria-hidden />
+
 {/* スマホ風のフッターアクション（小画面で固定） */}
 <div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
   <div className="mx-auto max-w-4xl">
