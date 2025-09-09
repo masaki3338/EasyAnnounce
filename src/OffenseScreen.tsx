@@ -421,22 +421,19 @@ const handleFoulStop = () => {
           starterIds.add(pitcherStarterId);
         }
 
-      // ✅ スタメン設定の控え指定を優先しつつ、従来の benchOutIds も併用
+      // ✅ 代打候補の“控え”はスタメン画面の指定のみを正とする
       const startingBenchOut =
         (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
-      const benchOut =
-        (await localForage.getItem<number[]>("benchOutIds")) ?? [];
 
-      // 数値に正規化＆重複排除
+      // 数値に正規化（重複はそもそも無いはずだが保険）
       const benchOutIds = Array.from(
-        new Set([...startingBenchOut, ...benchOut].map((v) => Number(v)).filter(Number.isFinite))
+        new Set(startingBenchOut.map((v) => Number(v)).filter(Number.isFinite))
       );
 
-      // 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（ベンチ外指定）」
-      // ※ starterIds は直前で作っている Set（打順＋DH時の投手追加）
+      // 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（スタメンが指定したベンチ外）」
       const bench = all.filter((p: any) => !starterIds.has(p.id) && !benchOutIds.includes(p.id));
-
       setBenchPlayers(bench);
+
 
       }      
       if (order && Array.isArray(order)) {
@@ -1353,7 +1350,9 @@ onClick={() => {
     // 4) ベンチ再計算（DH解除後は投手をスタメン集合に含めない）
     const all = allPlayers.length ? allPlayers : players;
     const starterIds = new Set(newOrder.map(e => e.id));
-    const benchOutIds: number[] = (await localForage.getItem("benchOutIds")) || [];
+    // ✅ スタメン画面の指定を唯一の情報源にする
+    const benchOutIds: number[] =
+      (await localForage.getItem<number[]>("startingBenchOutIds")) || [];
     const newBench = all.filter((pp: any) => !starterIds.has(pp.id) && !benchOutIds.includes(pp.id));
     setBenchPlayers(newBench);
 

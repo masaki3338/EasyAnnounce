@@ -2235,26 +2235,23 @@ useEffect(() => {
     .filter((id): id is number => typeof id === "number");
 
   (async () => {
-    // ← ここから置換
-    // スタメン設定画面でのベンチ外IDを最優先に採用し、なければ従来の benchOutIds を併用
-    const startingBenchOut = await localForage.getItem<number[]>("startingBenchOutIds");
-    const benchOut = await localForage.getItem<number[]>("benchOutIds");
+    // スタメン設定画面で指定したベンチ外のみを唯一の情報源にする
+    const startingBenchOut =
+      (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
 
-    const benchOutIds: number[] = [
-      ...new Set([...(startingBenchOut ?? []), ...(benchOut ?? [])]
-        .map(Number)
-        .filter(Number.isFinite))
-    ];
+    const benchOutIds = Array.from(
+      new Set(startingBenchOut.map(Number).filter(Number.isFinite))
+    );
 
-    // ここでベンチ外を除外する（スタメン集合から外れていて、かつベンチ外でもない人だけ）
+    // 控え候補＝「未割当の選手」−「ベンチ外（スタメン指定）」
     setBenchPlayers(
       teamPlayers.filter(
         (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
       )
     );
-    // ← ここまで置換
   })();
 }, [assignments, teamPlayers]);
+
 
 
 
@@ -3620,54 +3617,62 @@ onConfirmed?.();
       </div>
     </div>
 
-    {/* スマホ風のフッターアクション（小画面で固定） */}
-    <div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
-      <div className="mx-auto max-w-4xl">
-        <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
-          <div className="flex flex-wrap gap-2 justify-center">
-            <button
-              onClick={handleUndo}
-              disabled={!history.length}
-              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
-              title="Undo"
-            >
-              ↻
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={!redo.length}
-              className={`px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
-              title="Redo"
-            >
-              ↺
-            </button>
+{/* スマホ風のフッターアクション（小画面で固定） */}
+<div className="fixed inset-x-0 bottom-0 z-40 md:static md:mt-4">
+  <div className="mx-auto max-w-4xl">
+    <div className="bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-t md:border-none shadow-[0_-8px_24px_rgba(0,0,0,.07)] px-4 py-3">
+      
+      {/* 上段：4つの操作ボタンを 2:2:4:2 で横並び */}
+      <div className="grid grid-cols-10 gap-2 items-center">
+        <button
+          onClick={handleUndo}
+          disabled={!history.length}
+          className={`col-span-2 px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${history.length ? "" : "opacity-50 cursor-not-allowed"}`}
+          title="Undo"
+        >
+          ↻
+        </button>
 
-            <button
-              onClick={confirmChange}
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
-            >
-              交代確定
-            </button>
+        <button
+          onClick={handleRedo}
+          disabled={!redo.length}
+          className={`col-span-2 px-4 py-2 rounded-xl bg-slate-700 text-white active:scale-[0.98] transition ${redo.length ? "" : "opacity-50 cursor-not-allowed"}`}
+          title="Redo"
+        >
+          ↺
+        </button>
 
-            <button
-              type="button"
-              onClick={handleDisableDH}
-              disabled={!assignments?.["指"]}
-              className="px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
-            >
-              DH解除
-            </button>
+        <button
+          onClick={confirmChange}
+          className="col-span-4 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-300/40 active:scale-[0.98] transition"
+        >
+          交代確定
+        </button>
 
-            <button
-              onClick={showAnnouncement}
-              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.98] transition"
-            >
-              🎤表示
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleDisableDH}
+          disabled={!assignments?.["指"]}
+          className="col-span-2 px-5 py-2 rounded-xl bg-slate-800 text-white disabled:bg-slate-300 active:scale-[0.98] transition"
+        >
+          DH解除
+        </button>
+      </div>
+
+      {/* 下段：🎤表示ボタン（横いっぱい） */}
+      <div className="mt-3">
+        <button
+          onClick={showAnnouncement}
+          className="w-full px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.99] transition"
+        >
+          🎤表示
+        </button>
       </div>
     </div>
+  </div>
+</div>
+
+
 
     {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
     {showSaveModal && (
