@@ -7,6 +7,11 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
 
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
 
 type OffenseScreenProps = {
   onSwitchToDefense: () => void;
@@ -156,6 +161,25 @@ const dhOrderIndex = useMemo(
 const isDhTurn = dhActive && dhOrderIndex !== -1 && currentBatterIndex === dhOrderIndex;
 
   const [startTime, setStartTime] = useState<string | null>(null);
+// ▼ 3回裏のメンバー交換アナウンス表示用
+const [showMemberExchangeModal, setShowMemberExchangeModal] = useState(false);
+const [memberExchangeText, setMemberExchangeText] = useState("");
+
+// 真偽の型ブレ対応（true/"true"/1 → true）
+const isTruthy = (v: any) => {
+  if (v === true) return true;
+  if (typeof v === "string") return ["true", "1", "yes", "on"].includes(v.toLowerCase());
+  if (typeof v === "number") return v === 1;
+  return false;
+};
+// 3回裏 × 「次の試合なし」= NO のとき、得点入力のあとにアナウンスを出すフラグ
+const [pendingMemberExchange, setPendingMemberExchange] = useState(false);
+// アナウンス後に何をするか（得点ポップアップ／グランド整備／守備へ等）
+const [afterMemberExchange, setAfterMemberExchange] = useState<
+  "scorePopup" | "groundPopup" | "switchDefense" | "seatIntro" | null
+>(null);
+
+
 
 // 🔸 リエントリー用 state
 const [showReEntryModal, setShowReEntryModal] = useState(false);
@@ -749,27 +773,68 @@ await saveMatchInfo({
   if (score > 0) {
     setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
     if (isHome && inning === 4 && !isTop) setPendingGroundPopup(true);
+
+    // ★ 得点あり：まず得点モーダルを表示
+    //    → メンバー交換モーダルは「得点モーダルのOK」側で pendingMemberExchange を見て後出しします
     setShowScorePopup(true);
   } else {
+    // ★ 無得点でも 3回裏 ×「次の試合なし」= NO のときは、
+    //    得点入力の直後にメンバー交換モーダルを表示してから本来の遷移を行う
+    if (pendingMemberExchange) {
+      const mi = await localForage.getItem<any>("matchInfo");
+      const currentGame = Number(mi?.matchNumber) || 1;
+      const nextGame = currentGame + 1;
+
+      const txt =
+        `本日の第${nextGame}試合の両チームは、4回終了後、メンバー交換を行います。\n` +
+        `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。\n` +
+        `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。\n` +
+        `メンバーチェックと道具チェックはシートノックの間に行います。`;
+
+      setMemberExchangeText(txt);
+
+      // このあと行くはずだった遷移を記録
+      if (isHome && inning === 4 && !isTop) {
+        setAfterMemberExchange("groundPopup");
+      } else if (inning === 1 && isTop) {
+        const order =
+          (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
+        const hasPending = order.some(e =>
+          e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走"
+        );
+        setAfterMemberExchange(hasPending ? "switchDefense" : "seatIntro");
+      } else {
+        setAfterMemberExchange("switchDefense");
+      }
+
+      setPendingMemberExchange(false);   // フラグ消費
+      setShowMemberExchangeModal(true);  // ← 表示
+      return;                            // 後続はモーダルOKで実行
+    }
+
+    // （従来どおりの無得点時フロー）
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
-} else if (inning === 1 && isTop) {
-  // ★ 代打/代走/臨時代走が残っているなら先に守備交代へ
-  const order = (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
-  const hasPending = order.some(e => e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走");
-  if (hasPending) {
-    await localForage.setItem("postDefenseSeatIntro", { enabled: true, at: Date.now() });
-    await localForage.setItem("seatIntroLock", true);
-    onSwitchToDefense();
-  } else {
-    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-    await goSeatIntroFromOffense();
+    } else if (inning === 1 && isTop) {
+      // ★ 代打/代走/臨時代走が残っているなら先に守備交代へ
+      const order =
+        (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
+      const hasPending = order.some(e =>
+        e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走"
+      );
+      if (hasPending) {
+        await localForage.setItem("postDefenseSeatIntro", { enabled: true, at: Date.now() });
+        await localForage.setItem("seatIntroLock", true);
+        onSwitchToDefense();
+      } else {
+        await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+        await goSeatIntroFromOffense();
+      }
+    } else {
+      onSwitchToDefense();
+    }
   }
-} else {
-  onSwitchToDefense();
-}
 
-  }
 };
 
 
@@ -1046,11 +1111,30 @@ useEffect(() => {
 
             {/* イニング終了ボタン */}
             <button
-              onClick={() => setShowModal(true)}
+              onClick={async () => {
+                // 3回裏か？
+                const isThirdBottom = (Number(inning) === 3 && isTop === false);
+
+                // 事前に matchInfo を読んで「次の試合なし」フラグを確認
+                if (isThirdBottom) {
+                  const mi = await localForage.getItem<any>("matchInfo");
+                  const noNextGame =
+                    (mi?.noNextGame === true) || (mi?.noNextGame === "true"); // 厳密評価
+                  // 「次の試合なし」= NO のときだけ、得点入力後にアナウンスを出す準備
+                  if (!noNextGame) {
+                    setPendingMemberExchange(true);
+                  }
+                }
+
+                // ★ まずは必ず得点入力を先に出す
+                setShowModal(true);
+              }}
               className="px-3 py-1 bg-orange-700 text-white rounded"
             >
               <span className="break-keep leading-tight">イニング<wbr/>終了</span>
             </button>
+
+
         </div>
 
 
@@ -1200,14 +1284,21 @@ onClick={() => {
 
 </div>
 
-      <div className="flex justify-center gap-4 my-2">
-        <button onClick={handlePrev} className="bg-green-500 text-white px-4 py-2 rounded">
-          前の打者
-        </button>
-        <button onClick={handleNext} className="bg-green-500 text-white px-4 py-2 rounded">
-          次の打者
-        </button>
-      </div>
+<div className="w-full grid grid-cols-3 gap-2 my-2">
+  <button
+    onClick={handlePrev}
+    className="col-span-1 w-full h-10 rounded bg-green-500 text-white"
+  >
+    前の打者
+  </button>
+  <button
+    onClick={handleNext}
+    className="col-span-2 w-full h-10 rounded bg-green-500 text-white"
+  >
+    次の打者
+  </button>
+</div>
+
 
 
 {/* ⚠️ ファウルボール注意文（常時表示） */}
@@ -1221,20 +1312,18 @@ onClick={() => {
   </div>
 
   {/* ボタンを左寄せ */}
-  <div className="mt-2 flex justify-start gap-4">
-    <button
-      onClick={handleFoulRead}
-      className="bg-blue-600 text-white px-4 py-2 rounded"
-    >
-      読み上げ
-    </button>
-    <button
-      onClick={handleFoulStop}
-      className="bg-red-600 text-white px-4 py-2 rounded"
-    >
-      停止
-    </button>
-  </div>
+<div className="mt-2 grid grid-cols-2 gap-2">
+  <button
+  onClick={handleFoulRead}
+  className="w-full h-10 rounded bg-blue-600 text-white
+             inline-flex items-center justify-center gap-2"
+>
+  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+  <span className="whitespace-nowrap leading-none">読み上げ</span>
+  </button>
+
+  <button onClick={handleFoulStop} className="w-full h-10 rounded bg-red-600 text-white">停止</button>
+</div>
 </div>
 
 
@@ -1254,66 +1343,72 @@ onClick={() => {
             {announcementOverride || announcement || ""}
           </span>
         </div>
-        <div className="flex gap-4">
-          <button onClick={handleRead} className="bg-blue-600 text-white px-4 py-2 rounded">
-            読み上げ
-          </button>
-          <button
-            onClick={() => speechSynthesis.cancel()}
-            className="bg-red-600 text-white px-4 py-2 rounded"
-          >
-            停止
-          </button>
-        </div>
+<div className="grid grid-cols-2 gap-2">
+  <button
+    onClick={handleRead}
+    className="w-full h-10 rounded bg-blue-600 text-white inline-flex items-center justify-center gap-2"
+  >
+    <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+    <span className="whitespace-nowrap leading-none">読み上げ</span>
+  </button>
+
+  <button onClick={() => speechSynthesis.cancel()} className="w-full h-10 rounded bg-red-600 text-white">停止</button>
+</div>
+
       </div>
 
-<div className="flex justify-end space-x-2 mt-4">
-  <button
-    onClick={() => setShowRunnerModal(true)}
-    className="bg-orange-600 text-white px-6 py-2 rounded"
-  >
-    代走
-  </button>
-  <button
-    onClick={() => setShowSubModal(true)}
-    className="bg-orange-600 text-white px-6 py-2 rounded"
-  >
-    代打
-  </button>
-
-<button
-  onClick={() => {
-    const { A, B, order1 } = findReentryCandidateForCurrentSpot();
-
-    if (!B) {
-      setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-      // シンプルにアラートで良ければ↓だけでも可
-      alert("この打順にリエントリー可能な選手はいません。");
-      return;
-    }
-
-    setReEntryFromPlayer(A || null);
-    setReEntryTargetPlayer(B);
-    setReEntryOrder1(order1);
-    setShowReEntryModal(true);
-  }}
-  className="bg-purple-600 text-white px-6 py-2 rounded"
->
-  リエントリー
-
-</button>
-{isDhTurn && (
+{/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
+<div className="w-full grid grid-cols-4 gap-2 mt-4">
+  {/* DH解除（常に表示。条件を満たさない時は disabled） */}
   <button
     onClick={() => setShowDhDisableModal(true)}
-    className="bg-gray-800 text-white px-6 py-2 rounded"
-    disabled={!dhActive || !pitcherId}
+    disabled={!isDhTurn || !dhActive || !pitcherId}
+    className="w-full h-10 rounded bg-gray-800 text-white
+               disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
+    title="DH解除"
   >
     DH解除
   </button>
-)}
 
+  {/* リエントリー */}
+  <button
+    onClick={() => {
+      const { A, B, order1 } = findReentryCandidateForCurrentSpot();
+      if (!B) {
+        setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+        alert("この打順にリエントリー可能な選手はいません。");
+        return;
+      }
+      setReEntryFromPlayer(A || null);
+      setReEntryTargetPlayer(B);
+      setReEntryOrder1(order1);
+      setShowReEntryModal(true);
+    }}
+    className="w-full h-10 rounded bg-purple-600 text-white"
+    title="リエントリー"
+  >
+    リエントリー
+  </button>
 
+  {/* 代走 */}
+  <button
+    onClick={() => setShowRunnerModal(true)}
+    className="w-full h-10 rounded bg-orange-600 text-white"
+    title="代走"
+  >
+    代走
+  </button>
+
+  {/* 代打 */}
+  <button
+    onClick={() => setShowSubModal(true)}
+    className="w-full h-10 rounded bg-orange-600 text-white"
+    title="代打"
+  >
+    代打
+  </button>
 </div>
+
 
 {/* ✅ DH解除のポップアップ */}
 {showDhDisableModal && (() => {
@@ -1415,7 +1510,7 @@ onClick={() => {
                   onClick={speak}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                 >
-                  読み上げ
+                  <IconMic /> 読み上げ
                 </button>
                 <button
                   onClick={stop}
@@ -1590,41 +1685,79 @@ onClick={() => {
             </div>
             <p className="text-xl font-bold text-red-700 text-center">{popupMessage}</p>
 
-            {/* 読み上げ・停止（枠の中に残す） */}
-            <div className="flex justify-center gap-3 mt-4">
+            {/* 読み上げ・停止（横いっぱい・等幅） */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
                   const uttr = new SpeechSynthesisUtterance(popupMessage);
+                  speechSynthesis.cancel(); // 直前の読み上げを停止してから開始
                   speechSynthesis.speak(uttr);
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-md"
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                          inline-flex items-center justify-center gap-2"
               >
-                読み上げ
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
               </button>
+
               <button
                 onClick={() => speechSynthesis.cancel()}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl shadow-md"
+                className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
+                          inline-flex items-center justify-center"
               >
                 停止
               </button>
             </div>
+
           </div>
         </div>
 
         {/* 固定フッター（OKはアナウンス枠の外） */}
         <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
           <button
-            onClick={async () => {
-              setShowScorePopup(false);
-              if (pendingGroundPopup) {
-                setPendingGroundPopup(false);
-                setShowGroundPopup(true); // ✅ 得点ポップアップ閉じた後に表示！
-              } else if (inning === 1 && isTop) {
-                await goSeatIntroFromOffense();
-              } else {
-                onSwitchToDefense();
-              }
-            }}
+onClick={async () => {
+  setShowScorePopup(false);
+
+  if (pendingMemberExchange) {
+    // 本日の“次の試合番号”で文面を作成
+    const mi = await localForage.getItem<any>("matchInfo");
+    const currentGame = Number(mi?.matchNumber) || 1;
+    const nextGame = currentGame + 1;
+
+    const txt =
+      `本日の第${nextGame}試合の両チームは、4回終了後、メンバー交換を行います。\n` +
+      `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。\n` +
+      `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。\n` +
+      `メンバーチェックと道具チェックはシートノックの間に行います。`;
+
+    setMemberExchangeText(txt);
+
+    // OK 後にどこへ進むかを記録
+    if (pendingGroundPopup) {
+      setAfterMemberExchange("groundPopup");
+      setPendingGroundPopup(false); // 消費
+    } else if (inning === 1 && isTop) {
+      setAfterMemberExchange("seatIntro");
+    } else {
+      setAfterMemberExchange("switchDefense");
+    }
+
+    setPendingMemberExchange(false); // 消費
+    setShowMemberExchangeModal(true); // ★ ここでメンバー交換モーダルを後出し
+    return; // 以降の通常フローは、モーダルのOKで実行
+  }
+
+  // ※メンバー交換なしの場合は従来通り
+  if (pendingGroundPopup) {
+    setPendingGroundPopup(false);
+    setShowGroundPopup(true);
+  } else if (inning === 1 && isTop) {
+    await goSeatIntroFromOffense();
+  } else {
+    onSwitchToDefense();
+  }
+}}
+
             className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
           >
             OK
@@ -1741,7 +1874,7 @@ onClick={() => {
                 }}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-1 ring-white/40"
               >
-                読み上げ
+                <IconMic /> 読み上げ
               </button>
               <button
                 onClick={() => speechSynthesis.cancel()}
@@ -2010,7 +2143,8 @@ onClick={() => {
             </div>
 
             {/* 読み上げ・停止 */}
-            <div className="flex justify-center gap-3">
+            {/* 読み上げ／停止（横いっぱい・等幅） */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
                   const currentPlayer = getPlayer(battingOrder[currentBatterIndex]?.id);
@@ -2026,23 +2160,27 @@ onClick={() => {
                     `${kanaSubFull} ${honorific}、バッターは ${kanaSubLast} ${honorific}、背番号 ${sub.number}`
                   );
                 }}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-                           shadow-md ring-1 ring-white/40"
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                          inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
               >
-                読み上げ
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
               </button>
+
               <button
                 onClick={() => speechSynthesis.cancel()}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
-                           shadow-md ring-1 ring-white/25"
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                          inline-flex items-center justify-center shadow-md ring-1 ring-white/25"
               >
-                停止
+                <span className="whitespace-nowrap leading-none">停止</span>
               </button>
             </div>
+
           </div>
 
           {/* 下部の確定・キャンセルボタン（色は代走と統一） */}
-          <div className="flex flex-col sm:flex-row justify-center gap-3">
+          {/* 確定／キャンセル（横いっぱい・等幅） */}
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={async () => {
                 // 既存ロジック（変更なし）
@@ -2107,19 +2245,22 @@ onClick={() => {
                   setShowSubModal(false);
                 }
               }}
-              className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
-                         shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+              className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
+                        shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2
+                        focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
             >
               確定
             </button>
+
             <button
               onClick={() => setShowSubModal(false)}
-              className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
-                         shadow-md shadow-amber-300/40"
+              className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
+                        shadow-md shadow-amber-300/40"
             >
               キャンセル
             </button>
           </div>
+
         </div>
 
         {/* セーフエリア確保（iPhone下部） */}
@@ -2473,178 +2614,183 @@ onClick={() => {
                     </div>
                   </div>
 
-                  <div className="flex justify-center gap-3">
-                    {/* 読み上げ＝青 */}
-                    <button
-                      onClick={() =>
-                        announce(
-                          ["1塁", "2塁", "3塁"]
-                            .map((base) => {
-                              const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
-                              return runnerAnnouncement.find(
-                                (msg) =>
-                                  msg.startsWith(`${base}ランナー`) ||
-                                  msg.startsWith(`${kanji}ランナー`)
-                              );
-                            })
-                            .filter(Boolean)
-                            .join("、")
-                        )
-                      }
-                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-                                shadow-md ring-1 ring-white/40"
-                    >
-                      読み上げ
-                    </button>
+{/* 読み上げ／停止（横いっぱい・等幅） */}
+<div className="grid grid-cols-2 gap-2">
+  {/* 読み上げ＝青 */}
+  <button
+    onClick={() =>
+      announce(
+        ["1塁", "2塁", "3塁"]
+          .map((base) => {
+            const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
+            return runnerAnnouncement.find(
+              (msg) =>
+                msg.startsWith(`${base}ランナー`) ||
+                msg.startsWith(`${kanji}ランナー`)
+            );
+          })
+          .filter(Boolean)
+          .join("、")
+      )
+    }
+    className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+               inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
+  >
+    <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+    <span className="whitespace-nowrap leading-none">読み上げ</span>
+  </button>
 
-                    {/* 停止＝赤 */}
-                    <button
-                      onClick={() => speechSynthesis.cancel()}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
-                                shadow-md ring-1 ring-white/25"
-                    >
-                      停止
-                    </button>
-                  </div>
+  {/* 停止＝赤 */}
+  <button
+    onClick={() => speechSynthesis.cancel()}
+    className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+               inline-flex items-center justify-center shadow-md ring-1 ring-white/25"
+  >
+    <span className="whitespace-nowrap leading-none">停止</span>
+  </button>
+</div>
+
                 </div>
               )}
 
               {/* 操作ボタン行（色をしっかり差別化） */}
-              <div className="flex justify-between gap-3 sticky bottom-0">
-                <button
-                  onClick={() => {
-                    setSelectedSubRunner(null);
-                    setSelectedRunnerIndex(null);
-                    setSelectedBase(null);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white
-                             shadow-md shadow-indigo-300/40"
-                >
-                  もう1人
-                </button>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setShowRunnerModal(false);
-                      setSelectedRunnerIndex(null);
-                      setSelectedBase(null);
-                      setSelectedSubRunner(null);
-                      setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
-                      setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
-                      setRunnerAnnouncement([]);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
-                               shadow-md shadow-amber-300/40"
-                  >
-                    キャンセル
-                  </button>
+{/* もう1人／キャンセル／確定（横いっぱい・等幅） */}
+<div className="sticky bottom-0 grid grid-cols-3 gap-2">
+  <button
+    onClick={() => {
+      setSelectedSubRunner(null);
+      setSelectedRunnerIndex(null);
+      setSelectedBase(null);
+    }}
+    className="w-full h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white
+               shadow-md shadow-indigo-300/40"
+  >
+    もう1人
+  </button>
 
-                  {/* 確定（Primary=Emerald） */}
-                  <button
-                    onClick={async () => {
-                      // 既存ロジック（変更なし）
-                      pushHistory();
+  <button
+    onClick={() => {
+      setShowRunnerModal(false);
+      setSelectedRunnerIndex(null);
+      setSelectedBase(null);
+      setSelectedSubRunner(null);
+      setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+      setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+      setRunnerAnnouncement([]);
+    }}
+    className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
+               shadow-md shadow-amber-300/40"
+  >
+    キャンセル
+  </button>
 
-                      const newOrder = [...battingOrder];
-                      const newUsed: Record<number, any> =
-                        (await localForage.getItem("usedPlayerInfo")) || {};
-                      const lineup: Record<string, number | null> =
-                        (await localForage.getItem("lineupAssignments")) || {};
-                      const wasStarterMap: Record<number, boolean> =
-                        (await localForage.getItem("wasStarterMap")) || {};
-                      let teamPlayerList = [...players];
+  {/* 確定（Primary=Emerald） */}
+  <button
+    onClick={async () => {
+      // 既存ロジック（変更なし）
+      pushHistory();
 
-                      for (const [base, sub] of Object.entries(runnerAssignments)) {
-                        const replaced = replacedRunners[base as "1塁" | "2塁" | "3塁"];
-                        if (!sub || !replaced) continue;
+      const newOrder = [...battingOrder];
+      const newUsed: Record<number, any> =
+        (await localForage.getItem("usedPlayerInfo")) || {};
+      const lineup: Record<string, number | null> =
+        (await localForage.getItem("lineupAssignments")) || {};
+      const wasStarterMap: Record<number, boolean> =
+        (await localForage.getItem("wasStarterMap")) || {};
+      let teamPlayerList = [...players];
 
-                        const idx = battingOrder.findIndex((e) => e.id === replaced.id);
-                        if (idx === -1) continue;
+      for (const [base, sub] of Object.entries(runnerAssignments)) {
+        const replaced = replacedRunners[base as "1塁" | "2塁" | "3塁"];
+        if (!sub || !replaced) continue;
 
-                        const isTemp = !!tempRunnerFlags[base as "1塁" | "2塁" | "3塁"];
-                        if (isTemp) {
-                          const key = "tempRunnerByOrder";
-                          const tempMap =
-                            (await localForage.getItem<Record<number, number>>(key)) || {};
-                          tempMap[idx] = sub.id;
-                          await localForage.setItem(key, tempMap);
-                          newOrder[idx] = { id: replaced.id, reason: "臨時代走" };
-                          continue;
-                        }
+        const idx = battingOrder.findIndex((e) => e.id === replaced.id);
+        if (idx === -1) continue;
 
-                        newOrder[idx] = { id: sub.id, reason: "代走" };
+        const isTemp = !!tempRunnerFlags[base as "1塁" | "2塁" | "3塁"];
+        if (isTemp) {
+          const key = "tempRunnerByOrder";
+          const tempMap =
+            (await localForage.getItem<Record<number, number>>(key)) || {};
+          tempMap[idx] = sub.id;
+          await localForage.setItem(key, tempMap);
+          newOrder[idx] = { id: replaced.id, reason: "臨時代走" };
+          continue;
+        }
 
-                        const posNameToSymbol: Record<string, string> = {
-                          "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一", "セカンド": "二",
-                          "サード": "三", "ショート": "遊", "レフト": "左", "センター": "中", "ライト": "右", "指名打者": "指",
-                        };
+        newOrder[idx] = { id: sub.id, reason: "代走" };
 
-                        const fullFrom = getPosition(replaced.id);
-                        const fromPos =
-                          (posNameToSymbol as any)[fullFrom ?? ""] ??
-                          (fullFrom && "投捕一二三遊左中右指".includes(fullFrom) ? fullFrom : "");
+        const posNameToSymbol: Record<string, string> = {
+          "ピッチャー": "投", "キャッチャー": "捕", "ファースト": "一", "セカンド": "二",
+          "サード": "三", "ショート": "遊", "レフト": "左", "センター": "中", "ライト": "右", "指名打者": "指",
+        };
 
-                        newUsed[replaced.id] = {
-                          fromPos: fromPos || "",
-                          subId: sub.id,
-                          reason: "代走",
-                          order: idx + 1,
-                          wasStarter: !!wasStarterMap[replaced.id],
-                        };
+        const fullFrom = getPosition(replaced.id);
+        const fromPos =
+          (posNameToSymbol as any)[fullFrom ?? ""] ??
+          (fullFrom && "投捕一二三遊左中右指".includes(fullFrom) ? fullFrom : "");
 
-                        if (fromPos && lineup[fromPos] === replaced.id) {
-                          lineup[fromPos] = sub.id;
-                        }
+        newUsed[replaced.id] = {
+          fromPos: fromPos || "",
+          subId: sub.id,
+          reason: "代走",
+          order: idx + 1,
+          wasStarter: !!wasStarterMap[replaced.id],
+        };
 
-                        if (!teamPlayerList.some((p) => p.id === sub.id)) {
-                          teamPlayerList = [...teamPlayerList, sub];
-                        }
-                      }
+        if (fromPos && lineup[fromPos] === replaced.id) {
+          lineup[fromPos] = sub.id;
+        }
 
-                      setBattingOrder(newOrder);
-                      await localForage.setItem("battingOrder", newOrder);
+        if (!teamPlayerList.some((p) => p.id === sub.id)) {
+          teamPlayerList = [...teamPlayerList, sub];
+        }
+      }
 
-                      setAssignments(lineup);
-                      await localForage.setItem("lineupAssignments", lineup);
+      setBattingOrder(newOrder);
+      await localForage.setItem("battingOrder", newOrder);
 
-                      setUsedPlayerInfo(newUsed);
-                      await localForage.setItem("usedPlayerInfo", newUsed);
+      setAssignments(lineup);
+      await localForage.setItem("lineupAssignments", lineup);
 
-                      setPlayers(teamPlayerList);
-                      const teamRaw = (await localForage.getItem("team")) as any;
-                      await localForage.setItem("team", { ...(teamRaw || {}), players: teamPlayerList });
+      setUsedPlayerInfo(newUsed);
+      await localForage.setItem("usedPlayerInfo", newUsed);
 
-                      {
-                        const orderedMsgs = ["1塁", "2塁", "3塁"]
-                          .map((base) => {
-                            const kanji = base.replace("1","一").replace("2","二").replace("3","三");
-                            return runnerAnnouncement.find(
-                              (msg) =>
-                                msg.startsWith(`${base}ランナー`) ||
-                                msg.startsWith(`${kanji}ランナー`)
-                            );
-                          })
-                          .filter(Boolean) as string[];
+      setPlayers(teamPlayerList);
+      const teamRaw = (await localForage.getItem("team")) as any;
+      await localForage.setItem("team", { ...(teamRaw || {}), players: teamPlayerList });
 
-                        if (orderedMsgs.length > 0) {
-                          setAnnouncementHTML(orderedMsgs.join("<br/>"));
-                        }
-                      }
+      {
+        const orderedMsgs = ["1塁", "2塁", "3塁"]
+          .map((base) => {
+            const kanji = base.replace("1","一").replace("2","二").replace("3","三");
+            return runnerAnnouncement.find(
+              (msg) =>
+                msg.startsWith(`${base}ランナー`) ||
+                msg.startsWith(`${kanji}ランナー`)
+            );
+          })
+          .filter(Boolean) as string[];
 
-                      setShowRunnerModal(false);
-                      setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
-                      setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
-                      setRunnerAnnouncement([]);
-                      setSelectedRunnerIndex(null);
-                      setSelectedBase(null);
-                    }}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
-                               shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
-                  >
-                    確定
-                  </button>
-                </div>
-              </div>
+        if (orderedMsgs.length > 0) {
+          setAnnouncementHTML(orderedMsgs.join("<br/>"));
+        }
+      }
+
+      setShowRunnerModal(false);
+      setRunnerAssignments({ "1塁": null, "2塁": null, "3塁": null });
+      setReplacedRunners({ "1塁": null, "2塁": null, "3塁": null });
+      setRunnerAnnouncement([]);
+      setSelectedRunnerIndex(null);
+      setSelectedBase(null);
+    }}
+    className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
+               shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2
+               focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+  >
+    確定
+  </button>
+</div>
+
             </>
           )}
         </div>
@@ -2715,7 +2861,7 @@ onClick={() => {
                   onClick={() => speakText("両チームはグランド整備をお願いします。")}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                 >
-                  読み上げ
+                  <IconMic /> 読み上げ
                 </button>
                 <button
                   onClick={stopSpeech}
@@ -2749,7 +2895,7 @@ onClick={() => {
                   onClick={() => speakText("グランド整備、ありがとうございました。")}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
                 >
-                  読み上げ
+                  <IconMic /> 読み上げ
                 </button>
                 <button
                   onClick={stopSpeech}
@@ -2853,7 +2999,7 @@ onClick={() => {
                   speechSynthesis.speak(msg);
                 }}
               >
-                読み上げ
+                <IconMic /> 読み上げ
               </button>
               <button
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
@@ -2877,6 +3023,92 @@ onClick={() => {
     </div>
   </div>
 )}
+
+{/* ✅ メンバー交換モーダル */}
+{showMemberExchangeModal && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    {/* 背景 */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    {/* カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md">
+          <h2 className="text-lg font-extrabold text-center">メンバー交換（案内）</h2>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-start gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+            <p className="whitespace-pre-wrap text-red-700 font-bold">
+              {memberExchangeText}
+            </p>
+
+            {/* 読み上げ／停止（横いっぱい・等幅） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const uttr = new SpeechSynthesisUtterance(memberExchangeText);
+                  speechSynthesis.cancel();
+                  speechSynthesis.speak(uttr);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                          inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
+              </button>
+
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                          inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+
+
+          </div>
+        </div>
+
+        {/* フッター：OK → 従来の得点入力へ */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+onClick={async () => {
+  setShowMemberExchangeModal(false);
+  // 記録しておいた後続アクションを実行
+  if (afterMemberExchange === "groundPopup") {
+    setShowGroundPopup(true);
+  } else if (afterMemberExchange === "seatIntro") {
+    await goSeatIntroFromOffense();
+  } else {
+    // "switchDefense" ほかデフォルト
+    onSwitchToDefense();
+  }
+  setAfterMemberExchange(null);
+}}
+
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
 
     </div>
      </DndProvider>

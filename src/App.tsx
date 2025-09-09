@@ -93,6 +93,11 @@ const IconSettings = ({ active=false }) => (
     <path d="M12 8a4 4 0 100 8 4 4 0 000-8zm9.4 4a7.5 7.5 0 00-.2-1.8l2-1.6-2-3.5-2.4 1a7.9 7.9 0 00-1.5-.9l-.4-2.6H9.2l-.4 2.6c-.5.2-1 .5-1.5.9l-2.4-1-2 3.5 2 1.6A7.5 7.5 0 003 12c0 .6.1 1.2.2 1.8l-2 1.6 2 3.5 2.4-1c.5.4 1 .7 1.5.9l.4 2.6h5.8l.4-2.6c.5-.2 1-.5 1.5-.9l2.4 1 2-3.5-2-1.6c.1-.6.2-1.2.2-1.8z"/>
   </svg>
 );
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
 
 // === 追加: タブボタン & ボトムタブバー ===
 const TabButton: React.FC<{
@@ -530,6 +535,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
             const team = (await localForage.getItem("team")) as { name?: string } | null;
             // RAW で取得（別所で上書きされている可能性があるため）
             const match = (await localForage.getItem("matchInfo")) as any;
+            const noNextGame = Boolean(match?.noNextGame); 
             console.log("matchInfo (RAW) =", match);
             const stash = await localForage.getItem("matchNumberStash");
     if (match && (match.matchNumber == null) && Number(stash) >= 1) {
@@ -582,22 +588,29 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
             const nextGame = currentGame + 1;
             console.log({ rawMatchNumber, currentGame, nextGame });
 
-            if (totalMyScore > totalOpponentScore) {
-              setEndGameAnnouncement(
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-                `審判員の皆様、ありがとうございました。\n` +
-                `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-                `尚、この試合の終了時刻は ${formatted} です。\n` +
-                `これより、ピッチングレコードの確認を行います。\n` +
-                `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-                `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n` +
-                `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
-              );
-              setShowEndGamePopup(true);
-            } else {
-              alert("試合終了しました");
-            }
+if (totalMyScore > totalOpponentScore) {
+  let announcement =
+    `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+    `審判員の皆様、ありがとうございました。\n` +
+    `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+    `尚、この試合の終了時刻は ${formatted} です。\n` +
+    `これより、ピッチングレコードの確認を行います。\n` +
+    `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+    `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+  // ✅ 「次の試合なし」チェックが外れている場合のみ、グランド整備文を追加
+  if (!noNextGame) {
+    announcement +=
+      `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+      `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+  }
+
+  setEndGameAnnouncement(announcement);
+  setShowEndGamePopup(true);
+} else {
+  alert("試合終了しました");
+}
+
             console.groupEnd();
             } else if (value === "tiebreak") {
               const cfg = (await localForage.getItem("tiebreakConfig")) as
@@ -735,6 +748,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
             const team = (await localForage.getItem("team")) as { name?: string } | null;
             // RAW で取得（別所で上書きされている可能性があるため）
             const match = (await localForage.getItem("matchInfo")) as any;
+            const noNextGame = Boolean(match?.noNextGame); 
             const stash = await localForage.getItem("matchNumberStash");
               if (match && (match.matchNumber == null) && Number(stash) >= 1) {
                 await localForage.setItem("matchInfo", { ...match, matchNumber: Number(stash) });
@@ -787,22 +801,28 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
             const nextGame = currentGame + 1;
             console.log({ rawMatchNumber, currentGame, nextGame });
 
-            if (totalMyScore > totalOpponentScore) {
-              setEndGameAnnouncement(
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
-                `審判員の皆様、ありがとうございました。\n` +
-                `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-                `尚、この試合の終了時刻は ${formatted} です。\n` +
-                `これより、ピッチングレコードの確認を行います。\n` +
-                `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-                `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n` +
-                `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`
-              );
-              setShowEndGamePopup(true);
-            } else {
-              alert("試合終了しました");
-            }
+if (totalMyScore > totalOpponentScore) {
+  let announcement =
+    `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+    `審判員の皆様、ありがとうございました。\n` +
+    `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+    `尚、この試合の終了時刻は ${formatted} です。\n` +
+    `これより、ピッチングレコードの確認を行います。\n` +
+    `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+    `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+  // ✅ 「次の試合なし」チェックが外れている場合のみ、グランド整備文を追加
+  if (!noNextGame) {
+    announcement +=
+      `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+      `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+  }
+
+  setEndGameAnnouncement(announcement);
+  setShowEndGamePopup(true);
+} else {
+  alert("試合終了しました");
+}
             console.groupEnd();
           } else if (value === "continue") {
             setShowContinuationModal(true);
@@ -918,162 +938,366 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
   <VersionInfo version={APP_VERSION} onBack={() => setScreen("operationSettings")} />
 )}
 
-
+{/* 試合終了画面（スマホ風） */}
 {showEndGamePopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="bg-pink-100 p-6 rounded-xl shadow-xl text-center space-y-4 max-w-2xl w-full">
-      {/* 🔶 注意表示（ポップアップ内） */}
-      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2 text-left">
-        <span className="text-2xl">⚠️</span>
-        勝利チーム🎤
-      </div>
-      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
-        <div className="text-left whitespace-pre-line max-h-[60vh] overflow-y-auto pr-2">{endGameAnnouncement}</div>
-      </div>
-      <div className="flex justify-center gap-4 flex-wrap">
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-          onClick={() => {
-            const msg = new SpeechSynthesisUtterance(endGameAnnouncement);
-            speechSynthesis.speak(msg);
-          }}
-        >
-          読み上げ
-        </button>
-        <button
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-          onClick={() => speechSynthesis.cancel()}
-        >
-          停止
-        </button>
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded"
-          onClick={() => setShowEndGamePopup(false)}
-        >
-          OK
-        </button>
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="試合終了">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>試合終了</span>
+            </h2>
+            <div className="w-9 h-9" />
+          </div>
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          {/* 注意表示 */}
+          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2">
+            <span className="text-2xl">⚠️</span>
+            勝利チーム🎤
+          </div>
+
+          {/* 🔴 アナウンス文言エリア（ここに読み上げ／停止ボタンを内包） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            {/* 文言（改行保持） */}
+            <div className="text-left text-red-700 font-bold whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto pr-2">
+              {endGameAnnouncement}
+            </div>
+
+            {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const uttr = new SpeechSynthesisUtterance(endGameAnnouncement);
+                  speechSynthesis.cancel(); // 直前を停止してから開始
+                  speechSynthesis.speak(uttr);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </button>
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター（OK） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowEndGamePopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
+
+ {/* 熱中症画面*/}
 {showHeatPopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
-      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
-        <div className="text-left whitespace-pre-line">{heatMessage}</div>
-      </div>
-      <div className="flex justify-center gap-4 flex-wrap">
-        <button
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-          onClick={() => {
-            const msg = new SpeechSynthesisUtterance(heatMessage);
-            speechSynthesis.speak(msg);
-          }}
-        >
-          読み上げ
-        </button>
-        <button
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-          onClick={() => speechSynthesis.cancel()}
-        >
-          停止
-        </button>
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded"
-          onClick={() => setShowHeatPopup(false)}
-        >
-          OK
-        </button>
+  <div className="fixed inset-0 z-50">
+    {/* 背景オーバーレイ（タップで閉じる） */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowHeatPopup(false)}
+    />
+
+    {/* 画面中央カード（スマホ風） */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-full max-w-md max-h-[80vh]
+          overflow-hidden flex flex-col
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label="熱中症"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー（グラデ＋ハンドル） */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <span className="text-xl">🥵</span>
+              <span>熱中症</span>
+            </h2>
+            <button
+              onClick={() => setShowHeatPopup(false)}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          {/* 🔴 アナウンス文言エリア（ここに読み上げ/停止ボタンを内包） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            {/* 文言 */}
+            <p className="text-red-700 font-bold whitespace-pre-wrap">
+              {heatMessage}
+            </p>
+
+            {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const uttr = new SpeechSynthesisUtterance(heatMessage);
+                  speechSynthesis.cancel(); // 直前を停止してから開始
+                  speechSynthesis.speak(uttr);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                
+                <span className="inline-flex items-center gap-2 whitespace-nowrap leading-none align-middle">
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span>読み上げ</span>
+              </span>
+              </button>
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowHeatPopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
 
 
+{/* タイブレーク画面 */}
 {showTiebreakPopup && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4 max-w-2xl w-full">
-      {/* 見出し */}
-      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-2" />
-        <div>タイブレーク開始</div>
-      </div>
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="タイブレーク開始">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* 本文（改行維持） */}
-      <p className="text-left text-red-600 font-semibold whitespace-pre-line leading-relaxed">
-        {tiebreakMessage}
-      </p>
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>タイブレーク開始</span>
+            </h2>
+            <div className="w-9 h-9" />
+          </div>
+        </div>
 
-      {/* ボタン群（継続試合と同じ並び） */}
-      <div className="flex justify-center gap-8">
-        <button
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          onClick={() => {
-            const msg = new SpeechSynthesisUtterance(tiebreakMessage);
-            speechSynthesis.speak(msg);
-          }}
-        >
-          読み上げ
-        </button>
-        <button
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-          onClick={() => speechSynthesis.cancel()}
-        >
-          停止
-        </button>
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-          onClick={() => setShowTiebreakPopup(false)}
-        >
-          OK
-        </button>
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          {/* 🔴 アナウンス文言エリア（ここに読み上げ/停止ボタンを内包） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            {/* 文言（改行保持） */}
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              {tiebreakMessage}
+            </p>
+
+            {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const uttr = new SpeechSynthesisUtterance(tiebreakMessage);
+                  speechSynthesis.cancel(); // 直前を停止してから開始
+                  speechSynthesis.speak(uttr);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                {/* アイコン右に文言／改行しない */}
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="whitespace-nowrap leading-none">読み上げ</span>
+              </button>
+
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター（OK） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowTiebreakPopup(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
 
 
-
+{/* 継続試合画面 */}
 {showContinuationModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-    <div className="border border-red-500 bg-red-200 p-6 rounded-lg shadow text-center text-xl text-red-600 font-bold space-y-4">
-      <div className="text-xl font-bold text-red-600 flex items-center justify-center gap-2 leading-relaxed">
-        <img src="/icons/mic-red.png" alt="Mic" className="w-10 h-10 mr-4" />
-      </div>
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="継続試合">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
-      {/* メッセージ本文 */}
-      <p className="text-left text-red-600 font-semibold mb-6 leading-relaxed">
-        この試合は、ただ今で打ち切り、継続試合となります。<br />
-        明日以降に中断した時点から再開いたします。<br />
-        あしからずご了承くださいませ。
-      </p>
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-rose-600 to-pink-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span>継続試合</span>
+            </h2>
+            <div className="w-9 h-9" />
+          </div>
+        </div>
 
-      {/* ボタン群 */}
-      <div className="flex justify-center gap-8">
-        <button
-          onClick={handleSpeak}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          読み上げ
-        </button>
-        <button
-          onClick={handleStop}
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-        >
-          停止
-        </button>
-        <button
-          onClick={() => setShowContinuationModal(false)}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
-          OK
-        </button>
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-4 space-y-3 overflow-y-auto">
+          {/* 🔴 アナウンス文言エリア（読み上げ/停止ボタンを内包） */}
+          <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+            </div>
+
+            {/* 文言 */}
+            <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
+              この試合は、ただ今で打ち切り、継続試合となります。{'\n'}
+              明日以降に中断した時点から再開いたします。{'\n'}
+              あしからずご了承くださいませ。
+            </p>
+
+            {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  const txt =
+                    "この試合は、ただ今で打ち切り、継続試合となります。\n" +
+                    "明日以降に中断した時点から再開いたします。\n" +
+                    "あしからずご了承くださいませ。";
+                  const uttr = new SpeechSynthesisUtterance(txt);
+                  speechSynthesis.cancel();
+                  speechSynthesis.speak(uttr);
+                }}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                           inline-flex items-center justify-center gap-2"
+              >
+                <span className="inline-flex items-center gap-2 whitespace-nowrap leading-none align-middle">
+                  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span>読み上げ</span>
+                </span>
+              </button>
+
+              <button
+                onClick={() => speechSynthesis.cancel()}
+                className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
+                           inline-flex items-center justify-center"
+              >
+                <span className="whitespace-nowrap leading-none">停止</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* フッター（OK） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowContinuationModal(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
 )}
+
 
 
 {showManualPopup && (
