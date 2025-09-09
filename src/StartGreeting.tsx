@@ -111,7 +111,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
         {/* 中央大タイトル */}
         <div className="mt-3 text-center select-none">
           <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
-            <span className="text-2xl md:text-3xl">🎙️</span>
+            <span className="text-2xl md:text-3xl">🙇</span>
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
               試合開始挨拶
             </span>

@@ -321,43 +321,47 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           </div>
 
           {/* 審判（後攻時に続けて告知） */}
- {!isHomeTeamFirstAttack && (
-   isTwoUmpires ? (
-     // ✅ 2審制
-     <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
-       なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
-       塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、以上2氏でございます。
-       試合開始まで今しばらくお待ちください。
-     </p>
-   ) : (
-     // ✅ 4審制（従来どおり）
-     <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
-       なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
-       塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、
-       2塁（{umpires[2] ? renderFurigana(umpires[2].name, umpires[2].furigana) : ""}）、
-       3塁（{umpires[3] ? renderFurigana(umpires[3].name, umpires[3].furigana) : ""}）以上4氏でございます。
-       試合開始まで今しばらくお待ちください。
-     </p>
-   )
- )}
+          {!isHomeTeamFirstAttack && (
+            isTwoUmpires ? (
+              // ✅ 2審制
+              <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
+                なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
+                塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、以上2氏でございます。
+                試合開始まで今しばらくお待ちください。
+              </p>
+            ) : (
+              // ✅ 4審制（従来どおり）
+              <p className="mt-4 text-white whitespace-pre-wrap leading-relaxed">
+                なお、この試合の審判は 球審（{umpires[0] ? renderFurigana(umpires[0].name, umpires[0].furigana) : ""}）、
+                塁審は1塁（{umpires[1] ? renderFurigana(umpires[1].name, umpires[1].furigana) : ""}）、
+                2塁（{umpires[2] ? renderFurigana(umpires[2].name, umpires[2].furigana) : ""}）、
+                3塁（{umpires[3] ? renderFurigana(umpires[3].name, umpires[3].furigana) : ""}）以上4氏でございます。
+                試合開始まで今しばらくお待ちください。
+              </p>
+            )
+          )}
+          
+          {/* 操作ボタン */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <button
+              onClick={handleSpeak}
+              disabled={isSpeakingRef.current || speaking}
+              className="w-full px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-semibold shadow-md disabled:opacity-60"
+            >
+              <span className="inline-flex items-center gap-2"><IconMegaphone /> 読み上げ</span>
+            </button>
+            <button
+              onClick={handleStop}
+              className="w-full px-4 py-2 rounded-xl bg-gray-600 hover:bg-gray-700 active:scale-95 text-white text-base font-semibold shadow-md"
+            >
+              停止
+            </button>
+
+          </div>
+
         </section>
 
-        {/* 操作ボタン */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <button
-            onClick={handleSpeak}
-            disabled={isSpeakingRef.current || speaking}
-            className="w-full px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-lg font-semibold shadow-lg disabled:opacity-60"
-          >
-            <span className="inline-flex items-center gap-2"><IconMegaphone /> 読み上げ</span>
-          </button>
-          <button
-            onClick={handleStop}
-            className="w-full px-6 py-4 rounded-2xl bg-gray-600 hover:bg-gray-700 active:scale-95 text-white text-lg font-semibold shadow-lg"
-          >
-            停止
-          </button>
-        </div>
+
 
         {/* 戻るボタン（操作ボタンの下に横幅いっぱいで配置） */}
         <div className="pt-2">

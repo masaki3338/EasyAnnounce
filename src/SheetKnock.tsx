@@ -110,21 +110,26 @@ const MessageBlock: React.FC<{
       </p>
     </div>
   </div>
-  <div className="flex gap-2">
-    <button
-      className={`px-4 py-2 text-white rounded-lg shadow ${readingKey === keyName ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"} active:scale-95`}
-      onClick={() => onSpeak(text, keyName)}
-    >
-      読み上げ
-    </button>
-    <button
-      className="px-4 py-2 text-white bg-gray-600 hover:bg-gray-700 rounded-lg shadow active:scale-95 disabled:opacity-50"
-      onClick={onStop}
-      disabled={readingKey !== keyName}
-    >
-      停止
-    </button>
-  </div>
+<div className="grid grid-cols-2 gap-2 mt-2">
+  <button
+    className={`w-full px-4 py-2 text-white rounded-lg shadow 
+      ${readingKey === keyName ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"} active:scale-95 flex items-center justify-center gap-2`}
+    onClick={() => onSpeak(text, keyName)}
+  >
+    <IconMic className="w-5 h-5" />
+    <span>読み上げ</span>
+  </button>
+
+  <button
+    className="w-full px-4 py-2 text-white bg-gray-600 hover:bg-gray-700 rounded-lg shadow active:scale-95 disabled:opacity-50"
+    onClick={onStop}
+    disabled={readingKey !== keyName}
+  >
+    停止
+  </button>
+</div>
+
+
 </div>
 
 );
@@ -248,7 +253,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
         {/* 中央大タイトル */}
         <div className="mt-3 text-center select-none">
           <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
-            <span className="text-2xl md:text-3xl">🏟️</span>
+            <span className="text-2xl md:text-3xl">🏏</span>
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
               シートノック
             </span>

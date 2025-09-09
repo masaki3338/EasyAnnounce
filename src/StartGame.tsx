@@ -266,9 +266,10 @@ return (
             <IconInfo />
             <div className="font-semibold">試合情報</div>
           </div>
-          <div className="text-xs text-white/70">
+          <div className="text-sm md:text-base font-semibold text-white px-2 py-0.5 bg-blue-800/30 rounded">
             {isFirstAttack ? "先攻" : "後攻"} / ベンチ：{firstBaseSide}
           </div>
+
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm">

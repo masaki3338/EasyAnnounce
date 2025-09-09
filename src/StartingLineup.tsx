@@ -862,20 +862,23 @@ onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: en
       </div>
 
 
-      <div className="mt-6 flex gap-6">
-        <button
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-          onClick={saveAssignments}
-        >
-          保存する
-        </button>
-        <button
-          className="bg-red-500 text-white px-4 py-2 rounded"
-          onClick={clearAssignments}
-        >
-          クリア
-        </button>
-      </div>
+
+<div className="mt-6 flex w-full gap-4">
+  <button
+    className="flex-[3] bg-red-500 text-white py-3 rounded font-semibold"
+    onClick={clearAssignments}
+  >
+    クリア
+  </button>
+  <button
+    className="flex-[7] bg-blue-600 text-white py-3 rounded font-semibold"
+    onClick={saveAssignments}
+  >
+    保存する
+  </button>
+</div>
+
+
       
     </div>
   );
