@@ -73,8 +73,11 @@ const [speakingExchange, setSpeakingExchange] = useState(false);
     { role: "2塁審", name: "", furigana: "" },
     { role: "3塁審", name: "", furigana: "" },
   ]);
- // ✅ 2審制フラグ（true: 球審＋1塁審のみ表示）
- const [isTwoUmp, setIsTwoUmp] = useState<boolean>(false);
+  // ✅ 2審制フラグ（true: 球審＋1塁審のみ表示）
+  const [isTwoUmp, setIsTwoUmp] = useState<boolean>(false);
+  // 追加：次の試合なし
+  const [noNextGame, setNoNextGame] = useState<boolean>(false);
+
 
 useEffect(() => {
   const loadMatchInfo = async () => {
@@ -112,6 +115,7 @@ useEffect(() => {
       }
       // ✅ 保存済みの 2審制 を復元（無ければ false）
       setIsTwoUmp(Boolean((saved as any).twoUmpires));
+      setNoNextGame(Boolean((saved as any).noNextGame)); 
     }
   };
   loadMatchInfo();
@@ -207,7 +211,8 @@ const handleSave = async () => {
    benchSide,
    umpires,
    twoUmpires: isTwoUmp, 
-   teamName: (base as any)?.teamName ?? team?.name ?? ""
+   teamName: (base as any)?.teamName ?? team?.name ?? "",
+   noNextGame, 
  };
 
  await localForage.setItem("matchInfo", matchInfo);
@@ -322,6 +327,17 @@ return (
                 <option key={num} value={num}>第{num}試合</option>
               ))}
             </select>
+            {/* ▼ 追加：次の試合なし */}
+            <label className="mt-2 flex items-center gap-2 text-sm select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-rose-600"
+                checked={noNextGame}
+                onChange={(e) => setNoNextGame(e.target.checked)}
+              />
+              次の試合なし
+            </label>
+
           </div>
         </div>
       </section>
@@ -486,7 +502,8 @@ return (
    benchSide,
    umpires,
    twoUmpires: isTwoUmp,          // ✅ 2審制を記憶
-   teamName: (base as any)?.teamName ?? team?.name ?? "",
+   teamName: (base as any)?.teamName ?? team?.name ?? "",    
+   noNextGame,// ✅ 追加：次の試合なし
  };
  await localForage.setItem("matchInfo", matchInfo);
  
