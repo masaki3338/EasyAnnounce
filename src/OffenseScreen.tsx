@@ -1055,7 +1055,7 @@ useEffect(() => {
       >
       <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
         <img
-          src="/icons/Ofence.png"   // ← public/icons/Ofence.png に置く
+          src="/Ofence.png"   // ← public/Ofence.png に置く
           alt=""
           width={24}
           height={24}
@@ -1307,7 +1307,7 @@ onClick={() => {
 
 <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
   <div className="flex items-center mb-2">
-    <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+    <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
     <span className="text-red-600 font-bold whitespace-pre-line">
       ファウルボールの行方には十分ご注意ください。
     </span>
@@ -1340,7 +1340,7 @@ onClick={() => {
 
       <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
         <div className="flex items-center mb-2">
-          <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+          <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
           <span className="text-red-600 font-bold whitespace-pre-line">
             {announcementOverride || announcement || ""}
           </span>
@@ -1508,7 +1508,7 @@ onClick={() => {
             {/* アナウンス文言エリア（薄い赤・読み上げは青） */}
             <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
               <div className="flex items-start gap-2 mb-3">
-                <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+                <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
                 <div className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed">
                   {line1}
                   {"\n"}
@@ -1673,7 +1673,7 @@ onClick={() => {
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
           <div className="flex items-center gap-2">
             <img
-              src="/icons/mic-red.png"
+              src="/mic-red.png"
               alt="mic"
               width={28}
               height={28}
@@ -1692,7 +1692,7 @@ onClick={() => {
           {/* アナウンス文言エリア（薄い赤） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
             <p className="text-xl font-bold text-red-700 text-center">{popupMessage}</p>
@@ -1824,7 +1824,7 @@ onClick={async () => {
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
           <div className="flex items-center gap-2">
             <img
-              src="/icons/mic-red.png"
+              src="/mic-red.png"
               alt="mic"
               width={24}
               height={24}
@@ -1853,7 +1853,7 @@ onClick={async () => {
           {/* アナウンス表示（薄い赤背景・rtも赤） */}
           <div className="mb-3 rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
             <div className="mb-3 flex items-start gap-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
               <span
                 className="space-y-1 font-bold text-red-700 leading-relaxed [&_rt]:text-red-700"
                 dangerouslySetInnerHTML={{
@@ -2026,7 +2026,7 @@ onClick={async () => {
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
           <div className="flex items-center gap-2">
             <img
-              src="/icons/Ofence.png"  // ← 代打用PNG。ファイル名が違う場合は調整
+              src="/Ofence.png"  // ← 代打用PNG。ファイル名が違う場合は調整
               alt="代打アイコン"
               width={28}
               height={28}
@@ -2119,7 +2119,7 @@ onClick={async () => {
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
             <div className="flex items-start gap-2 mb-2">
               <img
-                src="/icons/mic-red.png"
+                src="/mic-red.png"
                 alt="mic"
                 className="w-5 h-5 translate-y-0.5"
               />
@@ -2308,7 +2308,7 @@ onClick={async () => {
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
           <div className="flex items-center gap-2">
             <img
-              src="/icons/Runner.png"
+              src="/Runner.png"
               alt="ランナー"
               width={28}
               height={28}
@@ -2608,7 +2608,7 @@ onClick={async () => {
                 <div className="mb-3 rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
                   <div className="mb-3 flex items-start gap-2">
                     <img
-                        src="/icons/mic-red.png"
+                        src="/mic-red.png"
                         alt="mic"
                         className="w-5 h-5 translate-y-0.5"
                       />
@@ -2865,7 +2865,7 @@ onClick={async () => {
             {/* アナウンス文言エリア（薄い赤） */}
             <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
               <div className="flex items-start gap-2">
-                <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+                <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
                 <p className="text-red-700 font-bold">
                   両チームはグランド整備をお願いします。
                 </p>
@@ -2905,7 +2905,7 @@ onClick={async () => {
             {/* アナウンス文言エリア（薄い赤） */}
             <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
               <div className="flex items-start gap-2">
-                <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+                <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
                 <p className="text-red-700 font-bold">
                   グランド整備、ありがとうございました。
                 </p>
@@ -3007,7 +3007,7 @@ onClick={async () => {
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             {/* 見出し（マイク画像をここへ移動） */}
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
@@ -3077,7 +3077,7 @@ onClick={async () => {
         <div className="px-4 py-4 space-y-3 overflow-y-auto">
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-start gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
             <p className="whitespace-pre-wrap text-red-700 font-bold">

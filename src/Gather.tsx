@@ -19,7 +19,7 @@ const IconUsers = () => (
 
 const IconAlert: React.FC = () => (
   <img
-    src="/icons/warning-icon.png"        // ← public/icons/warning-icon.png
+    src="/warning-icon.png"        // ← public/warning-icon.png
     alt="注意"
     className="w-6 h-6 object-contain select-none pointer-events-none"
     aria-hidden
@@ -116,7 +116,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
           "
         >
           <div className="flex items-start gap-2 mb-2">
-            <img src="/icons/mic-red.png" alt="Mic" className="w-6 h-6" />
+            <img src="/mic-red.png" alt="Mic" className="w-6 h-6" />
           </div>
           <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
             {message}

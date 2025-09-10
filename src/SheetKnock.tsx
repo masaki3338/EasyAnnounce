@@ -28,7 +28,7 @@ const IconGym = () => (
 );
 const IconAlert: React.FC = () => (
   <img
-    src="/icons/warning-icon.png"        // ← public/icons/warning-icon.png
+    src="/warning-icon.png"        // ← public/warning-icon.png
     alt="注意"
     className="w-6 h-6 object-contain select-none pointer-events-none"
     aria-hidden
@@ -101,7 +101,7 @@ const MessageBlock: React.FC<{
   shadow-lg
 ">
   <div className="flex items-start gap-2 mb-2">
-    <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+    <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
     <div className="flex-1">
       {label && <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>}
       {/* ← 文言は白文字で視認性UP */}

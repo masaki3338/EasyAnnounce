@@ -3727,7 +3727,7 @@ onConfirmed?.();
           </div>
           <div className="px-4 py-3 flex items-center justify-between">
             <h3 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               交代アナウンス
             </h3>
             <button

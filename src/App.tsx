@@ -957,7 +957,7 @@ if (totalMyScore > totalOpponentScore) {
           </div>
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span>試合終了</span>
             </h2>
             <div className="w-9 h-9" />
@@ -975,7 +975,7 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（ここに読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
@@ -1073,7 +1073,7 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（ここに読み上げ/停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
@@ -1145,7 +1145,7 @@ if (totalMyScore > totalOpponentScore) {
           </div>
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span>タイブレーク開始</span>
             </h2>
             <div className="w-9 h-9" />
@@ -1157,7 +1157,7 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（ここに読み上げ/停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
@@ -1228,7 +1228,7 @@ if (totalMyScore > totalOpponentScore) {
           </div>
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span>継続試合</span>
             </h2>
             <div className="w-9 h-9" />
@@ -1240,7 +1240,7 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（読み上げ/停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 

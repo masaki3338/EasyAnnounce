@@ -776,7 +776,7 @@ const handlePitchLimitSpeak = () => {
       <section className="mb-4">
       <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
         <img
-          src="/icons/Defence.png"   // ← public/icons/Defence.png に置く
+          src="/Defence.png"   // ← public/Defence.png に置く
           alt=""
           width={24}
           height={24}
@@ -1000,7 +1000,7 @@ const handlePitchLimitSpeak = () => {
   <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     {/* 🔴 上段：マイクアイコン + 注意書き */}
     <div className="flex items-start gap-2">
-      <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
+      <img src="/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
       <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-0.5 text-sm font-semibold whitespace-nowrap leading-tight mt-[-2px]">
         <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
       </div>
@@ -1085,7 +1085,7 @@ const handlePitchLimitSpeak = () => {
           {/* 🎤 マイクアイコン + 文言エリア（薄赤） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-start gap-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
               <div className="whitespace-pre-wrap text-left min-h-[64px] font-bold text-red-700">
                 {reEntryMessage || "対象選手なし"}
               </div>
@@ -1383,7 +1383,7 @@ const handlePitchLimitSpeak = () => {
           {/* アナウンス枠（薄い赤） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-start gap-2 mb-2">
-              <img src="/icons/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 

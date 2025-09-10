@@ -17,7 +17,7 @@ const IconMegaphone = () => (
 
 const IconInfo: React.FC = () => (
   <img
-    src="/icons/warning-icon.png"        // ← public/icons/warning-icon.png
+    src="/warning-icon.png"        // ← public/warning-icon.png
     alt="注意"
     className="w-6 h-6 object-contain select-none pointer-events-none"
     aria-hidden
@@ -269,7 +269,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           "
         >
           <div className="flex items-start gap-2 mb-2">
-            <img src="/icons/mic-red.png" className="w-6 h-6" alt="Mic" />
+            <img src="/mic-red.png" className="w-6 h-6" alt="Mic" />
           </div>
 
           {/* ヘッダー文 */}
