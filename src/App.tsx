@@ -160,6 +160,24 @@ const BottomTab: React.FC<{
   );
 };
 
+useEffect(() => {
+  const warmup = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        await navigator.serviceWorker.ready.catch(() => {});
+      }
+      await Promise.all([
+        fetch('/pdf.worker.min.mjs', { cache: 'reload' }),
+        fetch('/manual.pdf', { cache: 'reload' }),
+      ]);
+      console.log('📥 PDF資産ウォームアップ完了');
+    } catch (e) {
+      console.warn('ウォームアップ失敗:', e);
+    }
+  };
+  warmup();
+}, []);
+
 
 const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [canContinue, setCanContinue] = useState(false);
