@@ -8,7 +8,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2,mp3,pdf}'],
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MBまでPDFも確実に
         clientsClaim: true,
         skipWaiting: true,
         // ★ /api/ への「ページ遷移」を SPA 殻にフォールバックしない
@@ -22,7 +25,7 @@ export default defineConfig({
           },
         ],
       },
-      includeAssets: ['favicon.svg', 'robots.txt', 'field.png', 'mic-red.png','Defence.png','Ofence.png','manual.pdf'],
+      includeAssets: ['favicon.svg', 'robots.txt', 'field.png', 'mic-red.png','Defence.png','Ofence.png','warning-icon.png','manual.pdf'],
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
