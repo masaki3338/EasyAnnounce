@@ -429,13 +429,13 @@ return (
         <div className="relative mx-6 w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden">
           {/* タイトル帯 */}
           <div className="bg-green-600 text-white text-lg font-bold text-center py-3">
-            試合開始のご案内
+            試合開始時刻の取得
           </div>
           <div className="p-5 text-center space-y-4">
             <p className="text-sm leading-relaxed">
-              球審の「プレイ」で
+              球審の”プレイ”で
               <span className="font-semibold">【試合開始】</span>
-              ボタンを押下して下さい。
+              ボタンを押して下さい。
             </p>
             <button
               onClick={proceedStart}

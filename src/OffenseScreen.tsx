@@ -963,7 +963,7 @@ const updateAnnouncement = () => {
 
   const lines: string[] = [];
   if (isLeadingBatter) {
-    lines.push(`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、`);
+    lines.push(`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br />`);
   }
 
   if (!isChecked) {

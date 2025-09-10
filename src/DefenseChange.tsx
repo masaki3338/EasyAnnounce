@@ -775,6 +775,46 @@ replace = replace.filter(r =>
 
 
 replace.forEach((r) => {
+  
+  // === REENTRY（打順ベース）早期判定：必ず通常分岐より前に置く ===
+{
+  // r.to = 元スタメン候補（例：小池）
+  const reentry_info = (usedPlayerInfo as any)?.[r.to.id];
+
+  // いま r.from（例：百目鬼）が占めている打順番号（1-based / 0=無し）
+  const reentry_fromOrder = (() => {
+    const idx = battingOrder.findIndex(e => e.id === r.from.id);
+    return idx >= 0 ? idx + 1 : 0;
+  })();
+
+  // 元スタメンの最新代替（清水など）→ その打順番号（居なければ 0）
+  const reentry_latest = reentry_info ? resolveLatestSubId(r.to.id, usedPlayerInfo) : undefined;
+  const reentry_latestOrder = (() => {
+    if (!reentry_latest) return 0;
+    const idx = battingOrder.findIndex(e => e.id === reentry_latest);
+    return idx >= 0 ? idx + 1 : 0;
+  })();
+
+  // ★打順同一ならリエントリー（守備位置は問わない）
+  const reentry_ok =
+    !!reentry_info &&
+    reentry_fromOrder > 0 &&
+    (reentry_latestOrder === reentry_fromOrder || reentry_latestOrder === 0);
+
+  if (reentry_ok) {
+    // 本文のみ。末尾の「に入ります。」は後段の整形で付与される
+    replaceLines.push(
+      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
+      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+    );
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(r.pos);
+    reentryOccurred = true;
+    return; // ← 通常の交代分岐や打順行追加へ進ませない
+  }
+}
+
   // ★ 早期分岐：代打/代走の選手に代わって、同じ守備位置へ控えが入る → 「そのまま入り」
 const pinchFromUsed = Object.values(usedPlayerInfo || {}).find(
   (x: any) => x?.subId === r.from.id && ["代打", "代走", "臨時代走"].includes(x.reason)
@@ -782,6 +822,31 @@ const pinchFromUsed = Object.values(usedPlayerInfo || {}).find(
 const isSamePosition = assignments[r.pos] === r.to.id;                 // 今その守備に入るのが to
 const toWasStarter   = Object.values(initialAssignments || {}).includes(r.to.id); // 控え（to）が元スタメンかどうか
 const toIsBenchEntry = !toWasStarter;                                   // 控え(=ベンチ)からの入場
+
+// replace.forEach((r)=>{ ... }) の冒頭（「そのまま入り」分岐より前）
+const infoForToEarly = (usedPlayerInfo as any)?.[r.to.id];
+const latestSubIdForToEarly =
+  infoForToEarly ? resolveLatestSubId(r.to.id, usedPlayerInfo) : undefined;
+const toOrigPosSymEarly = infoForToEarly
+  ? ((posNameToSymbol as any)[infoForToEarly.fromPos] ?? infoForToEarly.fromPos)
+  : undefined;
+
+const isReentryEarly =
+  !!infoForToEarly &&
+  latestSubIdForToEarly === r.from.id &&
+  toOrigPosSymEarly === r.pos;   // ← r.order には依存しない
+
+if (isReentryEarly) {
+  replaceLines.push(
+    `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+  );
+  handledPlayerIds.add(r.from.id);
+  handledPlayerIds.add(r.to.id);
+  handledPositions.add(r.pos);
+  reentryOccurred = true;
+  return;  // 以降の通常分岐へは進まない
+}
+
 
 if (pinchFromUsed && isSamePosition) {
   const orderPart = r.order > 0 ? `${r.order}番に ` : "";
@@ -814,23 +879,14 @@ if (pinchFromUsed && isSamePosition) {
     if (hasMixedToSame) return;  // ← アナウンス行・重複管理の両方をここで回避
   }
 
-// ★ ここから追加：スタメン同一打順へのリエントリー判定
+// ★ リエントリー判定（打順や理由に依存しない）
 const wasStarterTo = Object.values(initialAssignments || {}).includes(r.to.id);
 const infoForTo = (usedPlayerInfo as any)?.[r.to.id];
-const fromReason = reasonMap?.[r.from.id]; // battingOrder 由来（「代打」「代走」等）
+// 「元スタメン(to)に、かつ、その元スタメンの subId が今の from（清水など）」
+const isReentrySameOrder = !!wasStarterTo && !!infoForTo && infoForTo.subId === r.from.id;
+// デバッグ（必要なら）
+// console.debug("[REENTRY? replace]", { from: r.from.id, to: r.to.id, wasStarterTo, infoForTo, isReentrySameOrder });
 
-// 「スタメンが同じ打順の選手に戻る」= リエントリーとみなす
-const isReentrySameOrder =
-  wasStarterTo &&
-  r.order > 0 &&
-  (
-    // usedPlayerInfo で「このスタメンが以前この打順で交代された」と紐づいている
-    (infoForTo && infoForTo.subId === r.from.id)
-    // もしくは現在の“from”が代打/代走としてこの打順に入っている
-    || ["代打","代走","臨時代走"].includes(fromReason as any)
-  );
-
-// ここまで追加 ★
 
 // ★ 代打/代走の理由を堅牢に取得（usedPlayerInfo → battingOrder → reasonMap の順で拾う）
 const getPinchReasonOf = (pid: number | string): string | undefined => {
@@ -868,7 +924,7 @@ if (isReentrySameOrder) {
 }
 
 replaceLines.push(line);
-
+if (isReentrySameOrder) reentryOccurred = true; // ← 追加
 
 
   // ✅ 処理済み記録に追加
