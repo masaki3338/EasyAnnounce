@@ -22,7 +22,7 @@ export default defineConfig({
           },
         ],
       },
-      includeAssets: ['favicon.svg', 'robots.txt'],
+      includeAssets: ['favicon.svg', 'robots.txt', 'field.png', 'mic-red.png','Defence.png','Ofence.png','manual.pdf'],
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
