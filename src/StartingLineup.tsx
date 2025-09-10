@@ -150,6 +150,20 @@ useEffect(() => {
   }
 }, []);
 
+
+// ★ 追加：ドラフト（未保存でも StartGame で拾えるようにする）
+useEffect(() => {
+  localForage.setItem("startingassignments_draft", assignments);
+}, [assignments]);
+
+useEffect(() => {
+  localForage.setItem("startingBattingOrder_draft", battingOrder);
+}, [battingOrder]);
+
+useEffect(() => {
+  localForage.setItem("startingBenchOutIds_draft", benchOutIds);
+}, [benchOutIds]);
+
 // 👉 グローバル touchend：指を離した位置の守備ラベルを自動検出して入替
 useEffect(() => {
   const dropTo = (targetPlayerId: number) => {
@@ -271,6 +285,18 @@ if (initialOrder && initialOrder.length > 0) {
   loadInitialData();
 }, []);
 
+useEffect(() => {
+  const block = (e: Event) => e.preventDefault();
+  document.addEventListener("contextmenu", block, { capture: true });
+  document.addEventListener("selectstart", block, { capture: true });
+  document.addEventListener("gesturestart", block as any, { capture: true });
+
+  return () => {
+    document.removeEventListener("contextmenu", block, true);
+    document.removeEventListener("selectstart", block, true);
+    document.removeEventListener("gesturestart", block as any, true);
+  };
+}, []);
 
 
 
@@ -625,14 +651,20 @@ const handleDropToBattingOrder = (
   const availablePlayers = teamPlayers.filter((p) => !assignedIds.includes(p.id));
   const benchOutPlayers = teamPlayers.filter((p) => benchOutIds.includes(p.id));
 
-  return (
+return (
  <div
    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6 select-none"
    style={{
      paddingTop: "max(16px, env(safe-area-inset-top))",
      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+     WebkitTouchCallout: "none",  // ← 追加
+     WebkitUserSelect: "none",    // ← 追加
+     userSelect: "none",          // ← 追加
    }}
+   onContextMenu={(e) => e.preventDefault()} // ← 追加
+   onSelectStart={(e) => e.preventDefault()} // ← 追加
  >
+
  <div className="mt-3 text-center select-none mb-2">
    <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden><path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z"/></svg>
@@ -668,10 +700,12 @@ const handleDropToBattingOrder = (
      <h2 className="font-semibold text-white">フィールド配置</h2>
    </div>
    <div className="relative">
-          <img
-            src="/field.png"
-            alt="フィールド図"
-            className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
+    <img
+      src="/field.png"
+      alt="フィールド図"
+      draggable={false}   // ← 追加
+      className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
+
 {allSlots.map((pos) => {
   const playerId = assignments[pos];
   const player = teamPlayers.find((p) => p.id === playerId);

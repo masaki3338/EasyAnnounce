@@ -77,97 +77,73 @@ const StartGame = ({
   // 「試合開始」押下時に出す案内モーダルの表示フラグ
   const [showStartHint, setShowStartHint] = useState(false);
 
-  // 画面を開いたら、スタメン守備を lineupAssignments に確定保存
+
+
 useEffect(() => {
-  (async () => {
-    // 進行中の試合があれば触らない（任意の安全ガード）
-    const inProgress = await localForage.getItem("lastBatterIndex");
-    if (inProgress != null) return;
+  const loadData = async () => {
+    const matchInfo = await localForage.getItem("matchInfo");
 
-    // startingassignments を最優先で採用（無ければ既存 lineupAssignments）
-    const src =
+    // ▼▼▼ ここから置換：assign / order / benchOutIds を draft 優先で取得 ▼▼▼
+    const assign =
+      (await localForage.getItem<Record<string, number | null>>("startingassignments_draft")) ??
       (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
-      (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ??
-      {};
+      (await localForage.getItem<Record<string, number | null>>("lineupAssignments"));
 
-    // 文字列IDが混じっても壊れないように正規化（null はそのまま）
-    const normalized = Object.fromEntries(
-      Object.entries(src).map(([pos, v]) => [pos, v == null ? null : Number(v)])
-    ) as Record<string, number | null>;
+    const order =
+      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder_draft")) ??
+      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder")) ??
+      (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder"));
 
-    // offense/defense 画面の基準に確定保存
-    await localForage.setItem("lineupAssignments", normalized);
+    const sb = await localForage.getItem<number[]>("startingBenchOutIds_draft");
+    const fb = await localForage.getItem<number[]>("startingBenchOutIds"); // 従来保存
+    const ob = await localForage.getItem<number[]>("benchOutIds");         // 旧フォールバック
+    const raw = Array.isArray(sb) ? sb : Array.isArray(fb) ? fb : Array.isArray(ob) ? ob : [];
+    const normalizedBenchOut = [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v)))];
+    setBenchOutIds(normalizedBenchOut);
+    // ▲▲▲ ここまで置換 ▲▲▲
 
-    // （画面内表示にも使っているなら）state にも反映
-    try {
-      // setAssignments が同コンポーネントで定義されている前提
-      // 無い場合はこの2行は削ってOK
-      // @ts-ignore
-      setAssignments(normalized);
-    } catch {}
-  })();
+    const team = await localForage.getItem("team");
+    if (team && typeof team === "object") {
+      setTeamName((team as any).name || "");
+      const playersWithName = (team as any).players.map((p: any) => ({
+        id: Number(p.id),
+        number: p.number,
+        name: `${p.lastName ?? ""}${p.firstName ?? ""}`,
+      }));
+      setPlayers(playersWithName);
+    }
+
+    if (matchInfo && typeof matchInfo === "object") {
+      const mi = matchInfo as any;
+      setOpponentName(mi.opponentTeam || "");
+      setFirstBaseSide(mi.benchSide === "3塁側" ? "3塁側" : "1塁側");
+      setIsFirstAttack(mi.isHome === false);
+      setIsTwoUmpires(Boolean(mi.twoUmpires));
+      if (Array.isArray(mi.umpires)) {
+        const umpireMap: { [key: string]: string } = {};
+        mi.umpires.forEach((u: { role: string; name: string }) => {
+          umpireMap[u.role] = u.name || "";
+        });
+        setUmpires(umpireMap);
+      }
+    }
+
+    if (assign && typeof assign === "object") {
+      const normalizedAssign: { [pos: string]: number | null } = {};
+      Object.entries(assign).forEach(([pos, id]) => {
+        normalizedAssign[pos] = id !== null ? Number(id) : null;
+      });
+      setAssignments(normalizedAssign);
+    }
+
+    if (Array.isArray(order)) {
+      setBattingOrder(order as { id: number; reason: string }[]);
+    }
+  };
+
+  loadData();
 }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const matchInfo = await localForage.getItem("matchInfo");
-      // 変更後（starting を最優先に、無ければ従来キーを使う）
-      const assign =
-        (await localForage.getItem<Record<string, number|null>>("startingassignments")) ??
-        (await localForage.getItem<Record<string, number|null>>("lineupAssignments"));
-
-      const order =
-        (await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder")) ??
-        (await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder"));
-            const team = await localForage.getItem("team");
-
-      const sb = await localForage.getItem<number[]>("startingBenchOutIds");
-      const fb = await localForage.getItem<number[]>("benchOutIds");
-      const raw = Array.isArray(sb) ? sb : Array.isArray(fb) ? fb : [];
-      // 念のため number 正規化＆重複除去
-      const normalized = [...new Set(raw.map((v) => Number(v)).filter((v) => Number.isFinite(v)))];
-      setBenchOutIds(normalized);
-
-      if (team && typeof team === "object") {
-        setTeamName((team as any).name || "");
-        const playersWithName = (team as any).players.map((p: any) => ({
-          id: Number(p.id),
-          number: p.number,
-          name: `${p.lastName ?? ""}${p.firstName ?? ""}`,
-        }));
-        setPlayers(playersWithName);
-      }
-
-      if (matchInfo && typeof matchInfo === "object") {
-        const mi = matchInfo as any;
-        setOpponentName(mi.opponentTeam || "");
-        setFirstBaseSide(mi.benchSide === "3塁側" ? "3塁側" : "1塁側");
-        setIsFirstAttack(mi.isHome === false); // 先攻 = isHomeがfalse
-        setIsTwoUmpires(Boolean(mi.twoUmpires));  
-        if (Array.isArray(mi.umpires)) {
-          const umpireMap: { [key: string]: string } = {};
-          mi.umpires.forEach((u: { role: string; name: string }) => {
-            umpireMap[u.role] = u.name || "";
-          });
-          setUmpires(umpireMap);
-        }
-      }
-
-      if (assign && typeof assign === "object") {
-        const normalizedAssign: { [pos: string]: number | null } = {};
-        Object.entries(assign).forEach(([pos, id]) => {
-          normalizedAssign[pos] = id !== null ? Number(id) : null;
-        });
-        setAssignments(normalizedAssign);
-      }
-
-      if (Array.isArray(order)) {
-        setBattingOrder(order as { id: number; reason: string }[]);
-      }
-    };
-
-    loadData();
-  }, []);
 
   const getPlayer = (id: number | null) => {
     if (id === null || isNaN(id)) return undefined;
@@ -201,11 +177,56 @@ const proceedStart = async () => {
   await localForage.removeItem("announcedIds");
   // 出場済み（リエントリー判定などに使う）をクリア
   await localForage.removeItem("usedPlayerInfo");
+// === スタメンを「保存した状態」にする（StartingLineupの保存と同等） ===
 
-  // …（あなたの元コードと同じ初期化を続ける）
-  // batttingOrder の正規化保存、scores の初期化、matchInfo の保存、
-  // usedPlayerInfo / runnerAssignments / lineupAssignments の保存、
-  // clearUndoRedoHistory() など、元の handleStart にあった処理をここへ移動
+// 1) 採用する元データ（draft > saved > state > old）
+const draftA = await localForage.getItem<Record<string, number | null>>("startingassignments_draft");
+const savedA = await localForage.getItem<Record<string, number | null>>("startingassignments");
+const stateA = assignments; // ← StartGame画面に表示されているもの
+const oldA   = await localForage.getItem<Record<string, number | null>>("lineupAssignments");
+const adoptA = draftA ?? savedA ?? stateA ?? oldA ?? {};
+const normA: Record<string, number | null> = Object.fromEntries(
+  Object.entries(adoptA).map(([k, v]) => [k, v == null ? null : Number(v)])
+);
+
+const draftO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder_draft");
+const savedO = await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder");
+const stateO = battingOrder; // ← StartGame画面に表示されている打順
+const oldO   = await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder");
+let adoptO = draftO ?? savedO ?? stateO ?? oldO ?? [];
+
+// 打順が空なら守備から暫定生成（DH考慮：投手を外してDHを入れる）
+if (!Array.isArray(adoptO) || adoptO.length === 0) {
+  const DH = "指";
+  const positions = ["投","捕","一","二","三","遊","左","中","右"];
+  const dhId = normA[DH] ?? null;
+  const orderPositions = dhId ? [...positions.filter(p => p !== "投"), DH] : [...positions];
+  const ids = orderPositions
+    .map(p => normA[p])
+    .filter((id): id is number => typeof id === "number");
+  adoptO = ids.slice(0, 9).map(id => ({ id, reason: "スタメン" }));
+}
+
+// ベンチ外
+const draftB = await localForage.getItem<number[]>("startingBenchOutIds_draft");
+const savedB = await localForage.getItem<number[]>("startingBenchOutIds");
+const adoptB = Array.isArray(draftB) ? draftB : Array.isArray(savedB) ? savedB : Array.isArray(benchOutIds) ? benchOutIds : [];
+
+// 2) 「スタメン保存」と同じキーに確定保存（StartingLineup.tsxのsaveAssignments相当）
+await localForage.setItem("startingassignments",    normA);
+await localForage.setItem("startingBattingOrder",   adoptO);
+await localForage.setItem("startingBenchOutIds",    adoptB);
+
+// 3) ミラー（他画面が確実に読む“公式キー”）
+await localForage.setItem("lineupAssignments",      normA);
+await localForage.setItem("battingOrder",           adoptO);
+await localForage.setItem("benchOutIds",            adoptB);
+
+// 4) 使い終わったドラフトは掃除（任意）
+await localForage.removeItem("startingassignments_draft");
+await localForage.removeItem("startingBattingOrder_draft");
+await localForage.removeItem("startingBenchOutIds_draft");
+
 
   // ★ 相手チーム名など既存の情報は残しつつ、回・表裏・攻守だけ初期化
   const prev = (await localForage.getItem("matchInfo")) || {};

@@ -4,11 +4,15 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { useDrag } from "react-dnd";
 
-
-
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { useMemo } from "react"; //
+
+const IconMic = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+  </svg>
+);
 
 let ChangeFlg = 0; // 初期値
 
@@ -448,13 +452,11 @@ if (isBOnField) continue;
     // ✅ 文言を切り替える
     const reasonText = entry.reason === "代打" ? "代打致しました" : "代走致しました";
 
-    // 1行目：控えが別守備に入る
-const movedOrder2 = battingOrder.findIndex(e => e.id === movedPlayer.id) + 1;
-const ordText = movedOrder2 > 0 ? `${movedOrder2}番に ` : "";
-lines.push(
-  `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
-  `${ordText}${fullNameHonor(subIn)} が入り ${posJP[subInPos]}、`
-);
+    // 1行目：控えが別守備に入る（★打順は書かない）
+    lines.push(
+      `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
+      `${fullNameHonor(subIn)} が入り ${posJP[subInPos]}、`
+    );
 
 
     // 2行目：元選手が元ポジへシフト
@@ -472,23 +474,28 @@ lines.push(
     // ✅ 代打/代走本人は通常処理に回さない
     handledIds.add(entry.id);
 
-    // 打順行
-  // 打順行は lines ではなく lineupLines に積む（あとで一括出力）
+// 打順行
+// 打順行は lines ではなく lineupLines に積む（あとで一括出力）
 const lineup: { order: number; txt: string }[] = [];
-const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
-if (movedOrder >= 0) {
+
+// ★ subIn（控え）の打順は「代打エントリ(entry.id)の打順」を使う
+const pinchOrderIdx = battingOrder.findIndex(e => e.id === entry.id); // 例：6番なら 5
+if (pinchOrderIdx >= 0) {
   lineup.push({
-    order: movedOrder + 1,
-    txt: `${movedOrder + 1}番 ${posJP[subInPos]} ${fullNameHonor(subIn)} 背番号 ${subIn.number}`,
+    order: pinchOrderIdx + 1,
+    txt: `${pinchOrderIdx + 1}番 ${posJP[subInPos]} ${fullNameHonor(subIn)} 背番号 ${subIn.number}`,
   });
 }
 
+// ★ movedPlayer（元の5番など）は自分の打順のまま、移動後の守備を出す
+const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
 if (movedOrder >= 0) {
   lineup.push({
     order: movedOrder + 1,
     txt: `${movedOrder + 1}番 ${posJP[movedToPos]} ${lastWithHonor(movedPlayer)}`,
   });
 }
+
 
 // ここで lineupLines に移す（重複防止つき）
 lineup.forEach(l => {
@@ -3699,86 +3706,90 @@ onConfirmed?.();
 
 
     {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
-    {showSaveModal && (
-      <div className="fixed inset-0 z-50">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-        <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
-          <div
-            className="
-              bg-white shadow-2xl
-              rounded-2xl
-              w-full md:max-w-md
-              max-h-[85vh]
-              overflow-hidden flex flex-col
-            "
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-          >
-            {/* ヘッダー（グラデ＋白文字＋ハンドル） */}
-            <div className="sticky top-0 z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
-              <div className="h-5 flex items-center justify-center">
-                <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
-              </div>
-              <div className="px-4 py-3 flex items-center justify-between">
-                <h3 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-                  <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
-                  アナウンス
-                </h3>
-                <button
-                  onClick={() => { setShowSaveModal(false); navigate(-1); }}
-                  aria-label="閉じる"
-                  className="rounded-full w-9 h-9 flex items-center justify-center
-                             bg-white/15 hover:bg-white/25 active:bg-white/30
-                             text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
+{showSaveModal && (
+  <div className="fixed inset-0 z-50">
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="
+          bg-white shadow-2xl
+          rounded-2xl
+          w-full md:max-w-md
+          max-h-[85vh]
+          overflow-hidden flex flex-col
+        "
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h3 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
+              <img src="/icons/mic-red.png" alt="mic" className="w-6 h-6" />
+              交代アナウンス
+            </h3>
+            <button
+              onClick={() => { setShowSaveModal(false); navigate(-1); }}
+              aria-label="閉じる"
+              className="rounded-full w-9 h-9 flex items-center justify-center
+                         bg-white/15 hover:bg-white/25 active:bg-white/30
+                         text-white text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            >
+              ×
+            </button>
+          </div>
+        </div>
 
-            {/* 本文（スクロール領域） */}
-            <div className="px-4 py-3 overflow-y-auto flex-1">
-              {announcementText && (
-                <div className="px-4 py-3 border rounded-xl bg-white">
-                  <div
-                    ref={modalTextRef}
-                    className="text-rose-600 text-lg font-bold whitespace-pre-wrap"
-                    dangerouslySetInnerHTML={{ __html: announcementText }}
-                  />
-                </div>
-              )}
-            </div>
+        {/* 本文（スクロール領域） */}
+        <div className="px-4 py-3 overflow-y-auto flex-1">
+          {announcementText && (
+            <div className="px-4 py-3 border border-red-500 bg-red-200 text-red-700 rounded-xl">
+              <div
+                ref={modalTextRef}
+                className="text-rose-600 text-lg font-bold whitespace-pre-wrap"
+                dangerouslySetInnerHTML={{ __html: announcementText }}
+              />
 
-            {/* フッター操作（常に見える） */}
-            <div className="px-4 pb-4">
-              <div className="flex justify-center gap-3">
+              {/* 🔴 ボタンを赤枠内に配置 */}
+              <div className="flex gap-4 mt-4 w-full">
                 <button
                   onClick={speakVisibleAnnouncement}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-[0.98] transition"
+                  className="flex-1 flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-xl shadow"
                 >
-                  読み上げ
+                  {/* マイクアイコン */}    
+                   <IconMic /> 読み上げ
                 </button>
+
                 <button
                   onClick={stopSpeaking}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md active:scale-[0.98] transition"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-xl shadow"
                 >
                   停止
                 </button>
               </div>
-
-              <button
-                className="mt-3 w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-[0.98] transition"
-                onClick={() => {
-                  setShowSaveModal(false);
-                  navigate(-1);
-                }}
-              >
-                閉じる
-              </button>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* フッター：閉じるだけ残す */}
+        <div className="px-4 pb-4">
+          <button
+            className="mt-3 w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-[0.98] transition"
+            onClick={() => {
+              setShowSaveModal(false);
+              navigate(-1);
+            }}
+          >
+            閉じる
+          </button>
         </div>
       </div>
-    )}
+    </div>
+  </div>
+)}
+
   </div>
 );
 

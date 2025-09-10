@@ -2145,7 +2145,9 @@ onClick={async () => {
                   {selectedSubPlayer?.firstName}
                   <rt>{selectedSubPlayer?.firstNameKana}</rt>
                 </ruby>{" "}
-                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、バッターは{" "}
+                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、
+                  <br /> {/* 👈 ここを追加 */}
+                  バッターは{" "}
                 <ruby>
                   {selectedSubPlayer?.lastName}
                   <rt>{selectedSubPlayer?.lastNameKana}</rt>
@@ -2168,8 +2170,8 @@ onClick={async () => {
                   const honorific = sub.isFemale ? "さん" : "くん";
                   const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
                   announce(
-                    `${currentBatterIndex + 1}番 ${kanaCurrent} ${honorificBef} に代わりまして、` +
-                    `${kanaSubFull} ${honorific}、バッターは ${kanaSubLast} ${honorific}、背番号 ${sub.number}`
+                    `${currentBatterIndex + 1}番 ${kanaCurrent} ${honorificBef} に代わりまして、${kanaSubFull} ${honorific}、` +
+                    `バッターは ${kanaSubLast} ${honorific}、背番号 ${sub.number}`
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
