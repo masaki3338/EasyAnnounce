@@ -8,12 +8,6 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-import './pdfWorkerSetup';
-
-import { Worker, Viewer } from '@react-pdf-viewer/core';
-import '@react-pdf-viewer/core/lib/styles/index.css';
-
-
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
@@ -160,24 +154,6 @@ const BottomTab: React.FC<{
   );
 };
 
-useEffect(() => {
-  const warmup = async () => {
-    try {
-      if ('serviceWorker' in navigator) {
-        await navigator.serviceWorker.ready.catch(() => {});
-      }
-      await Promise.all([
-        fetch('/pdf.worker.min.mjs', { cache: 'reload' }),
-        fetch('/manual.pdf', { cache: 'reload' }),
-      ]);
-      console.log('📥 PDF資産ウォームアップ完了');
-    } catch (e) {
-      console.warn('ウォームアップ失敗:', e);
-    }
-  };
-  warmup();
-}, []);
-
 
 const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [canContinue, setCanContinue] = useState(false);
@@ -226,7 +202,7 @@ return (
           onClick={() => onNavigate("teamRegister")}
           className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
         >
-          <div className="text-2xl">🧑‍🤝‍🧑</div>
+          <div className="text-2xl">🧢</div>
           <div className="mt-2 font-bold">チーム・選手登録</div>
           <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
         </button>

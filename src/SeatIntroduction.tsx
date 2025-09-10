@@ -234,7 +234,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
         >
           <div className="flex items-start gap-2 mb-2">
             <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-            <div className="text-rose-50/90 text-[11px]">アナウンス文言（表示どおり読み上げ）</div>
+            <div className="text-rose-50/90 text-[11px]">アナウンス文言</div>
           </div>
 
           <div
