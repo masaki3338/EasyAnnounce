@@ -69,6 +69,43 @@ const posNameToSymbol: Record<string, string> = {
   指名打者: "指",
 };
 
+// ★ 最新ID(=いまフィールドに出る toId) から “元スタメンのID” を逆引き
+// 最新ID (latestId) から“元スタメンのID”を逆引きする（型揃え & フォールバック強化版）
+const resolveOriginalStarterId = (
+  latestId: number,
+  usedInfo: Record<string, any>,
+  initialAssign: Record<string, number>
+): number | null => {
+  const latest = Number(latestId);
+
+  // 1) 初期スタメン表そのものに含まれていれば元スタメン確定
+  const starterSet = new Set(Object.values(initialAssign || {}).map((v) => Number(v)));
+  if (starterSet.has(latest)) return latest;
+
+  // 2) usedPlayerInfo の“キー”に latest が存在する場合も元スタメン確定（あなたのログのケース）
+  if (usedInfo && Object.prototype.hasOwnProperty.call(usedInfo, String(latest))) {
+    return latest;
+  }
+
+  // 3) 元ID→最新ID のチェーンを追跡して latest と一致するものを探す
+  for (const [origIdStr, info] of Object.entries(usedInfo || {})) {
+    const orig = Number(origIdStr);
+
+    // subId のチェーンを辿る（存在しなければ自分自身）
+    let cur = Number((info as any)?.subId ?? orig);
+    let guard = 20; // 無限ループ防止
+    while (
+      guard-- > 0 &&
+      usedInfo[String(cur)] &&
+      (usedInfo[String(cur)] as any)?.subId != null
+    ) {
+      cur = Number((usedInfo[String(cur)] as any).subId);
+    }
+    if (cur === latest) return orig;
+  }
+
+  return null;
+};
 
 // ─────────────────────────────────────────────
 // 代打/代走の“連鎖”を末端まで辿って最終subIdを返す
@@ -121,8 +158,15 @@ const generateAnnouncementText = (
   assignments: Record<string, number | null> = {},
   teamPlayers: Player[] = [],
   initialAssignments: Record<string, number | null> = {},
-  usedPlayerInfo: Record<number, UsedPlayerInfo> = {}
+  usedPlayerInfo: Record<number, UsedPlayerInfo> = {},
+  reentryPreviewIds: Set<number> = new Set(),   // ★ 追加
+  reentryFixedIds:   Set<number> = new Set()    // ★ 追加
 ): string => {
+
+   // ★ 追加：UIが青（preview or fixed）なら確定前でも「リエントリーで …」
+    const isReentryBlue = (pid: number) =>
+  reentryPreviewIds.has(pid) || reentryFixedIds.has(pid);
+
   /* ---------- 前処理 ---------- */
   const posJP: Record<string, string> = {
     投: "ピッチャー", 捕: "キャッチャー", 一: "ファースト", 二: "セカンド",
@@ -775,7 +819,18 @@ replace = replace.filter(r =>
 
 
 replace.forEach((r) => {
-  
+
+  if (isReentryBlue(r.to.id)) {
+    replaceLines.push(
+      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
+      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+    );
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(r.pos);
+    reentryOccurred = true;
+    return; // ← 通常の交代分岐へ進ませない
+  }
   // === REENTRY（打順ベース）早期判定：必ず通常分岐より前に置く ===
 {
   // r.to = 元スタメン候補（例：小池）
@@ -949,6 +1004,7 @@ if (r.order > 0 && !lineupLines.some(l =>
 
 });
 
+
 // ✅ アナウンス出力
 // ✅ アナウンス出力（「そのまま入り …」は末尾を句点にする）
 if (replaceLines.length === 1) {
@@ -979,6 +1035,37 @@ if (replaceLines.length === 1) {
 
 
 mixed.forEach((r, i) => {
+
+    // ★ 追加：UIが青（preview or fixed）なら、確定前でも「リエントリーで …」
+  if (isReentryBlue(r.to.id)) {
+    const orderPart = r.order > 0 ? `${r.order}番に ` : "";
+    // 例：「ライトの奥村くんに代わりまして、リエントリーで小池くんがライトへ」
+    addReplaceLine(
+      `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、` +
+      `${orderPart}${lastWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
+      i === mixed.length - 1 && shift.length === 0
+    );
+
+    // 打順行（重複防止つき）
+    if (
+      r.order > 0 &&
+      !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]))
+    ) {
+      lineupLines.push({
+        order: r.order,
+        text: `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
+      });
+    }
+
+    // 後続の通常分岐に流さないための処理済みマーキング
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(r.toPos);
+    reentryOccurred = true;
+    return; // ← ここで mixed の通常処理には進ませない
+  }
+
+
   // ✅ 重複防止：選手IDと「移動先」だけを見る（移動元は塞がない）
   if (
     handledPlayerIds.has(r.from.id) ||
@@ -1639,6 +1726,13 @@ const speakVisibleAnnouncement = () => {
     });
   }, []);
 
+  useEffect(() => {
+  (async () => {
+    const s = await localForage.getItem<{ id: number; reason?: string }[]>("startingBattingOrder");
+    startingOrderRef.current = Array.isArray(s) ? s : [];
+  })();
+}, []);
+
   // 画面に入ったら永続化された履歴を読み込む（守備画面→戻ってきた時もOK）
 useEffect(() => {
   let mounted = true;
@@ -1656,6 +1750,21 @@ useEffect(() => {
   const hasDH = Boolean(assignments?.["指"]);
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [battingOrder, setBattingOrder] = useState<{ id: number; reason: string }[]>([]); // ✅ 攻撃画面の打順
+  // ★ 打順：確定待ちでも即時に変わる“ドラフト”用
+const [battingOrderDraft, setBattingOrderDraft] =
+  useState<{ id: number; reason: string }[]>([]);
+
+// ★ リエントリー可視化用：直前ドロップで青枠にする選手IDを保持
+const [reentryPreviewIds, setReentryPreviewIds] = useState<Set<number>>(new Set());
+// ★ リエントリー可視化（永続）: 一度成立したら保持
+const [reentryFixedIds, setReentryFixedIds] = useState<Set<number>>(new Set());
+// 青枠＝プレビュー or 確定のどちらかに含まれていれば true
+const isReentryBlueId = (id: number) => reentryPreviewIds.has(id) || reentryFixedIds.has(id);
+
+
+// ★ スタメン時の打順（不変）を保持して即参照できるように
+const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
+
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
@@ -1940,7 +2049,8 @@ for (const [originalIdStr, info] of Object.entries(usedInfo)) {
  }
 
     // ステート更新
-    setBattingOrder(order);
+    setBattingOrder(order);          // ← 既存
+    setBattingOrderDraft(order);     // ← 追加：確定前用も同じ値で初期化
     setInitialAssignments(originalAssignments);
     setUsedPlayerInfo(usedInfo);
     setAssignments(newAssignments);
@@ -2182,15 +2292,19 @@ let reentryLines: string[] = [];
 // ▼ ここは既存の changes 構築（battingOrder を走査して replace/mixed/shift を埋める）をそのまま維持
 
 // 既存：通常のアナウンス文
-const normalText = generateAnnouncementText(
+const normalText = generateAnnouncementText(  
   changes,
   teamName,
   battingOrder,
   assignments,
   teamPlayers,
   initialAssignments,
-  usedPlayerInfo
+  usedPlayerInfo,
+  reentryPreviewIds,     // ★ 追加
+  reentryFixedIds        // ★ 追加
 );
+
+
 // ★ 追加：DH解除押下中は、ヘッダー行の「直後」に告知文を挿入する
 const injectDhDisabledAfterHeader = (txt: string) => {
   if (!dhDisableDirty) return txt;
@@ -2408,6 +2522,107 @@ const handlePositionDragStart = (
 
   const handleDrop = (toPos: string, e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+// ==== 入口ログ（必ず出る）====
+let srcFrom = draggingFrom; // 以降は srcFrom を使う
+let dt:any = null, dtFrom:string|undefined, dtPid:string|undefined;
+
+try {
+  dt = e?.dataTransfer || null;
+  dtFrom = dt?.getData?.("fromPos") ?? dt?.getData?.("fromPosition");
+  dtPid  = dt?.getData?.("playerId") || dt?.getData?.("text/plain");
+  console.log("📥 handleDrop ENTER", {
+    toPos,
+    draggingFrom,
+    hasDataTransfer: !!dt,
+    dt: { fromPos: dtFrom, playerId: dtPid }
+  });
+} catch (err) {
+  console.warn("📥 handleDrop ENTER (dt read error)", err);
+}
+
+// ==== draggingFrom の補完＆正規化（「控え」もベンチ扱いにする）====
+const normalizeFrom = (s?: string | null) => {
+  if (!s) return s;
+  return /^(控え|ベンチ|bench)$/i.test(s) ? "ベンチ" : s;
+};
+srcFrom = normalizeFrom(srcFrom);
+const dtFromNorm = normalizeFrom(dtFrom);
+
+if (!srcFrom && dtFromNorm) srcFrom = dtFromNorm;              // DnD経由
+if (!srcFrom && touchDrag?.fromPos) srcFrom = normalizeFrom(String(touchDrag.fromPos)); // タッチ経由
+if (!srcFrom && dtPid) srcFrom = "ベンチ";                      // playerIdだけ来ている＝ベンチ発の可能性大
+
+console.log("🧭 SOURCE RESOLVED", { srcFrom });
+
+// ==== 判定プレチェック（ここで必ず toId / fromId を決める）====
+// フィールド発かどうかは「assignments にキーが存在するか」で判定
+const fromIsField = !!srcFrom && (srcFrom in assignments);
+
+// ベンチ発なら dataTransfer の playerId、フィールド発なら assignments[srcFrom]
+const toId =
+  fromIsField
+    ? (assignments[srcFrom as keyof typeof assignments] ?? null)
+    : Number(dtPid);
+
+const fromId = assignments[toPos] ?? null; // ここが null だと“空き枠ドロップ”
+
+console.log("🧾 判定プレチェック", {
+  toPos,
+  srcFrom,
+  fromIsField,
+  toId,
+  fromId,
+  note: fromId == null ? "fromId=null（空き枠へドロップ）→ リエントリー判定は未実施" : "fromIdあり（置き換え）"
+});
+
+// ==== v2 リエントリー判定（元スタメンかつ、スタメン時打順の現（ドラフト）入居者が fromId）====
+// ==== v2 リエントリー判定 ====
+setReentryPreviewIds(new Set()); // 前回の青枠クリア
+
+const isNumber = (v:any): v is number => typeof v === "number";
+let isReentryNow = false;
+let startIdx = -1;
+let wasStarter = false;
+let liveIdAtSlot: number | undefined = undefined;
+
+if (isNumber(toId) && isNumber(fromId)) {
+  // ★ 差し替え：強化版逆引きで“元スタメンID”を取得
+  const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
+  wasStarter = origIdForTo !== null;
+
+  // スタメン時打順スロット（0-based）
+  startIdx = wasStarter
+    ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
+    : -1;
+
+  // そのスロットの現（ドラフト）入居者が fromId か？
+  liveIdAtSlot = startIdx >= 0 ? battingOrderDraft[startIdx]?.id : undefined;
+  const sameBattingSlot = isNumber(liveIdAtSlot) && liveIdAtSlot === fromId;
+
+  isReentryNow = wasStarter && sameBattingSlot;
+
+  console.log("🧪 リエントリー判定(v2)", {
+    toId, fromId, wasStarter, origIdForTo, startIdx, liveIdAtSlot, sameBattingSlot, isReentryNow
+  });
+
+  if (isReentryNow) {
+    setReentryPreviewIds(new Set([toId])); // 最新IDを青枠化
+    setReentryFixedIds(prev => {
+      const next = new Set(prev); next.add(Number(toId));
+      console.log("🔵 固定青枠に登録", { id: Number(toId), fixed: Array.from(next) });
+      return next;
+    });
+
+    console.log("🔵 リエントリー成立（青枠）", { reentryToId: toId, origIdForTo, slot: startIdx + 1 });
+  }
+}
+
+
+// ↓↓↓ この後の既存処理（setAssignments など）は “上で算出した toId/fromId/srcFrom” を使う ↓↓↓
+
+
+    // ---- ここまで追加（判定・青枠・ログ）----
+
     if (!draggingFrom) return;
 
     // 『指』にドロップされたら、DH解除の保留を取り消す（＝DH継続に戻す）
@@ -2432,42 +2647,42 @@ const handlePositionDragStart = (
         setDhDisableDirty(true); // アナウンスに「DH解除」を差し込む
 
 
-    // 4) 退場した選手の“打順”の表示：
-    //    投手の重複を避けて「現在 1〜9番に入っていない“元スタメン”の野手」を優先して入れる。
-    //    （該当者がいない場合のみ投手を採用）
-    const nextAssignments = next; // この時点で next が最新配置
-    const battingStarterIds = new Set(battingOrder.map(e => e.id));
-    const starterIds = new Set(
-      Object.values(initialAssignments).filter((v): v is number => typeof v === "number")
-    );
-    const currentPitcherId: number | null = (toPos === "投" ? dhId : prev["投"]) ?? null;
+      // 4) 退場した選手の“打順”の表示：
+      //    投手の重複を避けて「現在 1〜9番に入っていない“元スタメン”の野手」を優先して入れる。
+      //    （該当者がいない場合のみ投手を採用）
+      const nextAssignments = next; // この時点で next が最新配置
+      const battingStarterIds = new Set(battingOrder.map(e => e.id));
+      const starterIds = new Set(
+        Object.values(initialAssignments).filter((v): v is number => typeof v === "number")
+      );
+      const currentPitcherId: number | null = (toPos === "投" ? dhId : prev["投"]) ?? null;
 
-    // 今フィールドにいるID（nextベース）
-    const onFieldIds = new Set(
-      Object.values(nextAssignments).filter((v): v is number => typeof v === "number")
-    );
+      // 今フィールドにいるID（nextベース）
+      const onFieldIds = new Set(
+        Object.values(nextAssignments).filter((v): v is number => typeof v === "number")
+      );
 
-    // 候補: “元スタメン”かつ “現在1〜9番に入っていない” かつ “今フィールドにいる” かつ “投手ではない”
-    const nonPitcherNonBattingStarters = Array.from(starterIds).filter(id =>
-      !battingStarterIds.has(id) &&
-      onFieldIds.has(id) &&
-      id !== currentPitcherId
-    );
+      // 候補: “元スタメン”かつ “現在1〜9番に入っていない” かつ “今フィールドにいる” かつ “投手ではない”
+      const nonPitcherNonBattingStarters = Array.from(starterIds).filter(id =>
+        !battingStarterIds.has(id) &&
+        onFieldIds.has(id) &&
+        id !== currentPitcherId
+      );
 
-    // 置換を入れる打順スロット（退場した元先発のスロット）
-    const idx = battingOrder.findIndex(e => e.id === replacedId);
-    if (idx >= 0) {
       // 置換を入れる打順スロット（退場した元先発のスロット）
       const idx = battingOrder.findIndex(e => e.id === replacedId);
       if (idx >= 0) {
-        const candidateId = currentPitcherId; // ← 常に投手を入れる（DH解除規則）
-        if (typeof candidateId === "number") {
-          const candidate = teamPlayers.find(tp => tp.id === candidateId);
-          if (candidate) {
-            setBattingReplacements(prevRep => ({ ...prevRep, [idx]: candidate }));
+        // 置換を入れる打順スロット（退場した元先発のスロット）
+        const idx = battingOrder.findIndex(e => e.id === replacedId);
+        if (idx >= 0) {
+          const candidateId = currentPitcherId; // ← 常に投手を入れる（DH解除規則）
+          if (typeof candidateId === "number") {
+            const candidate = teamPlayers.find(tp => tp.id === candidateId);
+            if (candidate) {
+              setBattingReplacements(prevRep => ({ ...prevRep, [idx]: candidate }));
+            }
           }
         }
-      }
 
       if (typeof candidateId === "number") {
         const candidate = teamPlayers.find(tp => tp.id === candidateId);
@@ -2484,7 +2699,18 @@ const handlePositionDragStart = (
 
         return next;
       });
-
+      // ---- assignments 更新の直後に追加 ----
+      if (isNumber(toId) && isNumber(fromId)) {
+        setBattingOrderDraft((prev) => {
+          const next = [...prev];
+          const idx = next.findIndex((e) => e.id === fromId);
+          if (idx >= 0) {
+            next[idx] = { ...next[idx], id: toId };
+            console.log("✍️ ドラフト打順更新", { slot: idx + 1, fromId, toId, next });
+          }
+          return next;
+        });
+      }
       setDraggingFrom(null);
       return;
     }
@@ -2877,6 +3103,18 @@ if (wasPrevDH) {
     }
       return prev;
     });
+    // ---- assignments 更新の直後に追加 ----
+    if (isNumber(toId) && isNumber(fromId)) {
+      setBattingOrderDraft((prev) => {
+        const next = [...prev];
+        const idx = next.findIndex((e) => e.id === fromId);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], id: toId };
+          console.log("✍️ ドラフト打順更新", { slot: idx + 1, fromId, toId, next });
+        }
+        return next;
+      });
+    }
 
     setDraggingFrom(null);
   };
@@ -3225,80 +3463,86 @@ onConfirmed?.();
           />
 
           {/* 通常の描画（スタメンや通常交代） */}
-          {positions.map((pos) => {
-            const currentId = assignments[pos];
-            const initialId = initialAssignments[pos];
+{positions.map((pos) => {
+  const currentId = assignments[pos];
+  const initialId = initialAssignments[pos];
 
-            const player = currentId ? teamPlayers.find((p) => p.id === currentId) ?? null : null;
+  const player = currentId ? teamPlayers.find((p) => p.id === currentId) ?? null : null;
 
-            // 出場理由の補完（battingOrder or usedPlayerInfo）
-            let reason: string | undefined;
-            if (currentId) {
-              const battingEntry = battingOrder.find(e => e.id === currentId);
-              reason = battingEntry?.reason;
+  // 出場理由の補完（battingOrder or usedPlayerInfo）
+  let reason: string | undefined;
+  if (currentId) {
+    const battingEntry = battingOrder.find(e => e.id === currentId);
+    reason = battingEntry?.reason;
 
-              if (!reason) {
-                const entry = Object.entries(usedPlayerInfo).find(
-                  ([, info]) => info.subId === currentId
-                );
-                if (entry) {
-                  const originalId = Number(entry[0]);
-                  const originalReason = battingOrder.find(e => e.id === originalId)?.reason;
-                  reason = originalReason;
-                }
-                console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
-                console.warn("usedPlayerInfo:", usedPlayerInfo);
-                console.warn("battingOrder:", battingOrder);
-              }
-            }
+    if (!reason) {
+      const entry = Object.entries(usedPlayerInfo).find(
+        ([, info]) => info.subId === currentId
+      );
+      if (entry) {
+        const originalId = Number(entry[0]);
+        const originalReason = battingOrder.find(e => e.id === originalId)?.reason;
+        reason = originalReason;
+      }
+      console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
+      console.warn("usedPlayerInfo:", usedPlayerInfo);
+      console.warn("battingOrder:", battingOrder);
+    }
+  }
 
-            const isChanged = currentId !== initialId;
-            const isSub = reason === "代打" || reason === "臨時代走" || reason === "代走";
+  const isChanged = currentId !== initialId;
+  const isSub = reason === "代打" || reason === "臨時代走" || reason === "代走";
 
-            const className = `absolute text-sm font-bold px-2 py-1 rounded cursor-move 
-              ${isSub ? "text-yellow-300 bg-black/90 ring-2 ring-yellow-400"
-                      : isChanged ? "text-white bg-black/60 ring-2 ring-yellow-400"
-                                  : "text-white bg-black/60"}`;
+  // ★ 追加：リエントリー青枠フラグ（handleDropでセットしたIDを参照）
+  const isReentryBlue = player ? (reentryPreviewIds.has(player.id) || reentryFixedIds.has(player.id)) : false;
 
-            return (
-<div
-  key={pos}
-  onDragOver={(e) => {
-    if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault();
-  }}
-  onDrop={(e) => {
-    if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) handleDrop(pos, e);
-  }}
-  // ★ 外側は位置決め専用：bg/ring/shadow は付けない
-  className="absolute whitespace-nowrap text-center cursor-move"
-  style={{
-    ...positionStyles[pos],
-    transform: "translate(-50%, -50%)",
-    zIndex: 10,
-    minWidth: "64px",
-  }}
->
-  {player ? (
-    // ★ 内側チップに見た目を集約（黒地＋細い内側リング）
+  return (
     <div
-      draggable
-      onDragStart={(e) => handlePositionDragStart(e, pos)}
-      className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight        text-white bg-black/80 whitespace-nowrap
-        ${isSub || isChanged ? "ring-2 ring-inset ring-yellow-400" : ""}`}
-      style={{ minWidth: "78px", maxWidth: "38vw" }}
-      title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
-    >
-      {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
-    </div>
-  ) : (
-    <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
-      DHなし
-    </span>
-  )}
-</div>
+      key={pos}
+      onDragOver={(e) => {
+        if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) {
+          console.log("🪂 onDrop→handleDrop 呼び出し", { pos });
+          handleDrop(pos, e);
+        } else {
+          console.log("🪂 onDrop ブロック（DH禁止状態）", { pos, dhEnabledAtStart, dhDisableDirty });
+        }
+      }}
 
-            );
-          })}
+      // ★ 外側は位置決め専用：bg/ring/shadow は付けない（内側で見せる）
+      className="absolute whitespace-nowrap text-center cursor-move"
+      style={{
+        ...positionStyles[pos],
+        transform: "translate(-50%, -50%)",
+        zIndex: 10,
+        minWidth: "64px",
+      }}
+    >
+      {player ? (
+        // ★ 内側チップに見た目を集約（青＞黄の優先でリング）
+        <div
+          draggable
+          onDragStart={(e) => handlePositionDragStart(e, pos)}
+          className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white bg-black/80 whitespace-nowrap
+            ${isReentryBlue ? "ring-2 ring-inset ring-blue-400"
+             : (isSub || isChanged) ? "ring-2 ring-inset ring-yellow-400"
+             : ""}`}
+          style={{ minWidth: "78px", maxWidth: "38vw" }}
+          title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
+        >
+          {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
+        </div>
+      ) : (
+        <span className="text-gray-300 text-base inline-block" style={{ minWidth: "64px" }}>
+          DHなし
+        </span>
+      )}
+    </div>
+  );
+})}
+
         </div>
 
         {/* 控え選手（スマホっぽい見出しとタグ） */}
