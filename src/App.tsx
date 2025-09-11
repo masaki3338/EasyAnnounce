@@ -189,12 +189,25 @@ return (
     {/* ← ここを“中央寄せ”の本体ラッパで包む */}
     <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center">
       {/* ヘッダー */}
-      <div className="w-full mb-8 md:mb-10">
-        <h1 className="text-white text-3xl font-black tracking-widest text-center drop-shadow-lg leading-tight mb-2">
-          ⚾️ Easyアナウンス 🎤
-        </h1>
-        <p className="text-white/80 text-center mt-2 mb-4 text-sm">～ Pony League Version ～</p>
-      </div>
+<div className="w-full mb-8 md:mb-10">
+  <h1 className="text-center mb-0">
+    <img
+      src="/EasyAnnounceLOGO.png"
+      alt="Easyアナウンス ロゴ"
+      className="mx-auto w-[280px] md:w-[360px] drop-shadow-lg"
+    />
+  </h1>
+  <p
+    className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
+    style={{
+      color: "white",
+      WebkitTextStroke: "0.5px red", // 赤い縁取り
+    }}
+  >
+    ～ Pony League Version ～
+  </p>
+</div>
+
 
       {/* アイコンカードのグリッド */}
       <div className="w-full grid grid-cols-2 gap-4">
@@ -357,10 +370,18 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
       )}
 
       {screen === "matchCreate" && (
-        <MatchCreate
+      <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("menu")}
+          >
+            ← メニューに戻る
+          </button>
+          <MatchCreate
           onBack={() => setScreen("menu")}
           onGoToLineup={() => setScreen("startingLineup")}
-        />
+          />
+        </>
       )}
 
       {screen === "startingLineup" && (
@@ -907,10 +928,18 @@ if (totalMyScore > totalOpponentScore) {
   </>
 )}
 {screen === "operationSettings" && (
-  <OperationSettings
-    onNavigate={setScreen}
-    onOpenManual={() => setShowManualPopup(true)} // ← 追加：ManualViewerを開く
-  />
+  <>
+    <button
+      className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+      onClick={() => setScreen("menu")}
+    >
+      ← メニューに戻る
+    </button>
+    <OperationSettings
+      onNavigate={setScreen}
+      onOpenManual={() => setShowManualPopup(true)} // ← 追加：ManualViewerを開く
+    />
+        </>
 )}
 
 

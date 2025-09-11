@@ -232,16 +232,7 @@ return (
   >
     {/* ヘッダー */}
     <header className="w-full max-w-md">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-        >
-          <IconBack />
-          <span className="text-sm">メニュー</span>
-        </button>
-        <div className="w-10" />
-      </div>
+
 
       {/* 中央大タイトル */}
       <div className="mt-3 text-center select-none">
