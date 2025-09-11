@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+
 export default defineConfig({
   plugins: [
     react(),
@@ -25,7 +26,7 @@ export default defineConfig({
           },
         ],
       },
-      includeAssets: ['favicon.svg', 'robots.txt', 'field.png', 'mic-red.png','Defence.png','Ofence.png','warning-icon.png','manual.pdf'],
+      includeAssets: ['favicon.svg', 'robots.txt', 'field.png','EasyAnnounceLOGO.png', 'mic-red.png','Defence.png','Ofence.png','Runner.png','warning-icon.png','manual.pdf'],
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
@@ -40,7 +41,9 @@ export default defineConfig({
       }
     })
   ],
-
+  resolve: {
+    dedupe: ['react', 'react-dom']
+  },
   // ▼ ここを追加：/api を vercel dev(3000)へ中継
   server: {
     proxy: {
