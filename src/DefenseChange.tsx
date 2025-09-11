@@ -1670,6 +1670,18 @@ useEffect(() => {
   const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
   const [previousPositions, setPreviousPositions] = useState<{ [playerId: number]: string }>({});
   const [initialAssignments, setInitialAssignments] = useState<Record<string, number | null>>({});
+
+// ★ 追加：ドラッグ中のタッチ情報
+const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(null);
+const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
+const hoverPosRef = React.useRef<string | null>(null);
+
+// ★ 追加：dropEffect を毎回 "move" に（Androidの視覚安定）
+const allowDrop = (e: React.DragEvent) => {
+  e.preventDefault();
+  try { e.dataTransfer!.dropEffect = "move"; } catch {}
+};
+
   // 元の選手A -> 許可される相手B（確定まで有効）
   const [pairLocks, setPairLocks] = useState<Record<number, number>>({});
   // リエントリー専用：直近の「A⇄B（リエントリー）」情報を保持
@@ -2291,7 +2303,23 @@ useEffect(() => {
   }
 }, [battingOrder, usedPlayerInfo, initialAssignments]);
 
+
+// 代打/代走を assignments に反映する useEffect の後
+
+useEffect(() => {
+  if (!battingOrder || !usedPlayerInfo) return;
+  // ... 略 ...
+}, [battingOrder, usedPlayerInfo, initialAssignments]);
+
+// ★ ここにグローバルタッチ確定ハンドラの useEffect をコピペ
+
 // ✅ ベンチは“常に最新の assignments”から再計算する
+useEffect(() => {
+  if (!teamPlayers || teamPlayers.length === 0) return;
+  // ... 略 ...
+}, [assignments, teamPlayers]);
+
+
 // ✅ ベンチは“常に最新の assignments”から再計算する
 useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;

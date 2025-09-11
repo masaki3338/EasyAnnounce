@@ -125,102 +125,90 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [currentBatterIndex, setCurrentBatterIndex] = useState(0);
   const [announcement, setAnnouncement] = useState<React.ReactNode>(null);
   const [announcementOverride, setAnnouncementOverride] = useState<React.ReactNode | null>(null);
-const [scores, setScores] = useState<{ [inning: number]: { top: number; bottom: number } }>({});
-const [isLeadingBatter, setIsLeadingBatter] = useState(true);
-const [announcedPlayerIds, setAnnouncedPlayerIds] = useState<number[]>([]);
-const [substitutedIndices, setSubstitutedIndices] = useState<number[]>([]);
-const [selectedRunnerIndex, setSelectedRunnerIndex] = useState<number | null>(null);
-const [selectedSubRunner, setSelectedSubRunner] = useState<any | null>(null);
-const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null>(null);
+  const [scores, setScores] = useState<{ [inning: number]: { top: number; bottom: number } }>({});
+  const [isLeadingBatter, setIsLeadingBatter] = useState(true);
+  const [announcedPlayerIds, setAnnouncedPlayerIds] = useState<number[]>([]);
+  const [substitutedIndices, setSubstitutedIndices] = useState<number[]>([]);
+  const [selectedRunnerIndex, setSelectedRunnerIndex] = useState<number | null>(null);
+  const [selectedSubRunner, setSelectedSubRunner] = useState<any | null>(null);
+  const [selectedBase, setSelectedBase] = useState<"1塁" | "2塁" | "3塁" | null>(null);
   const [teamName, setTeamName] = useState("");
   const [opponentTeam, setOpponentTeam] = useState("");
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
-const [showGroundPopup, setShowGroundPopup] = useState(false);
-const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
-const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
-const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
-
-// 🔸 DH解除モーダル表示フラグ
-const [showDhDisableModal, setShowDhDisableModal] = useState(false);
-// 現在DHが有効？
-const dhActive = Boolean(assignments?.["指"]);
-// 現在の投手ID
-const pitcherId = typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
-// DH選手ID
-const dhBatterId = typeof assignments?.["指"] === "number" ? (assignments["指"] as number) : null;
-
-// DHの打順インデックス
-const dhOrderIndex = useMemo(
-  () => (dhBatterId != null ? battingOrder.findIndex(e => e.id === dhBatterId) : -1),
-  [battingOrder, dhBatterId]
-);
-
-// 「今の打者がDH本人か？」
-const isDhTurn = dhActive && dhOrderIndex !== -1 && currentBatterIndex === dhOrderIndex;
-
+  const [showGroundPopup, setShowGroundPopup] = useState(false);
+  const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
+  const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
+  const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
+  // 🔸 DH解除モーダル表示フラグ
+  const [showDhDisableModal, setShowDhDisableModal] = useState(false);
+  // 現在DHが有効？
+  const dhActive = Boolean(assignments?.["指"]);
+  // 現在の投手ID
+  const pitcherId = typeof assignments?.["投"] === "number" ? (assignments["投"] as number) : null;
+  // DH選手ID
+  const dhBatterId = typeof assignments?.["指"] === "number" ? (assignments["指"] as number) : null;
+  // DHの打順インデックス
+  const dhOrderIndex = useMemo(
+    () => (dhBatterId != null ? battingOrder.findIndex(e => e.id === dhBatterId) : -1),
+    [battingOrder, dhBatterId]
+  );
+  // 「今の打者がDH本人か？」
+  const isDhTurn = dhActive && dhOrderIndex !== -1 && currentBatterIndex === dhOrderIndex;
   const [startTime, setStartTime] = useState<string | null>(null);
-// ▼ 3回裏のメンバー交換アナウンス表示用
-const [showMemberExchangeModal, setShowMemberExchangeModal] = useState(false);
-const [memberExchangeText, setMemberExchangeText] = useState("");
+  // ▼ 3回裏のメンバー交換アナウンス表示用
+  const [showMemberExchangeModal, setShowMemberExchangeModal] = useState(false);
+  const [memberExchangeText, setMemberExchangeText] = useState("");
 
-// 真偽の型ブレ対応（true/"true"/1 → true）
-const isTruthy = (v: any) => {
-  if (v === true) return true;
-  if (typeof v === "string") return ["true", "1", "yes", "on"].includes(v.toLowerCase());
-  if (typeof v === "number") return v === 1;
-  return false;
-};
-// 3回裏 × 「次の試合なし」= NO のとき、得点入力のあとにアナウンスを出すフラグ
-const [pendingMemberExchange, setPendingMemberExchange] = useState(false);
-// アナウンス後に何をするか（得点ポップアップ／グランド整備／守備へ等）
-const [afterMemberExchange, setAfterMemberExchange] = useState<
-  "scorePopup" | "groundPopup" | "switchDefense" | "seatIntro" | null
->(null);
+  // 真偽の型ブレ対応（true/"true"/1 → true）
+  const isTruthy = (v: any) => {
+    if (v === true) return true;
+    if (typeof v === "string") return ["true", "1", "yes", "on"].includes(v.toLowerCase());
+    if (typeof v === "number") return v === 1;
+    return false;
+  };
+  // 3回裏 × 「次の試合なし」= NO のとき、得点入力のあとにアナウンスを出すフラグ
+  const [pendingMemberExchange, setPendingMemberExchange] = useState(false);
+  // アナウンス後に何をするか（得点ポップアップ／グランド整備／守備へ等）
+  const [afterMemberExchange, setAfterMemberExchange] = useState<
+    "scorePopup" | "groundPopup" | "switchDefense" | "seatIntro" | null
+  >(null);
 
+  // 🔸 リエントリー用 state
+  const [showReEntryModal, setShowReEntryModal] = useState(false);
+  const [reEntryFromPlayer, setReEntryFromPlayer] = useState<any|null>(null); // Aくん（今いる選手）
+  const [reEntryTargetPlayer, setReEntryTargetPlayer] = useState<any|null>(null); // Bくん（戻す元スタメン）
+  const [reEntryOrder1, setReEntryOrder1] = useState<number|null>(null); // 1始まりの打順
+  const [noReEntryMessage, setNoReEntryMessage] = useState<string>("");
 
+  // 🔸 ルビ整形
+  const rubyFull = (p: any) =>
+    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` +
+    `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+  const rubyLast = (p: any) =>
+    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
+  const rubyFirst = (p: any) =>
+    `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 
-// 🔸 リエントリー用 state
-const [showReEntryModal, setShowReEntryModal] = useState(false);
-const [reEntryFromPlayer, setReEntryFromPlayer] = useState<any|null>(null); // Aくん（今いる選手）
-const [reEntryTargetPlayer, setReEntryTargetPlayer] = useState<any|null>(null); // Bくん（戻す元スタメン）
-const [reEntryOrder1, setReEntryOrder1] = useState<number|null>(null); // 1始まりの打順
-const [noReEntryMessage, setNoReEntryMessage] = useState<string>("");
+  const headAnnounceKeyRef = useRef<string>("");
 
-// 🔸 ルビ整形
-const rubyFull = (p: any) =>
-  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` +
-  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
-const rubyLast = (p: any) =>
-  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
-const rubyFirst = (p: any) =>
-  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
-
-const headAnnounceKeyRef = useRef<string>("");
-
-// TTS用にHTMLをプレーンテキスト化（rubyは<rt>だけ残す）
-const normalizeForTTS = (input: string) => {
-  if (!input) return "";
-  let t = input;
-
-  // 典型: <ruby>山田<rt>やまだ</rt></ruby> → やまだ
-  t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
-
-  // rbタグ（使っていれば）: <rb>山田</rb><rt>やまだ</rt> の保険
-  t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
-
-  // 残ったタグは全除去
-  t = t.replace(/<[^>]+>/g, "");
-
-  // 連続空白を1つに
-  t = t.replace(/\s+/g, " ").trim();
-
-  // 読み固定が必要な語（必要に応じて追加）
-  t = t.replace(/投球数/g, "とうきゅうすう");
-
-  return t;
-};
+  // TTS用にHTMLをプレーンテキスト化（rubyは<rt>だけ残す）
+  const normalizeForTTS = (input: string) => {
+    if (!input) return "";
+    let t = input;
+    // 典型: <ruby>山田<rt>やまだ</rt></ruby> → やまだ
+    t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
+    // rbタグ（使っていれば）: <rb>山田</rb><rt>やまだ</rt> の保険
+    t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
+    // 残ったタグは全除去
+    t = t.replace(/<[^>]+>/g, "");
+    // 連続空白を1つに
+    t = t.replace(/\s+/g, " ").trim();
+    // 読み固定が必要な語（必要に応じて追加）
+    t = t.replace(/投球数/g, "とうきゅうすう");
+    return t;
+  };
 
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
 const findReentryCandidateForCurrentSpot = () => {
@@ -1345,17 +1333,7 @@ onClick={() => {
             {announcementOverride || announcement || ""}
           </span>
         </div>
-<div className="grid grid-cols-2 gap-2">
-  <button
-    onClick={handleRead}
-    className="w-full h-10 rounded bg-blue-600 text-white inline-flex items-center justify-center gap-2"
-  >
-    <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
-    <span className="whitespace-nowrap leading-none">読み上げ</span>
-  </button>
 
-  <button onClick={() => speechSynthesis.cancel()} className="w-full h-10 rounded bg-red-600 text-white">停止</button>
-</div>
 
       </div>
 
@@ -1517,20 +1495,7 @@ onClick={() => {
               </div>
 
               {/* 読み上げ・停止 */}
-              <div className="flex justify-center gap-3">
-                <button
-                  onClick={speak}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md"
-                >
-                  <IconMic /> 読み上げ
-                </button>
-                <button
-                  onClick={stop}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md"
-                >
-                  停止
-                </button>
-              </div>
+
             </div>
           </div>
 
@@ -1868,40 +1833,45 @@ onClick={async () => {
               />
             </div>
 
-            {/* 読み上げ・停止 */}
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => {
-                  if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
-                  const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
-                  const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
-                  const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
-                  const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
-                  announce(
-                    `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
-                    `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
-                    `${kanaBLast}${honorB} がリエントリーで戻ります。` +
-                    `バッターは ${kanaBLast}${honorB}。`
-                  );
-                }}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md ring-1 ring-white/40"
-              >
-                <IconMic /> 読み上げ
-              </button>
-              <button
-                onClick={() => speechSynthesis.cancel()}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md ring-1 ring-white/25"
-              >
-                停止
-              </button>
-            </div>
+{/* 読み上げ・停止（1行横並び／アイコン右に文字） */}
+<div className="grid grid-cols-2 gap-2">
+  <button
+    onClick={() => {
+      if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;
+      const honorA = reEntryFromPlayer.isFemale ? "さん" : "くん";
+      const honorB = reEntryTargetPlayer.isFemale ? "さん" : "くん";
+      const kanaALast = reEntryFromPlayer.lastNameKana || reEntryFromPlayer.lastName || "";
+      const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
+      announce(
+        `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
+        `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
+        `${kanaBLast}${honorB} がリエントリーで戻ります。` +
+        `バッターは ${kanaBLast}${honorB}。`
+      );
+    }}
+    className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md inline-flex items-center justify-center gap-2"
+  >
+    <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+    <span className="whitespace-nowrap">読み上げ</span>
+  </button>
+
+  <button
+    onClick={() => speechSynthesis.cancel()}
+    className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-md"
+  >
+    停止
+  </button>
+</div>
+
+
+
           </div>
 
-          {/* 操作ボタン（確定／キャンセル） */}
-          <div className="flex justify-end gap-2">
+          {/* 確定／キャンセル（1行に半分ずつ） */}
+          <div className="grid grid-cols-2 gap-2 mt-4">
             <button
               onClick={async () => {
-                // 既存ロジック：確定処理（そのまま）
+                // 既存の確定処理そのまま
                 pushHistory();
                 if (!reEntryTargetPlayer || reEntryOrder1 == null) return;
                 const idx = reEntryOrder1 - 1;
@@ -1974,8 +1944,7 @@ onClick={async () => {
                 setReEntryTargetPlayer(null);
                 setReEntryOrder1(null);
               }}
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white
-                         shadow-md shadow-emerald-300/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+              className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md"
             >
               確定
             </button>
@@ -1987,12 +1956,12 @@ onClick={async () => {
                 setReEntryTargetPlayer(null);
                 setReEntryOrder1(null);
               }}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white
-                         shadow-md shadow-amber-300/40"
+              className="w-full h-12 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold shadow-md"
             >
               キャンセル
             </button>
           </div>
+
         </div>
 
         {/* セーフエリア確保（iPhone下部） */}
