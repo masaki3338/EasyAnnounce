@@ -956,7 +956,7 @@ const updateAnnouncement = () => {
 
   if (!isChecked) {
     lines.push(
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、` +
+      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
       `${posPrefix}${rubyLast}${honorific}、背番号 ${number}。`
     );
   } else {
