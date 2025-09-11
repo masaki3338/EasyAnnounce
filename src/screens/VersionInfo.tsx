@@ -122,16 +122,27 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
             </p>
           </div>
 
-          {/* 第三者サービス（Google TTS） */}
+          {/* 第三者サービス（Google TTS, VOICEVOX） */}
           <div className="border rounded-lg p-4 bg-white/5">
             <h3 className="font-semibold mb-1">第三者サービス</h3>
+
+            {/* Google TTS */}
             <p className="font-medium">Google Cloud Text-to-Speech API</p>
             <ul className="list-disc ml-5 mt-2 space-y-1">
               <li>本アプリは音声合成に Google Cloud Text-to-Speech API を使用しています。</li>
               <li>当該APIの利用は、Google の提供する規約・ポリシー・ブランドガイドラインに従います。</li>
               <li>生成音声の取扱いはプライバシーポリシー／利用規約をご参照ください。</li>
             </ul>
+
+            {/* VOICEVOX */}
+            <p className="font-medium mt-4">VOICEVOX</p>
+            <ul className="list-disc ml-5 mt-2 space-y-1">
+              <li>本アプリは音声合成に VOICEVOX を使用しています。</li>
+              <li>VOICEVOX はオープンソースの音声合成ソフトウェアです。</li>
+              <li>利用にあたり VOICEVOX のライセンス（MIT License）および各キャラクターの利用規約に従います。</li>
+            </ul>
           </div>
+
 
           {/* 商標 */}
           <div>

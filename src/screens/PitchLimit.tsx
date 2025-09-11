@@ -104,7 +104,7 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
             onClick={onBack}
           >
             <IconBack />
-            <span className="text-sm">戻る</span>
+            <span className="text-sm">運用設定に戻る</span>
           </button>
           <div className="w-10" />
         </div>

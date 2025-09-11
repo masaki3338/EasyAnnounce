@@ -47,20 +47,7 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
     >
 {/* モバイルヘッダー（置き換え） */}
 <header className="w-full max-w-md">
-  {/* 上段：戻るだけ（左右のバランス取りは右のダミー幅で） */}
-  <div className="flex items-center justify-between">
-    <button
-      onClick={() => onNavigate("menu")}
-      className="flex items-center gap-1 text-white/90 active:scale-95 px-3 py-2 rounded-lg bg-white/10 border border-white/10"
-    >
-      {/* ← あなたの IconChevronLeft を流用 */}
-      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
-        <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-      </svg>
-      <span className="text-sm">メニュー</span>
-    </button>
-    <div className="w-10" /> {/* 右の見た目用スペーサ（中央寄せの安定化） */}
-  </div>
+
 
   {/* 下段：タイトルを大きく中央に */}
   <div className="mt-3 text-center select-none">
@@ -117,7 +104,7 @@ export default function OperationSettings({ onNavigate, onOpenManual }: Props) {
         <TileButton
           icon={<span className="text-2xl">🔊</span>}
           title="読み上げ設定"
-          desc="VOICEVOX / 音量 / 話速"
+          desc="声 / 話速"
           onClick={() => onNavigate("tts-settings")}
         />
 

@@ -72,9 +72,8 @@ return (
       {/* タイトル */}
       <div className="mt-1 text-center select-none mb-2 w-full">
         <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
-          <IconVoice />
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-            読み上げ設定
+            🔊読み上げ設定
           </span>
         </h1>
         <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
