@@ -236,7 +236,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           </h1>
           <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
-            <span>{isHomeTeamFirstAttack ? "先攻チーム" : "後攻チーム"}</span>
+            <span>{isHomeTeamFirstAttack ? "先攻チーム🎤" : "後攻チーム🎤"}</span>
           </div>
         </div>
       </header>
@@ -268,9 +268,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
             ring-1 ring-inset ring-rose-600/50
           "
         >
-          <div className="flex items-start gap-2 mb-2">
-            <img src="/mic-red.png" className="w-6 h-6" alt="Mic" />
-          </div>
+ 
 
           {/* ヘッダー文 */}
           {isHomeTeamFirstAttack && (

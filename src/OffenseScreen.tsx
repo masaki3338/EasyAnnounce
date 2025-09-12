@@ -42,6 +42,31 @@ const saveMatchInfo = async (patch: Partial<MatchInfo>) => {
 };
 
 
+// 例: "09:30" / "9:30" / "2025-09-12T09:30" / Date を想定
+const formatJaTime = (t: string | Date | undefined | null): string => {
+  if (!t) return "—";
+  if (t instanceof Date) {
+    const h = t.getHours();
+    const m = t.getMinutes();
+    return `${h}時${String(m).padStart(2, "0")}分`;
+  }
+  // "HH:mm" or "H:mm" or "HH:mm:ss"
+  const m1 = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m1) {
+    const h = parseInt(m1[1], 10);
+    const m = m1[2]; // 分は先頭0保持
+    return `${h}時${m}分`;
+  }
+  // ISOっぽい文字列も許容
+  const d = new Date(t);
+  if (!Number.isNaN(d.getTime())) {
+    const h = d.getHours();
+    const m = d.getMinutes();
+    return `${h}時${String(m).padStart(2, "0")}分`;
+  }
+  // どうしても解釈できなければ原文
+  return t;
+};
 
 
 
@@ -211,46 +236,96 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   };
 
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
-const findReentryCandidateForCurrentSpot = () => {
-  console.log("🔍 リエントリー対象判定開始 ====================");
+// 🔍 リエントリー候補の詳細デバッグ版
+// 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
+const findReentryCandidateForCurrentSpot = async () => {
+  console.log("🔍 リエントリー対象判定 ====================");
 
-  // 現在の打順（1始まり）
+  // 現在の打順（1始まり/0始まり）
   const order1 = (currentBatterIndex % battingOrder.length) + 1;
-  console.log("現在の打順:", order1);
+  const order0 = currentBatterIndex;
+  console.log("現在の打順: 1始まり=", order1, " / 0始まり=", order0);
 
-  // 今その枠に入っている「Aくん」
+  // A＝今その枠にいる選手
   const currentEntry = battingOrder[currentBatterIndex];
   const A = currentEntry ? getPlayer(currentEntry.id) : null;
-  console.log("現在の枠にいる選手 A:", A);
+  console.log("A（現在の枠の選手）:", A, "entry:", currentEntry);
 
-  // usedPlayerInfo の中から「wasStarter && order一致」を探す
-  let B: any | null = null;
-  Object.entries(usedPlayerInfo || {}).forEach(([starterId, info]: any) => {
-    console.log(`候補チェック: ID=${starterId}`, info);
-    if (info?.wasStarter && info?.order === order1) {
-      const candidate = getPlayer(Number(starterId));
-      console.log(" → 打順一致＆wasStarter=true の候補:", candidate);
-      if (candidate) B = candidate;
+  // 守備・打順の現状
+  console.log("battingOrder IDs:", battingOrder.map(e => e?.id));
+  console.log("assignments:", assignments);
+
+  const isInBatting = (pid: number) => (battingOrder || []).some(e => e?.id === pid);
+  const isInDefense = (pid: number) => Object.values(assignments || {}).some(id => Number(id) === Number(pid));
+
+  // 1) 一次ソース：startingBattingOrder から元スタメンを取得（打順 index=order0）
+  const startingOrder: Array<{ id: number }> =
+    (await localForage.getItem("startingBattingOrder")) || [];
+  const origIdFromStart = startingOrder[order0]?.id;
+  const origFromStart = origIdFromStart ? getPlayer(origIdFromStart) : null;
+  console.log("startingBattingOrder[", order1, "] =", origIdFromStart, origFromStart);
+
+  if (origIdFromStart) {
+    const inBat = isInBatting(origIdFromStart);
+    const inDef = isInDefense(origIdFromStart);
+    console.log("元スタメンの現在: inBat=", inBat, " inDef=", inDef);
+
+    // 元スタメンがベンチ（打順にも守備にもいない）なら即採用
+    if (!inBat && !inDef) {
+      console.log("✅ 候補B: startingBattingOrder から採用");
+      return { A, B: getPlayer(origIdFromStart), order1 };
     }
+  } else {
+    console.warn("❗ startingBattingOrder にこの打順の元スタメン記録が見つかりません");
+  }
+
+  // 2) 二次ソース：usedPlayerInfo を保険としてスキャン
+  const upi = (usedPlayerInfo as Record<number, { wasStarter?: boolean; order?: number }>) || {};
+  const upiRows = Object.entries(upi).map(([starterId, info]) => {
+    const p = getPlayer(Number(starterId));
+    return {
+      starterId: Number(starterId),
+      name: p ? `${p.lastName}${p.firstName}` : "(不明)",
+      wasStarter: !!info?.wasStarter,
+      infoOrder: info?.order,
+    };
+  });
+  console.table(upiRows);
+
+  let fallbackId: number | null = null;
+  Object.entries(upi).forEach(([starterId, info]) => {
+    const ord = Number(info?.order);
+    const sameOrder = (ord === order1) || (ord === order0); // 0/1始まり差異に耐性
+    const treatedStarter =
+      !!info?.wasStarter ||
+      (origIdFromStart && Number(starterId) === Number(origIdFromStart)); // starting優先で昇格
+
+    if (treatedStarter && sameOrder) fallbackId = Number(starterId);
   });
 
-  // 打順・守備にいないか確認
-  const isInBatting = (pid: number) => battingOrder.some(e => e.id === pid);
-  const isInDefense = (pid: number) => Object.values(assignments || {}).some(id => id === pid);
-
-  if (B) {
-    console.log("B候補:", B);
-    console.log("打順にいる？", isInBatting(B.id));
-    console.log("守備にいる？", isInDefense(B.id));
+  if (fallbackId) {
+    const inBat = isInBatting(fallbackId);
+    const inDef = isInDefense(fallbackId);
+    console.log("fallback 候補:", fallbackId, " inBat=", inBat, " inDef=", inDef);
+    if (!inBat && !inDef) {
+      console.log("✅ 候補B: usedPlayerInfo（保険）から採用");
+      return { A, B: getPlayer(fallbackId), order1 };
+    }
   }
 
-  if (B && !isInBatting(B.id) && !isInDefense(B.id)) {
-    console.log("✅ リエントリー対象あり！");
-    return { A, B, order1 };
+  // ダメ押しの除外理由ログ
+  if (origIdFromStart) {
+    console.warn("❌ 除外: 元スタメンは出場中のためリエントリー不可",
+      { inBatting: isInBatting(origIdFromStart), inDefense: isInDefense(origIdFromStart) });
+  } else {
+    console.warn("❌ 除外: startingBattingOrder 未記録 & usedPlayerInfo 不一致");
   }
-  console.log("❌ リエントリー対象なし");
+
+  console.log("⛔ リエントリー対象なし（アラート経路）");
   return { A, B: null, order1 };
 };
+
+
 
 // Offense → SeatIntroduction へ行くときの共通ナビ（保存してから遷移）
 const goSeatIntroFromOffense = async () => {
@@ -1382,18 +1457,23 @@ onClick={() => {
 
     {/* リエントリー */}
   <button
-    onClick={() => {
-      const { A, B, order1 } = findReentryCandidateForCurrentSpot();
-      if (!B) {
-        setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-        alert("この打順にリエントリー可能な選手はいません。");
-        return;
-      }
-      setReEntryFromPlayer(A || null);
-      setReEntryTargetPlayer(B);
-      setReEntryOrder1(order1);
-      setShowReEntryModal(true);
-    }}
+onClick={async () => {
+  console.log("▶ リエントリーボタン押下");
+  const { A, B, order1 } = await findReentryCandidateForCurrentSpot(); // ← await に変更
+  console.log("find結果:", { A, B, order1 });
+
+  if (!B) {
+    console.warn("→ アラート表示: この打順にリエントリー可能な選手はいません。");
+    setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+    alert("この打順にリエントリー可能な選手はいません。");
+    return;
+  }
+  setReEntryFromPlayer(A || null);
+  setReEntryTargetPlayer(B);
+  setReEntryOrder1(order1);
+  setShowReEntryModal(true);
+}}
+
     className="w-full h-10 rounded bg-purple-600 text-white px-2
               inline-flex items-center justify-center"  // ← 横並び中央
     title="リエントリー"
@@ -1682,8 +1762,7 @@ onClick={() => {
           {/* アナウンス文言エリア（薄い赤） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm shadow-red-800/30">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+
             </div>
               {(() => {
                 const BK = "この回の得点は";
@@ -1692,7 +1771,7 @@ onClick={() => {
                 const tail = idx >= 0 ? popupMessage.slice(idx) : "";               // 例: 「この回の得点は3点です。」
 
                 return (
-                  <p className="text-xl font-bold text-red-700 text-center break-words">
+                  <p className="text-xl font-bold text-red-700 text-center break-keep">
                     {head}
                     {idx >= 0 && <><wbr />{"\u200B"}</>}
                     {tail}
@@ -2733,7 +2812,27 @@ onClick={async () => {
             (await localForage.getItem<Record<number, number>>(key)) || {};
           tempMap[idx] = sub.id;
           await localForage.setItem(key, tempMap);
-          newOrder[idx] = { id: replaced.id, reason: "臨時代走" };
+const isTemp = !!tempRunnerFlags[base as "1塁" | "2塁" | "3塁"];
+if (isTemp) {
+  // ① もともとの reason を保存
+  const prevKey = "prevReasonByOrder";
+  const prevMap =
+    (await localForage.getItem<Record<number, string | null>>(prevKey)) || {};
+  prevMap[idx] = battingOrder[idx]?.reason ?? null;
+  await localForage.setItem(prevKey, prevMap);
+
+  // ② 臨時代走の紐付け
+  const key = "tempRunnerByOrder";
+  const tempMap =
+    (await localForage.getItem<Record<number, number>>(key)) || {};
+  tempMap[idx] = sub.id;
+  await localForage.setItem(key, tempMap);
+
+  // ③ 表示上はその枠を「臨時代走」に
+  newOrder[idx] = { id: replaced.id, reason: "臨時代走" };
+  continue;
+}
+
           continue;
         }
 
@@ -3011,14 +3110,10 @@ onClick={async () => {
           {/* 🔴 アナウンス文言エリア（ここにマイク画像・読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             {/* 見出し（マイク画像をここへ移動） */}
-            <div className="flex items-center gap-2 mb-2">
-              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
-            </div>
 
             {/* 文言 */}
             <p className="text-lg font-bold text-red-700 text-center">
-              この試合の開始時刻は {gameStartTime} です。
+              この試合の開始時刻は {formatJaTime(gameStartTime)} です。
             </p>
 
             {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}

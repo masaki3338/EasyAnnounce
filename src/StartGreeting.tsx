@@ -74,7 +74,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
     `まもなく かいし でございます。`;
 
   const message =
-    `お待たせいたしました。${tournamentName}\n` +
+    `お待たせいたしました。\n${tournamentName}\n` +
     `本日の第${matchNumber}試合、\n` +
     `${team1st} 対 ${team3rd} の試合、\n` +
     `まもなく開始でございます。`;
@@ -147,9 +147,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
             ring-1 ring-inset ring-rose-600/50
           "
         >
-          <div className="flex items-start gap-2 mb-2">
-            <img src="/mic-red.png" alt="Mic" className="w-6 h-6" />
-          </div>
+
           <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">{message}</p>
 
           {/* 赤枠内の操作ボタン */}

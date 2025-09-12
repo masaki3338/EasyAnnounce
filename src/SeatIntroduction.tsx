@@ -232,10 +232,6 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
             ring-1 ring-inset ring-rose-600/50
           "
         >
-          <div className="flex items-start gap-2 mb-2">
-            <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-            <div className="text-rose-50/90 text-[11px]">アナウンス文言</div>
-          </div>
 
           <div
             className="text-white whitespace-pre-line leading-relaxed drop-shadow"

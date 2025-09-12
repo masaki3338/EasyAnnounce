@@ -1085,27 +1085,36 @@ const handlePitchLimitSpeak = () => {
           {/* 🎤 マイクアイコン + 文言エリア（薄赤） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-start gap-2">
-              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
+
               <div className="whitespace-pre-wrap text-left min-h-[64px] font-bold text-red-700">
                 {reEntryMessage || "対象選手なし"}
               </div>
             </div>
 
-            {/* 読み上げ・停止（青／赤） */}
-            <div className="mt-3 flex justify-center gap-2">
+            {/* 読み上げ・停止（横いっぱい 1/2ずつ） */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {/* 読み上げ（左） */}
               <button
-                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+                type="button"
                 onClick={() => speak(reEntryMessage)}
+                className="w-full px-3 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                          shadow active:scale-95 inline-flex items-center justify-center gap-2"
               >
-                読み上げ
+                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <span className="leading-none">読み上げ</span>
               </button>
-              <button
-                className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={() => window.speechSynthesis?.cancel()}
-              >
-                停止
-              </button>
-            </div>
+
+  {/* 停止（右） */}
+  <button
+    type="button"
+    onClick={() => window.speechSynthesis?.cancel()}
+    className="w-full px-3 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold
+               shadow active:scale-95"
+  >
+    停止
+  </button>
+</div>
+
           </div>
         </div>
 
@@ -1116,40 +1125,65 @@ const handlePitchLimitSpeak = () => {
               className="px-3 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
               onClick={async () => {
                 // ▼臨時代走フラグを消す（既存ロジックのまま）
-                const key = "tempRunnerByOrder";
-                const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+// ▼臨時代走フラグを消す（既存）
+const key = "tempRunnerByOrder";
+const map = (await localForage.getItem<Record<number, number>>(key)) || {};
 
-                if (typeof reEntryTarget?.index === "number") {
-                  delete map[reEntryTarget.index];
-                  await localForage.setItem(key, map);
+if (typeof reEntryTarget?.index === "number") {
+  delete map[reEntryTarget.index];
+  await localForage.setItem(key, map);
 
-                  const order: Array<{ id: number; reason?: string }> =
-                    (await localForage.getItem("battingOrder")) || [];
-                  if (order[reEntryTarget.index]) {
-                    // 代打に戻ったので reason を "代打" に固定
-                    order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
-                    await localForage.setItem("battingOrder", order);
-                    setBattingOrder(order);
-                  }
-                } else {
-                  //（該当インデックス不明時は保険で全打順から「臨時代走」を一掃）
-                  const order: Array<{ id: number; reason?: string }> =
-                    (await localForage.getItem("battingOrder")) || [];
-                  let changed = false;
-                  order.forEach((e, i) => {
-                    if (e?.reason === "臨時代走") {
-                      delete map[i];
-                      // TR解除後は “代打として残っている打者” に戻る
-                      order[i] = { id: e.id, reason: "代打" };
-                      changed = true;
-                    }
-                  });
-                  await localForage.setItem(key, map);
-                  if (changed) {
-                    await localForage.setItem("battingOrder", order);
-                    setBattingOrder(order);
-                  }
-                }
+  // ▼battingOrder の reason を保存値で復元（"代打" 固定はやめる）
+  const prevKey = "prevReasonByOrder";
+  const prevMap =
+    (await localForage.getItem<Record<number, string | null>>(prevKey)) || {};
+
+  const order: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+
+  if (order[reEntryTarget.index]) {
+    const prev = prevMap[reEntryTarget.index];
+    order[reEntryTarget.index] =
+      prev ? { id: order[reEntryTarget.index].id, reason: prev }
+           : { id: order[reEntryTarget.index].id };
+
+    await localForage.setItem("battingOrder", order);
+    setBattingOrder(order);
+
+    // 復元したので prev を片付け
+    delete prevMap[reEntryTarget.index];
+    await localForage.setItem(prevKey, prevMap);
+  }
+} else {
+  //（該当インデックス不明時は「臨時代走」全枠に対して復元）
+  const prevKey = "prevReasonByOrder";
+  const prevMap =
+    (await localForage.getItem<Record<number, string | null>>(prevKey)) || {};
+
+  const order: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+
+  let changed = false;
+  order.forEach((e, i) => {
+    if (e?.reason === "臨時代走") {
+      const prev = prevMap[i];
+      order[i] = prev ? { id: e.id, reason: prev } : { id: e.id };
+      delete map[i];
+      delete prevMap[i];
+      changed = true;
+    }
+  });
+
+  await localForage.setItem(key, map);
+  await localForage.setItem(prevKey, prevMap);
+  if (changed) {
+    await localForage.setItem("battingOrder", order);
+    setBattingOrder(order);
+  }
+}
+
+// （以降の共通片付けや showConfirmModal 分岐は既存のままでOK）
+
 
                 // ▼共通の後片付け
                 setReEntryMessage("");
@@ -1179,23 +1213,59 @@ const handlePitchLimitSpeak = () => {
               // （臨時代走モーダル内）キャンセル
               onClick={async () => {
                 // ▼ 臨時代走の記憶をクリア
-                const key = "tempRunnerByOrder";
-                const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+const key = "tempRunnerByOrder";
+const map = (await localForage.getItem<Record<number, number>>(key)) || {};
+if (typeof reEntryTarget?.index === "number") {
+  delete map[reEntryTarget.index];
+  await localForage.setItem(key, map);
 
-                if (typeof reEntryTarget?.index === "number") {
-                  delete map[reEntryTarget.index];
-                  await localForage.setItem(key, map);
+  // ▼ battingOrder.reason を保存値で復元
+  const prevKey = "prevReasonByOrder";
+  const prevMap =
+    (await localForage.getItem<Record<number, string | null>>(prevKey)) || {};
 
-                  const order: Array<{ id: number; reason?: string }> =
-                    (await localForage.getItem("battingOrder")) || [];
-                  if (order[reEntryTarget.index]?.reason === "臨時代走") {
-                    // TR解除後は代打扱いに戻す
-                    order[reEntryTarget.index] = { id: order[reEntryTarget.index].id, reason: "代打" };
-                    await localForage.setItem("battingOrder", order);
-                    setBattingOrder(order);
-                  }
-                }
+  const order: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
 
+  if (order[reEntryTarget.index]?.reason === "臨時代走") {
+    const prev = prevMap[reEntryTarget.index];
+    order[reEntryTarget.index] =
+      prev ? { id: order[reEntryTarget.index].id, reason: prev }
+           : { id: order[reEntryTarget.index].id };
+
+    await localForage.setItem("battingOrder", order);
+    setBattingOrder(order);
+
+    delete prevMap[reEntryTarget.index];
+    await localForage.setItem(prevKey, prevMap);
+  }
+} else {
+  // インデックス不明時の保険（全枠スキャン）
+  const prevKey = "prevReasonByOrder";
+  const prevMap =
+    (await localForage.getItem<Record<number, string | null>>(prevKey)) || {};
+
+  const order: Array<{ id: number; reason?: string }> =
+    (await localForage.getItem("battingOrder")) || [];
+
+  let changed = false;
+  order.forEach((e, i) => {
+    if (e?.reason === "臨時代走") {
+      const prev = prevMap[i];
+      order[i] = prev ? { id: e.id, reason: prev } : { id: e.id };
+      delete map[i];
+      delete prevMap[i];
+      changed = true;
+    }
+  });
+
+  await localForage.setItem(key, map);
+  await localForage.setItem(prevKey, prevMap);
+  if (changed) {
+    await localForage.setItem("battingOrder", order);
+    setBattingOrder(order);
+  }
+}
                 // ▼既存の閉じ動作
                 setReEntryMessage("");
                 setReEntryTarget(null);
@@ -1266,7 +1336,8 @@ const handlePitchLimitSpeak = () => {
                       className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={() => speak(reEntryMessage)}
                     >
-                      読み上げ
+                     
+                       読み上げ
                     </button>
                     <button
                       className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"

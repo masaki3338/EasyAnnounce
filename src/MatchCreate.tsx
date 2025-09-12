@@ -38,8 +38,8 @@ const IconUmpire = () => (
   </svg>
 );
 const IconMic = () => (
-  <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
-    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zM5 11h2a5 5 0 0010 0h2" />
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
   </svg>
 );
 const IconClock = () => (
@@ -47,7 +47,17 @@ const IconClock = () => (
     <path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm1 5h-2v6h6v-2h-4z" />
   </svg>
 );
-
+const IconAlert: React.FC = () => (
+  <img
+    src="/warning-icon.png"        // ← public/warning-icon.png
+    alt="注意"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
 
 type MatchCreateProps = {
   onBack: () => void;
@@ -471,32 +481,32 @@ return (
         <button
           onClick={async () => {
             await upsertRecentTournaments(tournamentName);
- const team = await localForage.getItem<any>("team");
- const existing = await localForage.getItem<any>("matchInfo");
- const scores   = await localForage.getItem<any>("scores");
+            const team = await localForage.getItem<any>("team");
+            const existing = await localForage.getItem<any>("matchInfo");
+            const scores   = await localForage.getItem<any>("scores");
 
- const hasProgress =
-   (scores && Object.keys(scores).length > 0) ||
-   (existing && (
-     Number(existing?.inning) > 1 ||
-     (Number(existing?.inning) === 1 && existing?.isTop === false)
-   ));
- const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
+            const hasProgress =
+              (scores && Object.keys(scores).length > 0) ||
+              (existing && (
+                Number(existing?.inning) > 1 ||
+                (Number(existing?.inning) === 1 && existing?.isTop === false)
+              ));
+            const base = hasProgress ? (existing || {}) : { inning: 1, isTop: true };
 
- const matchInfo = {
-   ...base,
-   tournamentName,
-   matchNumber,
-   opponentTeam,
-   opponentTeamFurigana,
-   isHome: isHome === "後攻",
-   benchSide,
-   umpires,
-   twoUmpires: isTwoUmp,          // ✅ 2審制を記憶
-   teamName: (base as any)?.teamName ?? team?.name ?? "",    
-   noNextGame,// ✅ 追加：次の試合なし
- };
- await localForage.setItem("matchInfo", matchInfo);
+            const matchInfo = {
+              ...base,
+              tournamentName,
+              matchNumber,
+              opponentTeam,
+              opponentTeamFurigana,
+              isHome: isHome === "後攻",
+              benchSide,
+              umpires,
+              twoUmpires: isTwoUmp,          // ✅ 2審制を記憶
+              teamName: (base as any)?.teamName ?? team?.name ?? "",    
+              noNextGame,// ✅ 追加：次の試合なし
+            };
+            await localForage.setItem("matchInfo", matchInfo);
  
             await localForage.setItem("matchNumberStash", matchNumber);
             onGoToLineup();
@@ -504,6 +514,18 @@ return (
           className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-semibold active:scale-95"
         >
           ▶ スタメン設定
+        </button>
+      </div>
+      {/* ← スタメン設定の直下：横いっぱいの戻るボタン */}
+      <div className="mt-2">
+        <button
+          onClick={onBack}
+          className="w-full px-6 py-4 rounded-2xl text-white text-lg font-semibold
+                    bg-white/10 hover:bg-white/15 border border-white/15
+                    shadow active:scale-95 inline-flex items-center justify-center gap-2"
+          aria-label="戻る"
+        >
+          <span>← 戻る</span>
         </button>
       </div>
     </main>
@@ -522,27 +544,22 @@ return (
                     bg-gradient-to-b from-gray-900 to-gray-850 text-white
                     rounded-t-3xl sm:rounded-2xl shadow-2xl
                     max-w-md w-full mx-auto p-5 sm:p-6">
-      {/* ヘッダー行 */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="inline-flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-full
-                        bg-amber-500/20 border border-amber-400/40">
-          <IconClock />
-          <span className="text-amber-50/90">試合開始45分前に🎤</span>
-        </div>
-        <button
-          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-          className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 active:scale-95"
-        >
-          閉じる
-        </button>
-      </div>
+{/* ヘッダー行（両チップを横並びに） */}
+<div className="flex items-center justify-between mb-3 gap-3">
+  <div className="flex items-center gap-2 flex-wrap">
+    <div className="inline-flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-full
+                    bg-amber-500/20 border border-amber-400/40">
+      <IconAlert />
+      <span className="text-amber-50/90">試合開始45分前に🎤</span>
+    </div>
+    <div className="inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-full
+                    bg-white/10 border border-white/10">
+      <span className="font-semibold">1塁側チーム 🎤</span>
+    </div>
+  </div>
 
-      {/* チップ行（任意情報） */}
-      <div className="mb-4 inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-full
-                      bg-white/10 border border-white/10">
-        <span className="opacity-80">担当：</span>
-        <span className="font-semibold">1塁側チーム 🎤</span>
-      </div>
+</div>
+
 
       {/* 🔴 アナウンス文言（赤 強め）＋ ボタン内蔵 */}
       <div className="
@@ -551,11 +568,6 @@ return (
           bg-gradient-to-br from-rose-600/50 via-rose-500/40 to-rose-400/30
           ring-1 ring-inset ring-rose-600/60
         ">
-        <div className="flex items-start gap-2 mb-2">
-          <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-          <div className="text-rose-50/90 text-[11px]">アナウンス文言（表示どおり読み上げ）</div>
-        </div>
-
         <p className="text-white whitespace-pre-line leading-relaxed drop-shadow">
           <strong>{tournamentName}</strong>
           {"\n"}本日の第一試合、両チームのメンバー交換を行います。
@@ -585,14 +597,16 @@ return (
       </div>
 
       {/* フッター（OKのみ） */}
-      <div className="mt-4 flex justify-end">
+      <div className="mt-4">
         <button
+          type="button"
           onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-          className="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold shadow active:scale-95"
+          className="w-full px-5 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold shadow active:scale-95"
         >
           OK
         </button>
       </div>
+
     </div>
   </div>
 )}

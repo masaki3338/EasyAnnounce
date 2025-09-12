@@ -20,6 +20,17 @@ const IconInfo: React.FC = () => (
     height={24}
   />
 );
+const IconMic2 = () => (
+  <img
+    src="/mic-red.png"        // ← public/mic-red.png
+    alt="マイク"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
     <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
@@ -91,7 +102,7 @@ const MessageBlock: React.FC<{
     "
   >
     <div className="flex items-start gap-2 mb-2">
-      <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
+
       <div className="flex-1">
         {label && <div className="text-rose-50/90 text-[11px] mb-1">{label}</div>}
         <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">{text}</p>
@@ -299,7 +310,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         </StepCard>
 
         {/* 2 本アナウンス（赤 強め） */}
-        <StepCard step={2} icon={<IconMic />} title="本アナウンス" accent="blue">
+        <StepCard step={2} icon={<IconMic2 />} title="本アナウンス" accent="blue">
           <MessageBlock
             text={mainMessage}
             speakText={mainSpeak}
@@ -359,7 +370,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         </StepCard>
 
         {/* 4 交代案内（赤 強め） */}
-        <StepCard step={4} icon={<IconMic />} title="交代案内" accent="blue">
+        <StepCard step={4} icon={<IconMic2 />} title="交代案内" accent="blue">
           <MessageBlock
             text="両チーム交代してください。"
             keyName="switch"
@@ -418,7 +429,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         </StepCard>
 
         {/* 6 終了案内（赤 強め） */}
-        <StepCard step={6} icon={<IconMic />} title="終了案内" accent="blue">
+        <StepCard step={6} icon={<IconMic2 />} title="終了案内" accent="blue">
           <MessageBlock
             text="ウォーミングアップを終了してください。"
             keyName="end"

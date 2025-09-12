@@ -99,7 +99,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
             <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <IconAlert />
             </div>
-            <h2 className="font-semibold">実施タイミング</h2>
+            <h2 className="font-semibold">読み上げタイミング</h2>
           </div>
           <p className="text-amber-50/90 text-sm leading-relaxed">
             グラウンド整備終了後、選手がベンチ前に待機していない場合のみ、案内してください。
@@ -115,9 +115,7 @@ const Gather: React.FC<Props> = ({ onNavigate }) => {
             ring-1 ring-inset ring-rose-600/50
           "
         >
-          <div className="flex items-start gap-2 mb-2">
-            <img src="/mic-red.png" alt="Mic" className="w-6 h-6" />
-          </div>
+
           <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
             {message}
           </p>

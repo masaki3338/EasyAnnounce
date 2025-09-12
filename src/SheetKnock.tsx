@@ -37,6 +37,17 @@ const IconAlert: React.FC = () => (
     height={24}
   />
 );
+const IconMic2= () => (
+  <img
+    src="/mic-red.png"        // ← public/mic-red.png
+    alt="マイク"
+    className="w-6 h-6 object-contain select-none pointer-events-none"
+    aria-hidden
+    draggable={false}
+    width={24}
+    height={24}
+  />
+);
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
     <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
@@ -101,7 +112,7 @@ const MessageBlock: React.FC<{
   shadow-lg
 ">
   <div className="flex items-start gap-2 mb-2">
-    <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
+
     <div className="flex-1">
       {label && <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>}
       {/* ← 文言は白文字で視認性UP */}
@@ -296,35 +307,36 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
     </StepCard>
   )}
 
-  {/* 2 注意事項 */}
-  <StepCard
-    step={stepNum(prepMessage ? 2 : 1)}
-    icon={<IconAlert />}
-    title="スタートの取り方"
-    accent="amber"
-  >
-    <div className="text-amber-50/90 text-sm leading-relaxed">
-      最初のボールがノッカーの手から離れた時、<br />
-      もしくはボール回しから始まる場合はキャッチャーの手から<br />
-      ボールが離れてからスタート
-    </div>
-  </StepCard>
+{/* 2 本アナウンス（順番入れ替え後） */}
+<StepCard
+  step={stepNum(prepMessage ? 2 : 1)}
+  icon={<IconMic2 />}
+  title="本アナウンス"
+  accent="blue"
+>
+  <MessageBlock
+    text={mainMessage}
+    keyName="main"
+    readingKey={readingKey}
+    onSpeak={speak}
+    onStop={stopSpeak}
+  />
+</StepCard>
 
-  {/* 3 本アナウンス */}
-  <StepCard
-    step={stepNum(prepMessage ? 3 : 2)}
-    icon={<IconMic />}
-    title="本アナウンス"
-    accent="blue"
-  >
-    <MessageBlock
-      text={mainMessage}
-      keyName="main"
-      readingKey={readingKey}
-      onSpeak={speak}
-      onStop={stopSpeak}
-    />
-  </StepCard>
+{/* 3 注意事項（順番入れ替え後） */}
+<StepCard
+  step={stepNum(prepMessage ? 3 : 2)}
+  icon={<IconAlert />}
+  title="スタートの開始"
+  accent="amber"
+>
+  <div className="text-amber-50/90 text-sm leading-relaxed">
+    最初のボールがノッカーの手から離れた時、<br />
+    もしくはボール回しから始まる場合はキャッチャーの手から<br />
+    ボールが離れてからスタート
+  </div>
+</StepCard>
+
 
   {/* 4 タイマー */}
   <StepCard
@@ -374,7 +386,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   {/* 5 残り2分アナウンス */}
   <StepCard
     step={stepNum(prepMessage ? 5 : 4)}
-    icon={<IconMic />}
+    icon={<IconMic2 />}
     title="残り2分の案内"
     accent="blue"
   >
@@ -390,7 +402,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   {/* 6 終了アナウンス */}
   <StepCard
     step={stepNum(prepMessage ? 6 : 5)}
-    icon={<IconMic />}
+    icon={<IconMic2 />}
     title="終了案内"
     accent="blue"
   >
