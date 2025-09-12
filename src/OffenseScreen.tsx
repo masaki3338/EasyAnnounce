@@ -1685,49 +1685,44 @@ onClick={() => {
               <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
-{(() => {
-  const BK = "この回の得点は";
-  const idx = popupMessage.indexOf(BK);
-  const head = idx >= 0 ? popupMessage.slice(0, idx) : popupMessage; // 例: 「○○チーム、」
-  const tail = idx >= 0 ? popupMessage.slice(idx) : "";               // 例: 「この回の得点は3点です。」
+              {(() => {
+                const BK = "この回の得点は";
+                const idx = popupMessage.indexOf(BK);
+                const head = idx >= 0 ? popupMessage.slice(0, idx) : popupMessage; // 例: 「○○チーム、」
+                const tail = idx >= 0 ? popupMessage.slice(idx) : "";               // 例: 「この回の得点は3点です。」
 
-  return (
-    <p className="text-xl font-bold text-red-700 text-center break-words">
-      {/* 1行で収まるならそのまま1行 */}
-      <span className="whitespace-nowrap">{head}</span>
-      {/* ここでだけ折り返し可（Safari対策に \u200B も入れる） */}
-      {idx >= 0 && <><wbr />{"\u200B"}</>}
-      {tail}
-    </p>
-  );
-})()}
+                return (
+                  <p className="text-xl font-bold text-red-700 text-center break-words">
+                    {head}
+                    {idx >= 0 && <><wbr />{"\u200B"}</>}
+                    {tail}
+                  </p>
+                );
+              })()}
 
+              {/* 読み上げ・停止（横いっぱい・等幅） */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    const uttr = new SpeechSynthesisUtterance(popupMessage);
+                    speechSynthesis.cancel(); // 直前の読み上げを停止してから開始
+                    speechSynthesis.speak(uttr);
+                  }}
+                  className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
+                            inline-flex items-center justify-center gap-2"
+                >
+                  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+                  <span className="whitespace-nowrap leading-none">読み上げ</span>
+                </button>
 
-
-            {/* 読み上げ・停止（横いっぱい・等幅） */}
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(popupMessage);
-                  speechSynthesis.cancel(); // 直前の読み上げを停止してから開始
-                  speechSynthesis.speak(uttr);
-                }}
-                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-                          inline-flex items-center justify-center gap-2"
-              >
-                <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
-                <span className="whitespace-nowrap leading-none">読み上げ</span>
-              </button>
-
-              <button
-                onClick={() => speechSynthesis.cancel()}
-                className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
-                          inline-flex items-center justify-center"
-              >
-                停止
-              </button>
-            </div>
-
+                <button
+                  onClick={() => speechSynthesis.cancel()}
+                  className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
+                            inline-flex items-center justify-center"
+                >
+                  停止
+                </button>
+              </div>
           </div>
         </div>
 
