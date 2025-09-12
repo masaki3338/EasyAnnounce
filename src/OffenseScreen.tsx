@@ -759,7 +759,7 @@ await saveMatchInfo({
 
 
   if (score > 0) {
-    setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
+   setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
     if (isHome && inning === 4 && !isTop) setPendingGroundPopup(true);
 
     // ★ 得点あり：まず得点モーダルを表示
@@ -1302,102 +1302,127 @@ onClick={() => {
   </div>
 
   {/* ボタンを左寄せ */}
-<div className="mt-2 grid grid-cols-2 gap-2">
-  <button
-  onClick={handleFoulRead}
-  className="w-full h-10 rounded bg-blue-600 text-white
-             inline-flex items-center justify-center gap-2"
->
-  <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
-  <span className="whitespace-nowrap leading-none">読み上げ</span>
-  </button>
+    <div className="mt-3 w-full flex gap-2">
+      <button
+        onClick={handleFoulRead}
+        className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+        title="読み上げ"
+      >
+        <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+        <span className="whitespace-nowrap leading-none">読み上げ</span>
+      </button>
 
-  <button onClick={handleFoulStop} className="w-full h-10 rounded bg-red-600 text-white">停止</button>
+      <button
+        onClick={stopSpeech}
+        className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+        title="停止"
+      >
+        <span className="whitespace-nowrap leading-none">停止</span>
+      </button>
+    </div>
 </div>
-</div>
 
 
 
-      {isLeadingBatter && (
-        <div className="flex items-center text-blue-600 font-bold mb-0">
-          <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left">
-            <span className="mr-2 text-2xl">⚠️</span> 攻撃回1人目のバッター紹介は、キャッチャーが2塁に送球後に🎤 
-          </div>
-        </div>
-      )}
-
-      <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
-        <div className="flex items-center mb-2">
-          <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
-          <span className="text-red-600 font-bold whitespace-pre-line">
-            {announcementOverride || announcement || ""}
-          </span>
-        </div>
-
-
+  {isLeadingBatter && (
+    <div className="flex items-center text-blue-600 font-bold mb-0">
+      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left">
+        <span className="mr-2 text-2xl">⚠️</span> 攻撃回1人目のバッター紹介は、キャッチャーが2塁に送球後に🎤 
       </div>
+    </div>
+  )}
 
-{/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
-<div className="w-full grid grid-cols-4 gap-2 mt-4">
-  {/* DH解除（常に表示。条件を満たさない時は disabled） */}
+  <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
+    <div className="flex items-center mb-2">
+      <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+      <span className="text-red-600 font-bold whitespace-pre-line">
+        {announcementOverride || announcement || ""}
+      </span>
+    </div>
+    {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
+    <div className="mt-3 w-full flex gap-2">
+      <button
+        onMouseDown={prefetchCurrent}
+        onTouchStart={prefetchCurrent}
+        onClick={handleRead}
+        className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
+        title="読み上げ"
+      >
+        <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+        <span className="whitespace-nowrap leading-none">読み上げ</span>
+      </button>
+
+      <button
+        onClick={stopSpeech}
+        className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
+        title="停止"
+      >
+        <span className="whitespace-nowrap leading-none">停止</span>
+      </button>
+    </div>
+  </div>
+
+  {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
+  <div className="w-full grid grid-cols-4 gap-2 mt-4">
+    {/* DH解除（常に表示。条件を満たさない時は disabled） */}
+    <button
+      onClick={() => setShowDhDisableModal(true)}
+      disabled={!isDhTurn || !dhActive || !pitcherId}
+      className="w-full h-10 rounded bg-gray-800 text-white px-2
+                inline-flex items-center justify-center
+                disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
+      title="DH解除"
+    >
+      <span className="whitespace-nowrap leading-none tracking-tight
+                      text-[clamp(10px,3.2vw,16px)]">
+        DH解除
+      </span>
+    </button>
+
+
+    {/* リエントリー */}
   <button
-    onClick={() => setShowDhDisableModal(true)}
-    disabled={!isDhTurn || !dhActive || !pitcherId}
-    className="w-full h-10 rounded bg-gray-800 text-white px-2
-              inline-flex items-center justify-center
-              disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
-    title="DH解除"
+    onClick={() => {
+      const { A, B, order1 } = findReentryCandidateForCurrentSpot();
+      if (!B) {
+        setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+        alert("この打順にリエントリー可能な選手はいません。");
+        return;
+      }
+      setReEntryFromPlayer(A || null);
+      setReEntryTargetPlayer(B);
+      setReEntryOrder1(order1);
+      setShowReEntryModal(true);
+    }}
+    className="w-full h-10 rounded bg-purple-600 text-white px-2
+              inline-flex items-center justify-center"  // ← 横並び中央
+    title="リエントリー"
   >
-    <span className="whitespace-nowrap leading-none tracking-tight
-                    text-[clamp(10px,3.2vw,16px)]">
-      DH解除
+    <span className="whitespace-nowrap leading-none
+                    text-[clamp(12px,3.6vw,16px)] tracking-tight">
+      リエントリー
     </span>
   </button>
 
 
-  {/* リエントリー */}
-<button
-  onClick={() => {
-    const { A, B, order1 } = findReentryCandidateForCurrentSpot();
-    if (!B) {
-      setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-      alert("この打順にリエントリー可能な選手はいません。");
-      return;
-    }
-    setReEntryFromPlayer(A || null);
-    setReEntryTargetPlayer(B);
-    setReEntryOrder1(order1);
-    setShowReEntryModal(true);
-  }}
-  className="w-full h-10 rounded bg-purple-600 text-white px-2
-             inline-flex items-center justify-center"  // ← 横並び中央
-  title="リエントリー"
->
-  <span className="whitespace-nowrap leading-none
-                   text-[clamp(12px,3.6vw,16px)] tracking-tight">
-    リエントリー
-  </span>
-</button>
+    {/* 代走 */}
+    <button
+      onClick={() => setShowRunnerModal(true)}
+      className="w-full h-10 rounded bg-orange-600 text-white"
+      title="代走"
+    >
+      🏃‍♂️代走
+    </button>
 
-
-  {/* 代走 */}
-  <button
-    onClick={() => setShowRunnerModal(true)}
-    className="w-full h-10 rounded bg-orange-600 text-white"
-    title="代走"
-  >
-    🏃‍♂️代走
-  </button>
-
-  {/* 代打 */}
-  <button
-    onClick={() => setShowSubModal(true)}
-    className="w-full h-10 rounded bg-orange-600 text-white"
-    title="代打"
-  >
-    🏏代打
-  </button>
-</div>
+    {/* 代打 */}
+    <button
+      onClick={() => setShowSubModal(true)}
+      className="w-full h-10 rounded bg-orange-600 text-white"
+      title="代打"
+    >
+      🏏代打
+    </button>
+  </div>
 
 
 {/* ✅ DH解除のポップアップ */}
@@ -1660,7 +1685,24 @@ onClick={() => {
               <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
-            <p className="text-xl font-bold text-red-700 text-center">{popupMessage}</p>
+{(() => {
+  const BK = "この回の得点は";
+  const idx = popupMessage.indexOf(BK);
+  const head = idx >= 0 ? popupMessage.slice(0, idx) : popupMessage; // 例: 「○○チーム、」
+  const tail = idx >= 0 ? popupMessage.slice(idx) : "";               // 例: 「この回の得点は3点です。」
+
+  return (
+    <p className="text-xl font-bold text-red-700 text-center break-words">
+      {/* 1行で収まるならそのまま1行 */}
+      <span className="whitespace-nowrap">{head}</span>
+      {/* ここでだけ折り返し可（Safari対策に \u200B も入れる） */}
+      {idx >= 0 && <><wbr />{"\u200B"}</>}
+      {tail}
+    </p>
+  );
+})()}
+
+
 
             {/* 読み上げ・停止（横いっぱい・等幅） */}
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -2419,7 +2461,7 @@ onClick={async () => {
 
           {/* === STEP 3: トグル＋内容・選手選択 === */}
           {selectedBase && (
-            <div className="space-y-4">
+            <div className="space-y-4"> 
               {/* 臨時代走トグル（アンバーチップ） */}
               <div className="flex items-center justify-center">
                 <label className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
@@ -2925,7 +2967,6 @@ onClick={async () => {
   </div>
 )}
 
-
 {/* ✅ 開始時刻モーダル（スマホ風・機能そのまま／中央配置） */}
 {showStartTimePopup && (
   <div className="fixed inset-0 z-50">
@@ -3084,7 +3125,7 @@ onClick={async () => {
         {/* フッター：OK → 従来の得点入力へ */}
         <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
           <button
-onClick={async () => {
+            onClick={async () => {
   setShowMemberExchangeModal(false);
   // 記録しておいた後続アクションを実行
   if (afterMemberExchange === "groundPopup") {
@@ -3108,8 +3149,6 @@ onClick={async () => {
     </div>
   </div>
 )}
-
-
 
 
     </div>
