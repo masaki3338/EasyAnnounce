@@ -797,10 +797,10 @@ battingOrder.forEach((entry, idx) => {
 const pinchTexts = pinchInSamePos.map(p => p.text);
 if (pinchTexts.length === 1) {
   result.push(pinchTexts[0]);
-  skipHeader = true;
+  //skipHeader = true;
 } else if (pinchTexts.length > 1) {
   result.push(pinchTexts.join("、\n"));
-  skipHeader = true;
+  //skipHeader = true;
 }
 
 /* =========================================
@@ -818,11 +818,17 @@ if (pinchTexts.length === 1) {
 
 // ✅ リエントリーが1つでもあれば、最初に「選手の交代」を必ず付ける。
 //    それ以外（通常のみ）のときは従来ルールのまま。
+/* ---- ヘッダー ---- */
+// ピンチ（代打/代走の「そのまま入り」）はこの時点で result に本文が入っている。
+// 本文行が1つでもあれば、必ず「選手の交代…」を先頭に付ける（リエントリー含む）。
 if (!skipHeader) {
-  if (reentryOccurred) {
-    // 先頭に差し込む（この時点で result には既にリエントリー行が入っている想定）
-    result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
-  } else if (result.length === 0) {
+  const hasBodyLinesAlready = result.length > 0;
+  if (reentryOccurred || hasBodyLinesAlready) {
+    const alreadyHasHeader = result.some(l => /お知らせいたします[。]$/.test(l.trim()));
+    if (!alreadyHasHeader) {
+      result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
+    }
+  } else {
     if (hasMixed || (hasReplace && hasShift)) {
       result.push(`${teamName}、選手の交代並びにシートの変更をお知らせいたします。`);
     } else if (hasReplace) {
@@ -832,6 +838,7 @@ if (!skipHeader) {
     }
   }
 }
+
 
 
 /* ---- 並べ替え：守備位置番号順に ---- */
@@ -1085,6 +1092,56 @@ mixed.forEach((r, i) => {
     handledPlayerIds.has(r.to.id)   ||
     handledPositions.has(r.toPos)
   ) return;
+
+// >>> DIRECT REENTRY v2（代打→守備→元スタメンが戻る）を最優先で確定
+{
+  // r.to（入る側）の “元スタメンID” を逆引き
+  const origIdTo = resolveOriginalStarterId(
+    r.to.id,
+    usedPlayerInfo as any,
+    initialAssignments as any
+  );
+  const infoOrig = origIdTo ? (usedPlayerInfo as any)?.[origIdTo] : undefined;
+  const latestSubOfOrig = origIdTo
+    ? resolveLatestSubId(origIdTo, usedPlayerInfo as any)
+    : undefined;
+
+  // r.to が元スタメン系列で、かつ “その元スタメンの最新sub” が r.from ならリエントリー確定
+  const isStarterChain =
+    !!origIdTo &&
+    !!infoOrig &&
+    (origIdTo === r.to.id ||
+     Object.values(initialAssignments || {}).some(id => Number(id) === Number(r.to.id)));
+
+  const fromMatchesChain =
+    !!latestSubOfOrig && Number(latestSubOfOrig) === Number(r.from.id);
+
+  if (isStarterChain && fromMatchesChain) {
+    const orderPart = r.order > 0 ? `${r.order}番に ` : "";
+// ⛳ これを↓に置き換え（const orderPart行ごと削除）
+addReplaceLine(
+  `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、` +
+  `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
+  i === mixed.length - 1 && shift.length === 0
+);
+
+    console.log("[MIXED] direct-reentry(v2) fired", {
+      from: r.from.id,
+      to: r.to.id,
+      origIdTo,
+      latestSubOfOrig,
+      toPos: r.toPos
+    });
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(r.toPos);
+    reentryOccurred = true;
+    return; // ← 通常の「…が入り…へ」分岐に進ませない
+  }
+}
+// <<< DIRECT REENTRY v2 END
+
+
 
     // ★ 追加：UIが青（preview or fixed）なら、確定前でも「リエントリーで …」
   if (isReentryBlue(r.to.id)) {

@@ -238,6 +238,7 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
 // 🔍 リエントリー候補の詳細デバッグ版
 // 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
+// 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す（厳密版）
 const findReentryCandidateForCurrentSpot = async () => {
   console.log("🔍 リエントリー対象判定 ====================");
 
@@ -251,40 +252,40 @@ const findReentryCandidateForCurrentSpot = async () => {
   const A = currentEntry ? getPlayer(currentEntry.id) : null;
   console.log("A（現在の枠の選手）:", A, "entry:", currentEntry);
 
-  // 守備・打順の現状
+  // 現状
   console.log("battingOrder IDs:", battingOrder.map(e => e?.id));
   console.log("assignments:", assignments);
 
   const isInBatting = (pid: number) => (battingOrder || []).some(e => e?.id === pid);
   const isInDefense = (pid: number) => Object.values(assignments || {}).some(id => Number(id) === Number(pid));
 
-  // 1) 一次ソース：startingBattingOrder から元スタメンを取得（打順 index=order0）
+  // 1) 一次ソース：startingBattingOrder の “この打順” の元スタメンを優先
   const startingOrder: Array<{ id: number }> =
     (await localForage.getItem("startingBattingOrder")) || [];
-  const origIdFromStart = startingOrder[order0]?.id;
-  const origFromStart = origIdFromStart ? getPlayer(origIdFromStart) : null;
-  console.log("startingBattingOrder[", order1, "] =", origIdFromStart, origFromStart);
+  const starterId = startingOrder[order0]?.id;
+  const starter = starterId ? getPlayer(starterId) : null;
+  console.log("startingBattingOrder[", order1, "] =", starterId, starter);
 
-  if (origIdFromStart) {
-    const inBat = isInBatting(origIdFromStart);
-    const inDef = isInDefense(origIdFromStart);
+  if (starterId) {
+    const inBat = isInBatting(starterId);
+    const inDef = isInDefense(starterId);
     console.log("元スタメンの現在: inBat=", inBat, " inDef=", inDef);
 
-    // 元スタメンがベンチ（打順にも守備にもいない）なら即採用
     if (!inBat && !inDef) {
       console.log("✅ 候補B: startingBattingOrder から採用");
-      return { A, B: getPlayer(origIdFromStart), order1 };
+      return { A, B: getPlayer(starterId), order1 };
     }
-  } else {
-    console.warn("❗ startingBattingOrder にこの打順の元スタメン記録が見つかりません");
+    // ★ 元スタメンが出場中 → この打順はリエントリー不可。ここで確定的に終わる（fallback 不可）
+    console.warn("⛔ 元スタメンが出場中のため、fallback は禁止。アラート経路へ。");
+    return { A, B: null, order1 };
   }
 
-  // 2) 二次ソース：usedPlayerInfo を保険としてスキャン
+  // 2) 二次ソース：starting に記録が無い“レガシー”ケースのみ、usedPlayerInfo で補う
   const upi = (usedPlayerInfo as Record<number, { wasStarter?: boolean; order?: number }>) || {};
-  const upiRows = Object.entries(upi).map(([starterId, info]) => {
-    const p = getPlayer(Number(starterId));
+  const upiRows = Object.entries(upi).map(([starterId2, info]) => {
+    const p = getPlayer(Number(starterId2));
     return {
-      starterId: Number(starterId),
+      starterId: Number(starterId2),
       name: p ? `${p.lastName}${p.firstName}` : "(不明)",
       wasStarter: !!info?.wasStarter,
       infoOrder: info?.order,
@@ -292,15 +293,12 @@ const findReentryCandidateForCurrentSpot = async () => {
   });
   console.table(upiRows);
 
+  // ⚠ order は 1 始まりのみ採用（0/1混在許容はやめる）
   let fallbackId: number | null = null;
-  Object.entries(upi).forEach(([starterId, info]) => {
-    const ord = Number(info?.order);
-    const sameOrder = (ord === order1) || (ord === order0); // 0/1始まり差異に耐性
-    const treatedStarter =
-      !!info?.wasStarter ||
-      (origIdFromStart && Number(starterId) === Number(origIdFromStart)); // starting優先で昇格
-
-    if (treatedStarter && sameOrder) fallbackId = Number(starterId);
+  Object.entries(upi).forEach(([starterId2, info]) => {
+    if (info?.wasStarter && Number(info?.order) === order1) {
+      fallbackId = Number(starterId2);
+    }
   });
 
   if (fallbackId) {
@@ -311,14 +309,6 @@ const findReentryCandidateForCurrentSpot = async () => {
       console.log("✅ 候補B: usedPlayerInfo（保険）から採用");
       return { A, B: getPlayer(fallbackId), order1 };
     }
-  }
-
-  // ダメ押しの除外理由ログ
-  if (origIdFromStart) {
-    console.warn("❌ 除外: 元スタメンは出場中のためリエントリー不可",
-      { inBatting: isInBatting(origIdFromStart), inDefense: isInDefense(origIdFromStart) });
-  } else {
-    console.warn("❌ 除外: startingBattingOrder 未記録 & usedPlayerInfo 不一致");
   }
 
   console.log("⛔ リエントリー対象なし（アラート経路）");
