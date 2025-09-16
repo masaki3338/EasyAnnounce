@@ -389,35 +389,17 @@ const handleDragStart = (
 
   try {
     // iOS は“見えるゴースト”を作って指に追従させる
-    if (isIOS && e.dataTransfer.setDragImage) {
-      const ghost = document.createElement("div");
-      const text = (e.currentTarget as HTMLElement).innerText || `#${playerId}`;
-      ghost.textContent = text;
-      Object.assign(ghost.style, {
-        position: "fixed",
-        top: "0", left: "0",
-        transform: "translate(-9999px,-9999px)",
-        padding: "6px 10px",
-        background: "rgba(0,0,0,0.85)",
-        color: "#fff",
-        borderRadius: "12px",
-        fontWeight: "600",
-        boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
-        zIndex: "99999",
-      } as CSSStyleDeclaration);
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 0, 0);
+// iOS：ネイティブのドラッグ画像は“完全透明”にして非表示化
+if (isIOS && e.dataTransfer.setDragImage && ghostImgRef.current) {
+  e.dataTransfer.setDragImage(ghostImgRef.current, 0, 0);
+  // 終了時クリーンアップ（dragging表示オーバーレイを消す）
+  const once = () => setDraggingPlayerId(null);
+  window.addEventListener("dragend", once, { once: true });
+  window.addEventListener("drop", once, { once: true });
+  (e.currentTarget as HTMLElement).addEventListener("dragend", once, { once: true });
+  // ここでは return しない（下の onEnd 登録も生かす）
+}
 
-      const cleanup = () => { try { document.body.removeChild(ghost); } catch {} };
-      const once = () => {
-        cleanup();
-        setDraggingPlayerId(null);
-      };
-      window.addEventListener("dragend", once, { once: true });
-      window.addEventListener("drop", once, { once: true });
-      (e.currentTarget as HTMLElement).addEventListener("dragend", once, { once: true });
-      return;
-    }
 
     // それ以外は要素自身をゴーストに（中央基準）
     const target = e.currentTarget as HTMLElement;
@@ -1003,6 +985,26 @@ return (
     保存する
   </button>
 </div>
+{/* iOS用：指先追従ラベル（ネイティブ画像は透明化済み） */}
+{isIOS && draggingPlayerId && lastTouchRef.current && (() => {
+  const p = teamPlayers.find(pp => pp.id === draggingPlayerId);
+  if (!p) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: lastTouchRef.current.x,
+        top: lastTouchRef.current.y,
+        transform: "translate(-50%,-70%)",
+        pointerEvents: "none",
+        zIndex: 100000,
+      }}
+      className="px-2.5 py-1.5 rounded-lg bg-black/85 text-white ring-4 ring-amber-300 shadow-2xl text-sm font-semibold whitespace-nowrap"
+    >
+      {p.lastName}{p.firstName} #{p.number}
+    </div>
+  );
+})()}
 
 
       
