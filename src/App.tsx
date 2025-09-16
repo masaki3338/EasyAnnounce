@@ -37,7 +37,7 @@ import VersionInfo from "./screens/VersionInfo";
 // バージョン番号を定数で管理
 const APP_VERSION = "1.00"
 
-useWakeLock(); // ← 前面表示中のみスリープ抑止
+
 
 // 画面の種類を列挙した型
 export type ScreenType =
@@ -285,6 +285,7 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
 );
  
 const App = () => {
+  useWakeLock(); // ✅ ここに移動（Appコンポーネントの先頭）
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
