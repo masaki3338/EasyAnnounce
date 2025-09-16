@@ -1745,6 +1745,33 @@ const modalTextRef = useRef<HTMLDivElement | null>(null);
 // 直前に外れた“元スタメン”の打順Index（例: レフトが外れた等）
 const lastVacatedStarterIndex = useRef<number | null>(null);
 
+// === Drag中のスクロールロック ===
+const scrollLockDepthRef = useRef(0);
+const preventRef = useRef<(e: Event) => void>();
+
+const lockScroll = () => {
+  if (++scrollLockDepthRef.current > 1) return;
+  const prevent = (e: Event) => e.preventDefault();
+  preventRef.current = prevent;
+  // ページスクロールを抑止
+  document.body.style.overflow = "hidden";
+  // iOSのオーバースクロールを抑止
+  document.documentElement.style.overscrollBehaviorY = "none";
+  window.addEventListener("touchmove", prevent, { passive: false });
+  window.addEventListener("wheel", prevent, { passive: false });
+};
+
+const unlockScroll = () => {
+  if (--scrollLockDepthRef.current > 0) return;
+  const prevent = preventRef.current;
+  document.body.style.overflow = "";
+  document.documentElement.style.overscrollBehaviorY = "";
+  if (prevent) {
+    window.removeEventListener("touchmove", prevent as any);
+    window.removeEventListener("wheel", prevent as any);
+  }
+};
+
 // 置き換え版：漢字+ルビの重複は rt だけ読む／それ以外は通常テキストを読む
 const speakVisibleAnnouncement = () => {
   const root = modalTextRef.current;
@@ -2619,10 +2646,11 @@ const makeDragGhost = (el: HTMLElement) => {
 };
 
 // ② 既存の handlePositionDragStart を差し替え
-const handlePositionDragStart = (
+const handlePositionDragStart = (  
   e: React.DragEvent<HTMLDivElement>,
   pos: string
 ) => {
+  lockScroll();
   e.dataTransfer.setData("fromPos", pos);
   e.dataTransfer.setData("text/plain", pos); // ← これを追加（Android必須）
   e.dataTransfer.effectAllowed = "move";
@@ -2642,6 +2670,7 @@ const handlePositionDragStart = (
     try { el.removeEventListener("dragend", onEnd); } catch {}
     window.removeEventListener("dragend", onEnd);
     window.removeEventListener("drop", onEnd);
+    unlockScroll();
   };
 
   // once: true で二重解除を気にしない
@@ -2653,10 +2682,22 @@ const handlePositionDragStart = (
 
 
   const handleBenchDragStart = (e: React.DragEvent, playerId: number) => {
+    lockScroll();
     e.dataTransfer.setData("playerId", playerId.toString());
     e.dataTransfer.setData("text/plain", playerId.toString()); // ★ Android 用
     e.dataTransfer.effectAllowed = "move";                     // ★ 視覚的にも安定
     setDraggingFrom(BENCH);
+    const el = e.currentTarget as HTMLElement;
+    const onEnd = () => {
+      try { el.removeEventListener("dragend", onEnd); } catch {}
+      window.removeEventListener("dragend", onEnd);
+      window.removeEventListener("drop", onEnd);
+      unlockScroll();
+    };
+    el.addEventListener("dragend", onEnd, { once: true });
+    window.addEventListener("dragend", onEnd, { once: true });
+    window.addEventListener("drop", onEnd, { once: true });
+
   };
 
   const handleDrop = (toPos: string, e: React.DragEvent<HTMLDivElement>) => {
@@ -3398,9 +3439,10 @@ const confirmChange = async () => {
         order,        // ← null の可能性も許容
         wasStarter,
       };
+      
     }
   });
-
+await localForage.setItem("usedPlayerInfo", usedInfo);
   // 🆕 リエントリー確定した元選手(B)の代打/代走痕跡を掃除する
 {
   // いまフィールドに出ている選手の集合（数値IDだけ）
@@ -3666,7 +3708,7 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
               ? "ring-2 ring-inset ring-blue-400"
               : (isSub || isChanged) ? "ring-2 ring-inset ring-yellow-400"
               : ""}` }
-          style={{ minWidth: "78px", maxWidth: "38vw" }}
+          style={{ minWidth: "78px", maxWidth: "38vw", touchAction: "none" }}
           title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
         >
           {player.lastName ?? ""}{player.firstName ?? ""} #{player.number}
@@ -3704,6 +3746,7 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
                 {benchNeverPlayed.map((p) => (
                   <div
                     key={`bench-${p.id}`}
+                    style={{ touchAction: "none" }}
                     draggable
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
                     className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
@@ -3723,6 +3766,7 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
                 {benchPlayedOut.map((p) => (
                   <div
                     key={`played-${p.id}`}
+                    style={{ touchAction: "none" }}
                     draggable
                     onDragStart={(e) => handleBenchDragStart(e, p.id)}
                     className="px-3 py-1.5 text-sm bg-slate-50 text-slate-600 border border-slate-200 rounded-xl cursor-move select-none transition active:scale-[0.98]"
