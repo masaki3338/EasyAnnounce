@@ -292,21 +292,39 @@ const App = () => {
   const { enable: enableNoSleep, disable: disableNoSleep, bindAutoRelease } = useNoSleepFallback();
   const [showNoSleepButton, setShowNoSleepButton] = useState<boolean>(false);
 
-  useEffect(() => {
-    // Wake Lock 非対応 & iOS っぽい場合にフォールバックボタンを出す
-    const wakeSupported = !!(navigator as any).wakeLock?.request;
-    const ua = navigator.userAgent || "";
-    const isiOS = /iP(hone|ad|od)/.test(ua) || /Macintosh/.test(ua) && "ontouchend" in document;
+useEffect(() => {
+  const wakeSupported = !!(navigator as any).wakeLock?.request;
 
-    if (!wakeSupported && isiOS) {
-      setShowNoSleepButton(true);
-    }
-    // 非表示時はNoSleep自動解除
-    const unbind = bindAutoRelease();
-    return () => unbind?.();
-  }, [bindAutoRelease]);
+  // iOS 判定
+  const ua = navigator.userAgent || "";
+  const isiOS =
+    /iP(hone|ad|od)/.test(ua) ||
+    ((/Macintosh/.test(ua) && "ontouchend" in document) as any);
+
+  // 非対応の時点でボタン表示（iOS/Android 問わず）
+  if (!wakeSupported) setShowNoSleepButton(true);
+
+  // Wake Lock 失敗/予期せぬ解放時にフォールバックボタンを出す
+  const onError = () => setShowNoSleepButton(true);
+  const onReleased = () => {
+    // 解除されたまま可視のとき、ユーザーに再有効化手段を出す
+    if (document.visibilityState === "visible") setShowNoSleepButton(true);
+  };
+
+  window.addEventListener("wakelock:error", onError as EventListener);
+  window.addEventListener("wakelock:released", onReleased as EventListener);
+
+  // 非表示時は NoSleep を自動解除（既存の挙動）
+  const unbind = bindAutoRelease();
+
+  return () => {
+    window.removeEventListener("wakelock:error", onError as EventListener);
+    window.removeEventListener("wakelock:released", onReleased as EventListener);
+    unbind?.();
+  };
+}, [bindAutoRelease]);
   // ▲ 追記ここまで
-  
+
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
