@@ -781,7 +781,7 @@ return (
   return (
     <div
       key={pos}
-      draggable={!!player}                                   // ← これを追加
+      draggable={!isTouchDevice() && !!player}
       onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
         player.id, pos)}
       onDragEnter={() => setHoverPosKey(pos)}
@@ -815,9 +815,9 @@ return (
     >
       {player ? (
         <div
-          draggable
+          draggable={!isTouchDevice()}
           onDragStart={(e) => handleDragStart(e, player.id, pos)}
-          style={{ WebkitUserDrag: "element", touchAction: "none" }}
+          style={{ WebkitUserDrag: isTouchDevice() ? "none" : "element", touchAction: "none" }}
           className={
             `relative w-full h-full flex items-center justify-center font-semibold
             whitespace-nowrap overflow-hidden text-ellipsis text-sm sm:text-base
@@ -871,7 +871,7 @@ return (
               .map((p) => (
                   <div
                     key={p.id}
-                    draggable
+                    draggable={!isTouchDevice()}
                     onDragStart={(e) => handleDragStart(e, p.id)}
                     onTouchStart={() => setTouchDrag({ playerId: p.id })}
                     style={{ touchAction: "none" }}
@@ -905,7 +905,7 @@ return (
             benchOutPlayers.map((p) => (
               <div
                 key={p.id}
-                draggable
+                draggable={!isTouchDevice()}
                 onDragStart={(e) => handleDragStart(e, p.id)}
                 className="px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
               >
@@ -937,8 +937,13 @@ return (
   data-player-id={entry.id}
   className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
               ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400" : ""}`}
-  draggable
-  onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
+  draggable={!isTouchDevice()}
+  onDragStart={(e) => {
+    // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
+    const t = e.target as HTMLElement;
+    if (t && t.closest('[data-role="poslabel"]')) return;
+    handleBattingOrderDragStart(e, entry.id);
+  }}
   onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
   onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
   onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
@@ -953,7 +958,7 @@ return (
                   className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
                               ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400 bg-emerald-500/20" : "bg-white/10 border border-white/10"}`}
                   title={pos ? "この守備を他の行と入替" : "守備なし"}
-                  draggable={!!pos}
+                  draggable={!isTouchDevice() && !!pos}
                   onDragStart={(e) => handlePosDragStart(e, entry.id)}
                   onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
