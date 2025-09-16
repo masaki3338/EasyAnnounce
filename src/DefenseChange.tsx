@@ -1899,6 +1899,8 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
+  const [hoverPos, setHoverPos] = useState<string | null>(null);
+
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -3677,6 +3679,8 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
   return (
     <div
       key={pos}
+      onDragEnter={() => setHoverPos(pos)}
+      onDragLeave={() => setHoverPos((v) => (v === pos ? null : v))}
       onDragOver={(e) => {
         if (pos !== "指" || (dhEnabledAtStart || dhDisableDirty)) e.preventDefault();
       }}
@@ -3687,6 +3691,7 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
         } else {
           console.log("🪂 onDrop ブロック（DH禁止状態）", { pos, dhEnabledAtStart, dhDisableDirty });
         }
+        setHoverPos(null);
       }}
 
       // ★ 外側は位置決め専用：bg/ring/shadow は付けない（内側で見せる）
@@ -3703,11 +3708,15 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
         <div
           draggable
           onDragStart={(e) => handlePositionDragStart(e, pos)}
-          className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white bg-black/80 whitespace-nowrap
-            ${(alwaysReentryIds.has(player.id) || isReentryBlue)
-              ? "ring-2 ring-inset ring-blue-400"
-              : (isSub || isChanged) ? "ring-2 ring-inset ring-yellow-400"
-              : ""}` }
+          className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white ${
+            draggingFrom === pos ? "bg-emerald-600" : "bg-black/80"
+          } whitespace-nowrap
+${hoverPos === pos
+    ? "ring-2 ring-inset ring-emerald-400"
+    : (alwaysReentryIds.has(player.id) || isReentryBlue)
+      ? "ring-2 ring-inset ring-blue-400"
+      : (isSub || isChanged) ? "ring-2 ring-inset ring-yellow-400" : ""}`
+          }
           style={{ minWidth: "78px", maxWidth: "38vw", touchAction: "none" }}
           title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
         >
@@ -4314,11 +4323,12 @@ const DefenseChangeWrapped: React.FC<DefenseChangeProps> = (props) => {
         enableTouchEvents: true,
         enableMouseEvents: true,
         touchSlop: 10,
+        delayTouchStart: 60,   // ★ 追加：長押し時間を短く
       } : undefined}
     >
-      {/* 受け取った全 prop を展開して渡す */}
       <DefenseChange {...props} />
     </DndProvider>
+
   );
 };
 
