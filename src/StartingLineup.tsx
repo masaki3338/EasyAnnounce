@@ -416,7 +416,8 @@ if (isIOS && e.dataTransfer.setDragImage) {
   // 指の中央やや上に来るようオフセット（好みに応じて 0.55〜0.7 で微調整可）
   e.dataTransfer.setDragImage(ghost, r.width * 0.5, r.height * 0.6);
 
-  const cleanup = () => { try { document.body.removeChild(ghost); } catch {} };
+  const cleanup = () => { try { document.body.removeChild(ghost); } catch {} 
+                          setDraggingPlayerId(null); };
   window.addEventListener("dragend", cleanup, { once: true });
   window.addEventListener("drop", cleanup, { once: true });
   (e.currentTarget as HTMLElement).addEventListener("dragend", cleanup, { once: true });
@@ -548,6 +549,8 @@ if (pitcherId) {
 
     return updated;
   });
+  // ★ ドロップ完了時はハイライトを確実に解除
+  setDraggingPlayerId(null), setHoverPosKey(null);
 };
 
 
