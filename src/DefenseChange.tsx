@@ -379,7 +379,6 @@ const useSimpleForm =
   currentRefReason === "途中出場";
 
 // 直後でなければ「先ほど〜致しました」を使わず、位置付きの通常形にする
-// 直後でなければ「先ほど〜致しました」を使わず、位置付きの通常形にする
 const firstLine = useSimpleForm
   ? `${posFull2} ${lastWithHonor(refPlayer)}に代わりまして、` +
     `${lastWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`
@@ -390,6 +389,45 @@ const firstLine = useSimpleForm
 console.log("[REENTRY-LINE]", useSimpleForm ? "simple" : "recent", {
   refId: refPlayer?.id, toId: B2?.id, posFull: posFull2
 });
+
+
+// ★ リエントリー選手（B2）の打順行も出す
+// まずは B本人、だめなら “Bの最新subId”、さらにダメなら “今の打順の元スタメンがB” かで探す
+const orderBIdx = (() => {
+  // 1) B本人がそのまま打順にいる
+  let idx = battingOrder.findIndex(e => e.id === B2.id);
+  if (idx >= 0) return idx;
+
+  // 2) Bの“最新代替（清水など）”が打順にいる
+  const latestOfB = resolveLatestSubId(B2.id, usedPlayerInfo as any);
+  if (latestOfB) {
+    idx = battingOrder.findIndex(e => e.id === latestOfB);
+    if (idx >= 0) return idx;
+  }
+
+  // 3) 打順エントリ側の“元スタメン”を逆引きして、それがBならそのスロットを採用
+  idx = battingOrder.findIndex(e =>
+    resolveOriginalStarterId(e.id, usedPlayerInfo as any, initialAssignments as any) === B2.id
+  );
+  return idx;
+})();
+
+const orderB = orderBIdx >= 0 ? orderBIdx + 1 : 0;
+
+if (
+  orderB > 0 &&
+  !lineupLines.some(l =>
+    l.order === orderB &&
+    l.text.includes(posFull2) &&
+    l.text.includes(lastRuby(B2))
+  )
+) {
+  lineupLines.push({
+    order: orderB,
+    // リエントリーは背番号なしの体裁
+    text: `${orderB}番 ${posFull2} ${lastWithHonor(B2)}`
+  });
+}
 
 
 // デバッグログ（どちらの分岐を使ったか確認用）
@@ -874,6 +912,21 @@ replace.forEach((r) => {
       `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
       `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
     );
+
+    if (
+        r.order > 0 &&
+        !lineupLines.some(l =>
+          l.order === r.order &&
+          l.text.includes(posJP[r.pos]) &&
+          l.text.includes(lastRuby(r.to))
+        )
+      ) {
+        lineupLines.push({
+          order: r.order,
+          text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+        });
+      }
+
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
     handledPositions.add(r.pos);
@@ -911,6 +964,21 @@ replace.forEach((r) => {
       `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
       `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
     );
+
+  if (
+    r.order > 0 &&
+    !lineupLines.some(l =>
+      l.order === r.order &&
+      l.text.includes(posJP[r.pos]) &&
+      l.text.includes(lastRuby(r.to))
+    )
+  ) {
+    lineupLines.push({
+      order: r.order,
+      text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+    });
+  }
+
     handledPlayerIds.add(r.from.id);
     handledPlayerIds.add(r.to.id);
     handledPositions.add(r.pos);
@@ -1134,6 +1202,16 @@ addReplaceLine(
   `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
   i === mixed.length - 1 && shift.length === 0
 );
+
+if (
+  r.order > 0 &&
+  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]) && l.text.includes(lastRuby(r.to)))
+) {
+  lineupLines.push({
+    order: r.order,
+    text: `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
+  });
+}
 
     console.log("[MIXED] direct-reentry(v2) fired", {
       from: r.from.id,
