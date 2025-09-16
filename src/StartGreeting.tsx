@@ -151,17 +151,17 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
           <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">{message}</p>
 
           {/* 赤枠内の操作ボタン */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               onClick={handleSpeak}
               disabled={reading}
-              className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
             >
               <IconMic /> 読み上げ
             </button>
             <button
               onClick={handleStop}
-              className="flex-1 px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
+              className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
               disabled={!reading}
             >
               停止

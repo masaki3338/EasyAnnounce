@@ -435,7 +435,7 @@ return (
             <p className="text-sm leading-relaxed">
               球審の”プレイ”で
               <span className="font-semibold">【試合開始】</span>
-              ボタンを押して下さい。
+              ボタンを押して下さい
             </p>
             <button
               onClick={proceedStart}
