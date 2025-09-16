@@ -12,6 +12,8 @@ import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
 import { useWakeLock } from "./hooks/useWakeLock";
+import { useNoSleepFallback } from "./hooks/useNoSleepFallback";
+import "nosleep.js";
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -286,6 +288,25 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
  
 const App = () => {
   useWakeLock(); // ✅ ここに移動（Appコンポーネントの先頭）
+    // ▼ 追記ここから
+  const { enable: enableNoSleep, disable: disableNoSleep, bindAutoRelease } = useNoSleepFallback();
+  const [showNoSleepButton, setShowNoSleepButton] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Wake Lock 非対応 & iOS っぽい場合にフォールバックボタンを出す
+    const wakeSupported = !!(navigator as any).wakeLock?.request;
+    const ua = navigator.userAgent || "";
+    const isiOS = /iP(hone|ad|od)/.test(ua) || /Macintosh/.test(ua) && "ontouchend" in document;
+
+    if (!wakeSupported && isiOS) {
+      setShowNoSleepButton(true);
+    }
+    // 非表示時はNoSleep自動解除
+    const unbind = bindAutoRelease();
+    return () => unbind?.();
+  }, [bindAutoRelease]);
+  // ▲ 追記ここまで
+  
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
