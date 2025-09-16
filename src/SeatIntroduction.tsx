@@ -239,11 +239,11 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
           />
 
           {/* 枠内の操作ボタン */}
-          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               onClick={speakText}
               disabled={speaking}
-              className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
             >
               <IconMic /> 読み上げ
             </button>
