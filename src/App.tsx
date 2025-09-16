@@ -11,6 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
+import { useWakeLock } from "./hooks/useWakeLock";
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
@@ -35,6 +36,8 @@ import VersionInfo from "./screens/VersionInfo";
 
 // バージョン番号を定数で管理
 const APP_VERSION = "1.00"
+
+useWakeLock(); // ← 前面表示中のみスリープ抑止
 
 // 画面の種類を列挙した型
 export type ScreenType =
@@ -352,6 +355,7 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
     };
     initializeDatabase();
   }, []);
+
 
   return (
     <>
