@@ -218,6 +218,10 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
 
   const headAnnounceKeyRef = useRef<string>("");
 
+  // 直前に終了した回情報（得点モーダル表示中に inning/isTop は“次回”へ変わるため）
+  const lastEndedHalfRef = useRef<{ inning: number; isTop: boolean } | null>(null);
+
+
   // TTS用にHTMLをプレーンテキスト化（rubyは<rt>だけ残す）
   const normalizeForTTS = (input: string) => {
     if (!input) return "";
@@ -763,11 +767,16 @@ const setAnnouncementHTML = (html: string) => {
 
 
 const confirmScore = async () => {
+  // ★ ここを追加：モーダル表示前に「終わった回」を確定
+  lastEndedHalfRef.current = { inning, isTop };
   const score = parseInt(inputScore || "0", 10);
   const updatedScores = { ...scores };
 
   // ✅ 編集モード時
   if (editInning !== null && editTopBottom !== null) {
+    // （バリデーション直後あたりで）
+    lastEndedHalfRef.current = { inning, isTop };
+
     const index = editInning - 1;
     if (!updatedScores[index]) {
       updatedScores[index] = { top: 0, bottom: 0 };
@@ -849,7 +858,8 @@ await saveMatchInfo({
       // このあと行くはずだった遷移を記録
       if (isHome && inning === 4 && !isTop) {
         setAfterMemberExchange("groundPopup");
-      } else if (inning === 1 && isTop) {
+      }
+      else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
         const order =
           (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
         const hasPending = order.some(e =>
@@ -1819,12 +1829,12 @@ onClick={async () => {
     if (pendingGroundPopup) {
       setAfterMemberExchange("groundPopup");
       setPendingGroundPopup(false); // 消費
-    } else if (inning === 1 && isTop) {
+    }  
+    else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
       setAfterMemberExchange("seatIntro");
     } else {
       setAfterMemberExchange("switchDefense");
     }
-
     setPendingMemberExchange(false); // 消費
     setShowMemberExchangeModal(true); // ★ ここでメンバー交換モーダルを後出し
     return; // 以降の通常フローは、モーダルのOKで実行
@@ -1834,7 +1844,8 @@ onClick={async () => {
   if (pendingGroundPopup) {
     setPendingGroundPopup(false);
     setShowGroundPopup(true);
-  } else if (inning === 1 && isTop) {
+  }  
+  else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
     await goSeatIntroFromOffense();
   } else {
     onSwitchToDefense();

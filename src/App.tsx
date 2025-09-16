@@ -994,14 +994,12 @@ if (totalMyScore > totalOpponentScore) {
           {/* 注意表示 */}
           <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold flex items-center gap-2">
             <span className="text-2xl">⚠️</span>
-            勝利チーム🎤
+            勝利チームがアナウンス
           </div>
 
           {/* 🔴 アナウンス文言エリア（ここに読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
             {/* 文言（改行保持） */}
@@ -1078,7 +1076,7 @@ if (totalMyScore > totalOpponentScore) {
           </div>
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
-              <span className="text-xl">🥵</span>
+              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
               <span>熱中症</span>
             </h2>
             <button
@@ -1098,8 +1096,7 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（ここに読み上げ/停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/mic-red.png" alt="mic" className="w-6 h-6" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
+
             </div>
 
             {/* 文言 */}
@@ -1265,8 +1262,6 @@ if (totalMyScore > totalOpponentScore) {
           {/* 🔴 アナウンス文言エリア（読み上げ/停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
-              <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
             {/* 文言 */}
