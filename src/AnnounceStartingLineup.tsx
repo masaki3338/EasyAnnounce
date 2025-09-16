@@ -340,7 +340,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
           )}
           
           {/* 操作ボタン */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               onClick={handleSpeak}
               disabled={isSpeakingRef.current || speaking}

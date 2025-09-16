@@ -2971,7 +2971,6 @@ if (isTemp) {
             {/* アナウンス文言エリア（薄い赤） */}
             <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
               <div className="flex items-start gap-2">
-                <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
                 <p className="text-red-700 font-bold">
                   両チームはグランド整備をお願いします。
                 </p>
@@ -3011,7 +3010,6 @@ if (isTemp) {
             {/* アナウンス文言エリア（薄い赤） */}
             <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
               <div className="flex items-start gap-2">
-                <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
                 <p className="text-red-700 font-bold">
                   グランド整備、ありがとうございました。
                 </p>
@@ -3177,10 +3175,7 @@ if (isTemp) {
         {/* 本文 */}
         <div className="px-4 py-4 space-y-3 overflow-y-auto">
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="flex items-start gap-2 mb-2">
-              <img src="/mic-red.png" alt="mic" className="w-5 h-5 translate-y-0.5" />
-              <span className="text-sm font-semibold text-red-700">アナウンス</span>
-            </div>
+
             <p className="whitespace-pre-wrap text-red-700 font-bold">
               {memberExchangeText}
             </p>

@@ -1063,9 +1063,14 @@ if (replaceLines.length === 1) {
   const POS_JA = "(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)";
   const isSonoMama = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(base);
 
-  const sentence = isSonoMama
-    ? (shift.length > 0 ? base + "、" : base + "。")   // ← ここは「が入ります。」を付けない
+const isReentryBare = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(base);
+
+const sentence = isSonoMama
+  ? (shift.length > 0 ? base + "、" : base + "。")
+  : isReentryBare
+    ? (shift.length > 0 ? base + "に入ります、" : base + "に入ります。")
     : (shift.length > 0 ? base + "、" : base + " が入ります。");
+
 
   result.push(sentence);
 } else if (replaceLines.length > 1) {
@@ -1075,9 +1080,14 @@ if (replaceLines.length === 1) {
   const POS_JA = "(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)";
   const lastIsSonoMama = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(last);
 
-  const lastLine = lastIsSonoMama
-    ? (shift.length > 0 ? last + "、" : last + "。")   // ← ここも句点で閉じる
+const lastIsReentryBare = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(last);
+
+const lastLine = lastIsSonoMama
+  ? (shift.length > 0 ? last + "、" : last + "。")
+  : lastIsReentryBare
+    ? (shift.length > 0 ? last + "に入ります、" : last + "に入ります。")
     : (shift.length > 0 ? last + "、" : last + " が入ります。");
+
 
   result.push(`${continuedLines}\n${lastLine}`);
 }
@@ -2772,14 +2782,16 @@ if (isNumber(toId) && isNumber(fromId)) {
   const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
   wasStarter = origIdForTo !== null;
 
-  // スタメン時打順スロット（0-based）
-  startIdx = wasStarter
-    ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
-    : -1;
+// スタメン時打順スロット（0-based）
+startIdx = wasStarter
+  ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
+  : -1;
 
-  // そのスロットの現（ドラフト）入居者が fromId か？
-  liveIdAtSlot = startIdx >= 0 ? battingOrderDraft[startIdx]?.id : undefined;
-const sameBattingSlot = isNumber(liveIdAtSlot) && liveIdAtSlot === fromId;
+// ★ ドロップ先の相手（fromId）が“どの打順スロットにいるか”を直接逆引き
+const fromOrderIdx = battingOrderDraft.findIndex((e) => e?.id === fromId);
+
+// ★ 「元打順（startIdx）」と「相手の現在の打順（fromOrderIdx）」が一致した時だけリエントリー
+const sameBattingSlot = startIdx >= 0 && fromOrderIdx >= 0 && fromOrderIdx === startIdx;
 
 // 退場済み(= usedPlayerInfoに記録あり) かつ 今はベンチ(=守備にいない) を満たすときだけ
 const hasUsedRecord =
@@ -4323,7 +4335,7 @@ const DefenseChangeWrapped: React.FC<DefenseChangeProps> = (props) => {
         enableTouchEvents: true,
         enableMouseEvents: true,
         touchSlop: 10,
-        delayTouchStart: 60,   // ★ 追加：長押し時間を短く
+        delayTouchStart: 40,   // ★ 追加：長押し時間を短く
       } : undefined}
     >
       <DefenseChange {...props} />
