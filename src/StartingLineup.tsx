@@ -388,44 +388,41 @@ const handleDragStart = (
   e.dataTransfer.effectAllowed = "move";
 
   try {
-    // iOS：テキストが切れない“見える”カスタムゴーストを使う
-    if (isIOS && e.dataTransfer.setDragImage) {
-      // 表示するラベル文字列
-      const p = teamPlayers.find(pp => pp.id === playerId);
-      const label = p ? `${p.lastName}${p.firstName} #${p.number}` : (e.currentTarget as HTMLElement).innerText || `#${playerId}`;
+if (isIOS && e.dataTransfer.setDragImage) {
+  const p = teamPlayers.find(pp => pp.id === playerId);
+  const label = p ? `${p.lastName}${p.firstName} #${p.number}` : (e.currentTarget as HTMLElement).innerText || `#${playerId}`;
 
-      // 画面外に配置するゴースト要素を生成
-      const ghost = document.createElement("div");
-      ghost.textContent = label;
-      Object.assign(ghost.style, {
-        position: "fixed",
-        top: "0",
-        left: "0",
-        transform: "translate(-9999px,-9999px)",
-        padding: "6px 10px",
-        background: "rgba(0,0,0,0.85)",
-        color: "#fff",
-        borderRadius: "12px",
-        fontWeight: "600",
-        fontSize: "14px",
-        lineHeight: "1",
-        whiteSpace: "nowrap",           // ← 切れない
-        boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
-        pointerEvents: "none",
-        zIndex: "99999",
-      } as CSSStyleDeclaration);
+  const ghost = document.createElement("div");
+  ghost.textContent = label;
+  Object.assign(ghost.style, {
+    position: "fixed",
+    top: "0", left: "0",
+    transform: "translate(-9999px,-9999px)",
+    padding: "6px 10px",
+    background: "rgba(0,0,0,0.85)",
+    color: "#fff",
+    borderRadius: "12px",
+    fontWeight: "600",
+    fontSize: "14px",
+    lineHeight: "1",
+    whiteSpace: "nowrap",
+    boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+    pointerEvents: "none",
+    zIndex: "99999",
+  } as CSSStyleDeclaration);
 
-      document.body.appendChild(ghost);
-      const r = ghost.getBoundingClientRect();
-      // 指の少し上・中央にくるようオフセット（好みで微調整OK）
-      e.dataTransfer.setDragImage(ghost, r.width / 2, r.height * 0.6);
+  document.body.appendChild(ghost);
+  const r = ghost.getBoundingClientRect();
+  // 指の中央やや上に来るようオフセット（好みに応じて 0.55〜0.7 で微調整可）
+  e.dataTransfer.setDragImage(ghost, r.width * 0.5, r.height * 0.6);
 
-      const cleanup = () => { try { document.body.removeChild(ghost); } catch {} };
-      window.addEventListener("dragend", cleanup, { once: true });
-      window.addEventListener("drop", cleanup, { once: true });
-      (e.currentTarget as HTMLElement).addEventListener("dragend", cleanup, { once: true });
-      // ※このまま下の onEnd リスナ登録も生かしてOK
-    }
+  const cleanup = () => { try { document.body.removeChild(ghost); } catch {} };
+  window.addEventListener("dragend", cleanup, { once: true });
+  window.addEventListener("drop", cleanup, { once: true });
+  (e.currentTarget as HTMLElement).addEventListener("dragend", cleanup, { once: true });
+
+  return; // ★ これを追加（通常の target を setDragImage しない）
+}
 
     // それ以外は要素自身をゴーストに（中央基準）
     const target = e.currentTarget as HTMLElement;
@@ -968,7 +965,7 @@ return (
                   className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
                               ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400 bg-emerald-500/20" : "bg-white/10 border border-white/10"}`}
                   title={pos ? "この守備を他の行と入替" : "守備なし"}
-                  draggable={!isTouchDevice() && !!pos}
+                  draggable={!!pos}
                   onDragStart={(e) => handlePosDragStart(e, entry.id)}
                   onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
