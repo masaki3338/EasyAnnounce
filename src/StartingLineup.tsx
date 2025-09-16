@@ -45,7 +45,7 @@ const positionNames: { [key: string]: string } = {
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
-  投: { top: "66%", left: "50%" },
+  投: { top: "64%", left: "50%" },
   捕: { top: "88%", left: "50%" },
   一: { top: "66%", left: "82%" },
   二: { top: "44%", left: "66%" },
@@ -75,7 +75,14 @@ const StartingLineup = () => {
 
   // タッチ（スマホ）用：選手選択を保持
 const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(null);
+// ドラッグ中の選手ID／ホバー中のターゲット
+const [draggingPlayerId, setDraggingPlayerId] = useState<number | null>(null);
+const [hoverPosKey, setHoverPosKey] = useState<string | null>(null);        // フィールドの各ポジション用
+const [hoverOrderPlayerId, setHoverOrderPlayerId] = useState<number | null>(null); // 打順行の選手用
+
 const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null);
+
+
 // タッチの最終座標（フォールバック用）
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverTargetRef = React.useRef<number | null>(null);
@@ -139,6 +146,31 @@ useEffect(() => {
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
+
+// === Drag中のスクロールロック ===
+const scrollLockDepthRef = React.useRef(0);
+const preventRef = React.useRef<(e: Event) => void>();
+
+const lockScroll = () => {
+  if (++scrollLockDepthRef.current > 1) return;
+  const prevent = (e: Event) => e.preventDefault();
+  preventRef.current = prevent;
+  document.body.style.overflow = "hidden";
+  document.documentElement.style.overscrollBehaviorY = "none";
+  window.addEventListener("touchmove", prevent, { passive: false });
+  window.addEventListener("wheel", prevent, { passive: false });
+};
+const unlockScroll = () => {
+  if (--scrollLockDepthRef.current > 0) return;
+  const prevent = preventRef.current;
+  document.body.style.overflow = "";
+  document.documentElement.style.overscrollBehaviorY = "";
+  if (prevent) {
+    window.removeEventListener("touchmove", prevent as any);
+    window.removeEventListener("wheel", prevent as any);
+  }
+};
+
 
 useEffect(() => {
   if (!ghostImgRef.current) {
@@ -348,29 +380,66 @@ const handleDragStart = (
   playerId: number,
   fromPos?: string
 ) => {
+  setDraggingPlayerId(playerId);
+
   e.dataTransfer.setData("playerId", String(playerId));
   e.dataTransfer.setData("text/plain", String(playerId)); // Android 補完
   if (fromPos) e.dataTransfer.setData("fromPosition", fromPos);
   e.dataTransfer.effectAllowed = "move";
 
-  // 👉 iOS Safari対策：透明1pxゴーストを使って原点ズレを根本回避
   try {
-    if (isIOS && e.dataTransfer.setDragImage && ghostImgRef.current) {
-      e.dataTransfer.setDragImage(ghostImgRef.current, 0, 0);
+    // iOS は“見えるゴースト”を作って指に追従させる
+    if (isIOS && e.dataTransfer.setDragImage) {
+      const ghost = document.createElement("div");
+      const text = (e.currentTarget as HTMLElement).innerText || `#${playerId}`;
+      ghost.textContent = text;
+      Object.assign(ghost.style, {
+        position: "fixed",
+        top: "0", left: "0",
+        transform: "translate(-9999px,-9999px)",
+        padding: "6px 10px",
+        background: "rgba(0,0,0,0.85)",
+        color: "#fff",
+        borderRadius: "12px",
+        fontWeight: "600",
+        boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+        zIndex: "99999",
+      } as CSSStyleDeclaration);
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 0, 0);
+
+      const cleanup = () => { try { document.body.removeChild(ghost); } catch {} };
+      const once = () => {
+        cleanup();
+        setDraggingPlayerId(null);
+      };
+      window.addEventListener("dragend", once, { once: true });
+      window.addEventListener("drop", once, { once: true });
+      (e.currentTarget as HTMLElement).addEventListener("dragend", once, { once: true });
       return;
     }
-    // iOS以外は従来どおり要素をゴーストに（中央基準）
+
+    // それ以外は要素自身をゴーストに（中央基準）
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
-    const ox = rect.width / 2;
-    const oy = rect.height / 2;
     if (e.dataTransfer.setDragImage) {
-      e.dataTransfer.setDragImage(target, ox, oy);
+      e.dataTransfer.setDragImage(target, rect.width / 2, rect.height / 2);
     }
-  } catch {
-    /* no-op */
-  }
+  } catch {}
+
+  // 終了時のクリーンアップ
+  const el = e.currentTarget as HTMLElement;
+  const onEnd = () => {
+    try { el.removeEventListener("dragend", onEnd); } catch {}
+    window.removeEventListener("dragend", onEnd);
+    window.removeEventListener("drop", onEnd);
+    setDraggingPlayerId(null);
+  };
+  el.addEventListener("dragend", onEnd, { once: true });
+  window.addEventListener("dragend", onEnd, { once: true });
+  window.addEventListener("drop", onEnd, { once: true });
 };
+
 
 
 const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
@@ -715,8 +784,10 @@ return (
       draggable={!!player}                                   // ← これを追加
       onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
         player.id, pos)}
+      onDragEnter={() => setHoverPosKey(pos)}
+      onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}  
       onDragOver={allowDrop}
-      onDrop={(e) => handleDropToPosition(e, pos)}
+      onDrop={(e) => { handleDropToPosition(e, pos); setHoverPosKey(null); }}
        onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
       onTouchEnd={() => {
         if (!touchDrag) return;
@@ -734,22 +805,30 @@ return (
         transform: "translate(-50%, -50%)",
         cursor: player ? "move" : "default",
       }}
-      className="z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
-                 px-2 sm:px-2.5 h-8 sm:h-9
-                 rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
-                 backdrop-blur-[2px] text-center
-                 flex items-center justify-center select-none touch-none"
+      className={`z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
+            px-2 sm:px-2.5 h-8 sm:h-9
+            rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
+            ${hoverPosKey === pos ? "ring-4 ring-emerald-400" : ""}
+            backdrop-blur-[2px] text-center
+            flex items-center justify-center select-none touch-none`}
+
     >
       {player ? (
         <div
           draggable
           onDragStart={(e) => handleDragStart(e, player.id, pos)}
-          style={{ WebkitUserDrag: "element" }}
-          className="relative w-full h-full flex items-center justify-center
-                      font-semibold whitespace-nowrap overflow-hidden text-ellipsis
-                      text-sm sm:text-base leading-none select-none">
+          style={{ WebkitUserDrag: "element", touchAction: "none" }}
+          className={
+            `relative w-full h-full flex items-center justify-center font-semibold
+            whitespace-nowrap overflow-hidden text-ellipsis text-sm sm:text-base
+            leading-none select-none rounded-lg
+            ${draggingPlayerId === player.id ? "bg-amber-500 text-white ring-4 ring-amber-300" : ""}`
+          }
+        >
           {player.lastName}{player.firstName} #{player.number}
         </div>
+
+
       ) : (
         <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
       )}
@@ -790,12 +869,15 @@ return (
             {teamPlayers
               .filter((p) => !assignedIds.includes(p.id) && !benchOutIds.includes(p.id))
               .map((p) => (
-                <div
-                  key={p.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, p.id)}
-                  className="px-2.5 py-1.5 bg-white/80 text-gray-900 rounded-lg cursor-move select-none shadow-sm"
-                >
+                  <div
+                    key={p.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, p.id)}
+                    onTouchStart={() => setTouchDrag({ playerId: p.id })}
+                    style={{ touchAction: "none" }}
+                    className={`px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+                                ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
+                  >
                   {p.lastName}
                   {p.firstName} #{p.number}
                 </div>
@@ -849,36 +931,39 @@ return (
             const pos = getPositionOfPlayer(entry.id);
 
             return (
-              <div
-                key={entry.id}
-                data-role="posrow"
-                data-player-id={entry.id}
-                className="rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none"
-                draggable   // ✅ ← true にする（もしくは単純に属性指定）
-                onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
-                onDrop={(e) => handleDropToBattingOrder(e, entry.id)}
-                onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
-                onDragEnter={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
-              >
+<div
+  key={entry.id}
+  data-role="posrow"
+  data-player-id={entry.id}
+  className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
+              ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400" : ""}`}
+  draggable
+  onDragStart={(e) => handleBattingOrderDragStart(e, entry.id)}
+  onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
+  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+>
+
               <div className="flex items-center gap-2 flex-nowrap">
                 <span className="w-10 font-bold">{i + 1}番</span>
-<span
-data-role="poslabel"                 // ★ 追加：ターゲット識別
-data-player-id={entry.id}            // ★ 追加：誰の行か
-className="w-28 md:w-24 px-1 rounded bg-white/10 border border-white/10
-            cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none"  // ★ touch-noneでスクロール干渉を抑止
-title={pos ? "この守備を他の行と入替" : "守備なし"}
-draggable={!!pos} 
-onDragStart={(e) => handlePosDragStart(e, entry.id)}
-onDragOver={(e) => { allowDrop(e); hoverTargetRef.current = entry.id; }}
-onDrop={(e) => handleDropToPosSpan(e, entry.id)}
-onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
-/* ← onTouchEnd は削除：グローバルでまとめて処理 */
->
-{pos ? positionNames[pos] : "控え"}
-</span>
+                <span
+                  data-role="poslabel"
+                  data-player-id={entry.id}
+                  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
+                              ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400 bg-emerald-500/20" : "bg-white/10 border border-white/10"}`}
+                  title={pos ? "この守備を他の行と入替" : "守備なし"}
+                  draggable={!!pos}
+                  onDragStart={(e) => handlePosDragStart(e, entry.id)}
+                  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                  onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
+                  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+                  onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
+                >
 
-
+                {pos ? positionNames[pos] : "控え"}
+                </span>
 
                   {/* 選手名 → 右にずらす */}
                 <span className="ml-4 whitespace-nowrap">
