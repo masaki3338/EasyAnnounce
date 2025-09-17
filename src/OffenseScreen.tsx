@@ -514,7 +514,7 @@ const foulRef = useRef<SpeechSynthesisUtterance | null>(null);
 
 const handleFoulRead = () => {
   if (!window.speechSynthesis) return;
-  const text = "ファウルボールの行方には十分ご注意ください。";
+  const text = "ファウルボールの行方には十分ご注意ください";
   const utterance = new SpeechSynthesisUtterance(text);
   foulRef.current = utterance;
   window.speechSynthesis.speak(utterance);
@@ -1501,7 +1501,7 @@ onClick={() => {
   {isLeadingBatter && (
     <div className="flex items-center text-blue-600 font-bold mb-0">
       <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
-        <span className="mr-2 text-2xl">⚠️</span> 攻撃回最初のバッター紹介は、キャッチャー2塁送球後🎤 
+        <span className="mr-2 text-lg">⚠️</span>攻撃回最初のバッター紹介は、キャッチャー2塁送球後 
       </div>
     </div>
   )}
