@@ -300,28 +300,38 @@ useEffect(() => {
     /iP(hone|ad|od)/.test(ua) ||
     ((/Macintosh/.test(ua) && "ontouchend" in document) as any);
 
-  // 非対応の時点でボタン表示（iOS/Android 問わず）
   if (!wakeSupported) setShowNoSleepButton(true);
 
-  // Wake Lock 失敗/予期せぬ解放時にフォールバックボタンを出す
   const onError = () => setShowNoSleepButton(true);
   const onReleased = () => {
-    // 解除されたまま可視のとき、ユーザーに再有効化手段を出す
-    if (document.visibilityState === "visible") setShowNoSleepButton(true);
+    if (document.visibilityState === "visible") {
+      setShowNoSleepButton(true);
+    }
   };
+
+  // ★ 可視になったら再度有効化する
+  const onVisibility = () => {
+    if (document.visibilityState === "visible") {
+      enableNoSleep();  // ← フォールバック再有効化
+    } else {
+      disableNoSleep();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibility);
 
   window.addEventListener("wakelock:error", onError as EventListener);
   window.addEventListener("wakelock:released", onReleased as EventListener);
 
-  // 非表示時は NoSleep を自動解除（既存の挙動）
   const unbind = bindAutoRelease();
 
   return () => {
+    document.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("wakelock:error", onError as EventListener);
     window.removeEventListener("wakelock:released", onReleased as EventListener);
     unbind?.();
   };
-}, [bindAutoRelease]);
+}, [bindAutoRelease, enableNoSleep, disableNoSleep]);
+
   // ▲ 追記ここまで
 
   const [screen, setScreen] = useState<ScreenType>("menu");
