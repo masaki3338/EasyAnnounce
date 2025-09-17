@@ -38,7 +38,7 @@ import VersionInfo from "./screens/VersionInfo";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "1.00"
+const APP_VERSION = "0.10 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
