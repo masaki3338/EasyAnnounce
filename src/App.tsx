@@ -13,7 +13,6 @@ const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィッ
 
 import { useWakeLock } from "./hooks/useWakeLock";
 import { useNoSleepFallback } from "./hooks/useNoSleepFallback";
-import "nosleep.js";
 
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
