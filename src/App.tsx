@@ -161,6 +161,7 @@ const BottomTab: React.FC<{
 
 const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
   const [canContinue, setCanContinue] = useState(false);
+  const [keepAwake, setKeepAwake] = useState(false);
   const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState("");
@@ -263,12 +264,20 @@ return (
       )}
     </div>
 
-<button
-  onClick={() => (window as any).enableScreenAwakeFallback?.()}
-  className="fixed right-3 bottom-20 z-50 px-3 py-1 rounded bg-black/70 text-white text-sm"
->
-  画面を暗くしない（ON）
-</button>
+<input
+  type="checkbox"
+  checked={keepAwake}
+  onChange={(e) => {
+    const on = e.target.checked;
+    setKeepAwake(on);
+    if (on) {
+      (window as any).enableScreenAwakeFallback?.();
+    } else {
+      (window as any).disableScreenAwakeFallback?.();
+    }
+  }}
+/>
+
 
     {/* バージョン（本体ラッパの外に出す） */}
     <div className="mt-8 text-white/60 text-sm select-none">
@@ -298,6 +307,7 @@ const App = () => {
   const lastOffenseRef = useRef(false);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState(""); 
+  const [keepAwake, setKeepAwake] = useState(false);
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
@@ -327,7 +337,7 @@ const App = () => {
   const handleStop = () => {
     window.speechSynthesis.cancel();
   };
-
+  
   useKeepScreenAwake();
 
   useEffect(() => {
