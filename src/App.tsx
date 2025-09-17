@@ -8,6 +8,8 @@ import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
+
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
@@ -261,6 +263,13 @@ return (
       )}
     </div>
 
+<button
+  onClick={() => (window as any).enableScreenAwakeFallback?.()}
+  className="fixed right-3 bottom-20 z-50 px-3 py-1 rounded bg-black/70 text-white text-sm"
+>
+  画面を暗くしない（ON）
+</button>
+
     {/* バージョン（本体ラッパの外に出す） */}
     <div className="mt-8 text-white/60 text-sm select-none">
       Version: {APP_VERSION}
@@ -302,13 +311,12 @@ const App = () => {
   const [pitchList, setPitchList] = useState<
     { name: string; number?: string; total: number }[]
   >([]);
-// --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
-const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
-const ann = endGameAnnouncement ?? "";
-const bpIndex = ann.indexOf(BREAKPOINT_LINE);
-const beforeText = bpIndex >= 0 ? ann.slice(0, bpIndex + BREAKPOINT_LINE.length) : ann;
-const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : "";
-
+  // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
+  const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
+  const ann = endGameAnnouncement ?? "";
+  const bpIndex = ann.indexOf(BREAKPOINT_LINE);
+  const beforeText = bpIndex >= 0 ? ann.slice(0, bpIndex + BREAKPOINT_LINE.length) : ann;
+  const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : "";
 
   const handleSpeak = () => {
     if ('speechSynthesis' in window) {
@@ -319,6 +327,8 @@ const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : 
   const handleStop = () => {
     window.speechSynthesis.cancel();
   };
+
+  useKeepScreenAwake();
 
   useEffect(() => {
     const initializeDatabase = async () => {
