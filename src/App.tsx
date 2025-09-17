@@ -35,8 +35,17 @@ import TtsSettings from "./screens/TtsSettings";
 import VersionInfo from "./screens/VersionInfo";
 
 
+
+
 // バージョン番号を定数で管理
 const APP_VERSION = "1.00"
+
+// iOS 判定を共通で使えるようにグローバル定数として定義
+const isIOS = (() => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iP(hone|ad|od)/.test(ua) || ((/Macintosh/.test(ua)) && "ontouchend" in document);
+})();
 
 
 
@@ -158,160 +167,12 @@ const BottomTab: React.FC<{
   );
 };
 
-
-const Menu = ({ onNavigate }: { onNavigate: (screen: ScreenType) => void }) => {
-  const [canContinue, setCanContinue] = useState(false);
-  const [keepAwake, setKeepAwake] = useState(false);
-  const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
-  const [showEndGamePopup, setShowEndGamePopup] = useState(false);
-  const [endTime, setEndTime] = useState("");
-
-
-
-  useEffect(() => {
-    console.log("📺 screen =", screen);
-    (async () => {
-      const saved = await localForage.getItem("lastGameScreen");
-      if (saved && typeof saved === "string") {
- // “開始系”は除外（初期化の副作用を避ける）
- const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
- const preferred = ok.includes(saved as ScreenType) ? (saved as ScreenType) : "defense";
- setCanContinue(true);
- setLastScreen(preferred);
-      }
-    })();
-  }, []);
-  
-  // Menu コンポーネント内の return を差し替え
-return (
-  <div
-    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
-    style={{
-      paddingTop: "max(16px, env(safe-area-inset-top))",
-      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-    }}
-  >
-    {/* ← ここを“中央寄せ”の本体ラッパで包む */}
-    <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center">
-      {/* ヘッダー */}
-<div className="w-full mb-8 md:mb-10">
-  <h1 className="text-center mb-0">
-    <img
-      src="/EasyAnnounceLOGO.png"
-      alt="Easyアナウンス ロゴ"
-      className="mx-auto w-[280px] md:w-[360px] drop-shadow-lg"
-    />
-  </h1>
-  <p
-    className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
-    style={{
-      color: "white",
-      WebkitTextStroke: "0.5px red", // 赤い縁取り
-    }}
-  >
-    ～ Pony League Version ～
-  </p>
-</div>
-
-
-      {/* アイコンカードのグリッド */}
-      <div className="w-full grid grid-cols-2 gap-4">
-        <button
-          onClick={() => onNavigate("teamRegister")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🧢</div>
-          <div className="mt-2 font-bold">チーム・選手登録</div>
-          <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
-        </button>
-
-        <button
-          onClick={() => onNavigate("matchCreate")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🗓️</div>
-          <div className="mt-2 font-bold">試合作成</div>
-          <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
-        </button>
-
-        <button
-          onClick={() => onNavigate("startGame")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">🏁</div>
-          <div className="mt-2 font-bold">試合開始</div>
-          <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
-        </button>
-
-        <button
-          onClick={() => onNavigate("operationSettings")}
-          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
-        >
-          <div className="text-2xl">⚙️</div>
-          <div className="mt-2 font-bold">運用設定</div>
-          <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
-        </button>
-      </div>
-
-      {/* 試合継続ボタン（存在する時のみ表示） */}
-      {canContinue && lastScreen && (
-        <button
-          onClick={() => onNavigate(lastScreen)}
-          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
-        >
-          ▶ 試合を継続する
-        </button>
-      )}
-
-      {/* 画面を暗くしない（ON/OFF） */}
-      <label className="mt-4 flex items-center gap-2 text-white">
-        <input
-          type="checkbox"
-          checked={keepAwake}
-          onChange={(e) => {
-            const on = e.target.checked;
-            setKeepAwake(on);
-            if (on) {
-              (window as any).enableScreenAwakeFallback?.();   // ON：フォールバック起動
-            } else {
-              (window as any).disableScreenAwakeFallback?.();  // OFF：フォールバック停止
-            }
-          }}
-        />
-        <span>画面を暗くしない</span>
-      </label>
-
-    </div>
-
-    {/* バージョン（本体ラッパの外に出す） */}
-    <div className="mt-8 text-white/60 text-sm select-none">
-      Version: {APP_VERSION}
-    </div>
-  </div>
-);
-
-};
-
-
-const NotImplemented = ({ onBack }: { onBack: () => void }) => (
-  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 px-4">
-    <p className="text-gray-700 text-xl mb-6">未実装の画面です</p>
-    <button
-      className="px-5 py-3 bg-gray-300 rounded-full shadow hover:bg-gray-400 transition"
-      onClick={onBack}
-    >
-      ← メニューに戻る
-    </button>
-  </div>
-);
- 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
   const [showEndGamePopup, setShowEndGamePopup] = useState(false);
   const [endTime, setEndTime] = useState(""); 
-  const [keepAwake, setKeepAwake] = useState(false);
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
@@ -331,6 +192,47 @@ const App = () => {
   const bpIndex = ann.indexOf(BREAKPOINT_LINE);
   const beforeText = bpIndex >= 0 ? ann.slice(0, bpIndex + BREAKPOINT_LINE.length) : ann;
   const afterText  = bpIndex >= 0 ? ann.slice(bpIndex + BREAKPOINT_LINE.length) : "";
+
+// --- iOS用：無音1px動画を流すフォールバック ---
+const [iosKeepAwake, setIosKeepAwake] = useState(false);
+const iosVideoRef = useRef<HTMLVideoElement | null>(null);
+
+const enableIOSAwake = () => {
+  if (iosVideoRef.current) return; // 既にONなら何もしない
+  const v = document.createElement("video");
+  v.setAttribute("playsinline", "");
+  v.setAttribute("muted", "true");
+  v.muted = true;
+  v.loop = true;
+  Object.assign(v.style, {
+    position: "fixed", width: "1px", height: "1px", opacity: "0",
+    pointerEvents: "none", zIndex: "-1",
+  } as CSSStyleDeclaration);
+  // 超小容量の無音動画
+  v.src =
+    "data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDFtcDQyaXNvbTY4AAACAG1vb3YAAABsbXZoZAAAAAB8AAAAAHwAAAPAAACAAABAAAAAAEAAAEAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAB9tYWR0YQAAAAAAAQAAAABwZHRhAAAAAAABAAAAAABkYXRhAAAAAA==";
+  document.body.appendChild(v);
+  v.play()?.catch(() => {});
+  iosVideoRef.current = v;
+  setIosKeepAwake(true);
+};
+
+const disableIOSAwake = () => {
+  try { iosVideoRef.current?.pause(); iosVideoRef.current?.remove(); } catch {}
+  iosVideoRef.current = null;
+  setIosKeepAwake(false);
+};
+
+// タブを裏に回したら自動解除
+useEffect(() => {
+  const onVis = () => {
+    if (document.visibilityState !== "visible") disableIOSAwake();
+  };
+  document.addEventListener("visibilitychange", onVis);
+  return () => document.removeEventListener("visibilitychange", onVis);
+}, []);
+
+
 
   const handleSpeak = () => {
     if ('speechSynthesis' in window) {
@@ -382,7 +284,15 @@ const App = () => {
 
   return (
     <>
-      {screen === "menu" && <Menu onNavigate={setScreen} />}
+      {screen === "menu" && (
+        <Menu
+          onNavigate={setScreen}
+          iosKeepAwake={iosKeepAwake}
+          onEnableIOSAwake={enableIOSAwake}
+          onDisableIOSAwake={disableIOSAwake}
+        />
+      )}
+
 
       {screen === "teamRegister" && (
         <>
@@ -1507,6 +1417,165 @@ if (totalMyScore > totalOpponentScore) {
 
 
 };
+
+
+const Menu = ({
+  onNavigate,
+  iosKeepAwake,
+  onEnableIOSAwake,
+  onDisableIOSAwake,
+}: {
+  onNavigate: (screen: ScreenType) => void;
+  iosKeepAwake: boolean;
+  onEnableIOSAwake: () => void;
+  onDisableIOSAwake: () => void;
+}) => {
+
+  const [canContinue, setCanContinue] = useState(false);
+  const [lastScreen, setLastScreen] = useState<ScreenType | null>(null);
+  const [showEndGamePopup, setShowEndGamePopup] = useState(false);
+  const [endTime, setEndTime] = useState("");
+
+
+
+  useEffect(() => {
+    console.log("📺 screen =", screen);
+    (async () => {
+      const saved = await localForage.getItem("lastGameScreen");
+      if (saved && typeof saved === "string") {
+ // “開始系”は除外（初期化の副作用を避ける）
+ const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+ const preferred = ok.includes(saved as ScreenType) ? (saved as ScreenType) : "defense";
+ setCanContinue(true);
+ setLastScreen(preferred);
+      }
+    })();
+  }, []);
+  
+  // Menu コンポーネント内の return を差し替え
+return (
+  <div
+    className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+    style={{
+      paddingTop: "max(16px, env(safe-area-inset-top))",
+      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    }}
+  >
+    {/* ← ここを“中央寄せ”の本体ラッパで包む */}
+    <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center">
+      {/* ヘッダー */}
+<div className="w-full mb-8 md:mb-10">
+  <h1 className="text-center mb-0">
+    <img
+      src="/EasyAnnounceLOGO.png"
+      alt="Easyアナウンス ロゴ"
+      className="mx-auto w-[280px] md:w-[360px] drop-shadow-lg"
+    />
+  </h1>
+  <p
+    className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
+    style={{
+      color: "white",
+      WebkitTextStroke: "0.5px red", // 赤い縁取り
+    }}
+  >
+    ～ Pony League Version ～
+  </p>
+</div>
+
+
+      {/* アイコンカードのグリッド */}
+      <div className="w-full grid grid-cols-2 gap-4">
+        <button
+          onClick={() => onNavigate("teamRegister")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🧢</div>
+          <div className="mt-2 font-bold">チーム・選手登録</div>
+          <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("matchCreate")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🗓️</div>
+          <div className="mt-2 font-bold">試合作成</div>
+          <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("startGame")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">🏁</div>
+          <div className="mt-2 font-bold">試合開始</div>
+          <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
+        </button>
+
+        <button
+          onClick={() => onNavigate("operationSettings")}
+          className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        >
+          <div className="text-2xl">⚙️</div>
+          <div className="mt-2 font-bold">運用設定</div>
+          <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
+        </button>
+      </div>
+
+      {/* 試合継続ボタン（存在する時のみ表示） */}
+      {canContinue && lastScreen && (
+        <button
+          onClick={() => onNavigate(lastScreen)}
+          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
+        >
+          ▶ 試合を継続する
+        </button>
+      )}
+
+{/* iPhoneだけ表示するチェック。ONでフォールバック開始、OFFで解除 */}
+{isIOS && (
+  <label className="mt-6 flex items-center gap-2 text-white/90">
+    <input
+      type="checkbox"
+      checked={iosKeepAwake}
+      onChange={(e) => {
+        if (e.target.checked) {
+          onEnableIOSAwake();
+        } else {
+          onDisableIOSAwake();
+        }
+      }}
+    />
+    <span>画面を暗くしない</span>
+  </label>
+)}
+
+    </div>
+
+    {/* バージョン（本体ラッパの外に出す） */}
+    <div className="mt-8 text-white/60 text-sm select-none">
+      Version: {APP_VERSION}
+    </div>
+  </div>
+);
+
+};
+
+
+const NotImplemented = ({ onBack }: { onBack: () => void }) => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 px-4">
+    <p className="text-gray-700 text-xl mb-6">未実装の画面です</p>
+    <button
+      className="px-5 py-3 bg-gray-300 rounded-full shadow hover:bg-gray-400 transition"
+      onClick={onBack}
+    >
+      ← メニューに戻る
+    </button>
+  </div>
+);
+ 
+
 
 const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
 
