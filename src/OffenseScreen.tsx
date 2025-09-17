@@ -1469,7 +1469,7 @@ onClick={() => {
 
 <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
   <div className="flex items-center mb-2">
-    <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+
     <span className="text-red-600 font-bold whitespace-pre-line">
       ファウルボールの行方には十分ご注意ください。
     </span>
@@ -1500,15 +1500,15 @@ onClick={() => {
 
   {isLeadingBatter && (
     <div className="flex items-center text-blue-600 font-bold mb-0">
-      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left">
-        <span className="mr-2 text-2xl">⚠️</span> 攻撃回1人目のバッター紹介は、キャッチャーが2塁に送球後に🎤 
+      <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
+        <span className="mr-2 text-2xl">⚠️</span> 攻撃回最初のバッター紹介は、キャッチャー2塁送球後🎤 
       </div>
     </div>
   )}
 
   <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     <div className="flex items-center mb-2">
-      <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
+
         <span className="text-red-600 font-bold whitespace-pre-line">
           {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
         </span>
