@@ -1471,7 +1471,7 @@ onClick={() => {
   <div className="flex items-center mb-2">
 
     <span className="text-red-600 font-bold whitespace-pre-line">
-      ファウルボールの行方には十分ご注意ください。
+      ファウルボールの行方には十分ご注意ください
     </span>
   </div>
 
