@@ -11,9 +11,6 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
-import { useWakeLock } from "./hooks/useWakeLock";
-import { useNoSleepFallback } from "./hooks/useNoSleepFallback";
-
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
 import MatchCreate from "./MatchCreate";
@@ -287,53 +284,6 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
  
 const App = () => {
   useWakeLock(); // ✅ ここに移動（Appコンポーネントの先頭）
-    // ▼ 追記ここから
-  const { enable: enableNoSleep, disable: disableNoSleep, bindAutoRelease } = useNoSleepFallback();
-  const [showNoSleepButton, setShowNoSleepButton] = useState<boolean>(false);
-
-useEffect(() => {
-  const wakeSupported = !!(navigator as any).wakeLock?.request;
-
-  // iOS 判定
-  const ua = navigator.userAgent || "";
-  const isiOS =
-    /iP(hone|ad|od)/.test(ua) ||
-    ((/Macintosh/.test(ua) && "ontouchend" in document) as any);
-
-  if (!wakeSupported) setShowNoSleepButton(true);
-
-  const onError = () => setShowNoSleepButton(true);
-  const onReleased = () => {
-    if (document.visibilityState === "visible") {
-      setShowNoSleepButton(true);
-    }
-  };
-
-  // ★ 可視になったら再度有効化する
-  const onVisibility = () => {
-    if (document.visibilityState === "visible") {
-      enableNoSleep();  // ← フォールバック再有効化
-    } else {
-      disableNoSleep();
-    }
-  };
-  document.addEventListener("visibilitychange", onVisibility);
-
-  window.addEventListener("wakelock:error", onError as EventListener);
-  window.addEventListener("wakelock:released", onReleased as EventListener);
-
-  const unbind = bindAutoRelease();
-
-  return () => {
-    document.removeEventListener("visibilitychange", onVisibility);
-    window.removeEventListener("wakelock:error", onError as EventListener);
-    window.removeEventListener("wakelock:released", onReleased as EventListener);
-    unbind?.();
-  };
-}, [bindAutoRelease, enableNoSleep, disableNoSleep]);
-
-  // ▲ 追記ここまで
-
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
