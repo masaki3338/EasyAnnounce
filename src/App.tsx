@@ -262,22 +262,26 @@ return (
           ▶ 試合を継続する
         </button>
       )}
+
+      {/* 画面を暗くしない（ON/OFF） */}
+      <label className="mt-4 flex items-center gap-2 text-white">
+        <input
+          type="checkbox"
+          checked={keepAwake}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setKeepAwake(on);
+            if (on) {
+              (window as any).enableScreenAwakeFallback?.();   // ON：フォールバック起動
+            } else {
+              (window as any).disableScreenAwakeFallback?.();  // OFF：フォールバック停止
+            }
+          }}
+        />
+        <span>画面を暗くしない</span>
+      </label>
+
     </div>
-
-<input
-  type="checkbox"
-  checked={keepAwake}
-  onChange={(e) => {
-    const on = e.target.checked;
-    setKeepAwake(on);
-    if (on) {
-      (window as any).enableScreenAwakeFallback?.();
-    } else {
-      (window as any).disableScreenAwakeFallback?.();
-    }
-  }}
-/>
-
 
     {/* バージョン（本体ラッパの外に出す） */}
     <div className="mt-8 text-white/60 text-sm select-none">
