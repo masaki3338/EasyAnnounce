@@ -163,6 +163,7 @@ const proceedStart = async () => {
   // ★ 先攻×初回のみ：… というalertブロックは削除してOK（モーダルに置換したため）
 
   // 🧹 各種リセット
+  await localForage.setItem("tiebreak:enabled", false); 
   await localForage.removeItem("announcedPlayerIds");
   await localForage.removeItem("runnerInfo");
   await localForage.removeItem("pitchCounts");

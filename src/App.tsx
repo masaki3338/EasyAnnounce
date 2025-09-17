@@ -11,6 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
+
 // 各画面コンポーネントをインポート
 import TeamRegister from "./TeamRegister";
 import MatchCreate from "./MatchCreate";
@@ -283,7 +284,6 @@ const NotImplemented = ({ onBack }: { onBack: () => void }) => (
 );
  
 const App = () => {
-  useWakeLock(); // ✅ ここに移動（Appコンポーネントの先頭）
   const [screen, setScreen] = useState<ScreenType>("menu");
   const fromGameRef = useRef(false);
   const lastOffenseRef = useRef(false);
@@ -660,6 +660,7 @@ if (totalMyScore > totalOpponentScore) {
 
               setTiebreakMessage(msg);
               setShowTiebreakPopup(true);
+
 
 
             } else if (value === "continue") {
@@ -1218,16 +1219,36 @@ if (totalMyScore > totalOpponentScore) {
           </div>
         </div>
 
-        {/* フッター（OK） */}
+        {/* フッター（開始 / 終了） */}
         <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
-          <button
-            onClick={() => setShowTiebreakPopup(false)}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
-          >
-            OK
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {/* 開始：フラグON → モーダル閉じる */}
+            <button
+              onClick={async () => {
+                await localForage.setItem("tiebreak:enabled", true);
+                setShowTiebreakPopup(false);
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold active:scale-[0.99] transition"
+            >
+              開始
+            </button>
+
+            {/* 終了：フラグOFF → モーダル閉じる */}
+            <button
+              onClick={async () => {
+                await localForage.setItem("tiebreak:enabled", false);
+                setShowTiebreakPopup(false);
+              }}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold active:scale-[0.99] transition"
+            >
+              終了
+            </button>
+          </div>
+
+          {/* Safe-Area 対応の下余白は維持 */}
           <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
         </div>
+
       </div>
     </div>
   </div>

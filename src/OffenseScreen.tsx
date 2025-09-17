@@ -7,6 +7,24 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
 
+// === TIEBREAK OFFENSE ANNO: helpers start ===
+const TBA_POS_JP: Record<string, string> = {
+  "投": "ピッチャー", "捕": "キャッチャー", "一": "ファースト", "二": "セカンド",
+  "三": "サード", "遊": "ショート", "左": "レフト", "中": "センター",
+  "右": "ライト", "指": "指名打者",
+};
+const tbaHonor = (p: any) => (p?.isFemale ? "さん" : "くん");
+const tbaGetPos = (assignments: Record<string, number|null>, pid: number) => {
+  const hit = Object.entries(assignments || {}).find(([, v]) => v === pid);
+  if (!hit) return "（守備未設定）";
+  const key = hit[0];
+  return TBA_POS_JP[key] ?? key;
+};
+const tbaSafeIdArray = (order: any[]): number[] =>
+  (order || []).map((e: any) => (typeof e === "number" ? e : e?.id)).filter((x: any) => Number.isFinite(x));
+// === TIEBREAK OFFENSE ANNO: helpers end ===
+
+
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
     <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
@@ -166,6 +184,8 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [pendingGroundPopup, setPendingGroundPopup] = useState(false);
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
+  const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
+
   // 🔸 DH解除モーダル表示フラグ
   const [showDhDisableModal, setShowDhDisableModal] = useState(false);
   // 現在DHが有効？
@@ -262,6 +282,7 @@ const findReentryCandidateForCurrentSpot = async () => {
 
   const isInBatting = (pid: number) => (battingOrder || []).some(e => e?.id === pid);
   const isInDefense = (pid: number) => Object.values(assignments || {}).some(id => Number(id) === Number(pid));
+
 
   // 1) 一次ソース：startingBattingOrder の “この打順” の元スタメンを優先
   const startingOrder: Array<{ id: number }> =
@@ -373,6 +394,69 @@ useEffect(() => {
     }
   });
 }, []);
+
+// クリックされた打順indexからTB文言を作る
+const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
+  // players / battingOrder / assignments / matchInfo は state が未整備でも拾えるようにLFから補完
+  const team = (Array.isArray(players) && players.length)
+    ? { players }
+    : ((await localForage.getItem("team")) as any) || { players: [] };
+
+  const orderIds =
+    (Array.isArray(battingOrder) && battingOrder.length)
+      ? tbaSafeIdArray(battingOrder as any)
+      : (await localForage.getItem<number[]>("battingOrder")) || [];
+
+  const assign =
+    (assignments && Object.keys(assignments).length)
+      ? assignments
+      : ((await localForage.getItem("assignments")) as Record<string, number|null>) || {};
+
+  const match = ((await localForage.getItem("matchInfo")) as any) || {};
+  const inningNo = Number(match?.inning) || 0;
+  const top = !!match?.isTop;
+
+  const n = orderIds.length || 0;
+  // ガード
+  if (n === 0) return "";
+
+  // ランナーは「現在打者の1人前＝1塁」「2人前＝2塁」（循環）
+  const idBatter = orderIds[(idx + 0 + n) % n];
+  const idR1     = orderIds[(idx - 1 + n) % n];
+  const idR2     = orderIds[(idx - 2 + n) % n];
+
+  const P = (id: number) => team.players.find((p: any) => p?.id === id);
+
+  const batter = P(idBatter);
+  const r1     = P(idR1);
+  const r2     = P(idR2);
+
+  const honor = (p: any) => (p?.isFemale ? "さん" : "くん");
+  const inningText = `${inningNo}回の${top ? "表" : "裏"}の攻撃は、`;
+
+  const r1Text = r1
+    ? `${(r1.lastName ?? "")}${honor(r1)}、背番号${r1.number ?? "－"}`
+    : "（未設定）";
+
+  const r2Text = r2
+    ? `${(r2.lastName ?? "") }${honor(r2)}、背番号${r2.number ?? "－"}`
+    : "（未設定）";
+
+  const batterOrderNo = idx + 1;
+  const batterPos = batter ? tbaGetPos(assign, batter.id) : "（守備未設定）";
+  const batterText = batter
+    ? `${batterOrderNo}番、${batterPos}、${(batter.lastName ?? "")}${honor(batter)}`
+    : `${batterOrderNo}番、（未設定）`;
+
+  // 表示は whitespace-pre-line で改行を活かす
+  return (
+    `${inningText}\n` +
+    `　ファーストランナーは${r1Text}、セカンドランナーは${r2Text}\n` +
+    `　バッターは${batterText}`
+  );
+};
+
+
 
 // ✅ 試合開始トークンを検知してチェック類をリセット
 useEffect(() => {
@@ -969,6 +1053,7 @@ const announce = (text: string | string[]) => {
 };
 
 const handleNext = () => {  
+  setTiebreakAnno(null);          // ← 追加：通常表示に戻す
   setAnnouncementOverride(null);
   const next = (currentBatterIndex + 1) % battingOrder.length;
 // ✅ 2人目の打者の前かつ未表示ならポップアップを表示
@@ -994,6 +1079,7 @@ const handleNext = () => {
 
 
 const handlePrev = () => {
+  setTiebreakAnno(null);
   setAnnouncementOverride(null);
   const prev = (currentBatterIndex - 1 + battingOrder.length) % battingOrder.length;
   setCurrentBatterIndex(prev);
@@ -1141,6 +1227,9 @@ useEffect(() => {
               <option value="表">表</option>
               <option value="裏">裏</option>
             </select>
+            <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap">
+              攻撃中
+            </span>
 
           </div>
             {/* 試合開始ボタン */}
@@ -1314,10 +1403,20 @@ onClick={() => {
   return (
     <div
       key={entry.id}
-      onClick={() => {
+      onClick={async () => {
         setCurrentBatterIndex(idx);
         setIsLeadingBatter(true);
+
+        // 🔸 タイブレークフラグONのときだけ専用文言に差し替え
+        const tbEnabled = Boolean(await localForage.getItem("tiebreak:enabled"));
+        if (tbEnabled) {
+          const text = await buildTiebreakTextForIndex(idx);
+          setTiebreakAnno(text);   // ← これで画面表示がTB文言になる（読み上げもこの文面で可能）
+        } else {
+          setTiebreakAnno(null);   // ← TBでなければ通常表示
+        }
       }}
+
       className={`px-2 py-0.5 border-b cursor-pointer ${
         isCurrent ? "bg-yellow-200" : ""
       }`}
@@ -1410,9 +1509,10 @@ onClick={() => {
   <div className="border border-red-500 bg-red-200 text-red-700 p-4 rounded relative text-left">
     <div className="flex items-center mb-2">
       <img src="/mic-red.png" alt="mic" className="w-6 h-6 mr-2" />
-      <span className="text-red-600 font-bold whitespace-pre-line">
-        {announcementOverride || announcement || ""}
-      </span>
+        <span className="text-red-600 font-bold whitespace-pre-line">
+          {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
+        </span>
+
     </div>
     {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
     <div className="mt-3 w-full flex gap-2">

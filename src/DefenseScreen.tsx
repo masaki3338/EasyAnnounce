@@ -801,9 +801,9 @@ const handlePitchLimitSpeak = () => {
               <option value="表">表</option>
               <option value="裏">裏</option>
             </select>
-            <span className="whitespace-nowrap">
-              {isDefense ? "守備中" : "攻撃中"}
-            </span>
+              <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap">
+                守備中
+              </span>
           </div>
 
           {/* 右：ボタン群（縮ませない・折り返さない） */}

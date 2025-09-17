@@ -335,6 +335,14 @@ useEffect(() => {
 
 
 const saveAssignments = async () => {
+    // ✅ 先頭に “打順が9人いるか” をチェック
+  const uniqueIds = Array.from(
+    new Set(battingOrder.map((e) => e?.id).filter(Boolean))
+  );
+  if (uniqueIds.length < 9) {
+    alert("スタメン9人を設定して下さい");
+    return; // 保存しない
+  }
   await localForage.setItem("startingBenchOutIds", benchOutIds);
   await localForage.setItem("startingassignments", assignments);
   await localForage.setItem("startingBattingOrder", battingOrder);
