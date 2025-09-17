@@ -91,7 +91,7 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
               <h2 className="text-lg font-bold">更新履歴</h2>
             </div>
             <ul className="mt-2 text-base leading-7 list-disc ml-6">
-              <li>2025.09.01　Vesion 1.00 新規作成</li>
+              <li>2025.09.01　Vesion 0.10 β版 Release</li>
             </ul>
           </div>
         </section>
