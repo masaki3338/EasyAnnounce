@@ -236,9 +236,12 @@ return (
   <div
     className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-5"
     style={{
-      paddingTop: "max(16px, env(safe-area-inset-top))",
-      paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-    }}
+          paddingTop: "max(16px, env(safe-area-inset-top))",
+          paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+          WebkitTouchCallout: "none", // ← 長押しメニュー禁止（iOS Safari）
+          WebkitUserSelect: "none",   // ← テキスト選択禁止（iOS/Android）
+          userSelect: "none",         // ← 全体選択禁止
+        }}
   >
     {/* ヘッダー */}
     <header className="w-full max-w-md">

@@ -273,13 +273,16 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `さんるいがわ ${team3Read} はキャッチボールを開始してください。`;
 
   return (
-    <div
-      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
-      style={{
-        paddingTop: "max(16px, env(safe-area-inset-top))",
-        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-      }}
-    >
+      <div
+        className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        style={{
+          paddingTop: "max(16px, env(safe-area-inset-top))",
+          paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+          WebkitTouchCallout: "none", // iOS Safari 長押しメニュー禁止
+          WebkitUserSelect: "none",   // iOS/Android テキスト選択禁止
+          userSelect: "none",         // 全体選択禁止
+        }}
+      >
       {/* ヘッダー */}
       <header className="w-full max-w-md">
         <div className="flex items-center justify-between">

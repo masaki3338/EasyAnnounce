@@ -4413,7 +4413,7 @@ const DefenseChangeWrapped: React.FC<DefenseChangeProps> = (props) => {
         enableTouchEvents: true,
         enableMouseEvents: true,
         touchSlop: 10,
-        delayTouchStart: 40,   // ★ 追加：長押し時間を短く
+        delayTouchStart: 10,   // ★ 追加：長押し時間を短く
       } : undefined}
     >
       <DefenseChange {...props} />

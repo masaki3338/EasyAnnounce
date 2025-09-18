@@ -235,13 +235,17 @@ const handleStepClick = async (s: typeof steps[number]) => {
 };
 
   return (
-    <div
-      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
-      style={{
-        paddingTop: "max(16px, env(safe-area-inset-top))",
-        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
-      }}
-    >
+      <div
+        className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        style={{
+          paddingTop: "max(16px, env(safe-area-inset-top))",
+          paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+          WebkitTouchCallout: "none", // iOS Safari 長押しメニュー禁止
+          WebkitUserSelect: "none",   // テキスト選択禁止
+          userSelect: "none",         // 全体で禁止
+        }}
+      >
+
       {/* ヘッダー */}
       <header className="w-full max-w-md text-center select-none mt-1">
         <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">

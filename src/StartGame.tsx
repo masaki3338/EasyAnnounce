@@ -266,6 +266,9 @@ return (
     style={{
       paddingTop: "max(16px, env(safe-area-inset-top))",
       paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      WebkitTouchCallout: "none", // iOS Safariの長押しメニュー禁止
+      WebkitUserSelect: "none",   // iOS/Android テキスト選択禁止
+      userSelect: "none",         // 全体で禁止
     }}
   >
     {/* ヘッダー：中央大タイトル＋細ライン */}
