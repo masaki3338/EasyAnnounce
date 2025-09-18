@@ -1459,6 +1459,9 @@ return (
     style={{
       paddingTop: "max(16px, env(safe-area-inset-top))",
       paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      WebkitTouchCallout: "none",  // ← 追加
+      WebkitUserSelect: "none",    // ← 追加
+      userSelect: "none",          // ← 追加
     }}
   >
     {/* ← ここを“中央寄せ”の本体ラッパで包む */}

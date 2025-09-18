@@ -155,8 +155,51 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   const [showTwoMinModal, setShowTwoMinModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
 
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const warned2Min = useRef(false);
+
+  // ====== モーダル表示時の「ピピピ」通知（Web Audio） ======
+const playBeeps = async (
+  count = 3,
+  freq = 1100,
+  durationSec = 0.12,
+  gapSec = 0.10,
+  volume = 0.18
+) => {
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    if ((ctx as any).state === "suspended" && (ctx as any).resume) {
+      await (ctx as any).resume();
+    }
+
+    const now = ctx.currentTime;
+    for (let i = 0; i < count; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+
+      const t0 = now + i * (durationSec + gapSec);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(volume, t0 + 0.005);
+      gain.gain.setValueAtTime(volume, t0 + durationSec - 0.02);
+      gain.gain.linearRampToValueAtTime(0, t0 + durationSec);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + durationSec + 0.02);
+    }
+
+    setTimeout(() => {
+      try { ctx.close(); } catch {}
+    }, (count * (durationSec + gapSec) + 0.3) * 1000);
+  } catch {}
+};
 
   useEffect(() => {
     const load = async () => {
@@ -191,7 +234,8 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   };
 
   const startTimer = () => {
-    if (timeLeft === 0) setTimeLeft(420); // 7分
+    //if (timeLeft === 0) setTimeLeft(420); // 7分
+    if (timeLeft === 0) setTimeLeft(180); // 7分
     setTimerActive(true);
     warned2Min.current = false;
   };
@@ -228,6 +272,20 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
     }
     return () => clearInterval(timerRef.current!);
   }, [timerActive, timeLeft]);
+
+  // 「残り2分」モーダルを開いたらビープ（高め×3回）
+  useEffect(() => {
+    if (showTwoMinModal) {
+      playBeeps(3, 1200, 0.12, 0.10, 0.20);
+    }
+  }, [showTwoMinModal]);
+
+  // 「終了」モーダルを開いたらビープ（少し低め×4回）
+  useEffect(() => {
+    if (showEndModal) {
+      playBeeps(4, 900, 0.14, 0.09, 0.22);
+    }
+  }, [showEndModal]);
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -431,12 +489,21 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
 
 {/* ✅ モーダル（残り2分） */}
 {showTwoMinModal && (
-  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
-      <p className="text-lg font-semibold mb-4 whitespace-nowrap">残り2分です。</p>
+  <div
+    className="fixed inset-0 bg-black/70 backdrop-blur-[2px] flex items-center justify-center z-50"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="two-min-title"
+  >
+    <div className="
+      bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+      w-[min(92vw,560px)] sm:w-[560px]
+    ">
+      <p id="two-min-title" className="text-2xl font-bold mb-6">残り2分です</p>
       <button
-        className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
+        className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
         onClick={() => setShowTwoMinModal(false)}
+        autoFocus
       >
         OK
       </button>
@@ -444,20 +511,31 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   </div>
 )}
 
+
 {/* ✅ モーダル（タイマー終了） */}
 {showEndModal && (
-  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
-      <p className="text-lg font-semibold mb-4">タイマーが終了しました。</p>
+  <div
+    className="fixed inset-0 bg-black/70 backdrop-blur-[2px] flex items-center justify-center z-50"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="end-title"
+  >
+    <div className="
+      bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
+      w-[min(92vw,560px)] sm:w-[560px]
+    ">
+      <p id="end-title" className="text-2xl font-bold mb-6">タイマーが終了しました</p>
       <button
-        className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
+        className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
         onClick={() => setShowEndModal(false)}
+        autoFocus
       >
         OK
       </button>
     </div>
   </div>
 )}
+
 
     </div>
   );
