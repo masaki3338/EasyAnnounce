@@ -687,6 +687,9 @@ const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: numbe
   e.dataTransfer.setData("dragKind", "swapPos");
   e.dataTransfer.setData("swapSourceId", String(playerId));
   e.dataTransfer.setData("text/plain", String(playerId));
+  
+  try { e.dataTransfer.setData("text", `swapPos:${playerId}`); } catch {}
+
   setTouchDrag((prev) => prev ?? { playerId });
 
   // ★ 追加：今は“守備だけ入替”モード
@@ -702,11 +705,27 @@ const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: numbe
 // 守備ラベルへドロップ
 const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
   e.preventDefault();
-  e.stopPropagation(); // 行の onDrop にバブらせない
-  const kind = e.dataTransfer.getData("dragKind");
+  e.stopPropagation();
+
+  // ★ 変更: dragKind を複数経路で取得（Androidフォールバック）
+  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
+  const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
+  const kind =
+    e.dataTransfer.getData("dragKind") ||
+    inferredKind ||
+    (dragKind ?? ""); // ← stateも最後の砦
+
   if (kind !== "swapPos") return;
 
-  const srcStr = e.dataTransfer.getData("swapSourceId") || e.dataTransfer.getData("text/plain");
+  // ★ 変更: srcId も 'text' をフォールバックに使う
+  let srcStr =
+    e.dataTransfer.getData("swapSourceId") ||
+    e.dataTransfer.getData("text/plain") ||
+    "";
+  if (!srcStr && textAny.startsWith("swapPos:")) {
+    srcStr = textAny.split(":")[1] || "";
+  }
+
   const srcId = Number(srcStr);
   if (!srcId) return;
 
@@ -721,13 +740,24 @@ const handleDropToBattingOrder = (
 ) => {
   e.preventDefault();
 
-  // ★ 守備入替モードなら打順は触らず守備だけ入替
-  const kind = e.dataTransfer.getData("dragKind");
+  // ★ 変更: dragKind を多段フォールバック
+  const textAny = (e.dataTransfer.getData("text") || "").trim();
+  const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
+  const kind =
+    e.dataTransfer.getData("dragKind") ||
+    inferredKind ||
+    (dragKind ?? "");
+
   if (kind === "swapPos") {
-    const srcStr =
+    // ★ 変更: srcId を 'text' からも復元
+    let srcStr =
       e.dataTransfer.getData("swapSourceId") ||
       e.dataTransfer.getData("battingPlayerId") ||
-      e.dataTransfer.getData("text/plain");
+      e.dataTransfer.getData("text/plain") ||
+      "";
+    if (!srcStr && textAny.startsWith("swapPos:")) {
+      srcStr = textAny.split(":")[1] || "";
+    }
     const srcId = Number(srcStr);
     if (srcId && srcId !== targetPlayerId) {
       swapPositionsByPlayers(srcId, targetPlayerId);
