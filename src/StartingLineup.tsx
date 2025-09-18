@@ -1030,10 +1030,23 @@ return (
 const isTouchDevice = () => typeof window !== "undefined" && "ontouchstart" in window;
 const StartingLineupWrapped = () => {
   return (
-    <DndProvider backend={HTML5Backend}>
+    <DndProvider
+      backend={isTouchDevice() ? TouchBackend : HTML5Backend}
+      options={
+        isTouchDevice()
+          ? {
+              enableTouchEvents: true,
+              enableMouseEvents: true,
+              touchSlop: 10,      // ドラッグ開始の“遊び幅”（px）
+              delayTouchStart: 10 // 長押し待ち時間（ms）←短く
+            }
+          : undefined
+      }
+    >
       <StartingLineup />
     </DndProvider>
   );
 };
+
 
 export default StartingLineupWrapped;
