@@ -79,6 +79,8 @@ const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string 
 const [draggingPlayerId, setDraggingPlayerId] = useState<number | null>(null);
 const [hoverPosKey, setHoverPosKey] = useState<string | null>(null);        // フィールドの各ポジション用
 const [hoverOrderPlayerId, setHoverOrderPlayerId] = useState<number | null>(null); // 打順行の選手用
+// いま何のドラッグか：守備ラベル入替 (swapPos) / 打順入替 (order)
+const [dragKind, setDragKind] = useState<"swapPos" | "order" | null>(null);
 
 const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null);
 
@@ -566,13 +568,22 @@ if (pitcherId) {
     return Object.entries(assignments).find(([_, id]) => id === playerId)?.[0];
   };
 
-  const handleBattingOrderDragStart = (
-    e: React.DragEvent<HTMLDivElement>,
-    playerId: number
-  ) => {
-    e.dataTransfer.setData("battingPlayerId", String(playerId));
-    e.dataTransfer.setData("text/plain", String(playerId));
-  };
+const handleBattingOrderDragStart = (
+  e: React.DragEvent<HTMLDivElement>,
+  playerId: number
+) => {
+  e.dataTransfer.setData("battingPlayerId", String(playerId));
+  e.dataTransfer.setData("text/plain", String(playerId));
+
+  // ★ 追加：今は“打順入替”モード
+  setDragKind("order");
+
+  // ★ 任意：終了時は解放
+  const cleanup = () => setDragKind(null);
+  window.addEventListener("dragend", cleanup, { once: true });
+  window.addEventListener("drop", cleanup, { once: true });
+};
+
 
 const handleDropToBenchOut = (e: React.DragEvent<HTMLDivElement>) => {
   e.preventDefault();
@@ -670,14 +681,23 @@ const swapPositionsByPlayers = (idA: number, idB: number) => {
   setAssignments(next);
 };
 
-// 守備ラベルからドラッグ開始
+// 守備ラベルからドラッグ開始（“守備だけ入替”モード）
 const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
-  e.stopPropagation(); // ★ 親のdragstartを発火させない（ズレ防止）
+  e.stopPropagation(); // 親の dragstart を発火させない
   e.dataTransfer.setData("dragKind", "swapPos");
   e.dataTransfer.setData("swapSourceId", String(playerId));
   e.dataTransfer.setData("text/plain", String(playerId));
   setTouchDrag((prev) => prev ?? { playerId });
+
+  // ★ 追加：今は“守備だけ入替”モード
+  setDragKind("swapPos");
+
+  // ★ 追加：終了時は必ず解放
+  const cleanup = () => setDragKind(null);
+  window.addEventListener("dragend", cleanup, { once: true });
+  window.addEventListener("drop", cleanup, { once: true });
 };
+
 
 // 守備ラベルへドロップ
 const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
@@ -954,7 +974,7 @@ return (
   data-role="posrow"
   data-player-id={entry.id}
   className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
-              ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400" : ""}`}
+    ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
   draggable
   onDragStart={(e) => {
     // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
@@ -974,7 +994,12 @@ return (
                   data-role="poslabel"
                   data-player-id={entry.id}
                   className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
-                              ${hoverOrderPlayerId === entry.id ? "ring-2 ring-emerald-400 bg-emerald-500/20" : "bg-white/10 border border-white/10"}`}
+                    ${
+                      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
+                        ? "ring-2 ring-emerald-400 bg-emerald-500/20" // ← ラベルだけ強調
+                        : "bg-white/10 border border-white/10"
+                    }`}
+
                   title={pos ? "この守備を他の行と入替" : "守備なし"}
                   draggable={!!pos}
                   onDragStart={(e) => handlePosDragStart(e, entry.id)}
