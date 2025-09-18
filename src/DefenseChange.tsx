@@ -240,13 +240,31 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
 
   // いまその守備に入っている選手（控えが“そのまま入り”ならこのID）
   const currentId = assignments[posSym];
-  // 🛑 元スタメン（origId）が“元の守備 posSym”に既に戻っている → ここでの「そのまま入り」は出さない
-  if (assignments[posSym] === origId) {
-    console.log("[SAME-POS-PINCH] skip: reentry already established", { origId, posSym });
+
+    // いま同守備に入っている currentId が「代打/代走 系」なら、
+  // これは“代打本人が守備に就く”ケースなので SAME-POS-PINCH を使わずスキップする
+  const currentIsPinch =
+    ["代打", "代走", "臨時代走"].includes(
+      (battingOrder.find(e => e.id === currentId)?.reason as any) || ""
+    ) ||
+    !!Object.values(usedPlayerInfo || {}).find(
+      (x: any) => x?.subId === currentId && ["代打","代走","臨時代走"].includes(x.reason)
+    );
+  if (currentIsPinch) {
+    console.log("[SAME-POS-PINCH] skip: current is pinch player", { currentId, posSym });
     return;
   }
 
+
+  // 🛑 元スタメン（origId）が“どこかの守備”に戻っている → この特別処理は出さない
+  if (Object.values(assignments).includes(origId)) {
+    console.log("[SAME-POS-PINCH] skip: reentry already established (anywhere)", { origId });
+    return;
+  }
+
+
   if (!currentId) return;
+
 
   // 直前代打本人がまだ同守備にいるなら“控えが入った”ケースではない
   if (currentId === latestPinchId) return;
@@ -281,13 +299,18 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
     `${orderPart}${fullNameHonor(subPlayer)} がそのまま入り ${posJP[posSym]}、`
   ); 
 
-  // ✅ 打順行を必ず積む（ordIdx が取れたとき）
-  if (ordIdx >= 0) {
+// ★ 打順は subPlayer 本人の現在の打順を優先
+const subOrderIdx = battingOrder.findIndex(e => e.id === subPlayer.id);
+if (subOrderIdx >= 0) {
+  const subOrder = subOrderIdx + 1;
+  if (!lineupLines.some(l => l.order === subOrder && l.text.includes(posJP[posSym]))) {
     lineupLines.push({
-      order: ordIdx + 1,
-      text: `${ordIdx + 1}番 ${posJP[posSym]} ${fullNameHonor(subPlayer)} 背番号 ${subPlayer.number}`,
+      order: subOrder,
+      text: `${subOrder}番 ${posJP[posSym]} ${fullNameHonor(subPlayer)} 背番号 ${subPlayer.number}`,
     });
   }
+}
+
 
   // ヘッダー抑止＆通常処理に回さない
   skipHeader = true;
@@ -444,6 +467,13 @@ console.log("[REENTRY-LINE]",
 
 
   result.push(firstLine);
+    // ✅ このリエントリー分はここで完結（後続の mixed/shift による重複出力を抑止）
+  handledPlayerIds.add(B.id);
+  handledPositions.add(posNowSym);
+  reentryOccurred = true;
+  suppressTailClose = true;
+  return; // ← この forEach の現在イテレーションを終わらせる
+
   console.log("[REENTRY-LINE] add", { from: refPlayer?.id, to: B2.id, pos: posNowSym2, phrase });
 
 
@@ -583,10 +613,32 @@ if (isBOnField) continue;
     );
 
 
-    // 2行目：元選手が元ポジへシフト
-    lines.push(
-      `${posJP[movedFromPos]}の ${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`
-    );
+    // 2行目：実際にこの行で動くのは movedPlayer。
+    //        その「最初に入った理由」を movedPlayer.id で判定する（entry/pinch ではなく！）
+    const movedTrueReason =
+      Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === movedPlayer.id)?.reason
+      || (battingOrder.find(e => e.id === movedPlayer.id)?.reason);
+
+    console.log("[SPECIAL] 2nd-line reason resolve (by movedPlayer)", {
+      movedId: movedPlayer.id,
+      reasonFromUsed: Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === movedPlayer.id)?.reason,
+      reasonFromOrder: battingOrder.find(e => e.id === movedPlayer.id)?.reason,
+      movedTrueReason
+    });
+
+    if (movedTrueReason === "代走" || movedTrueReason === "臨時代走") {
+      // 代走で入った選手が守備へ → 専用文言（句点で締めて追加入力を防ぐ）
+      lines.push(`先ほど代走致しました${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      console.log("[SPECIAL] 2nd-line as DAISO");
+    } else if (movedTrueReason === "代打") {
+      // 代打で入った選手が守備へ
+      lines.push(`先ほど代打致しました${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      console.log("[SPECIAL] 2nd-line as DAIDA");
+    } else {
+      // 通常シフト
+      lines.push(`${posJP[movedFromPos]}の ${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
+      console.log("[SPECIAL] 2nd-line as NORMAL");
+    }
 
     // ✅ 重複抑止：この特別処理で出した “元選手のシフト” は後続の shift 出力から除外
     skipShiftPairs.add(`${movedPlayer.id}|${movedFromPos}|${movedToPos}`);
@@ -906,6 +958,9 @@ replace = replace.filter(r =>
 
 
 replace.forEach((r) => {
+  console.log("[ANN][REPLACE:start]", {
+    fromId: r.from.id, toId: r.to.id, pos: r.pos, rOrder: r.order,
+  });
 
   if (isReentryBlue(r.to.id)) {
     replaceLines.push(
@@ -958,7 +1013,9 @@ replace.forEach((r) => {
     reentry_fromOrder > 0 &&
     (reentry_latestOrder === reentry_fromOrder || reentry_latestOrder === 0);
 
+  console.log("[ANN][REPLACE:check-reentrySameOrder]", { from: r.from.id, to: r.to.id, pos: r.pos, rOrder: r.order });
   if (reentry_ok) {
+    console.log("[ANN][REPLACE:fired-reentrySameOrder]", { from: r.from.id, to: r.to.id, pos: r.pos, rOrder: r.order });
     // 本文のみ。末尾の「に入ります。」は後段の整形で付与される
     replaceLines.push(
       `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
@@ -1008,7 +1065,9 @@ const isReentryEarly =
   latestSubIdForToEarly === r.from.id &&
   toOrigPosSymEarly === r.pos;   // ← r.order には依存しない
 
+console.log("[ANN][REPLACE:check-reentryEarly]", { from: r.from.id, to: r.to.id, pos: r.pos });
 if (isReentryEarly) {
+  console.log("[ANN][REPLACE:fired-reentryEarly]", { from: r.from.id, to: r.to.id, pos: r.pos });
   replaceLines.push(
     `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
   );
@@ -1019,8 +1078,18 @@ if (isReentryEarly) {
   return;  // 以降の通常分岐へは進まない
 }
 
+console.log("[ANN][REPLACE:check-samePosPinch]", {
+  pinchFromUsed: !!pinchFromUsed,
+  isSamePosition,
+  toWasStarter,
+  toIsBenchEntry,
+});
+
 
 if (pinchFromUsed && isSamePosition) {
+  console.log("[ANN][REPLACE:fired-samePosPinch]", {
+    fromId: r.from.id, toId: r.to.id, pos: r.pos, order: r.order,
+  });
   const orderPart = r.order > 0 ? `${r.order}番に ` : "";
   const phrase =
     pinchFromUsed.reason === "代走" ? "代走" :
@@ -1090,13 +1159,34 @@ if (isReentrySameOrder) {
   console.log("[REPLACE] REENTRY same-order", { from: r.from.id, to: r.to.id, pos: r.pos, order: r.order });
   line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`;
 } else if (isPinchFrom) {
-  const orderPart = r.order > 0 ? `${r.order}番に ` : "";
-  line = `先ほど${reasonOfFrom}致しました${lastWithHonor(r.from)} に代わりまして、${orderPart}${fullNameHonor(r.to)} がそのまま入り ${posJP[r.pos]}`;
+  console.log("[ANN][PINCH:enter]", {
+    fromId: r.from.id, toId: r.to.id, pos: r.pos, reasonOfFrom, rOrder: r.order,
+  });
+
+  // ★ 差し替え：代打/代走の「from」が持っていた打順スロットを厳密に逆引きする
+  let orderIdxFrom = battingOrder.findIndex(e => e.id === r.from.id);
+  console.log("[ANN][PINCH:orderIdxFrom#1]", orderIdxFrom);
+  if (orderIdxFrom < 0) {
+    // usedPlayerInfo の subId チェーンをたどって最新IDが from.id と一致するスロットを探す
+    orderIdxFrom = battingOrder.findIndex(
+      e => resolveLatestSubId(e.id, usedPlayerInfo as any) === r.from.id
+    );
+    console.log("[ANN][PINCH:orderIdxFrom#2(fallback latestSub)]", orderIdxFrom);
+  }
+
+  const orderNum = orderIdxFrom >= 0 ? orderIdxFrom + 1 : 0;
+  const orderPart = orderNum > 0 ? `${orderNum}番に ` : "";
+
+  // 「代打本人が守備に入る」ケースは別ブロックで処理済みなので、
+  // ここは「代打に代わって控えが入る」専用にする
+  line = `先ほど${reasonOfFrom}致しました${lastWithHonor(r.from)} に代わりまして、` +
+         `${orderPart}${fullNameHonor(r.to)} が入り ${posJP[r.pos]}`;
 } else {
   line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
 }
 
 replaceLines.push(line);
+console.log("[ANN][REPLACE:push]", line);
 if (isReentrySameOrder) reentryOccurred = true; // ← 追加
 
 
@@ -1123,41 +1213,54 @@ if (r.order > 0 && !lineupLines.some(l =>
 });
 
 
-// ✅ アナウンス出力
 // ✅ アナウンス出力（「そのまま入り …」は末尾を句点にする）
 if (replaceLines.length === 1) {
   const base = replaceLines[0].trim();
+  console.log("[DEBUG] replaceLines=1 base:", base)
 
   const POS_JA = "(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)";
-  const isSonoMama = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(base);
+  const isSonoMama     = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(base);
+  const isReentryBare  = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(base);
 
-const isReentryBare = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(base);
+  // ✅ 「…が入り ◯◯」「…が入り ◯◯へ／に」など“入り”を含む一文なら末尾に「入ります」を付けない
+  const hasHairi = /入り/.test(base) ||
+    new RegExp(`入り\\s*(?:${POS_JA})?(?:へ|に)?$`).test(base);
 
-const sentence = isSonoMama
-  ? (shift.length > 0 ? base + "、" : base + "。")
-  : isReentryBare
-    ? (shift.length > 0 ? base + "に入ります、" : base + "に入ります。")
-    : (shift.length > 0 ? base + "、" : base + " が入ります。");
-
+  const sentence = isSonoMama
+    ? (shift.length > 0 ? base + "、" : base + "。")
+    : isReentryBare
+      ? (shift.length > 0 ? base + "に入ります、" : base + "に入ります。")
+    : hasHairi
+      ? (shift.length > 0 ? base + "、" : base + "。")
+      : (shift.length > 0 ? base + "、" : base + " が入ります。");
 
   result.push(sentence);
+
 } else if (replaceLines.length > 1) {
   const last = replaceLines.pop()!;
+  console.log("[DEBUG] replaceLines>1 last:", last);
   const continuedLines = replaceLines.map(line => line + "、").join("\n");
 
   const POS_JA = "(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)";
-  const lastIsSonoMama = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(last);
+  const lastIsSonoMama    = new RegExp(`そのまま入り\\s*${POS_JA}\\s*$`).test(last);
+  const lastIsReentryBare = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(last);
 
-const lastIsReentryBare = new RegExp(`リエントリーで\\s*${POS_JA}\\s*$`).test(last);
+  // ✅ “入り”が含まれていれば末尾「入ります」を付けない（〜へ／〜に も対応）
+  const hasHairiLast = /入り/.test(last) ||
+    new RegExp(`入り\\s*(?:${POS_JA})?(?:へ|に)?$`).test(last);
 
-const lastLine = lastIsSonoMama
-  ? (shift.length > 0 ? last + "、" : last + "。")
-  : lastIsReentryBare
-    ? (shift.length > 0 ? last + "に入ります、" : last + "に入ります。")
-    : (shift.length > 0 ? last + "、" : last + " が入ります。");
+  const lastLine = lastIsSonoMama
+    ? (shift.length > 0 ? last + "、" : last + "。")
+    : lastIsReentryBare
+      ? (shift.length > 0 ? last + "に入ります、" : last + "に入ります。")
+    : hasHairiLast
+      ? (shift.length > 0 ? last + "、" : last + "。")
+      : (shift.length > 0 ? last + "、" : last + " が入ります。");
 
+ console.log("[DEBUG] 判定結果:", { lastIsSonoMama, lastIsReentryBare, hasHairiLast });
 
   result.push(`${continuedLines}\n${lastLine}`);
+
 }
 
 
@@ -1377,9 +1480,15 @@ if (
   const ends = "、";
 
 // ↓↓↓ ここに置き換え（相互入れ替えは assignments + usedPlayerInfo で検出） ↓↓↓
-const pinchEntry = battingOrder.find(
-  (e) => e.id === s.player.id && ["代打", "代走", "臨時代走"].includes(e.reason)
+// 「battingOrder.reason」だけでなく usedPlayerInfo（subId → reason）でも代打/代走を検知
+const pinchInfoForShift = Object.values(usedPlayerInfo || {}).find(
+  (x: any) => x?.subId === s.player.id && ["代打", "代走", "臨時代走"].includes(x.reason)
 );
+const pinchEntry =
+  battingOrder.find(
+    (e) => e.id === s.player.id && ["代打", "代走", "臨時代走"].includes(e.reason)
+  ) ||
+  (pinchInfoForShift ? ({ reason: pinchInfoForShift.reason } as any) : undefined);
 
 if (pinchEntry) {
   // usedPlayerInfo: { originalId : { fromPos, subId, reason: "代打|代走|臨時代走", ... } }
@@ -1469,7 +1578,8 @@ if (pinchEntry) {
     (ln) => ln.includes(`先ほど${phrase}`) || ln.includes(`同じく先ほど${phrase}`)
   );
   const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
-  result.push(`${headText}${lastWithHonor(s.player)} が ${tail} ${ends}`);
+  // 「…が センターへ、」の形にする（最後は終端調整で句点）
+  result.push(`${headText}${lastWithHonor(s.player)} が ${tail}へ${ends}`);
 } else {
   // 通常のシフト出力（従来どおり）
   result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} ${ends}`);
@@ -1710,35 +1820,45 @@ if (
   if (!suppressTailClose && lastBodyIndex >= 0) {
     const line = result[lastBodyIndex].trim();
 
-    // 1) 「…リエントリーで ◯◯、/。」→「…リエントリーで ◯◯に入ります。」
-    const reentryPos = new RegExp(`リエントリーで\\s*${POS_JA}\\s*[、。]?$`);
-    if (reentryPos.test(line)) {
-      result[lastBodyIndex] = line.replace(
-        reentryPos,
-        (_m, pos) => `リエントリーで ${pos}に入ります。`
-      );
+    console.log("[DEBUG] 終端調整 line:", line);
+
+    // ★ 追加：文中に「入り」があれば、ここで末尾付加ロジックを完全スキップ
+    if (/入り/.test(line)) {
+      console.log("[DEBUG] → '入り' を含むので末尾付加を完全スキップ");
+      // 読点で終わっていたら句点に整えるだけ
+      result[lastBodyIndex] = line.replace(/、$/, "。");
     } else {
-      // 2) 「…が ◯◯ 、/。」→「…が ◯◯に入ります。」
-      const gaPos = new RegExp(`が\\s*${POS_JA}\\s*[、。]?$`);
-      if (gaPos.test(line)) {
+      // 1) 「…リエントリーで ◯◯、/。」→「…リエントリーで ◯◯に入ります。」
+      const reentryPos = new RegExp(`リエントリーで\\s*${POS_JA}\\s*[、。]?$`);
+      if (reentryPos.test(line)) {
         result[lastBodyIndex] = line.replace(
-          gaPos,
-          (_m, pos) => `が ${pos}に入ります。`
+          reentryPos,
+          (_m, pos) => `リエントリーで ${pos}に入ります。`
         );
       } else {
-        // 3) 「…(へ|に) 、/。」→「…(へ|に)入ります。」
-        const toHeNi = /(へ|に)\s*[、。]?$/;
-        if (toHeNi.test(line)) {
+        // 2) 「…が ◯◯ 、/。」→「…が ◯◯に入ります。」
+        const gaPos = new RegExp(`が\\s*${POS_JA}\\s*[、。]?$`);
+        if (gaPos.test(line)) {
           result[lastBodyIndex] = line.replace(
-            toHeNi,
-            (_m, pp) => `${pp}入ります。`
+            gaPos,
+            (_m, pos) => `が ${pos}に入ります。`
           );
         } else {
-          // 4) 末尾が読点だけなら句点
-          result[lastBodyIndex] = line.replace(/、$/, "。");
+          // 3) 「…(へ|に) 、/。」→「…(へ|に)入ります。」
+          const toHeNi = /(へ|に)\s*[、。]?$/;
+          if (toHeNi.test(line)) {
+            result[lastBodyIndex] = line.replace(
+              toHeNi,
+              (_m, pp) => `${pp}入ります。`
+            );
+          } else {
+            // 4) 末尾が読点だけなら句点
+            result[lastBodyIndex] = line.replace(/、$/, "。");
+          }
         }
       }
     }
+
   }
 }
 
@@ -3753,9 +3873,9 @@ onConfirmed?.();
         const originalReason = battingOrder.find(e => e.id === originalId)?.reason;
         reason = originalReason;
       }
-      console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
-      console.warn("usedPlayerInfo:", usedPlayerInfo);
-      console.warn("battingOrder:", battingOrder);
+      //console.warn(`[WARN] reasonが見つからない: currentId = ${currentId}`);
+      //console.warn("usedPlayerInfo:", usedPlayerInfo);
+      //console.warn("battingOrder:", battingOrder);
     }
   }
 
@@ -4131,18 +4251,32 @@ ${hoverPos === pos
                     };
                   }
 
-                  if (isPinchRunner && replaced) {
+                  if (isPinchRunner && replaced && currentPos) {
+                    // 左：代走で入っていた選手（例：伊藤 #11）
+                    const pinchRunner = teamPlayers.find(p => p.id === entry.id);
+                    // 右：今回その守備に入る選手（控え or 本人）
+                    const replacedPlayer = replaced;
+
+                    // ★ 同一人物なら右側は“守備位置のみ”
+                    const isSame = pinchRunner?.id === replacedPlayer?.id;
+
                     return {
                       key: `runner-${index}`,
                       type: 2,
                       pos: currentPos,
                       jsx: (
                         <li key={`runner-${index}`}>
-                          代走：{replaced.lastName}{replaced.firstName} #{replaced.number} ➡ {withFull(currentPos)}
+                          代走：{pinchRunner?.lastName}{pinchRunner?.firstName} #{pinchRunner?.number}
+                          {" "}➡ {withFull(currentPos)}
+                          {!isSame && (
+                            <>：{replacedPlayer.lastName}{replacedPlayer.firstName} #{replacedPlayer.number}</>
+                          )}
                         </li>
-                      )
+                      ),
                     };
                   }
+
+
 
                   if (playerChanged) {
                     return {
