@@ -999,58 +999,84 @@ return (
             const pos = getPositionOfPlayer(entry.id);
 
             return (
-<div
-  key={entry.id}
-  data-role="posrow"
-  data-player-id={entry.id}
-  className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
-    ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
-  draggable
-  onDragStart={(e) => {
-    // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
-    const t = e.target as HTMLElement;
-    if (t && t.closest('[data-role="poslabel"]')) return;
-    handleBattingOrderDragStart(e, entry.id);
-  }}
-  onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
-  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
->
+              <div
+                key={entry.id}
+                data-role="posrow"
+                data-player-id={entry.id}
+                className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
+                  ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
+                draggable
+                onDragStart={(e) => {
+                  // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
+                  const t = e.target as HTMLElement;
+                  if (t && t.closest('[data-role="poslabel"]')) return;
+                  handleBattingOrderDragStart(e, entry.id);
+                }}
+                onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
+                onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+              >
 
               <div className="flex items-center gap-2 flex-nowrap">
                 <span className="w-10 font-bold">{i + 1}番</span>
-                <span
-                  data-role="poslabel"
-                  data-player-id={entry.id}
-                  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
-                    ${
-                      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
-                        ? "ring-2 ring-emerald-400 bg-emerald-500/20" // ← ラベルだけ強調
-                        : "bg-white/10 border border-white/10"
-                    }`}
+<span
+  data-role="poslabel"
+  data-player-id={entry.id}
+  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
+    ${
+      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
+        ? "ring-2 ring-emerald-400 bg-emerald-500/20"
+        : "bg-white/10 border border-white/10"
+    }`}
+  title={pos ? "この守備を他の行と入替" : "守備なし"}
+  draggable={!!pos}
+  onDragStart={(e) => handlePosDragStart(e, entry.id)}
+  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
+  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
 
-                  title={pos ? "この守備を他の行と入替" : "守備なし"}
-                  draggable={!!pos}
-                  onDragStart={(e) => handlePosDragStart(e, entry.id)}
-                  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-                  onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
-                  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-                  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
- onTouchStart={(ev) => {
+  // ▼▼ ここからタッチ時の確定処理（離した“その行のラベル”に限定） ▼▼
+  onTouchStart={(ev) => {
     ev.stopPropagation();
-    pos && setTouchDrag({ playerId: entry.id });
-    lockScroll();  // ← 追加
+    if (pos) {
+      setTouchDrag({ playerId: entry.id });
+      lockScroll();
+    }
   }}
   onTouchEnd={(ev) => {
     ev.stopPropagation();
+
     if (!touchDrag) { unlockScroll(); return; }
 
+    // 指を離した地点の要素
     const t = ev.changedTouches && ev.changedTouches[0];
     const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
-    const target = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
-    const targetPlayerId = target ? Number(target.getAttribute('data-player-id')) : entry.id;
 
+    // 1) まず “守備ラベル” を優先して見つける
+    let targetLabel = el?.closest('[data-role="poslabel"]') as HTMLElement | null;
+
+    // 2) 見つからなければ “その行（posrow）” を拾い、その中のラベルを取得
+    if (!targetLabel) {
+      const row = el?.closest('[data-role="posrow"]') as HTMLElement | null;
+      if (row) {
+        targetLabel = row.querySelector('[data-role="poslabel"]') as HTMLElement | null;
+      }
+    }
+
+    // 3) それでも無ければ “自分自身” をターゲット扱い
+    if (!targetLabel) {
+      targetLabel = ev.currentTarget as HTMLElement;
+    }
+
+    // 最終的な “ターゲット行のplayerId”
+    const targetPlayerIdAttr =
+      targetLabel.getAttribute('data-player-id') ||
+      (targetLabel.closest('[data-role="posrow"]') as HTMLElement | null)?.getAttribute('data-player-id');
+    const targetPlayerId = targetPlayerIdAttr ? Number(targetPlayerIdAttr) : entry.id;
+
+    // 既存の入替ハンドラを擬似DragEventで呼び出し（swapPos）
     const fake = makeFakeDragEvent({
       dragKind: 'swapPos',
       swapSourceId: String(touchDrag.playerId),
@@ -1059,12 +1085,12 @@ return (
     handleDropToPosSpan(fake, targetPlayerId);
 
     setTouchDrag(null);
-    unlockScroll(); // ← 追加
+    unlockScroll();
   }}
-                >
+>
+  {pos ? positionNames[pos] : "控え"}
+</span>
 
-                {pos ? positionNames[pos] : "控え"}
-                </span>
 
                   {/* 選手名 → 右にずらす */}
                 <span className="ml-4 whitespace-nowrap">
