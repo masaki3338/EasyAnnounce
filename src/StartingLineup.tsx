@@ -1051,38 +1051,42 @@ return (
       lockScroll();
     }
   }}
+
+  onTouchMove={(ev) => {
+    const t = ev.touches && ev.touches[0];
+    if (!t) return;
+    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
+    const h = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
+    const pid = h ? Number(h.getAttribute('data-player-id')) : 0;
+    if (pid) hoverTargetRef.current = pid;
+  }}
+
   onTouchEnd={(ev) => {
     ev.stopPropagation();
-    skipNextGlobalTouchEndRef.current = true; // ← 追加：このタッチはローカルで完結させる
+    skipNextGlobalTouchEndRef.current = true; // ← ローカル処理で完結
     if (!touchDrag) { unlockScroll(); return; }
 
-    // 指を離した地点の要素
-    const t = ev.changedTouches && ev.changedTouches[0];
-    const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
+    // ★ まずは移動中に追跡していた“最新ホバー行”を優先
+    let targetPlayerId = hoverTargetRef.current ?? 0;
 
-    // 1) まず “守備ラベル” を優先して見つける
-    let targetLabel = el?.closest('[data-role="poslabel"]') as HTMLElement | null;
+    // ★ ホバーが無い/自分自身しかない場合は座標から最終決定
+    if (!targetPlayerId || targetPlayerId === entry.id) {
+      const t = ev.changedTouches && ev.changedTouches[0];
+      const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
 
-    // 2) 見つからなければ “その行（posrow）” を拾い、その中のラベルを取得
-    if (!targetLabel) {
-      const row = el?.closest('[data-role="posrow"]') as HTMLElement | null;
-      if (row) {
-        targetLabel = row.querySelector('[data-role="poslabel"]') as HTMLElement | null;
+      let targetLabel = el?.closest('[data-role="poslabel"]') as HTMLElement | null;
+      if (!targetLabel) {
+        const row = el?.closest('[data-role="posrow"]') as HTMLElement | null;
+        if (row) targetLabel = row.querySelector('[data-role="poslabel"]') as HTMLElement | null;
       }
+      if (!targetLabel) targetLabel = ev.currentTarget as HTMLElement;
+
+      const idAttr =
+        targetLabel.getAttribute('data-player-id') ||
+        (targetLabel.closest('[data-role="posrow"]') as HTMLElement | null)?.getAttribute('data-player-id');
+      targetPlayerId = idAttr ? Number(idAttr) : entry.id;
     }
 
-    // 3) それでも無ければ “自分自身” をターゲット扱い
-    if (!targetLabel) {
-      targetLabel = ev.currentTarget as HTMLElement;
-    }
-
-    // 最終的な “ターゲット行のplayerId”
-    const targetPlayerIdAttr =
-      targetLabel.getAttribute('data-player-id') ||
-      (targetLabel.closest('[data-role="posrow"]') as HTMLElement | null)?.getAttribute('data-player-id');
-    const targetPlayerId = targetPlayerIdAttr ? Number(targetPlayerIdAttr) : entry.id;
-
-    // 既存の入替ハンドラを擬似DragEventで呼び出し（swapPos）
     const fake = makeFakeDragEvent({
       dragKind: 'swapPos',
       swapSourceId: String(touchDrag.playerId),
@@ -1093,6 +1097,7 @@ return (
     setTouchDrag(null);
     unlockScroll();
   }}
+
 >
   {pos ? positionNames[pos] : "控え"}
 </span>
