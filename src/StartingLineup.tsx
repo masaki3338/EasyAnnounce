@@ -1012,40 +1012,36 @@ return (
             const pos = getPositionOfPlayer(entry.id);
 
             return (
-<div
-  key={entry.id}
-  data-role="posrow"
-  data-player-id={entry.id}
-  className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
-    ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
-  draggable
-  onDragStart={(e) => {
-    // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
-    const t = e.target as HTMLElement;
-    if (t && t.closest('[data-role="poslabel"]')) return;
-    handleBattingOrderDragStart(e, entry.id);
-  }}
-  onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
-  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
->
+              <div
+                key={entry.id}
+                data-role="posrow"
+                data-player-id={entry.id}
+                className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
+                  ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
+                draggable
+                onDragStart={(e) => {
+                  // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
+                  const t = e.target as HTMLElement;
+                  if (t && t.closest('[data-role="poslabel"]')) return;
+                  handleBattingOrderDragStart(e, entry.id);
+                }}
+                onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
+                onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+              >
 
               <div className="flex items-center gap-2 flex-nowrap">
                 <span className="w-10 font-bold">{i + 1}番</span>
                 <span
                   data-role="poslabel"
                   data-player-id={entry.id}
-                  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
-                    ${
-                      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
-                        ? "ring-2 ring-emerald-400 bg-emerald-500/20" // ← ラベルだけ強調
-                        : "bg-white/10 border border-white/10"
-                    }`}
-
-                  title={pos ? "この守備を他の行と入替" : "守備なし"}
-                  draggable={!!pos}
+                  draggable={!!pos}  // ラベルがある時だけドラッグ可（常時trueでも可）
                   onDragStart={(e) => handlePosDragStart(e, entry.id)}
+                  onDragEnd={(e) => {
+                    // 自分を再びヒット可能に戻す
+                    (e.currentTarget as HTMLElement).style.pointerEvents = "";
+                  }}
                   onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
                   onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
