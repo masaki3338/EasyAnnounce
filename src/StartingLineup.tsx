@@ -148,9 +148,6 @@ useEffect(() => {
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
-const isAndroid =
-  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-
 
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = React.useRef(0);
@@ -464,6 +461,13 @@ if (isIOS && e.dataTransfer.setDragImage) {
 const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
   e.preventDefault();
 
+   // 👇 追加：守備ラベル入替モードなら、フィールド側の通常移動は無視
+  const kindFromDT = e.dataTransfer.getData("dragKind") || "";
+  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
+  const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
+  const effectiveKind = kindFromDT || inferredKind || (dragKind ?? "");
+  if (effectiveKind === "swapPos") return;
+  
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
   const playerId = Number(playerIdStr);
@@ -731,18 +735,6 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
 
   const srcId = Number(srcStr);
   if (!srcId) return;
-
-  // ★ Android は「緑枠（hoverTarget）」一致のときだけ実行
-if (isAndroid) {
-  const hovered = hoverTargetRef.current; // グローバル onTouchMove で更新中
-  if (!hovered || hovered !== targetPlayerId) {
-    return; // 緑枠同士でなければ何もしない
-  }
-  // “緑枠ラベル（= 守備あり）”同士だけに限定
-  const hasSrcPos = !!getPositionOfPlayer(srcId);
-  const hasTgtPos = !!getPositionOfPlayer(targetPlayerId);
-  if (!hasSrcPos || !hasTgtPos) return;
-}
 
   swapPositionsByPlayers(srcId, targetPlayerId);
 };
@@ -1107,11 +1099,8 @@ const StartingLineupWrapped = () => {
           ? {
               enableTouchEvents: true,
               enableMouseEvents: true,
-              // ▼ タッチした瞬間にドラッグ開始
-              delayTouchStart: 0,  // ← ここを 0 に
-              touchSlop: 0,        // ← ここも 0（誤動作が出るなら 2～4 に）
-              // ▼ 縦スクロールは許可（縦30°～150°はスクロール扱い）
-              scrollAngleRanges: [{ start: 30, end: 150 }],
+              touchSlop: 10,      // ドラッグ開始の“遊び幅”（px）
+              delayTouchStart: 10 // 長押し待ち時間（ms）←短く
             }
           : undefined
       }
