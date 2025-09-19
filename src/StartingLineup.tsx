@@ -4,6 +4,13 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 
+// ★ Android フォールバック用のドラッグ文脈
+const dragCtxRef = React.useRef<{ kind: string | null; srcId: number | null }>({
+  kind: null,
+  srcId: null,
+});
+
+
 // ▼ 見た目だけのミニSVG
 const IconField = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -385,6 +392,21 @@ const saveAssignments = async () => {
     try { e.dataTransfer!.dropEffect = "move"; } catch {}
   };
 
+  // ★ ドロップ許可（Androidで必須）
+const handlePosDragOver = (e: React.DragEvent<HTMLSpanElement>) => {
+  e.preventDefault();
+  e.stopPropagation();
+  try { e.dataTransfer.dropEffect = "move"; } catch {}
+};
+
+// ★ ドラッグ終了時の掃除を一本化
+const handleDragGlobalEnd = () => {
+  setDragKind(null);
+  setTouchDrag(null);
+  dragCtxRef.current = { kind: null, srcId: null };
+};
+
+
 const handleDragStart = (
   e: React.DragEvent<HTMLDivElement>,
   playerId: number,
@@ -460,19 +482,6 @@ if (isIOS && e.dataTransfer.setDragImage) {
 
 const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
   e.preventDefault();
-
-  
-  // ★ 追加：守備ラベル入替（swapPos）ならフィールド側の通常移動を完全に無視
-  const dt = e.dataTransfer;
-  const textAny = (dt.getData("text") || dt.getData("text/plain") || "").trim(); // 例: "swapPos:12"
-  const isSwapPos =
-    (dt.getData("dragKind") || "").trim() === "swapPos" ||
-    !!dt.getData("swapSourceId") ||
-    textAny.startsWith("swapPos:");
-  if (isSwapPos) {
-    // ラベル↔ラベルの入替は handleDropToPosSpan が担当。ここは何もしない
-    return;
-  }
 
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
@@ -695,42 +704,63 @@ const swapPositionsByPlayers = (idA: number, idB: number) => {
 };
 
 // 守備ラベルからドラッグ開始（“守備だけ入替”モード）
+// 守備ラベルからドラッグ開始（“守備だけ入替”モード）
 const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
-  e.stopPropagation(); // 親の dragstart を発火させない
-  e.dataTransfer.setData("dragKind", "swapPos");
-  e.dataTransfer.setData("swapSourceId", String(playerId));
-  e.dataTransfer.setData("text/plain", String(playerId));
-  
+  e.stopPropagation();
+
+  // Android で落ちにくいキーに複数セット
+  try { e.dataTransfer.setData("dragKind", "swapPos"); } catch {}
+  try { e.dataTransfer.setData("swapSourceId", String(playerId)); } catch {}
+  try { e.dataTransfer.setData("text/plain", String(playerId)); } catch {}
   try { e.dataTransfer.setData("text", `swapPos:${playerId}`); } catch {}
 
+  try {
+    e.dataTransfer.effectAllowed = "move";
+    // ゴースト（1px）を使うとAndroidの命中精度が上がる
+    const ghost = document.createElement("div");
+    ghost.style.position = "fixed";
+    ghost.style.top = "-9999px";
+    ghost.style.width = "1px";
+    ghost.style.height = "1px";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    setTimeout(() => { try { document.body.removeChild(ghost); } catch {} }, 0);
+  } catch {}
+
+  // 最終フォールバック
+  dragCtxRef.current = { kind: "swapPos", srcId: playerId };
+
+  // 既存のUI状態も更新（緑枠制御など）
   setTouchDrag((prev) => prev ?? { playerId });
-
-  // ★ 追加：今は“守備だけ入替”モード
   setDragKind("swapPos");
-
-  // ★ 追加：終了時は必ず解放
-  const cleanup = () => setDragKind(null);
-  window.addEventListener("dragend", cleanup, { once: true });
-  window.addEventListener("drop", cleanup, { once: true });
 };
 
 
+
 // 守備ラベルへドロップ
-const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
+// 守備ラベルへドロップ
+const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerIdProp: number) => {
   e.preventDefault();
   e.stopPropagation();
 
-  // ★ 変更: dragKind を複数経路で取得（Androidフォールバック）
+  // どのラベルに落ちたか（子要素でも拾える）
+  const targetEl = (e.target as HTMLElement)?.closest('[data-role="poslabel"]') as HTMLElement | null;
+  const targetPlayerId = targetEl?.dataset?.playerId
+    ? Number(targetEl.dataset.playerId)
+    : Number(targetPlayerIdProp);
+
+  // dragKind を多段フォールバックで推定
   const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
   const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
   const kind =
     e.dataTransfer.getData("dragKind") ||
     inferredKind ||
-    (dragKind ?? ""); // ← stateも最後の砦
+    (dragKind ?? "") ||
+    (dragCtxRef.current.kind ?? "");
 
-  if (kind !== "swapPos") return;
+  if (kind !== "swapPos") { handleDragGlobalEnd(); return; }
 
-  // ★ 変更: srcId も 'text' をフォールバックに使う
+  // srcId も多段フォールバック
   let srcStr =
     e.dataTransfer.getData("swapSourceId") ||
     e.dataTransfer.getData("text/plain") ||
@@ -738,13 +768,22 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
   if (!srcStr && textAny.startsWith("swapPos:")) {
     srcStr = textAny.split(":")[1] || "";
   }
+  const srcId =
+    Number(srcStr) ||
+    Number(touchDrag?.playerId || 0) ||
+    Number(dragCtxRef.current.srcId || 0);
 
-  const srcId = Number(srcStr);
-  if (!srcId) return;
+  if (!srcId || !targetPlayerId || srcId === targetPlayerId) {
+    handleDragGlobalEnd();
+    return;
+  }
 
+  // 実際の入替
   swapPositionsByPlayers(srcId, targetPlayerId);
-};
 
+  // 掃除
+  handleDragGlobalEnd();
+};
 
 
 const handleDropToBattingOrder = (
@@ -826,7 +865,7 @@ return (
    </div>
  </div>
 
-      {/* フィールド配置 */}
+
  {/* フィールド配置（カード） */}
  <section
    className="
@@ -854,84 +893,82 @@ return (
       draggable={false}   // ← 追加
       className="w-full h-auto md:rounded shadow select-none pointer-events-none" />
 
-{allSlots.map((pos) => {
-  const playerId = assignments[pos];
-  const player = teamPlayers.find((p) => p.id === playerId);
-  return (
-    <div
-      key={pos}
-      draggable={!!player}
-      onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
-        player.id, pos)}
-      onDragEnter={() => setHoverPosKey(pos)}
-      onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}  
-      onDragOver={allowDrop}
-      onDrop={(e) => { handleDropToPosition(e, pos); setHoverPosKey(null); }}
-       onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
-      onTouchEnd={() => {
-        if (!touchDrag) return;
-        const fake = makeFakeDragEvent({
-          playerId: String(touchDrag.playerId),
-          "text/plain": String(touchDrag.playerId),
-          fromPosition: touchDrag.fromPos ?? "",
-        });
-        handleDropToPosition(fake, pos);
-        setTouchDrag(null);
-      }}
-      style={{
-        ...positionStyles[pos],
-        position: "absolute",
-        transform: "translate(-50%, -50%)",
-        cursor: player ? "move" : "default",
-      }}
-      className={`z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
-            px-2 sm:px-2.5 h-8 sm:h-9
-            rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
-            ${hoverPosKey === pos ? "ring-4 ring-emerald-400" : ""}
-            backdrop-blur-[2px] text-center
-            flex items-center justify-center select-none touch-none`}
+      {allSlots.map((pos) => {
+        const playerId = assignments[pos];
+        const player = teamPlayers.find((p) => p.id === playerId);
+        return (
+          <div
+            key={pos}
+            draggable={!!player}
+            onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
+              player.id, pos)}
+            onDragEnter={() => setHoverPosKey(pos)}
+            onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}  
+            onDragOver={allowDrop}
+            onDrop={(e) => { handleDropToPosition(e, pos); setHoverPosKey(null); }}
+            onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
+            onTouchEnd={() => {
+              if (!touchDrag) return;
+              const fake = makeFakeDragEvent({
+                playerId: String(touchDrag.playerId),
+                "text/plain": String(touchDrag.playerId),
+                fromPosition: touchDrag.fromPos ?? "",
+              });
+              handleDropToPosition(fake, pos);
+              setTouchDrag(null);
+            }}
+            style={{
+              ...positionStyles[pos],
+              position: "absolute",
+              transform: "translate(-50%, -50%)",
+              cursor: player ? "move" : "default",
+            }}
+            className={`z-10 min-w-[72px] sm:min-w-[96px] max-w-[40vw] sm:max-w-[160px]
+                  px-2 sm:px-2.5 h-8 sm:h-9
+                  rounded-xl bg-white/90 text-gray-900 shadow border border-white/70
+                  ${hoverPosKey === pos ? "ring-4 ring-emerald-400" : ""}
+                  backdrop-blur-[2px] text-center
+                  flex items-center justify-center select-none touch-none`}
 
-    >
-      {player ? (
-        <div
-          draggable
-          onDragStart={(e) => handleDragStart(e, player.id, pos)}
-          // iOSの長押し誤動作を抑えるなら WebkitUserDrag は "none" のままでもOK
-          style={{ WebkitUserDrag: "none", touchAction: "none" }}
+          >
+            {player ? (
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, player.id, pos)}
+                // iOSの長押し誤動作を抑えるなら WebkitUserDrag は "none" のままでもOK
+                style={{ WebkitUserDrag: "none", touchAction: "none" }}
 
-          className={
-            `relative w-full h-full flex items-center justify-center font-semibold
-            whitespace-nowrap overflow-hidden text-ellipsis text-sm sm:text-base
-            leading-none select-none rounded-lg
-            ${draggingPlayerId === player.id ? "bg-amber-500 text-white ring-4 ring-amber-300" : ""}`
-          }
-        >
-          {player.lastName}{player.firstName} #{player.number}
-        </div>
+                className={
+                  `relative w-full h-full flex items-center justify-center font-semibold
+                  whitespace-nowrap overflow-hidden text-ellipsis text-sm sm:text-base
+                  leading-none select-none rounded-lg
+                  ${draggingPlayerId === player.id ? "bg-amber-500 text-white ring-4 ring-amber-300" : ""}`
+                }
+              >
+                {player.lastName}{player.firstName} #{player.number}
+              </div>
 
 
-      ) : (
-        <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
-      )}
-    </div>
-  );
-})}
+            ) : (
+              <div className="text-gray-500">{pos === DH ? "DHなし" : "空き"}</div>
+            )}
+          </div>
+        );
+      })}
 
       </div>
       </section>
 
-      {/* 打順と控えを横並びに表示 */}
       {/* 控え選手 + 打順を縦並びに表示し、スマホでも最適化 */}
       <div className="flex flex-col gap-6">
-
         {/* 🔼 控え選手（登録済みで未使用の選手） */}
         <div>
- <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-   <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
-     <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z"/></svg>
-   </span>
-   控え選手
- </h2>
+          <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+            <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z"/></svg>
+            </span>
+            控え選手
+          </h2>
           <div
             className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
             onDragOver={allowDrop}
@@ -968,10 +1005,10 @@ return (
 
       {/* 🔽 ベンチ外選手（横並び表示） */}
       <div>
- <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-   <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center"><IconOut /></span>
-   ベンチ外選手
- </h2>
+        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+          <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center"><IconOut /></span>
+          ベンチ外選手
+        </h2>
         <div
            className="flex flex-wrap gap-2 min-h-[60px] p-2
               rounded-2xl border ring-1 ring-inset
@@ -998,13 +1035,13 @@ return (
       </div>
 
 
-
+      {/* 🔽 打順（1～9番） */}
       <div>
- <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-   <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center"><IconOrder /></span>
-   打順（1～9番）
-   <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">ドラッグ＆ドロップで変更</span>
- </h2>
+        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
+          <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center"><IconOrder /></span>
+          打順（1～9番）
+          <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">ドラッグ＆ドロップで変更</span>
+        </h2>
         <div className="space-y-2">
           {battingOrder.map((entry, i) => {
             const player = teamPlayers.find((p) => p.id === entry.id);
@@ -1036,12 +1073,16 @@ return (
                 <span
                   data-role="poslabel"
                   data-player-id={entry.id}
-                  draggable={!!pos}  // ラベルがある時だけドラッグ可（常時trueでも可）
+                  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
+                    ${
+                      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
+                        ? "ring-2 ring-emerald-400 bg-emerald-500/20" // ← ラベルだけ強調
+                        : "bg-white/10 border border-white/10"
+                    }`}
+
+                  title={pos ? "この守備を他の行と入替" : "守備なし"}
+                  draggable={!!pos}
                   onDragStart={(e) => handlePosDragStart(e, entry.id)}
-                  onDragEnd={(e) => {
-                    // 自分を再びヒット可能に戻す
-                    (e.currentTarget as HTMLElement).style.pointerEvents = "";
-                  }}
                   onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
                   onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
@@ -1051,6 +1092,7 @@ return (
 
                 {pos ? positionNames[pos] : "控え"}
                 </span>
+
 
                   {/* 選手名 → 右にずらす */}
                 <span className="ml-4 whitespace-nowrap">
