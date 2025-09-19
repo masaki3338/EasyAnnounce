@@ -4,13 +4,6 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 
-// ★ Android フォールバック用のドラッグ文脈
-const dragCtxRef = React.useRef<{ kind: string | null; srcId: number | null }>({
-  kind: null,
-  srcId: null,
-});
-
-
 // ▼ 見た目だけのミニSVG
 const IconField = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -159,6 +152,9 @@ const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = React.useRef(0);
 const preventRef = React.useRef<(e: Event) => void>();
+// ★ 追加：守備ラベル入替の “交換元プレイヤーID” を保持
+const swapSourceIdRef = React.useRef<number | null>(null);
+
 
 const lockScroll = () => {
   if (++scrollLockDepthRef.current > 1) return;
@@ -391,21 +387,6 @@ const saveAssignments = async () => {
     e.preventDefault();
     try { e.dataTransfer!.dropEffect = "move"; } catch {}
   };
-
-  // ★ ドロップ許可（Androidで必須）
-const handlePosDragOver = (e: React.DragEvent<HTMLSpanElement>) => {
-  e.preventDefault();
-  e.stopPropagation();
-  try { e.dataTransfer.dropEffect = "move"; } catch {}
-};
-
-// ★ ドラッグ終了時の掃除を一本化
-const handleDragGlobalEnd = () => {
-  setDragKind(null);
-  setTouchDrag(null);
-  dragCtxRef.current = { kind: null, srcId: null };
-};
-
 
 const handleDragStart = (
   e: React.DragEvent<HTMLDivElement>,
@@ -706,61 +687,48 @@ const swapPositionsByPlayers = (idA: number, idB: number) => {
 // 守備ラベルからドラッグ開始（“守備だけ入替”モード）
 // 守備ラベルからドラッグ開始（“守備だけ入替”モード）
 const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
-  e.stopPropagation();
+  e.stopPropagation(); // 親の dragstart を発火させない
 
-  // Android で落ちにくいキーに複数セット
-  try { e.dataTransfer.setData("dragKind", "swapPos"); } catch {}
-  try { e.dataTransfer.setData("swapSourceId", String(playerId)); } catch {}
-  try { e.dataTransfer.setData("text/plain", String(playerId)); } catch {}
-  try { e.dataTransfer.setData("text", `swapPos:${playerId}`); } catch {}
+  // ★ フォールバック：交換元IDを ref にも保持（Androidで dataTransfer が飛ぶ対策）
+  swapSourceIdRef.current = playerId;
 
+  // 取れる環境では dataTransfer も併用（iPhone/PC用）
   try {
-    e.dataTransfer.effectAllowed = "move";
-    // ゴースト（1px）を使うとAndroidの命中精度が上がる
-    const ghost = document.createElement("div");
-    ghost.style.position = "fixed";
-    ghost.style.top = "-9999px";
-    ghost.style.width = "1px";
-    ghost.style.height = "1px";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    setTimeout(() => { try { document.body.removeChild(ghost); } catch {} }, 0);
+    e.dataTransfer.setData("dragKind", "swapPos");
+    e.dataTransfer.setData("swapSourceId", String(playerId));
+    e.dataTransfer.setData("text/plain", String(playerId));
+    e.dataTransfer.setData("text", `swapPos:${playerId}`);
   } catch {}
 
-  // 最終フォールバック
-  dragCtxRef.current = { kind: "swapPos", srcId: playerId };
-
-  // 既存のUI状態も更新（緑枠制御など）
+  // 既存ロジック維持
   setTouchDrag((prev) => prev ?? { playerId });
   setDragKind("swapPos");
+
+  // ★ 終了時クリーンアップ（取り違え防止）
+  const cleanup = () => { setDragKind(null); swapSourceIdRef.current = null; };
+  window.addEventListener("dragend", cleanup, { once: true });
+  window.addEventListener("drop", cleanup, { once: true });
 };
 
 
 
 // 守備ラベルへドロップ
 // 守備ラベルへドロップ
-const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerIdProp: number) => {
+const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
   e.preventDefault();
   e.stopPropagation();
 
-  // どのラベルに落ちたか（子要素でも拾える）
-  const targetEl = (e.target as HTMLElement)?.closest('[data-role="poslabel"]') as HTMLElement | null;
-  const targetPlayerId = targetEl?.dataset?.playerId
-    ? Number(targetEl.dataset.playerId)
-    : Number(targetPlayerIdProp);
-
-  // dragKind を多段フォールバックで推定
+  // ★ kind を多段フォールバックで取得（Android 対策）
   const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
   const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
   const kind =
     e.dataTransfer.getData("dragKind") ||
     inferredKind ||
-    (dragKind ?? "") ||
-    (dragCtxRef.current.kind ?? "");
+    (dragKind ?? ""); // ← state も最後の砦
 
-  if (kind !== "swapPos") { handleDragGlobalEnd(); return; }
+  if (kind !== "swapPos") return;
 
-  // srcId も多段フォールバック
+  // ★ 交換元IDの復元を強化：dataTransfer → text → ref の順
   let srcStr =
     e.dataTransfer.getData("swapSourceId") ||
     e.dataTransfer.getData("text/plain") ||
@@ -768,21 +736,17 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
   if (!srcStr && textAny.startsWith("swapPos:")) {
     srcStr = textAny.split(":")[1] || "";
   }
-  const srcId =
-    Number(srcStr) ||
-    Number(touchDrag?.playerId || 0) ||
-    Number(dragCtxRef.current.srcId || 0);
 
-  if (!srcId || !targetPlayerId || srcId === targetPlayerId) {
-    handleDragGlobalEnd();
-    return;
-  }
+  let srcId = Number(srcStr);
+  if (!srcId) srcId = swapSourceIdRef.current ?? 0; // ← ココが肝
 
-  // 実際の入替
+  if (!srcId) return;
+
   swapPositionsByPlayers(srcId, targetPlayerId);
 
-  // 掃除
-  handleDragGlobalEnd();
+  // ★ 後始末
+  swapSourceIdRef.current = null;
+  setDragKind(null);
 };
 
 
@@ -792,7 +756,7 @@ const handleDropToBattingOrder = (
 ) => {
   e.preventDefault();
 
-  // ★ 変更: dragKind を多段フォールバック
+  // ★ kind を多段フォールバックで取得
   const textAny = (e.dataTransfer.getData("text") || "").trim();
   const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
   const kind =
@@ -801,7 +765,7 @@ const handleDropToBattingOrder = (
     (dragKind ?? "");
 
   if (kind === "swapPos") {
-    // ★ 変更: srcId を 'text' からも復元
+    // ★ 交換元IDの復元（dataTransfer → text → ref）
     let srcStr =
       e.dataTransfer.getData("swapSourceId") ||
       e.dataTransfer.getData("battingPlayerId") ||
@@ -810,14 +774,21 @@ const handleDropToBattingOrder = (
     if (!srcStr && textAny.startsWith("swapPos:")) {
       srcStr = textAny.split(":")[1] || "";
     }
-    const srcId = Number(srcStr);
+
+    let srcId = Number(srcStr);
+    if (!srcId) srcId = swapSourceIdRef.current ?? 0; // ← 追加
+
     if (srcId && srcId !== targetPlayerId) {
       swapPositionsByPlayers(srcId, targetPlayerId);
     }
+
+    // ★ 後始末
+    swapSourceIdRef.current = null;
+    setDragKind(null);
     return;
   }
 
-  // ↓↓ 既存の打順入替処理 ↓↓
+  // ↓↓ 打順入替（既存ロジック） ↓↓
   const draggedStr =
     e.dataTransfer.getData("battingPlayerId") || e.dataTransfer.getData("text/plain");
   const draggedPlayerId = Number(draggedStr);
@@ -832,6 +803,7 @@ const handleDropToBattingOrder = (
     return updated;
   });
 };
+
 
 
   const assignedIds = Object.values(assignments).filter(Boolean) as number[];
@@ -865,9 +837,8 @@ return (
    </div>
  </div>
 
-
  {/* フィールド配置（カード） */}
- <section
+      <section
    className="
      mb-6
      w-[100svw] -mx-6 md:mx-auto md:w-full md:max-w-2xl
@@ -959,8 +930,10 @@ return (
       </div>
       </section>
 
+      {/* 打順と控えを横並びに表示 */}
       {/* 控え選手 + 打順を縦並びに表示し、スマホでも最適化 */}
       <div className="flex flex-col gap-6">
+
         {/* 🔼 控え選手（登録済みで未使用の選手） */}
         <div>
           <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
@@ -1035,7 +1008,7 @@ return (
       </div>
 
 
-      {/* 🔽 打順（1～9番） */}
+
       <div>
         <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
           <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center"><IconOrder /></span>
@@ -1092,7 +1065,6 @@ return (
 
                 {pos ? positionNames[pos] : "控え"}
                 </span>
-
 
                   {/* 選手名 → 右にずらす */}
                 <span className="ml-4 whitespace-nowrap">
