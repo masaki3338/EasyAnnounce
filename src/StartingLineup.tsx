@@ -88,6 +88,7 @@ const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null
 // タッチの最終座標（フォールバック用）
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverTargetRef = React.useRef<number | null>(null);
+const skipNextGlobalTouchEndRef = React.useRef(false); // ← 追加：ローカル処理したら窓側をスキップ
 
 // 既存の handleDrop... を流用するためのダミーDragEvent
 const makeFakeDragEvent = (payload: Record<string, string>) =>
@@ -238,6 +239,11 @@ useEffect(() => {
 
   // 通常：touchend → まずホバー記録、無ければ座標で確定
   const onTouchEnd = (ev: TouchEvent) => {
+    if (skipNextGlobalTouchEndRef.current) { // ← 追加
+      skipNextGlobalTouchEndRef.current = false;
+      return;
+    }
+
     if (!touchDrag) return;
     const pid = hoverTargetRef.current;
     if (pid) return dropTo(pid);
@@ -1047,7 +1053,7 @@ return (
   }}
   onTouchEnd={(ev) => {
     ev.stopPropagation();
-
+    skipNextGlobalTouchEndRef.current = true; // ← 追加：このタッチはローカルで完結させる
     if (!touchDrag) { unlockScroll(); return; }
 
     // 指を離した地点の要素
