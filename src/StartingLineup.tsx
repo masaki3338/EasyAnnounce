@@ -1107,8 +1107,11 @@ const StartingLineupWrapped = () => {
           ? {
               enableTouchEvents: true,
               enableMouseEvents: true,
-              touchSlop: 10,      // ドラッグ開始の“遊び幅”（px）
-              delayTouchStart: 10 // 長押し待ち時間（ms）←短く
+              // ▼ タッチした瞬間にドラッグ開始
+              delayTouchStart: 0,  // ← ここを 0 に
+              touchSlop: 0,        // ← ここも 0（誤動作が出るなら 2～4 に）
+              // ▼ 縦スクロールは許可（縦30°～150°はスクロール扱い）
+              scrollAngleRanges: [{ start: 30, end: 150 }],
             }
           : undefined
       }
