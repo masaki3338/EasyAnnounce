@@ -461,6 +461,19 @@ if (isIOS && e.dataTransfer.setDragImage) {
 const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
   e.preventDefault();
 
+  
+  // ★ 追加：守備ラベル入替（swapPos）ならフィールド側の通常移動を完全に無視
+  const dt = e.dataTransfer;
+  const textAny = (dt.getData("text") || dt.getData("text/plain") || "").trim(); // 例: "swapPos:12"
+  const isSwapPos =
+    (dt.getData("dragKind") || "").trim() === "swapPos" ||
+    !!dt.getData("swapSourceId") ||
+    textAny.startsWith("swapPos:");
+  if (isSwapPos) {
+    // ラベル↔ラベルの入替は handleDropToPosSpan が担当。ここは何もしない
+    return;
+  }
+
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
   const playerId = Number(playerIdStr);
