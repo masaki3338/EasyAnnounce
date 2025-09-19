@@ -88,6 +88,7 @@ const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null
 // タッチの最終座標（フォールバック用）
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverTargetRef = React.useRef<number | null>(null);
+const skipNextGlobalTouchEndRef = React.useRef(false);
 
 // 既存の handleDrop... を流用するためのダミーDragEvent
 const makeFakeDragEvent = (payload: Record<string, string>) =>
@@ -148,8 +149,6 @@ useEffect(() => {
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
-const isAndroid =
-  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = React.useRef(0);
@@ -731,18 +730,6 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
   const srcId = Number(srcStr);
   if (!srcId) return;
 
-  // ★ Android は「緑枠（hoverTarget）」一致のときだけ実行
-if (isAndroid) {
-  const hovered = hoverTargetRef.current; // グローバル onTouchMove で更新中
-  if (!hovered || hovered !== targetPlayerId) {
-    return; // 緑枠同士でなければ何もしない
-  }
-  // “緑枠ラベル（= 守備あり）”同士だけに限定
-  const hasSrcPos = !!getPositionOfPlayer(srcId);
-  const hasTgtPos = !!getPositionOfPlayer(targetPlayerId);
-  if (!hasSrcPos || !hasTgtPos) return;
-}
-
   swapPositionsByPlayers(srcId, targetPlayerId);
 };
 
@@ -763,9 +750,6 @@ const handleDropToBattingOrder = (
     (dragKind ?? "");
 
   if (kind === "swapPos") {
-
-
-
     // ★ 変更: srcId を 'text' からも復元
     let srcStr =
       e.dataTransfer.getData("swapSourceId") ||
@@ -1055,6 +1039,56 @@ return (
                   onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
                   onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
+                  onTouchEnd={(ev) => {
+                    ev.stopPropagation();
+                    skipNextGlobalTouchEndRef.current = true;    // ← 二重確定の上書きを防止
+                    if (!touchDrag) { unlockScroll(); return; }
+
+                    // ★ ドロップ先候補（指を離した位置）
+                    const t = ev.changedTouches && ev.changedTouches[0];
+                    const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
+
+                    // まず “守備ラベル” を優先して取得 → 無ければ行（posrow） → 無ければ自分
+                    let targetLabel = el?.closest('[data-role="poslabel"]') as HTMLElement | null;
+                    if (!targetLabel) {
+                      const row = el?.closest('[data-role="posrow"]') as HTMLElement | null;
+                      if (row) targetLabel = row.querySelector('[data-role="poslabel"]') as HTMLElement | null;
+                    }
+                    if (!targetLabel) targetLabel = ev.currentTarget as HTMLElement;
+
+                    // 最終ターゲット行の playerId
+                    const idAttr =
+                      targetLabel.getAttribute('data-player-id') ||
+                      (targetLabel.closest('[data-role="posrow"]') as HTMLElement | null)?.getAttribute('data-player-id');
+                    const targetPlayerId = idAttr ? Number(idAttr) : entry.id;
+
+                    // ★★★ Android 限定：緑枠（hoverTargetRef）同士 & 両者とも守備を持つ時だけ実行 ★★★
+                    if (isAndroid) {
+                      const hovered = hoverTargetRef.current;                 // 追跡中の“緑枠”行ID
+                      const srcId   = touchDrag.playerId;                     // ドラッグ元行ID
+                      const srcHasPos = !!getPositionOfPlayer(srcId);         // 元が守備持ち？
+                      const tgtHasPos = !!getPositionOfPlayer(targetPlayerId);// 先も守備持ち？
+
+                      // 条件： (1) 直前ホバーがドロップ先と一致  (2) 元も先も“守備あり”
+                      if (!hovered || hovered !== targetPlayerId || !srcHasPos || !tgtHasPos) {
+                        setTouchDrag(null);
+                        unlockScroll();
+                        return; // 緑枠同士以外は無視（iPhone/PCは従来どおり）
+                      }
+                    }
+
+                    // 既存の入替ハンドラ（swapPos）を擬似DragEventで呼ぶ
+                    const fake = makeFakeDragEvent({
+                      dragKind: 'swapPos',
+                      swapSourceId: String(touchDrag.playerId),
+                      'text/plain': String(touchDrag.playerId),
+                    });
+                    handleDropToPosSpan(fake, targetPlayerId);
+
+                    setTouchDrag(null);
+                    unlockScroll();
+                  }}
+
                 >
 
                 {pos ? positionNames[pos] : "控え"}
