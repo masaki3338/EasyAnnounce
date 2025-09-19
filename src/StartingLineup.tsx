@@ -215,10 +215,12 @@ useEffect(() => {
         getData: (key: string) => {
           if (key === "dragKind") return "swapPos";
           if (key === "swapSourceId" || key === "text/plain") return String(touchDrag.playerId);
+          if (key === "swapToken") return swapTokenRef.current || ""; // ★ 追加：トークンも供給
           return "";
         },
       },
     } as unknown as React.DragEvent<HTMLSpanElement>;
+
     handleDropToPosSpan(fake, targetPlayerId);
     hoverTargetRef.current = null;
     setTouchDrag(null);
@@ -247,9 +249,18 @@ useEffect(() => {
     if (!touchDrag) return;
     const pid = hoverTargetRef.current;
     if (pid) return dropTo(pid);
+
     const t = ev.changedTouches && ev.changedTouches[0];
-    if (t) pickByPoint(t.clientX, t.clientY); else setTouchDrag(null);
+    if (!t) return setTouchDrag(null);
+
+    // ★ 追加：描画確定を2フレーム待ってから命中判定（即ドロップのズレ抑制）
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        pickByPoint(t.clientX, t.clientY);
+      });
+    });
   };
+
 
   // 変換ケース：dragend → まずホバー記録、無ければ最後の座標
   const onDragEnd = (_ev: DragEvent) => {
@@ -720,11 +731,23 @@ const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: numbe
 
 
 // 守備ラベルへドロップ
-const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
+// 守備ラベルへドロップ
+const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerIdProp: number) => {
   e.preventDefault();
   e.stopPropagation();
 
-  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12:1695111111111-12"
+  // ★ まず coords からドロップ先を再判定（即ドロップのズレ対策）
+  let targetPlayerId = targetPlayerIdProp;
+  const cx = (e as any).clientX ?? (e as any).pageX ?? null;
+  const cy = (e as any).clientY ?? (e as any).pageY ?? null;
+  if (typeof cx === "number" && typeof cy === "number") {
+    const el = document.elementFromPoint(cx, cy) as HTMLElement | null;
+    const hit = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
+    const pid = hit ? Number(hit.getAttribute("data-player-id")) : 0;
+    if (pid) targetPlayerId = pid;
+  }
+
+  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12:1695...-12"
   const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
   const kind =
     e.dataTransfer.getData("dragKind") ||
@@ -736,37 +759,36 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
   // ★ トークン復元（dataTransfer → text → ref）
   let token = e.dataTransfer.getData("swapToken") || "";
   if (!token && textAny.startsWith("swapPos:")) {
-    const parts = textAny.split(":");           // ["swapPos","12","1695...-12"] を期待
+    const parts = textAny.split(":"); // ["swapPos","12","1695...-12"]
     token = parts[2] || "";
   }
   if (!token) token = swapTokenRef.current || "";
 
-  // ★ すでに処理済みなら無視（Androidの二重発火対策の本丸）
   if (token) {
     if (handledSwapTokensRef.current.has(token)) return;
     handledSwapTokensRef.current.add(token);
   }
 
-  // 交換元IDの復元（dataTransfer → text → ref）
+  // 交換元IDの復元
   let srcStr =
     e.dataTransfer.getData("swapSourceId") ||
     e.dataTransfer.getData("text/plain") ||
     "";
   if (!srcStr && textAny.startsWith("swapPos:")) {
-    const parts = textAny.split(":"); // ["swapPos","12","...token"]
+    const parts = textAny.split(":");
     srcStr = parts[1] || "";
   }
 
   let srcId = Number(srcStr);
   if (!srcId) srcId = swapSourceIdRef.current ?? 0;
-  if (!srcId) return;
+  if (!srcId || !targetPlayerId) return;
 
   swapPositionsByPlayers(srcId, targetPlayerId);
 
-  // ★ 後始末：ref はクリア、token は Set に残してOK（同一tokenの再入を遮断）
   swapSourceIdRef.current = null;
   setDragKind(null);
 };
+
 
 
 
