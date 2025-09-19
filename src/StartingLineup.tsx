@@ -390,6 +390,8 @@ const handleDragStart = (
   playerId: number,
   fromPos?: string
 ) => {
+   // 🔧 追加：通常ドラッグでは swapPos 状態を明示解除
+  setDragKind(null);
   setDraggingPlayerId(playerId);
 
   e.dataTransfer.setData("playerId", String(playerId));
@@ -461,13 +463,13 @@ if (isIOS && e.dataTransfer.setDragImage) {
 const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string) => {
   e.preventDefault();
 
-   // 👇 追加：守備ラベル入替モードなら、フィールド側の通常移動は無視
-  const kindFromDT = e.dataTransfer.getData("dragKind") || "";
+// 🔧 ここを修正：state(dragKind)は見ない。必ず dataTransfer だけで判定
+  const dtKind = (e.dataTransfer.getData("dragKind") || "").trim();
   const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
-  const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
-  const effectiveKind = kindFromDT || inferredKind || (dragKind ?? "");
-  if (effectiveKind === "swapPos") return;
-  
+  const hasSwapSrc = !!e.dataTransfer.getData("swapSourceId");
+  const isSwapPos = dtKind === "swapPos" || textAny.startsWith("swapPos:") || hasSwapSrc;
+  if (isSwapPos) return; // 守備ラベル↔守備ラベル入替時は通常移動ロジックを無視
+
   const playerIdStr =
     e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
   const playerId = Number(playerIdStr);
@@ -854,9 +856,7 @@ return (
   return (
     <div
       key={pos}
-      draggable={!!player}
-      onDragStart={(e) => player && handleDragStart(e,       // ← これを追加
-        player.id, pos)}
+
       onDragEnter={() => setHoverPosKey(pos)}
       onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}  
       onDragOver={allowDrop}
