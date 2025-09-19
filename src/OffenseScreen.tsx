@@ -1202,7 +1202,7 @@ useEffect(() => {
           userSelect: "none",
         }}
       >
-      <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
+      <h2 className="text-base font-bold mb-2 inline-flex items-center gap-2">
         <img
           src="/Ofence.png"   // ← public/Ofence.png に置く
           alt=""

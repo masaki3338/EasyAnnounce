@@ -792,29 +792,30 @@ const handlePitchLimitSpeak = () => {
       >
 
       <section className="mb-4">
-      <h2
-        ref={titleRef}
-        className={`font-bold mb-2 inline-flex items-center gap-2 whitespace-nowrap overflow-hidden ${
-          isNarrow ? "text-lg" : "text-xl"
-        }`}
-      >
-        <img
-          src="/Defence.png"
-          alt=""
-          width={24}
-          height={24}
-          className="w-6 h-6 object-contain align-middle select-none flex-shrink-0"
-          loading="lazy"
-          decoding="async"
-          draggable="false"
-        />
-        <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
-          守備中
-        </span>
-        <span className="truncate">
-          {myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}
-        </span>
-      </h2>
+<h2
+  ref={titleRef}
+  className={`font-bold mb-2 inline-flex items-center gap-2 whitespace-nowrap overflow-hidden ${
+    isNarrow ? "text-base" : "text-base"
+  }`}
+>
+  <img
+    src="/Defence.png"
+    alt=""
+    width={24}
+    height={24}
+    className="w-6 h-6 object-contain align-middle select-none flex-shrink-0"
+    loading="lazy"
+    decoding="async"
+    draggable="false"
+  />
+  <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
+    守備中
+  </span>
+  <span className="truncate">
+    {myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}
+  </span>
+</h2>
+
 
 
       <div className="mb-2">
