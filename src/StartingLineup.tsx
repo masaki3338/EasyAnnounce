@@ -764,20 +764,7 @@ const handleDropToBattingOrder = (
 
   if (kind === "swapPos") {
 
-    if (isAndroid) {
-      const hovered = hoverTargetRef.current;
-      if (!hovered || hovered !== targetPlayerId) return;
-      // 守備ラベル同士（= 守備あり）を要求
-      const hasSrcPos = !!getPositionOfPlayer(
-        Number(
-          e.dataTransfer.getData("swapSourceId") ||
-          e.dataTransfer.getData("battingPlayerId") ||
-          e.dataTransfer.getData("text/plain") || "0"
-        )
-      );
-      const hasTgtPos = !!getPositionOfPlayer(targetPlayerId);
-      if (!hasSrcPos || !hasTgtPos) return;
-    }
+
 
     // ★ 変更: srcId を 'text' からも復元
     let srcStr =
