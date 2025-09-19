@@ -88,7 +88,6 @@ const [touchDragBattingId, setTouchDragBattingId] = useState<number | null>(null
 // タッチの最終座標（フォールバック用）
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverTargetRef = React.useRef<number | null>(null);
-const skipNextGlobalTouchEndRef = React.useRef(false); // ← 追加：ローカル処理したら窓側をスキップ
 
 // 既存の handleDrop... を流用するためのダミーDragEvent
 const makeFakeDragEvent = (payload: Record<string, string>) =>
@@ -239,11 +238,6 @@ useEffect(() => {
 
   // 通常：touchend → まずホバー記録、無ければ座標で確定
   const onTouchEnd = (ev: TouchEvent) => {
-    if (skipNextGlobalTouchEndRef.current) { // ← 追加
-      skipNextGlobalTouchEndRef.current = false;
-      return;
-    }
-
     if (!touchDrag) return;
     const pid = hoverTargetRef.current;
     if (pid) return dropTo(pid);
@@ -1005,103 +999,49 @@ return (
             const pos = getPositionOfPlayer(entry.id);
 
             return (
-              <div
-                key={entry.id}
-                data-role="posrow"
-                data-player-id={entry.id}
-                className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
-                  ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
-                draggable
-                onDragStart={(e) => {
-                  // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
-                  const t = e.target as HTMLElement;
-                  if (t && t.closest('[data-role="poslabel"]')) return;
-                  handleBattingOrderDragStart(e, entry.id);
-                }}
-                onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
-                onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-                onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-                onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
-              >
+<div
+  key={entry.id}
+  data-role="posrow"
+  data-player-id={entry.id}
+  className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow cursor-move select-none
+    ${hoverOrderPlayerId === entry.id && dragKind !== "swapPos" ? "ring-2 ring-emerald-400" : ""}`}
+  draggable
+  onDragStart={(e) => {
+    // 守備ラベル（poslabel）からのドラッグは “swapPos” 用 → 親のドラッグ開始は抑止
+    const t = e.target as HTMLElement;
+    if (t && t.closest('[data-role="poslabel"]')) return;
+    handleBattingOrderDragStart(e, entry.id);
+  }}
+  onDrop={(e) => { handleDropToBattingOrder(e, entry.id); setHoverOrderPlayerId(null); }}
+  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+>
 
               <div className="flex items-center gap-2 flex-nowrap">
                 <span className="w-10 font-bold">{i + 1}番</span>
-<span
-  data-role="poslabel"
-  data-player-id={entry.id}
-  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
-    ${
-      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
-        ? "ring-2 ring-emerald-400 bg-emerald-500/20"
-        : "bg-white/10 border border-white/10"
-    }`}
-  title={pos ? "この守備を他の行と入替" : "守備なし"}
-  draggable={!!pos}
-  onDragStart={(e) => handlePosDragStart(e, entry.id)}
-  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
-  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
-  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+                <span
+                  data-role="poslabel"
+                  data-player-id={entry.id}
+                  className={`w-28 md:w-24 px-1 rounded cursor-move select-none text-center whitespace-nowrap shrink-0 touch-none
+                    ${
+                      hoverOrderPlayerId === entry.id && dragKind === "swapPos"
+                        ? "ring-2 ring-emerald-400 bg-emerald-500/20" // ← ラベルだけ強調
+                        : "bg-white/10 border border-white/10"
+                    }`}
 
-  // ▼▼ ここからタッチ時の確定処理（離した“その行のラベル”に限定） ▼▼
-  onTouchStart={(ev) => {
-    ev.stopPropagation();
-    if (pos) {
-      setTouchDrag({ playerId: entry.id });
-      lockScroll();
-    }
-  }}
+                  title={pos ? "この守備を他の行と入替" : "守備なし"}
+                  draggable={!!pos}
+                  onDragStart={(e) => handlePosDragStart(e, entry.id)}
+                  onDragOver={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                  onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
+                  onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
+                  onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
+                  onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
+                >
 
-  onTouchMove={(ev) => {
-    const t = ev.touches && ev.touches[0];
-    if (!t) return;
-    const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
-    const h = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
-    const pid = h ? Number(h.getAttribute('data-player-id')) : 0;
-    if (pid) hoverTargetRef.current = pid;
-  }}
-
-  onTouchEnd={(ev) => {
-    ev.stopPropagation();
-    skipNextGlobalTouchEndRef.current = true; // ← ローカル処理で完結
-    if (!touchDrag) { unlockScroll(); return; }
-
-    // ★ まずは移動中に追跡していた“最新ホバー行”を優先
-    let targetPlayerId = hoverTargetRef.current ?? 0;
-
-    // ★ ホバーが無い/自分自身しかない場合は座標から最終決定
-    if (!targetPlayerId || targetPlayerId === entry.id) {
-      const t = ev.changedTouches && ev.changedTouches[0];
-      const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
-
-      let targetLabel = el?.closest('[data-role="poslabel"]') as HTMLElement | null;
-      if (!targetLabel) {
-        const row = el?.closest('[data-role="posrow"]') as HTMLElement | null;
-        if (row) targetLabel = row.querySelector('[data-role="poslabel"]') as HTMLElement | null;
-      }
-      if (!targetLabel) targetLabel = ev.currentTarget as HTMLElement;
-
-      const idAttr =
-        targetLabel.getAttribute('data-player-id') ||
-        (targetLabel.closest('[data-role="posrow"]') as HTMLElement | null)?.getAttribute('data-player-id');
-      targetPlayerId = idAttr ? Number(idAttr) : entry.id;
-    }
-
-    const fake = makeFakeDragEvent({
-      dragKind: 'swapPos',
-      swapSourceId: String(touchDrag.playerId),
-      'text/plain': String(touchDrag.playerId),
-    });
-    handleDropToPosSpan(fake, targetPlayerId);
-
-    setTouchDrag(null);
-    unlockScroll();
-  }}
-
->
-  {pos ? positionNames[pos] : "控え"}
-</span>
-
+                {pos ? positionNames[pos] : "控え"}
+                </span>
 
                   {/* 選手名 → 右にずらす */}
                 <span className="ml-4 whitespace-nowrap">
@@ -1153,7 +1093,7 @@ const StartingLineupWrapped = () => {
               enableTouchEvents: true,
               enableMouseEvents: true,
               touchSlop: 10,      // ドラッグ開始の“遊び幅”（px）
-              delayTouchStart: 0 // 長押し待ち時間（ms）←短く
+              delayTouchStart: 10 // 長押し待ち時間（ms）←短く
             }
           : undefined
       }
