@@ -1037,7 +1037,30 @@ return (
                   onDrop={(e) => { handleDropToPosSpan(e, entry.id); setHoverOrderPlayerId(null); }}
                   onDragEnter={(e) => { allowDrop(e); setHoverOrderPlayerId(entry.id); }}
                   onDragLeave={() => setHoverOrderPlayerId((v) => (v === entry.id ? null : v))}
-                  onTouchStart={(ev) => { ev.stopPropagation(); pos && setTouchDrag({ playerId: entry.id }); }}
+ onTouchStart={(ev) => {
+    ev.stopPropagation();
+    pos && setTouchDrag({ playerId: entry.id });
+    lockScroll();  // ← 追加
+  }}
+  onTouchEnd={(ev) => {
+    ev.stopPropagation();
+    if (!touchDrag) { unlockScroll(); return; }
+
+    const t = ev.changedTouches && ev.changedTouches[0];
+    const el = t ? document.elementFromPoint(t.clientX, t.clientY) as HTMLElement : null;
+    const target = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as HTMLElement | null;
+    const targetPlayerId = target ? Number(target.getAttribute('data-player-id')) : entry.id;
+
+    const fake = makeFakeDragEvent({
+      dragKind: 'swapPos',
+      swapSourceId: String(touchDrag.playerId),
+      'text/plain': String(touchDrag.playerId),
+    });
+    handleDropToPosSpan(fake, targetPlayerId);
+
+    setTouchDrag(null);
+    unlockScroll(); // ← 追加
+  }}
                 >
 
                 {pos ? positionNames[pos] : "控え"}
@@ -1093,7 +1116,7 @@ const StartingLineupWrapped = () => {
               enableTouchEvents: true,
               enableMouseEvents: true,
               touchSlop: 10,      // ドラッグ開始の“遊び幅”（px）
-              delayTouchStart: 10 // 長押し待ち時間（ms）←短く
+              delayTouchStart: 0 // 長押し待ち時間（ms）←短く
             }
           : undefined
       }
