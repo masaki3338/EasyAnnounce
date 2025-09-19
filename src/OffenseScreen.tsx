@@ -1213,6 +1213,9 @@ useEffect(() => {
           decoding="async"
           draggable="false"
         />
+        <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap flex-shrink-0">
+          攻撃中
+        </span>
         <span>{teamName || "自チーム"} vs {opponentTeam || "対戦相手"}</span>
       </h2>
         <div className="flex justify-between items-center mb-2">
@@ -1223,14 +1226,9 @@ useEffect(() => {
               ))}
             </select>
             <span>回</span>
-            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-              <option value="表">表</option>
-              <option value="裏">裏</option>
-            </select>
-            <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap">
-              攻撃中
-            </span>
-
+              <span className="px-2 select-none" aria-label="half">
+                {isTop ? "表" : "裏"}
+              </span>
           </div>
             {/* 試合開始ボタン */}
             {inning === 1 && isTop && !isHome && (

@@ -87,6 +87,10 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({ onChangeDefense, onSwitch
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
   const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  // ★ 追加：見出しが収まらない時に小さくする判定用
+  const [isNarrow, setIsNarrow] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+
 
  const handleStartGame = () => {
       const now = new Date();
@@ -325,6 +329,20 @@ const handleTempReentryCheck = async () => {
 };
 
 
+// ★ 追加：h2 の幅を監視して文字サイズを自動調整
+useEffect(() => {
+  const el = titleRef.current;
+  if (!el) return;
+
+  const checkWidth = () => {
+    const overflow = el.scrollWidth > el.clientWidth;
+    setIsNarrow(overflow);
+  };
+
+  checkWidth();
+  window.addEventListener("resize", checkWidth);
+  return () => window.removeEventListener("resize", checkWidth);
+}, [myTeamName, opponentTeamName]);
 
 
 
@@ -774,19 +792,31 @@ const handlePitchLimitSpeak = () => {
       >
 
       <section className="mb-4">
-      <h2 className="text-xl font-bold mb-2 inline-flex items-center gap-2">
+      <h2
+        ref={titleRef}
+        className={`font-bold mb-2 inline-flex items-center gap-2 whitespace-nowrap overflow-hidden ${
+          isNarrow ? "text-lg" : "text-xl"
+        }`}
+      >
         <img
-          src="/Defence.png"   // ← public/Defence.png に置く
+          src="/Defence.png"
           alt=""
           width={24}
           height={24}
-          className="w-6 h-6 object-contain align-middle select-none"
+          className="w-6 h-6 object-contain align-middle select-none flex-shrink-0"
           loading="lazy"
           decoding="async"
           draggable="false"
         />
-        <span>{myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}</span>
+        <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
+          守備中
+        </span>
+        <span className="truncate">
+          {myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}
+        </span>
       </h2>
+
+
       <div className="mb-2">
         <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
           {/* 左：状態（縮む・折り返さない） */}
@@ -797,13 +827,10 @@ const handlePitchLimitSpeak = () => {
               ))}
             </select>
             <span className="whitespace-nowrap">回</span>
-            <select value={isTop ? "表" : "裏"} onChange={(e) => setIsTop(e.target.value === "表")}>
-              <option value="表">表</option>
-              <option value="裏">裏</option>
-            </select>
-              <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap">
-                守備中
+              <span className="px-2 select-none">
+                {isTop ? "表" : "裏"}
               </span>
+
           </div>
 
           {/* 右：ボタン群（縮ませない・折り返さない） */}
