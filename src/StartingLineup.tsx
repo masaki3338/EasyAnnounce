@@ -148,12 +148,15 @@ useEffect(() => {
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
+// ★ 追加：入替の一意トークン管理（重複ドロップ防止）
+const swapSourceIdRef = React.useRef<number | null>(null);  // 既に追加済みなら再追加不要
+const swapTokenRef = React.useRef<string | null>(null);
+const handledSwapTokensRef = React.useRef<Set<string>>(new Set());
 
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = React.useRef(0);
 const preventRef = React.useRef<(e: Event) => void>();
-// ★ 追加：守備ラベル入替の “交換元プレイヤーID” を保持
-const swapSourceIdRef = React.useRef<number | null>(null);
+
 
 
 const lockScroll = () => {
@@ -685,69 +688,86 @@ const swapPositionsByPlayers = (idA: number, idB: number) => {
 };
 
 // 守備ラベルからドラッグ開始（“守備だけ入替”モード）
-// 守備ラベルからドラッグ開始（“守備だけ入替”モード）
 const handlePosDragStart = (e: React.DragEvent<HTMLSpanElement>, playerId: number) => {
-  e.stopPropagation(); // 親の dragstart を発火させない
+  e.stopPropagation();
 
-  // ★ フォールバック：交換元IDを ref にも保持（Androidで dataTransfer が飛ぶ対策）
+  // ★ 交換元の記録（Android フォールバック）
   swapSourceIdRef.current = playerId;
 
-  // 取れる環境では dataTransfer も併用（iPhone/PC用）
+  // ★ 一意トークンを発行（時間＋ID）
+  const token = `${Date.now()}-${playerId}`;
+  swapTokenRef.current = token;
+
   try {
     e.dataTransfer.setData("dragKind", "swapPos");
     e.dataTransfer.setData("swapSourceId", String(playerId));
+    e.dataTransfer.setData("swapToken", token);              // ← 追加
     e.dataTransfer.setData("text/plain", String(playerId));
-    e.dataTransfer.setData("text", `swapPos:${playerId}`);
+    e.dataTransfer.setData("text", `swapPos:${playerId}:${token}`); // ← 追加
   } catch {}
 
-  // 既存ロジック維持
   setTouchDrag((prev) => prev ?? { playerId });
   setDragKind("swapPos");
 
-  // ★ 終了時クリーンアップ（取り違え防止）
-  const cleanup = () => { setDragKind(null); swapSourceIdRef.current = null; };
+  const cleanup = () => {
+    setDragKind(null);
+    // ★ cleanup時に token は消さない（ドロップ側の重複検知に使う）
+    swapSourceIdRef.current = null;
+  };
   window.addEventListener("dragend", cleanup, { once: true });
   window.addEventListener("drop", cleanup, { once: true });
 };
 
 
-
-// 守備ラベルへドロップ
 // 守備ラベルへドロップ
 const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId: number) => {
   e.preventDefault();
   e.stopPropagation();
 
-  // ★ kind を多段フォールバックで取得（Android 対策）
-  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12"
+  const textAny = (e.dataTransfer.getData("text") || "").trim(); // 例: "swapPos:12:1695111111111-12"
   const inferredKind = textAny.startsWith("swapPos:") ? "swapPos" : "";
   const kind =
     e.dataTransfer.getData("dragKind") ||
     inferredKind ||
-    (dragKind ?? ""); // ← state も最後の砦
+    (dragKind ?? "");
 
   if (kind !== "swapPos") return;
 
-  // ★ 交換元IDの復元を強化：dataTransfer → text → ref の順
+  // ★ トークン復元（dataTransfer → text → ref）
+  let token = e.dataTransfer.getData("swapToken") || "";
+  if (!token && textAny.startsWith("swapPos:")) {
+    const parts = textAny.split(":");           // ["swapPos","12","1695...-12"] を期待
+    token = parts[2] || "";
+  }
+  if (!token) token = swapTokenRef.current || "";
+
+  // ★ すでに処理済みなら無視（Androidの二重発火対策の本丸）
+  if (token) {
+    if (handledSwapTokensRef.current.has(token)) return;
+    handledSwapTokensRef.current.add(token);
+  }
+
+  // 交換元IDの復元（dataTransfer → text → ref）
   let srcStr =
     e.dataTransfer.getData("swapSourceId") ||
     e.dataTransfer.getData("text/plain") ||
     "";
   if (!srcStr && textAny.startsWith("swapPos:")) {
-    srcStr = textAny.split(":")[1] || "";
+    const parts = textAny.split(":"); // ["swapPos","12","...token"]
+    srcStr = parts[1] || "";
   }
 
   let srcId = Number(srcStr);
-  if (!srcId) srcId = swapSourceIdRef.current ?? 0; // ← ココが肝
-
+  if (!srcId) srcId = swapSourceIdRef.current ?? 0;
   if (!srcId) return;
 
   swapPositionsByPlayers(srcId, targetPlayerId);
 
-  // ★ 後始末
+  // ★ 後始末：ref はクリア、token は Set に残してOK（同一tokenの再入を遮断）
   swapSourceIdRef.current = null;
   setDragKind(null);
 };
+
 
 
 const handleDropToBattingOrder = (
