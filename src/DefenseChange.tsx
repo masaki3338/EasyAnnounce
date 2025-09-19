@@ -145,6 +145,15 @@ const fullNameHonor = (p: Player): string => `${fullName(p)}${honor(p)}`;
 /* 姓ルビ＋敬称（移動／交代される側） */
 const lastWithHonor = (p: Player): string => `${lastRuby(p)}${honor(p)}`;
  /* ================================= */
+// ✅ 「先ほど◯◯致しました」を安全生成（未定義→代打にフォールバック）
+const recentHead = (reason?: string) => {
+  const kind =
+    reason === "代走" ? "代走致しました" :
+    reason === "臨時代走" ? "臨時代走" :
+    "代打致しました"; // 既定は“代打”
+  return `先ほど${kind}`;
+};
+
 
 
 /* =========================================================
@@ -176,6 +185,40 @@ const generateAnnouncementText = (
     battingOrder.map(e => [e.id, e.reason])
   ) as Record<number, string>;
   
+  // 打順一致リエントリー（深掘り版）: toIdの“元スタメン”を辿り、
+// その最新sub（連鎖の末端）の打順が fromId の打順と一致（または末端が打順外=0）なら true
+const isReentryBySameOrderDeep = (
+  fromId: number,
+  toId: number,
+  battingOrder: { id: number }[],
+  used: Record<number, UsedPlayerInfo>,
+  initialAssignments: Record<string, number | null>
+): boolean => {
+  // from（今その枠にいる選手）の打順
+  const fromIdx = battingOrder.findIndex(e => e.id === fromId);
+  if (fromIdx < 0) return false;
+  const fromOrder = fromIdx + 1;
+
+  // to（入ろうとしている選手）の“元スタメンID”を逆引き
+  const origId = resolveOriginalStarterId(toId, used as any, initialAssignments as any);
+    // ✅ 元スタメン本人が戻るなら無条件リエントリー
+  if (origId === toId) return true;
+  if (!origId) return false;
+
+  // 元スタメン本人なら無条件リエントリー
+  if (origId === toId) {
+    console.log("[REENTRY:deep] unconditional (origId===toId)", { toId, origId });
+    return true;
+  }
+  // 元スタメン系列の“最新sub（末端）”
+  const latest = resolveLatestSubId(origId, used as any);
+  const latestIdx = battingOrder.findIndex(e => e.id === latest);
+  const latestOrder = latestIdx >= 0 ? latestIdx + 1 : 0;
+
+  // 末端が同じ打順、または末端が打順外（0=見つからない）でもOK
+  return latestOrder === fromOrder || latestOrder === 0;
+};
+
   // ▼ 追加：usedPlayerInfo から「守備に入った代打/代走のID → 理由」を逆引き
   const pinchReasonById: Record<number, "代打" | "代走" | "臨時代走" | undefined> = {};
   Object.values(usedPlayerInfo || {}).forEach((info: any) => {
@@ -254,6 +297,38 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
     console.log("[SAME-POS-PINCH] skip: current is pinch player", { currentId, posSym });
     return;
   }
+
+    // ✅ 元スタメン復帰は “そのまま入り” から除外してリエントリールートへ回す
+  const starterIds = new Set(Object.values(initialAssignments || {}).map(v => Number(v)));
+  console.log("[SAME-POS-PINCH] guard", {
+    currentId,
+    isStarter: starterIds.has(Number(currentId)),
+    posSym,
+  });
+// ✅ 元スタメンの“元ID”を逆引き（currentId が元スタメン本人なら origOfCurrent===currentId）
+const origOfCurrent = resolveOriginalStarterId(
+  Number(currentId),
+  usedPlayerInfo as any,
+  initialAssignments as any
+);
+const isOriginalStarter = Number(origOfCurrent) === Number(currentId);
+
+// 参考：forEach 内で使っている元スタメンID（origId）と同一かどうか
+const isBackToSameStarter = Number(currentId) === Number(origId);
+
+console.log("[SAME-POS-PINCH] guard.v2", {
+  currentId,
+  origOfCurrent,
+  isOriginalStarter,
+  isBackToSameStarter,
+  posSym,
+});
+
+// ✅ 元スタメン本人が戻る／元スタメンIDと一致 → リエントリールートに回す
+if (isOriginalStarter || isBackToSameStarter) {
+  console.log("[SAME-POS-PINCH] skip(v2): original starter reentry path");
+  return;
+}
 
 
   // 🛑 元スタメン（origId）が“どこかの守備”に戻っている → この特別処理は出さない
@@ -962,6 +1037,38 @@ replace.forEach((r) => {
     fromId: r.from.id, toId: r.to.id, pos: r.pos, rOrder: r.order,
   });
 
+    // ★ NEW: 深掘りした“打順一致”なら無条件でリエントリー確定（最優先）
+  if (isReentryBySameOrderDeep(
+        r.from.id, r.to.id, battingOrder, usedPlayerInfo as any, initialAssignments as any
+      )) {
+
+    replaceLines.push(
+      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
+      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+    );
+
+    // 打順行（重複防止）
+    if (
+      r.order > 0 &&
+      !lineupLines.some(l =>
+        l.order === r.order &&
+        l.text.includes(posJP[r.pos]) &&
+        l.text.includes(lastRuby(r.to))
+      )
+    ) {
+      lineupLines.push({
+        order: r.order,
+        text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+      });
+    }
+
+    handledPlayerIds.add(r.from.id);
+    handledPlayerIds.add(r.to.id);
+    handledPositions.add(r.pos);
+    reentryOccurred = true;
+    return; // ← 以降の通常分岐へ進ませない
+  }
+
   if (isReentryBlue(r.to.id)) {
     replaceLines.push(
       `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
@@ -1264,6 +1371,36 @@ if (replaceLines.length === 1) {
 }
 
 
+// ==== ヘルパー：mixed.forEach の直前に置く（同じ関数スコープ内！） ====
+
+// その枠にいた選手(fromId)の「入場理由」を安全に逆引き（代打/代走/臨時代走 など）
+const getEnterReason = (pid: number): string | undefined => {
+  // usedPlayerInfo から subId 逆引き → battingOrder（reason） の順に拾う
+  const inUsed = Object.values(usedPlayerInfo ?? {}).find((x: any) => x?.subId === pid)?.reason;
+  if (inUsed) return String(inUsed).trim();
+  const inOrder = battingOrder?.find((b: any) => b?.id === pid)?.reason;
+  return inOrder ? String(inOrder).trim() : undefined;
+};
+
+// ヘッダー生成：代打/代走なら「先ほど◯◯致しました清水くん に代わりまして、」
+// それ以外（ベンチから守備で入っていた 等）は「〈守備〉の 清水くん に代わりまして、」
+const buildFromHead = (fromId: number, fromPosSym: string | undefined): string => {
+  const p = teamPlayers.find(pl => pl.id === fromId);
+  // from の守備が undefined の場合は assignments から推定
+  const fromPosSymSafe =
+    fromPosSym ??
+    (Object.keys(assignments ?? {}).find(k => Number((assignments as any)[k]) === Number(fromId)) as string | undefined);
+
+  const reason = getEnterReason(fromId);
+  if (reason === "代打" || reason === "代走" || reason === "臨時代走") {
+    const kind = reason === "代走" ? "代走致しました"
+              : reason === "臨時代走" ? "臨時代走"
+              : "代打致しました";
+    return `先ほど${kind}${p ? lastWithHonor(p) : ""} に代わりまして、`;
+  }
+  const posFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
+  return `${posFull ? `${posFull}の ` : ""}${p ? lastWithHonor(p) : ""} に代わりまして、`;
+};
 
 mixed.forEach((r, i) => {
 
@@ -1300,11 +1437,17 @@ mixed.forEach((r, i) => {
   if (isStarterChain && fromMatchesChain) {
     const orderPart = r.order > 0 ? `${r.order}番に ` : "";
 // ⛳ これを↓に置き換え（const orderPart行ごと削除）
+// ✅ r.from（= 直前にその枠を占めていた“清水くん”等）の理由を安全に逆引き
+const reasonOf = (pid: number): string | undefined => {
+  const u = Object.values(usedPlayerInfo || {}).find((x: any) => x?.subId === pid);
+  return (u?.reason as any) || (reasonMap as any)?.[pid]; // “代打/代走/臨時代走/途中出場…”
+};
+const head = buildFromHead(r.from.id, r.fromPos); // ← 代打/代走でなければ「〈守備〉の 清水くん…」
 addReplaceLine(
-  `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、` +
-  `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
+  `${head}${lastWithHonor(r.to)} がリエントリーで入り ${posJP[r.toPos]}`,
   i === mixed.length - 1 && shift.length === 0
 );
+
 
 if (
   r.order > 0 &&
