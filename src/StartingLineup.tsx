@@ -148,6 +148,9 @@ useEffect(() => {
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 const ghostImgRef = React.useRef<HTMLImageElement | null>(null);
+const isAndroid =
+  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+
 
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = React.useRef(0);
@@ -728,6 +731,18 @@ const handleDropToPosSpan = (e: React.DragEvent<HTMLSpanElement>, targetPlayerId
 
   const srcId = Number(srcStr);
   if (!srcId) return;
+
+  // ★ Android は「緑枠（hoverTarget）」一致のときだけ実行
+if (isAndroid) {
+  const hovered = hoverTargetRef.current; // グローバル onTouchMove で更新中
+  if (!hovered || hovered !== targetPlayerId) {
+    return; // 緑枠同士でなければ何もしない
+  }
+  // “緑枠ラベル（= 守備あり）”同士だけに限定
+  const hasSrcPos = !!getPositionOfPlayer(srcId);
+  const hasTgtPos = !!getPositionOfPlayer(targetPlayerId);
+  if (!hasSrcPos || !hasTgtPos) return;
+}
 
   swapPositionsByPlayers(srcId, targetPlayerId);
 };
