@@ -71,11 +71,11 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [matchNumber, setMatchNumber] = useState(1);
   const [opponentTeam, setOpponentTeam] = useState("");
   // 相手チーム名のふりがな
-const [opponentTeamFurigana, setOpponentTeamFurigana] = useState("");
+  const [opponentTeamFurigana, setOpponentTeamFurigana] = useState("");
   const [isHome, setIsHome] = useState("先攻");
   const [benchSide, setBenchSide] = useState("1塁側");
   const [showExchangeModal, setShowExchangeModal] = useState(false);
-const [speakingExchange, setSpeakingExchange] = useState(false);
+  const [speakingExchange, setSpeakingExchange] = useState(false);
 
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
@@ -87,6 +87,24 @@ const [speakingExchange, setSpeakingExchange] = useState(false);
   const [isTwoUmp, setIsTwoUmp] = useState<boolean>(false);
   // 追加：次の試合なし
   const [noNextGame, setNoNextGame] = useState<boolean>(false);
+  // 追加：未保存チェック用
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const snapshotRef = React.useRef<string | null>(null);
+
+  // 現在の値をスナップショット化
+  const buildSnapshot = () =>
+    JSON.stringify({
+      tournamentName,
+      matchNumber,
+      opponentTeam,
+      opponentTeamFurigana,
+      isHome,
+      benchSide,
+      umpires,
+      isTwoUmp,
+      noNextGame,
+    });
 
 
 useEffect(() => {
@@ -117,7 +135,14 @@ useEffect(() => {
       setOpponentTeam(saved.opponentTeam ?? "");
       setOpponentTeamFurigana((saved as any).opponentTeamFurigana ?? "");
       // 既存コードは "後攻" を boolean にマッピングしているので過去互換で吸収
-      setIsHome(saved.isHome ? "後攻" : "先攻");
+      // ★ 修正：boolean または string の両対応で正規化
+      const homeSrc = (saved as any).isHome;
+      const normalizedIsHome =
+        typeof homeSrc === "boolean"
+          ? (homeSrc ? "後攻" : "先攻")
+          : (homeSrc === "後攻" ? "後攻" : "先攻");
+      setIsHome(normalizedIsHome);
+
       setBenchSide(saved.benchSide ?? "1塁側");
 
       if (saved.umpires?.length === 4) {
@@ -129,7 +154,26 @@ useEffect(() => {
     }
   };
   loadMatchInfo();
+
 }, []);
+
+
+useEffect(() => {
+  if (snapshotRef.current == null) return; // 初期化前はスキップ
+  setIsDirty(buildSnapshot() !== snapshotRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  tournamentName,
+  matchNumber,
+  opponentTeam,
+  opponentTeamFurigana,
+  isHome,
+  benchSide,
+  umpires,
+  isTwoUmp,
+  noNextGame,
+]);
+
 
 // 大会名を「5件まで（先頭は空白）」で更新して保存するヘルパー
 const upsertRecentTournaments = async (name: string) => {
@@ -229,6 +273,9 @@ const handleSave = async () => {
 
   await localForage.setItem("matchNumberStash", matchNumber);
 
+  snapshotRef.current = buildSnapshot();
+  setIsDirty(false);
+
   alert("✅ 試合情報を保存しました");
 };
 
@@ -319,11 +366,7 @@ return (
               value={matchNumber}
               onChange={async (e) => {
                 const num = Number(e.target.value);
-                setMatchNumber(num);
-                const existing = await localForage.getItem<any>("matchInfo");
-                await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
-                await localForage.setItem("matchNumberStash", num);
-                console.log("[MC:change] matchNumber saved →", num);
+                setMatchNumber(num);                
               }}
               className="p-3 rounded-xl bg-white text-gray-900 border border-white/20"
             >
@@ -522,7 +565,11 @@ return (
       {/* ← スタメン設定の直下：横いっぱいの戻るボタン */}
       <div className="mt-2">
         <button
-          onClick={onBack}
+          onClick={() => {
+            if (isDirty) setShowLeaveConfirm(true);
+            else onBack();
+          }}
+
           className="w-full px-6 py-4 rounded-2xl text-white text-lg font-semibold
                     bg-white/10 hover:bg-white/15 border border-white/15
                     shadow active:scale-95 inline-flex items-center justify-center gap-2"
@@ -534,85 +581,135 @@ return (
     </main>
 
     {/* 既存のモーダルはそのまま下に（読み上げ/停止/OK） */}
-{showExchangeModal && (
-  <div className="fixed inset-0 z-50">
-    {/* 背景（タップで閉じる） */}
-    <div
-      className="absolute inset-0 bg-black/90 backdrop-blur-sm"
-      onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-    />
+    {showExchangeModal && (
+      <div className="fixed inset-0 z-50">
+        {/* 背景（タップで閉じる） */}
+        <div
+          className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+        />
 
-    {/* 本体パネル */}
-    <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-auto
-                    bg-gradient-to-b from-gray-900 to-gray-850 text-white
-                    rounded-t-3xl sm:rounded-2xl shadow-2xl
-                    max-w-md w-full mx-auto p-5 sm:p-6">
-{/* ヘッダー行（両チップを横並びに） */}
-<div className="flex items-center justify-between mb-3 gap-3">
-  <div className="flex items-center gap-2 flex-wrap">
-    <div className="inline-flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-full
-                    bg-amber-500/20 border border-amber-400/40">
-      <IconAlert />
-      <span className="text-amber-50/90">試合開始45分前に🎤</span>
-    </div>
-    <div className="inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-full
-                    bg-white/10 border border-white/10">
-      <span className="font-semibold">1塁側チーム 🎤</span>
-    </div>
-  </div>
-
-</div>
-
-
-      {/* 🔴 アナウンス文言（赤 強め）＋ ボタン内蔵 */}
-      <div className="
-          rounded-2xl p-4 shadow-lg font-semibold
-          border border-rose-600/90
-          bg-gradient-to-br from-rose-600/50 via-rose-500/40 to-rose-400/30
-          ring-1 ring-inset ring-rose-600/60
-        ">
-        <p className="text-white whitespace-pre-line leading-relaxed drop-shadow">
-          <strong>{tournamentName}</strong>
-          {"\n"}本日の第一試合、両チームのメンバー交換を行います。
-          {"\n"}両チームのキャプテンと全てのベンチ入り指導者は、
-          ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。
-          {"\n"}ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。
-          {"\n"}メンバーチェックと道具チェックはシートノックの間に行います。
-        </p>
-
-        {/* 赤枠内の操作ボタン */}
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            onClick={speakExchangeMessage}
-            disabled={speakingExchange}
-            className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
-          >
-            <IconMic /> 読み上げ
-          </button>
-          <button
-            onClick={stopExchangeMessage}
-            disabled={!speakingExchange}
-            className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
-          >
-            停止
-          </button>
+        {/* 本体パネル */}
+        <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:h-auto
+                        bg-gradient-to-b from-gray-900 to-gray-850 text-white
+                        rounded-t-3xl sm:rounded-2xl shadow-2xl
+                        max-w-md w-full mx-auto p-5 sm:p-6">
+    {/* ヘッダー行（両チップを横並びに） */}
+    <div className="flex items-center justify-between mb-3 gap-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="inline-flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-full
+                        bg-amber-500/20 border border-amber-400/40">
+          <IconAlert />
+          <span className="text-amber-50/90">試合開始45分前に🎤</span>
+        </div>
+        <div className="inline-flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-full
+                        bg-white/10 border border-white/10">
+          <span className="font-semibold">1塁側チーム 🎤</span>
         </div>
       </div>
 
-      {/* フッター（OKのみ） */}
-      <div className="mt-4">
-        <button
-          type="button"
-          onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
-          className="w-full px-5 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold shadow active:scale-95"
-        >
-          OK
-        </button>
-      </div>
-
     </div>
-  </div>
-)}
+
+
+          {/* 🔴 アナウンス文言（赤 強め）＋ ボタン内蔵 */}
+          <div className="
+              rounded-2xl p-4 shadow-lg font-semibold
+              border border-rose-600/90
+              bg-gradient-to-br from-rose-600/50 via-rose-500/40 to-rose-400/30
+              ring-1 ring-inset ring-rose-600/60
+            ">
+            <p className="text-white whitespace-pre-line leading-relaxed drop-shadow">
+              <strong>{tournamentName}</strong>
+              {"\n"}本日の第一試合、両チームのメンバー交換を行います。
+              {"\n"}両チームのキャプテンと全てのベンチ入り指導者は、
+              ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。
+              {"\n"}ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。
+              {"\n"}メンバーチェックと道具チェックはシートノックの間に行います。
+            </p>
+
+            {/* 赤枠内の操作ボタン */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={speakExchangeMessage}
+                disabled={speakingExchange}
+                className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              >
+                <IconMic /> 読み上げ
+              </button>
+              <button
+                onClick={stopExchangeMessage}
+                disabled={!speakingExchange}
+                className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center"
+              >
+                停止
+              </button>
+            </div>
+          </div>
+
+          {/* フッター（OKのみ） */}
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => { stopExchangeMessage(); setShowExchangeModal(false); }}
+              className="w-full px-5 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-semibold shadow active:scale-95"
+            >
+              OK
+            </button>
+          </div>
+
+        </div>
+      </div>
+    )}
+
+    {showLeaveConfirm && (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
+      role="dialog"
+      aria-modal="true"
+      onClick={() => setShowLeaveConfirm(false)}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        role="document"
+      >
+        {/* ヘッダー */}
+        <div className="bg-green-600 text-white text-center font-bold py-3">
+          確認
+        </div>
+
+        {/* 本文 */}
+        <div className="px-6 py-5 text-center">
+          <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+            変更した内容を保存していませんが{"\n"}
+            よろしいですか？
+          </p>
+        </div>
+
+        {/* フッター */}
+        <div className="px-5 pb-5">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              className="w-full py-3 rounded-full bg-red-600 text-white font-semibold"
+              onClick={() => setShowLeaveConfirm(false)}
+            >
+              NO
+            </button>
+            <button
+              className="w-full py-3 rounded-full bg-green-600 text-white font-semibold"
+              onClick={() => {
+                setShowLeaveConfirm(false);
+                onBack();
+              }}
+            >
+              YES
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
 
   </div>
 );

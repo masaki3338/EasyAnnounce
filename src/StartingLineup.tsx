@@ -3,6 +3,7 @@ import localForage from "localforage";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
+import { useNavigate } from "react-router-dom";
 
 // ▼ 見た目だけのミニSVG
 const IconField = () => (
@@ -65,6 +66,45 @@ type Player = {
 };
 
 const StartingLineup = () => {
+  // ▼ 未保存チェック用
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const snapshotRef = React.useRef<string | null>(null);
+  const initDoneRef = React.useRef(false);
+
+  // 現在の編集中状態をスナップショット化（比較用）
+  const buildSnapshot = () =>
+    JSON.stringify({
+      assignments,
+      battingOrder,
+      benchOutIds,
+    });
+
+    const navigate = useNavigate();
+  // 試合情報画面（MatchCreate）のパスに合わせて調整して下さい
+// ★ MatchCreate の実ルート名に合わせて！例: "/MatchCreate" or "/match-create"
+const MATCH_CREATE_PATH = "/MatchCreate";
+
+// ← これを StartingLineup.tsx の handleBack にそのままコピペ
+const handleBack = () => {
+  // 1) App.tsx が描画している「← 試合情報に戻る」ボタンを探す
+  const buttons = Array.from(document.querySelectorAll("button"));
+  const appBackBtn = buttons.find((b) =>
+    (b.textContent || "").includes("← 試合情報に戻る")
+  ) as HTMLButtonElement | undefined;
+
+  if (appBackBtn) {
+    console.log("[StartingLineup] trigger App back button click");
+    appBackBtn.click();                 // ← App 側の onClick（setScreen('matchCreate')）を発火
+    return;
+  }
+
+  // 2) 念のための保険：見つからない場合はメニュー→試合情報の導線に合わせて遷移（任意）
+  // window.location.href = "/"; // もしメニューが '/' で、そこから試合情報に行けるなら使う
+  console.warn("[StartingLineup] App back button not found.");
+};
+
+
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [assignments, setAssignments] = useState<{ [pos: string]: number | null }>(
     Object.fromEntries(allSlots.map((p) => [p, null]))
@@ -101,41 +141,69 @@ const makeFakeDragEvent = (payload: Record<string, string>) =>
 
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
-  // 保存先キー：startingassignments / startingBattingOrder を正として扱う
+  const [showConfirm, setShowConfirm] = useState(false);
+  const onClearClick = () => setShowConfirm(true);
+  const proceedClear = async () => {
+    setShowConfirm(false);
+    await clearAssignments(); // 既存のクリア処理を実行
+  };
+
 useEffect(() => {
-  (async () => {
-    // ① まず専用領域から読む
-    const a = await localForage.getItem<Record<string, number|null>>("startingassignments");
-    const o = await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder");
+  const buttons = Array.from(document.querySelectorAll("button"));
+  const appBackBtn = buttons.find((b) =>
+    (b.textContent || "").includes("← 試合情報に戻る")
+  ) as HTMLButtonElement | undefined;
 
-    if (a && o?.length) {
-      setAssignments(a);
-      setBattingOrder(o);
-      return;
-    }
+  if (appBackBtn) {
+    // 元のクリック動作を退避
+    const origHandler = appBackBtn.onclick;
+    appBackBtn.onclick = (e) => {
+      e.preventDefault();
+      if (isDirty) {
+        setShowLeaveConfirm(true); // ← 既に作ったモーダルを再利用
+      } else {
+        // dirty でなければ元の動作（setScreen("matchCreate")）を実行
+        origHandler?.call(appBackBtn, e);
+      }
+    };
+  }
+}, [isDirty]);
 
-    // ② 専用領域が無ければ、既存の全体設定から初期化して専用領域に保存
-    const globalA = await localForage.getItem<Record<string, number|null>>("lineupAssignments");
-    const globalO = await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder");
+  // 保存先キー：startingassignments / startingBattingOrder を正として扱う
+  useEffect(() => {
+    (async () => {
+      // ① まず専用領域から読む
+      const a = await localForage.getItem<Record<string, number|null>>("startingassignments");
+      const o = await localForage.getItem<Array<{id:number; reason?:string}>>("startingBattingOrder");
 
-    let baseA = globalA ?? Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
-    let baseO = globalO ?? [];
+      if (a && o?.length) {
+        setAssignments(a);
+        setBattingOrder(o);
+        return;
+      }
 
-    // 打順が無ければ守備から暫定生成（DH考慮：投手を外してDHを入れる）
-    if (baseO.length === 0) {
-      const dhId = baseA[DH] ?? null;
-      const orderPositions = dhId ? [...positions.filter(p => p !== "投"), DH] : [...positions];
-      const ids = orderPositions.map(p => baseA[p]).filter((id): id is number => typeof id === "number");
-      baseO = ids.slice(0, 9).map(id => ({ id, reason: "スタメン" }));
-    }
+      // ② 専用領域が無ければ、既存の全体設定から初期化して専用領域に保存
+      const globalA = await localForage.getItem<Record<string, number|null>>("lineupAssignments");
+      const globalO = await localForage.getItem<Array<{id:number; reason?:string}>>("battingOrder");
 
-    setAssignments(baseA);
-    setBattingOrder(baseO);
-    // 専用領域を作成
-    await localForage.setItem("startingassignments", baseA);
-    await localForage.setItem("startingBattingOrder", baseO);
-  })();
-}, []);
+      let baseA = globalA ?? Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
+      let baseO = globalO ?? [];
+
+      // 打順が無ければ守備から暫定生成（DH考慮：投手を外してDHを入れる）
+      if (baseO.length === 0) {
+        const dhId = baseA[DH] ?? null;
+        const orderPositions = dhId ? [...positions.filter(p => p !== "投"), DH] : [...positions];
+        const ids = orderPositions.map(p => baseA[p]).filter((id): id is number => typeof id === "number");
+        baseO = ids.slice(0, 9).map(id => ({ id, reason: "スタメン" }));
+      }
+
+      setAssignments(baseA);
+      setBattingOrder(baseO);
+      // 専用領域を作成
+      await localForage.setItem("startingassignments", baseA);
+      await localForage.setItem("startingBattingOrder", baseO);
+    })();
+  }, []);
 
 
   useEffect(() => {
@@ -144,6 +212,19 @@ useEffect(() => {
     });
     
   }, []);
+
+  // 初回：ロード後に“現在値”を基準化。以降は差分で dirty 判定
+  useEffect(() => {
+    if (!initDoneRef.current) {
+      snapshotRef.current = buildSnapshot();
+      setIsDirty(false);
+      initDoneRef.current = true;
+      return;
+    }
+    setIsDirty(buildSnapshot() !== snapshotRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignments, battingOrder, benchOutIds]);
+
 
   // iOS判定 & 透明1pxゴースト画像
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -292,6 +373,14 @@ useEffect(() => {
     const savedBenchOut = await localForage.getItem<number[]>("startingBenchOutIds");
     if (savedBenchOut) setBenchOutIds(savedBenchOut);
 
+    // ★ 追加：保存が無ければ初期状態は「全員ベンチ外」
+    if (!savedBenchOut) {
+      const ids = (team?.players || []).map(p => p.id);
+      setBenchOutIds(ids);
+      // 任意：初期状態を保存しておく（次回起動でも維持したい場合）
+      await localForage.setItem("startingBenchOutIds", ids);
+    }
+
     // ✅ まず保存済みの完全な守備配置/打順から復元
     const savedAssignments =
       await localForage.getItem<{ [pos: string]: number | null }>("startingassignments");
@@ -376,26 +465,38 @@ const saveAssignments = async () => {
   await localForage.setItem("lineupAssignments", assignments); // ← ミラー保存
   await localForage.setItem("battingOrder", battingOrder);     // ← ミラー保存
 
+  // 保存＝確定。以後は未保存扱いにしない
+  snapshotRef.current = buildSnapshot();
+  setIsDirty(false);
+
   alert("スタメンを保存しました！");
 };
 
 
-  const clearAssignments = async () => {
-    const emptyAssignments = Object.fromEntries(allSlots.map((p) => [p, null])); // ← 変更
-    setAssignments(emptyAssignments);
-    setBattingOrder([]);
-    setBenchOutIds([]);
+const clearAssignments = async () => {
+  // 全スロット空に
+  const emptyAssignments = Object.fromEntries(allSlots.map((p) => [p, null]));
+  setAssignments(emptyAssignments);
+  setBattingOrder([]);
 
+  // ★ ここがポイント：チーム全員をベンチ外に
+  const team = await localForage.getItem<{ players: Player[] }>("team");
+  const allIds = (team?.players || []).map(p => p.id);
+  setBenchOutIds(allIds);
 
-    const emptyA = Object.fromEntries([...positions, DH].map(p => [p, null])) as Record<string, number|null>;
-    setAssignments(emptyA);
-    setBattingOrder([]);
+  // 保存状態もリセット＋ベンチ外だけは“全員”として保存
+  await localForage.setItem("startingassignments", emptyAssignments);
+  await localForage.setItem("startingBattingOrder", []);
+  await localForage.setItem("startingBenchOutIds", allIds);
 
-    await localForage.removeItem("startingassignments");
-    await localForage.removeItem("startingBattingOrder");
-    await localForage.removeItem("startingBenchOutIds");   // ← これを追加
-    alert("スタメンと守備位置をクリアしました！");
-  };
+  // 参照用スナップショットやミラーも空に
+  await localForage.setItem("startingInitialSnapshot", []);
+  await localForage.setItem("lineupAssignments", emptyAssignments);
+  await localForage.setItem("battingOrder", []);
+
+  alert("スタメンをクリアし、全員を出場しない選手にしました！");
+};
+
 
   const allowDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -515,6 +616,7 @@ const handleDropToPosition = (e: React.DragEvent<HTMLDivElement>, toPos: string)
 
   setAssignments(next);
 
+
   // 打順の更新：DHが居れば「投手の代わりにDH」
   setBattingOrder((prev) => {
     let updated = [...prev];
@@ -576,6 +678,8 @@ if (pitcherId) {
 
     return updated;
   });
+   // ★ フィールドに入ったら「出場しない選手」から外す
+  setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
   // ★ ドロップ完了時はハイライトを確実に解除
   setDraggingPlayerId(null), setHoverPosKey(null);
 };
@@ -874,9 +978,12 @@ return (
      </span>
    </h1>
    <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-   <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
-     <span className="opacity-80">ドラッグ＆ドロップで配置／打順を変更</span>
-   </div>
+<div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
+  <span className="text-sm font-extrabold text-red-600">
+    ドラッグ＆ドロップで打順通り選手を配置してください
+  </span>
+</div>
+
  </div>
 
  {/* フィールド配置（カード） */}
@@ -982,7 +1089,7 @@ return (
             <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
               <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M4 15h16v2H4zm2-4h12v2H6zm2-4h8v2H8z"/></svg>
             </span>
-            控え選手
+            ベンチ入り選手
           </h2>
           <div
             className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
@@ -1022,7 +1129,7 @@ return (
       <div>
         <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
           <span className="inline-flex w-9 h-9 rounded-xl bg-rose-400/25 border border-rose-300/50 items-center justify-center"><IconOut /></span>
-          ベンチ外選手
+          出場しない選手
         </h2>
         <div
            className="flex flex-wrap gap-2 min-h-[60px] p-2
@@ -1033,7 +1140,7 @@ return (
           onDrop={handleDropToBenchOut}
         >
           {benchOutPlayers.length === 0 ? (
-            <div className="text-gray-400">ベンチ外選手はいません</div>
+            <div className="text-gray-400">出場しない選手はいません</div>
           ) : (
             benchOutPlayers.map((p) => (
               <div
@@ -1128,7 +1235,7 @@ return (
 <div className="mt-6 flex w-full gap-4">
   <button
     className="flex-[3] bg-red-500 text-white py-3 rounded font-semibold"
-    onClick={clearAssignments}
+    onClick={onClearClick}
   >
     クリア
   </button>
@@ -1140,7 +1247,115 @@ return (
   </button>
 </div>
 
+{/* ← 戻るボタン（横いっぱい、画面下部に追加） */}
+<div className="mt-4 w-full">
+  <button
+    className="w-full bg-gray-700 text-white py-3 rounded font-semibold hover:bg-gray-600 active:bg-gray-800"
+    onClick={() => { isDirty ? setShowLeaveConfirm(true) : handleBack(); }}
+  >
+    ← 戻る
+  </button>
+</div>
 
+{/* クリア確認モーダル */}
+{showConfirm && (
+  <div
+    className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowConfirm(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー：緑帯 */}
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      {/* 本文 */}
+      <div className="px-6 py-5 text-center text-[15px] leading-relaxed">
+        <p className="whitespace-pre-line font-bold text-gray-800">
+          スタメン、ベンチ入りの選手がクリアされて{"\n"}
+          全員が出場しない選手になります。{"\n"}
+          よろしいですか？
+        </p>
+      </div>
+
+      {/* フッター：ボタン */}
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-red-600 text-white font-semibold
+                       hover:bg-red-700 active:bg-red-800"
+            onClick={() => setShowConfirm(false)}
+          >
+            NO
+          </button>
+          <button
+            className="w-full py-3 rounded-full bg-green-600 text-white font-semibold
+                       hover:bg-green-700 active:bg-green-800"
+            onClick={proceedClear}
+          >
+            YES
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 保存確認モーダル */}
+{showLeaveConfirm && (
+  <div
+    className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => setShowLeaveConfirm(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー：緑帯 */}
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        確認
+      </div>
+
+      {/* 本文（太字でくっきり） */}
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold text-gray-800 leading-relaxed">
+          変更した内容を保存していませんが{"\n"}
+          よろしいですか？
+        </p>
+      </div>
+
+      {/* フッター：YES/NOを横いっぱい半分ずつ */}
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+            onClick={() => setShowLeaveConfirm(false)} // NO＝そのまま残る
+          >
+            NO
+          </button>
+          <button
+            className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+            onClick={() => {
+              setShowLeaveConfirm(false);
+              handleBack(); // YES＝保存せず戻る（App側戻るボタンをトリガ）
+            }}
+          >
+            YES
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       
     </div>

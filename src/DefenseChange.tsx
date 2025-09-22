@@ -4581,7 +4581,7 @@ ${hoverPos === pos
           onClick={showAnnouncement}
           className="w-full px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.99] transition"
         >
-          🎤表示
+          🎤アナウンス表示
         </button>
       </div>
     </div>

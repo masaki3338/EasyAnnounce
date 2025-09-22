@@ -1252,10 +1252,8 @@ useEffect(() => {
                 <option key={i} value={i + 1}>{i + 1}</option>
               ))}
             </select>
-            <span>回</span>
-              <span className="px-2 select-none" aria-label="half">
-                {isTop ? "表" : "裏"}
-              </span>
+            <span>回 {isTop ? "表" : "裏"}</span>
+
           </div>
             {/* 試合開始ボタン */}
             {inning === 1 && isTop && !isHome && (
@@ -1286,36 +1284,23 @@ useEffect(() => {
             </div>
 
 
-            {/* イニング終了ボタン */}
-            <button
-              onClick={async () => {
-                // 3回裏か？
-                const isThirdBottom = (Number(inning) === 3 && isTop === false);
 
-                // 事前に matchInfo を読んで「次の試合なし」フラグを確認
-                if (isThirdBottom) {
-                  const mi = await localForage.getItem<any>("matchInfo");
-                  const noNextGame =
-                    (mi?.noNextGame === true) || (mi?.noNextGame === "true"); // 厳密評価
-                  // 「次の試合なし」= NO のときだけ、得点入力後にアナウンスを出す準備
-                  if (!noNextGame) {
-                    setPendingMemberExchange(true);
-                  }
-                }
-
-                // ★ まずは必ず得点入力を先に出す
-                setShowModal(true);
-              }}
-              className="px-3 py-1 bg-orange-700 text-white rounded"
-            >
-              <span className="break-keep leading-tight">イニング<wbr/>終了</span>
-            </button>
 
 
         </div>
 
 
  <table className="w-full border border-gray-400 text-center text-sm mb-6"> 
+    <colgroup>
+      {/* チーム名列： */}
+      <col className="w-40" />
+      {/* 9回分のスコア列：40pxずつ */}
+      {[...Array(9)].map((_, i) => (
+        <col key={i} className="w-10" />
+      ))}
+      {/* 計列：48px */}
+      <col className="w-12" />
+    </colgroup>
   <thead>
     <tr>
       <th className="border">回</th>
@@ -1338,8 +1323,11 @@ useEffect(() => {
       .map((row, rowIdx) => (
         <tr key={rowIdx} className={row.isMyTeam ? "bg-gray-100" : ""}>
           <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-            {row.name}
+            <span className="block max-w-[120px] truncate" title={row.name}>
+              {row.name}
+            </span>
           </td>
+
           {[...Array(9).keys()].map(i => {
             /* 表裏に応じてスコアを取り出す */
             const val = row.isMyTeam
@@ -1561,6 +1549,31 @@ onClick={() => {
       </button>
     </div>
   </div>
+
+  {/* 一番下のイニング終了ボタン */}
+<div className="mt-6">
+  <button
+    onClick={async () => {
+      // 既存のイニング終了ボタンと同じ処理
+      const isThirdBottom = (Number(inning) === 3 && isTop === false);
+
+      if (isThirdBottom) {
+        const mi = await localForage.getItem<any>("matchInfo");
+        const noNextGame =
+          (mi?.noNextGame === true) || (mi?.noNextGame === "true");
+        if (!noNextGame) {
+          setPendingMemberExchange(true);
+        }
+      }
+
+      setShowModal(true);
+    }}
+    className="w-full h-12 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg shadow"
+  >
+    イニング終了
+  </button>
+</div>
+
 
   {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
   <div className="w-full grid grid-cols-4 gap-2 mt-4">

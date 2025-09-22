@@ -827,10 +827,7 @@ const handlePitchLimitSpeak = () => {
                 <option key={i} value={i + 1}>{i + 1}</option>
               ))}
             </select>
-            <span className="whitespace-nowrap">回</span>
-              <span className="px-2 select-none">
-                {isTop ? "表" : "裏"}
-              </span>
+            <span className="whitespace-nowrap">回 {isTop ? "表" : "裏"}</span>
 
           </div>
 
@@ -844,18 +841,23 @@ const handlePitchLimitSpeak = () => {
                 試合開始
               </button>
             )}
-            <button
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center justify-center h-8 sm:h-10 px-3 sm:px-4 bg-orange-700 text-white rounded hover:bg-orange-800 text-xs sm:text-sm whitespace-nowrap"
-            >
-              イニング終了
-            </button>
+
           </div>
         </div>
       </div>
 
 
         <table className="w-full border border-gray-400 text-center text-sm">
+          <colgroup>
+            {/* チーム名列： */}
+            <col className="w-40" />
+            {/* 9回分のスコア列：40pxずつ */}
+            {[...Array(9)].map((_, i) => (
+              <col key={i} className="w-10" />
+            ))}
+            {/* 計列：48px */}
+            <col className="w-12" />
+          </colgroup>
           <thead>
             <tr>
               <th className="border">回</th>
@@ -878,9 +880,12 @@ const handlePitchLimitSpeak = () => {
     .map((row, rowIndex) => {
       return (
         <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
-        <td className={`border text-center ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-          {row.name}
+        <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
+          <span className="block max-w-[120px] truncate" title={row.name}>
+            {row.name}
+          </span>
         </td>
+
 
           {[...Array(9).keys()].map((i) => {
             const value = row.isMyTeam
@@ -1072,13 +1077,24 @@ const handlePitchLimitSpeak = () => {
   </div>
 )}
 
-{/* 🔽 守備交代ボタン */}
-<div className="my-6 text-center">
+{/* 🔽 守備交代 + イニング終了 */}
+<div className="my-6 grid grid-cols-10 gap-2">
+  {/* 守備交代：幅3 */}
   <button
     onClick={onChangeDefense}
-    className="w-full py-3 bg-orange-500 text-white rounded shadow hover:bg-orange-600 font-semibold"
+    className="col-span-3 h-12 bg-orange-500 text-white rounded shadow hover:bg-orange-600 font-semibold flex items-center justify-center"
   >
     🔀守備交代
+  </button>
+
+  {/* イニング終了：幅7（元の処理をそのまま移植） */}
+  <button
+    onClick={async () => {
+      setShowModal(true);
+    }}
+    className="col-span-7 h-12 bg-blue-600 text-white rounded shadow hover:bg-blue-700 font-semibold flex items-center justify-center"
+  >
+    イニング終了
   </button>
 </div>
 
