@@ -404,23 +404,29 @@ return (
         </div>
       </section>
 
-      {/* 操作ボタン */}
-      <div className="grid gap-3 pt-1">
+    </main>
+
+    {/* ← フッターと重ならないためのスペーサー */}
+    <div aria-hidden className="h-36" />
+
+    {/* 固定フッター操作カード */}
+    <footer className="fixed bottom-0 inset-x-0 z-40 px-4 pb-4">
+      <div className="max-w-md mx-auto rounded-2xl bg-white/10 border border-white/10 shadow-xl p-4 grid gap-3">
         <button
           onClick={onShowAnnouncement}
-          className="w-full px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
+          className="w-full px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-base font-semibold shadow inline-flex items-center justify-center gap-2"
         >
           <IconMic /> 試合前アナウンス
         </button>
         <button
           onClick={handleStart}
-          className="w-full px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-lg font-semibold shadow-lg inline-flex items-center justify-center gap-2"
+          className="w-full px-6 py-3 rounded-xl bg-green-600 hover:bg-green-700 active:scale-95 text-white text-base font-semibold shadow inline-flex items-center justify-center gap-2"
         >
           <IconPlay /> 試合を開始する
         </button>
-
       </div>
-    </main>
+    </footer>
+
     {/* ====== 開始時の案内モーダル ====== */}
     {showStartHint && (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -438,9 +444,14 @@ return (
           <div className="p-5 text-center space-y-4">
             <p className="text-sm leading-relaxed">
               球審の”プレイ”で<br />
-              <span className="font-semibold">【試合開始】</span>
-              ボタンを押して下さい
+              <img
+                src="/GameStartBTN.png"
+                alt="試合開始ボタン"
+                className="inline-block h-6 md:h-8 align-middle"
+              />
+              ボタンを押してください
             </p>
+
             <button
               onClick={proceedStart}
               className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold active:scale-95"

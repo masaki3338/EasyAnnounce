@@ -2270,6 +2270,77 @@ const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string 
 const lastTouchRef = React.useRef<{ x: number; y: number } | null>(null);
 const hoverPosRef = React.useRef<string | null>(null);
 
+// 変更検知用
+const [isDirty, setIsDirty] = useState(false);
+const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+const snapshotRef = useRef<string | null>(null);
+// 初回の基準スナップショットを一度だけ作るためのフラグ
+const initDoneRef = useRef(false);
+
+// 🔽 これを追加
+useEffect(() => {
+  (window as any).__defenseChange_back = () => {
+    if (isDirty) {
+      setShowLeaveConfirm(true);   // 未保存あり → 確認モーダル表示
+    } else {
+      handleBackToDefense();       // 未保存なし → そのまま守備へ
+    }
+  };
+  return () => {
+    delete (window as any).__defenseChange_back;
+  };
+}, [isDirty]);
+
+// ✅ 初回だけ基準化、それ以降は差分チェック
+useEffect(() => {
+  // 初回：十分な初期データが入るまで基準化を待つ
+  if (!initDoneRef.current) {
+    if (isInitialReady()) {
+      snapshotRef.current = buildSnapshot();
+      setIsDirty(false);
+      initDoneRef.current = true;
+      console.log("[DEBUG] baseline set after initial data");
+    } else {
+      console.log("[DEBUG] waiting initial data…", {
+        orderLen: Array.isArray(battingOrder) ? battingOrder.length : -1,
+        hasAnyAssign: assignments && Object.values(assignments).some((v) => v != null),
+      });
+    }
+    return; // 基準化が済むまで差分判定しない
+  }
+
+  // 2回目以降：通常の差分判定
+  const now = buildSnapshot();
+  const changed = now !== snapshotRef.current;
+  console.log("[DEBUG] dirty 判定", { changed });
+  setIsDirty(changed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [assignments, battingOrder, pendingDisableDH, dhDisableSnapshot, dhEnabledAtStart]);
+
+
+
+
+
+// 変更判定に使う“現在値のスナップショット”
+const buildSnapshot = () =>
+  JSON.stringify({
+    assignments,
+    battingOrder,
+    pendingDisableDH,
+    dhDisableSnapshot,
+    dhEnabledAtStart,
+  });
+
+  // 初期データが十分に入ったら true
+const isInitialReady = () => {
+  const hasOrder = Array.isArray(battingOrder) && battingOrder.length > 0;
+  const hasAssignments =
+    assignments && Object.keys(assignments).some((k) => assignments[k] != null);
+  // どちらか入っていれば初期化完了とみなす（必要なら両方必須にしてもOK）
+  return hasOrder || hasAssignments;
+};
+
+
 // ★ 追加：dropEffect を毎回 "move" に（Androidの視覚安定）
 const allowDrop = (e: React.DragEvent) => {
   e.preventDefault();
@@ -3904,6 +3975,10 @@ setPairLocks({});
 
 onConfirmed?.();
 
+// 保存完了：スナップショット更新＆クリーン化
+snapshotRef.current = buildSnapshot();
+setIsDirty(false);
+
   console.log("✅ onConfirmed called");
 };
 
@@ -3925,6 +4000,20 @@ onConfirmed?.();
   });
 }, [assignments, initialAssignments, teamPlayers]);
 
+// “戻る”が押されたとき：変更があれば確認、なければそのまま戻る
+const handleBackClick = () => {
+  if (isDirty) {
+    setShowLeaveConfirm(true);
+  } else {
+    handleBackToDefense(); // 既存：App 左上の守備戻るボタンを実行
+  }
+};
+
+// DefenseChange.tsx 内
+const handleBackToDefense = () => {
+  console.log("[DefenseChange] go defense via onConfirmed()");
+  onConfirmed();   // ← App.tsx 側に渡されたコールバックで守備画面に遷移
+};
 
 
   const handleSpeak = () => {
@@ -4576,21 +4665,32 @@ ${hoverPos === pos
       </div>
 
       {/* 下段：🎤表示ボタン（横いっぱい） */}
-      <div className="mt-3">
-        <button
-          onClick={showAnnouncement}
-          className="w-full px-5 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white active:scale-[0.99] transition"
-        >
-          🎤アナウンス表示
-        </button>
-      </div>
+<div className="grid grid-cols-10 gap-2 my-4 w-full">
+  {/* アナウンス表示：6/10 */}
+  <button
+    onClick={showAnnouncement}
+    className="col-span-6 py-3 bg-rose-500 text-white rounded shadow hover:bg-rose-600 font-semibold"
+  >
+    🎤 アナウンス表示
+  </button>
+
+  {/* 戻る：4/10 */}
+  <button
+     onClick={handleBackClick}
+    className="col-span-4 py-3 bg-gray-500 text-white rounded shadow hover:bg-gray-600 font-semibold"
+  >
+    ⬅️ 戻る
+  </button>
+</div>
+
+
     </div>
   </div>
 </div>
 
 
 
-    {/* 🎤 アナウンス表示モーダル（常に中央表示） */}
+{/* 🎤 アナウンス表示モーダル（常に中央表示） */}
 {showSaveModal && (
   <div className="fixed inset-0 z-50">
     <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
@@ -4674,6 +4774,61 @@ ${hoverPos === pos
     </div>
   </div>
 )}
+
+{/* 確認モーダル */}
+{showLeaveConfirm && (
+  <div
+    className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="leave-confirm-title"
+    onClick={() => setShowLeaveConfirm(false)} // 背景タップで閉じる
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      {/* ヘッダー：緑帯 */}
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        <h3 id="leave-confirm-title" className="text-base">確認</h3>
+      </div>
+
+      {/* 本文：くっきり太字 */}
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold leading-relaxed">
+          変更した内容を保存していませんが{"\n"}
+          よろしいですか？
+        </p>
+      </div>
+
+      {/* フッター：NO/YES を1行で半分ずつ・横いっぱい */}
+      <div className="px-5 pb-5">
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+            onClick={() => setShowLeaveConfirm(false)} // NO：残る
+          >
+            NO
+          </button>
+          <button
+            className="col-span-1 py-3 font-semibold bg-green-600 text-white rounded-br-2xl hover:bg-green-700"
+            onClick={() => {
+              setShowLeaveConfirm(false);
+              handleBackToDefense();
+            }}
+
+          >
+            YES
+          </button>
+
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
 
   </div>
 );

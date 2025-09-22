@@ -138,7 +138,7 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
             <h2 className="font-semibold">読み上げタイミング</h2>
           </div>
           <p className="text-amber-50/90 text-sm leading-relaxed">
-            後攻チームが守備についたタイミングで実施。
+            挨拶終了後（後攻チームが守備につく時）
           </p>
         </section>
 

@@ -232,6 +232,11 @@ useEffect(() => {
   return () => document.removeEventListener("visibilitychange", onVis);
 }, []);
 
+// 🔽 守備画面へ遷移する関数をグローバル公開（DefenseChangeから呼ぶ）
+useEffect(() => {
+  (window as any).__app_go_defense = () => setScreen("defense");
+  return () => { delete (window as any).__app_go_defense; };
+}, []);
 
 
   const handleSpeak = () => {
@@ -854,11 +859,19 @@ if (totalMyScore > totalOpponentScore) {
 
 {screen === "defenseChange" && (
   <>
-    <button
-      className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
-      onClick={() => setScreen("defense")}>
-        ← 守備画面に戻る
-     </button>
+{/* 
+<button
+  className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+  onClick={() => {
+    // 下ボタンと同じ“遷移の実体”だけを呼ぶ（未保存チェックは DefenseChange 側に任せない）
+    (window as any).__app_go_defense?.();
+  }}
+>
+  ← 守備画面に戻る
+</button>
+*/}
+
+
     <DefenseChange onConfirmed={() => {
       console.log("✅ setScreen to defense");
       setScreen("defense");

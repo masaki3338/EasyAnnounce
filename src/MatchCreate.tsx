@@ -76,6 +76,11 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   const [benchSide, setBenchSide] = useState("1塁側");
   const [showExchangeModal, setShowExchangeModal] = useState(false);
   const [speakingExchange, setSpeakingExchange] = useState(false);
+  // 候補リストの表示制御（入力にフォーカスしている間だけ表示）
+  const [showTList, setShowTList] = useState(false);
+
+  // 追加：初期ロード完了フラグ
+const [loaded, setLoaded] = useState(false);
 
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
@@ -109,22 +114,21 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
 
 useEffect(() => {
   const loadMatchInfo = async () => {
-    // 大会名リスト（5件＋先頭空白）をロード
+    // 大会名リスト
     const savedList = await localForage.getItem<string[]>("recentTournaments");
     if (savedList && Array.isArray(savedList) && savedList.length > 0) {
-      // 先頭は必ず空白に補正
       const normalized = ["", ...savedList.filter((x) => x && x.trim() !== "")].slice(0, 6);
       setRecentTournaments(normalized);
     } else {
       setRecentTournaments([""]);
     }
 
-    // 既存の試合情報をロード
+    // 既存の試合情報
     const saved = await localForage.getItem<{
       tournamentName: string;
       matchNumber: number;
       opponentTeam: string;
-      isHome: string | boolean; // 過去互換
+      isHome: string | boolean;
       benchSide: string;
       umpires: { role: string; name: string; furigana: string }[];
     }>("matchInfo");
@@ -134,35 +138,41 @@ useEffect(() => {
       setMatchNumber(Number(saved.matchNumber ?? 1));
       setOpponentTeam(saved.opponentTeam ?? "");
       setOpponentTeamFurigana((saved as any).opponentTeamFurigana ?? "");
-      // 既存コードは "後攻" を boolean にマッピングしているので過去互換で吸収
-      // ★ 修正：boolean または string の両対応で正規化
       const homeSrc = (saved as any).isHome;
       const normalizedIsHome =
-        typeof homeSrc === "boolean"
-          ? (homeSrc ? "後攻" : "先攻")
-          : (homeSrc === "後攻" ? "後攻" : "先攻");
+        typeof homeSrc === "boolean" ? (homeSrc ? "後攻" : "先攻") : (homeSrc === "後攻" ? "後攻" : "先攻");
       setIsHome(normalizedIsHome);
-
       setBenchSide(saved.benchSide ?? "1塁側");
-
-      if (saved.umpires?.length === 4) {
-        setUmpires(saved.umpires);
-      }
-      // ✅ 保存済みの 2審制 を復元（無ければ false）
+      if (saved.umpires?.length === 4) setUmpires(saved.umpires);
       setIsTwoUmp(Boolean((saved as any).twoUmpires));
-      setNoNextGame(Boolean((saved as any).noNextGame)); 
+      setNoNextGame(Boolean((saved as any).noNextGame));
     }
-  };
-  loadMatchInfo();
 
+    // ✅ ここで“初期ロード完了”にする（state反映後）
+    setLoaded(true);
+  };
+
+  loadMatchInfo();
 }, []);
 
 
+
 useEffect(() => {
-  if (snapshotRef.current == null) return; // 初期化前はスキップ
+  // 初回は“初期ロード完了”を待ってから基準スナップショットを作る
+  if (!loaded) return;
+
+  if (snapshotRef.current == null) {
+    // 初期データが入った状態を基準にする（未保存扱いにしない）
+    snapshotRef.current = buildSnapshot();
+    setIsDirty(false);
+    return;
+  }
+
+  // 2回目以降は差分だけを見る
   setIsDirty(buildSnapshot() !== snapshotRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, [
+  loaded,
   tournamentName,
   matchNumber,
   opponentTeam,
@@ -173,6 +183,7 @@ useEffect(() => {
   isTwoUmp,
   noNextGame,
 ]);
+
 
 
 // 大会名を「5件まで（先頭は空白）」で更新して保存するヘルパー
@@ -321,99 +332,88 @@ return (
     <main className="w-full max-w-md mt-5 space-y-5">
 
       {/* 大会名 ＋ 本日の 第n試合 */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-            <IconTrophy />
-          </div>
-          <div className="font-semibold">大会名</div>
-        </div>
+<div className="flex-1 space-y-2">
+  {/* 大会名ラベル */}
+  <label className="block text-xs text-white/70 mb-1">大会名</label>
 
-        <div className="flex items-start gap-4">
-          {/* 左：大会名セレクト＋上書き入力 */}
-          <div className="flex-1 space-y-2">
-            <select
-            value={tournamentName}
-            onChange={(e) => {
-              const v = e.target.value;
-              setTournamentName(v);
-              setLastPickedName(v); // ← これを“編集元”として記録
-            }}
-              className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
-            >
-              {recentTournaments.map((name, i) => (
-                <option key={i} value={name}>
-                  {name === "" ? "　" : name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={tournamentName}
-              onChange={(e) => setTournamentName(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-              placeholder="大会名を入力（上書き可）"
-            />
-          </div>
+  {/* サジェスト付き入力 */}
+  <input
+    list="tournament-suggestions"
+    type="text"
+    value={tournamentName}
+    onChange={(e) => {
+      const v = e.target.value;
+      setTournamentName(v);
+      setLastPickedName(v);
+    }}
+    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+    placeholder="大会名を入力（候補から選択可）"
+  />
+  <datalist id="tournament-suggestions">
+    {recentTournaments.filter(Boolean).map((name, i) => (
+      <option key={i} value={name} />
+    ))}
+  </datalist>
 
-          {/* 右：本日の 第n試合 */}
-          <div className="shrink-0">
-            <div className="flex items-center gap-2 mb-2">
-              <IconCalendar />
-              <span className="text-sm">本日の</span>
-            </div>
-            <select
-              value={matchNumber}
-              onChange={async (e) => {
-                const num = Number(e.target.value);
-                setMatchNumber(num);                
-              }}
-              className="p-3 rounded-xl bg-white text-gray-900 border border-white/20"
-            >
-              {[1, 2, 3, 4, 5].map((num) => (
-                <option key={num} value={num}>第{num}試合</option>
-              ))}
-            </select>
-            {/* ▼ 追加：次の試合なし */}
-            <label className="mt-2 flex items-center gap-2 text-sm select-none">
-              <input
-                type="checkbox"
-                className="w-4 h-4 accent-rose-600"
-                checked={noNextGame}
-                onChange={(e) => setNoNextGame(e.target.checked)}
-              />
-              次の試合なし
-            </label>
+  {/* よく使う候補チップ */}
+{/* 練習試合 & クリアボタン */}
+<div className="mt-2 flex flex-wrap gap-2">
+  <button
+    type="button"
+    onClick={() => {
+      setTournamentName("練習試合");
+      setLastPickedName("練習試合");
+    }}
+    className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs hover:bg-blue-700"
+  >
+    練習試合
+  </button>
+  <button
+    type="button"
+    onClick={() => {
+      setTournamentName("");
+      setLastPickedName("");
+    }}
+    className="px-3 py-1.5 rounded-full bg-gray-600 text-white text-xs hover:bg-gray-700"
+  >
+    クリア
+  </button>
+</div>
 
-          </div>
-        </div>
-      </section>
+</div>
+
 
 
       {/* 相手チーム名＋ふりがな */}
-      <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-            <IconVs />
-          </div>
-          <div className="font-semibold">相手チーム</div>
-        </div>
+<section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+  <div className="flex items-center gap-3 mb-3">
+    <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+      <IconVs />
+    </div>
+    <div className="font-semibold">相手チーム</div>
+  </div>
 
-        <input
-          type="text"
-          value={opponentTeam}
-          onChange={(e) => setOpponentTeam(e.target.value)}
-          className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-          placeholder="相手チーム名を入力"
-        />
-        <input
-          type="text"
-          value={opponentTeamFurigana}
-          onChange={(e) => setOpponentTeamFurigana(e.target.value)}
-          className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20 mt-2"
-          placeholder="相手チーム名のふりがな"
-        />
-      </section>
+  {/* チーム名ラベル */}
+  <label className="block text-xs text-white/70 mb-1">チーム名</label>
+  <input
+    type="text"
+    value={opponentTeam}
+    onChange={(e) => setOpponentTeam(e.target.value)}
+    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+    placeholder="相手チーム名を入力"
+  />
+
+  {/* ふりがなラベル */}
+  <label className="block text-xs text-white/70 mt-3 mb-1">ふりがな</label>
+  <input
+    type="text"
+    value={opponentTeamFurigana}
+    onChange={(e) => setOpponentTeamFurigana(e.target.value)}
+    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+    placeholder="相手チーム名のふりがな"
+  />
+</section>
+
 
       {/* 自チーム情報（先攻/後攻・ベンチ側） */}
       <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">

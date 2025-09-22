@@ -2,6 +2,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 
+// これを SheetKnock.tsx の先頭 import 群の直後に追加
+declare global {
+  interface Window {
+    speakWithVoicevox?: (text: string, opts?: { speaker?: number; gender?: string }) => Promise<void>;
+  }
+}
+
+
 type Props = {
   onBack: () => void; // 戻るボタン用
 };
@@ -219,15 +227,37 @@ const playBeeps = async (
     load();
   }, []);
 
-  const speak = (text: string, key: string) => {
+// 既存の speak を丸ごと置き換え
+const speak = async (text: string, key: string) => {
+  try {
+    // 先に既存読み上げを止める（ブリッジ側も cancel をフックして <audio> を止めます）
     window.speechSynthesis.cancel();
+    setReadingKey(key);
+
+    // ▼ VOICEVOX を最優先（ttsBridge が注入する window.speakWithVoicevox を利用）
+    if (typeof window.speakWithVoicevox === "function") {
+      const speaker = Number(localStorage.getItem("ttsDefaultSpeaker") || "0") || 30; // 任意の既定
+      const gender  = localStorage.getItem("ttsGender") || undefined;                // "male"/"female" 想定
+      await window.speakWithVoicevox(text, { speaker, gender });
+      return; // 成功したらここで終了
+    }
+
+    // ▼ ブリッジが未ロードなら Web Speech にフォールバック
     const uttr = new SpeechSynthesisUtterance(text);
     uttr.lang = "ja-JP";
-    uttr.onstart = () => setReadingKey(key);
     uttr.onend = () => setReadingKey(null);
     uttr.onerror = () => setReadingKey(null);
     window.speechSynthesis.speak(uttr);
-  };
+  } catch {
+    // 予備のフォールバック
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.lang = "ja-JP";
+    uttr.onend = () => setReadingKey(null);
+    uttr.onerror = () => setReadingKey(null);
+    window.speechSynthesis.speak(uttr);
+  }
+};
+
   const stopSpeak = () => {
     window.speechSynthesis.cancel();
     setReadingKey(null);
@@ -381,69 +411,66 @@ const playBeeps = async (
   />
 </StepCard>
 
-{/* 3 注意事項（順番入れ替え後） */}
+{/* ③ 注意＋7分タイマー（統合） */}
 <StepCard
   step={stepNum(prepMessage ? 3 : 2)}
   icon={<IconAlert />}
-  title="スタートの開始"
+  title="スタートの注意 と 7分タイマー"
   accent="amber"
 >
+  {/* 注意メッセージ */}
   <div className="text-amber-50/90 text-sm leading-relaxed">
     最初のボールがノッカーの手から離れた時、<br />
     もしくはボール回しから始まる場合はキャッチャーの手から<br />
     ボールが離れてからスタート
   </div>
+
+  {/* 仕切り線 */}
+  <div className="my-3 h-px bg-white/10" />
+
+  {/* 7分タイマー（元のUIをそのまま移植） */}
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="text-4xl font-black tracking-widest tabular-nums">
+      {timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
+    </div>
+    <div className="flex items-center gap-2">
+      {timeLeft === 0 && !timerActive ? (
+        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95">
+          <span onClick={startTimer}>開始</span>
+        </button>
+      ) : (
+        <>
+          {timerActive ? (
+            <button
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
+              onClick={stopTimer}
+            >
+              STOP
+            </button>
+          ) : (
+            <button
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
+              onClick={startTimer}
+            >
+              START
+            </button>
+          )}
+          <button
+            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
+            onClick={resetTimer}
+          >
+            RESET
+          </button>
+        </>
+      )}
+    </div>
+  </div>
 </StepCard>
 
 
-  {/* 4 タイマー */}
+  {/* 4 残り2分アナウンス */}
   <StepCard
     step={stepNum(prepMessage ? 4 : 3)}
-    icon={<IconTimer />}
-    title="7分タイマー"
-    accent="gray"
-  >
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div className="text-4xl font-black tracking-widest tabular-nums">
-        {timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
-      </div>
-      <div className="flex items-center gap-2">
-        {timeLeft === 0 && !timerActive ? (
-          <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95">
-            <span onClick={startTimer}>開始</span>
-          </button>
-        ) : (
-          <>
-            {timerActive ? (
-              <button
-                className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-                onClick={stopTimer}
-              >
-                STOP
-              </button>
-            ) : (
-              <button
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-                onClick={startTimer}
-              >
-                START
-              </button>
-            )}
-            <button
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-              onClick={resetTimer}
-            >
-              RESET
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  </StepCard>
-
-  {/* 5 残り2分アナウンス */}
-  <StepCard
-    step={stepNum(prepMessage ? 5 : 4)}
     icon={<IconMic2 />}
     title="残り2分の案内"
     accent="blue"
@@ -457,9 +484,9 @@ const playBeeps = async (
     />
   </StepCard>
 
-  {/* 6 終了アナウンス */}
+  {/* 5 終了アナウンス */}
   <StepCard
-    step={stepNum(prepMessage ? 6 : 5)}
+    step={stepNum(prepMessage ? 5 : 4)}
     icon={<IconMic2 />}
     title="終了案内"
     accent="blue"
