@@ -332,55 +332,98 @@ return (
     <main className="w-full max-w-md mt-5 space-y-5">
 
       {/* 大会名 ＋ 本日の 第n試合 */}
+{/* 大会名 ＋ 本日の 第n試合 */}
 <div className="flex-1 space-y-2">
   {/* 大会名ラベル */}
   <label className="block text-xs text-white/70 mb-1">大会名</label>
 
-  {/* サジェスト付き入力 */}
-  <input
-    list="tournament-suggestions"
-    type="text"
-    value={tournamentName}
-    onChange={(e) => {
-      const v = e.target.value;
-      setTournamentName(v);
-      setLastPickedName(v);
-    }}
-    className="w-full p-3 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
-    placeholder="大会名を入力（候補から選択可）"
-  />
-  <datalist id="tournament-suggestions">
-    {recentTournaments.filter(Boolean).map((name, i) => (
-      <option key={i} value={name} />
-    ))}
-  </datalist>
+  {/* 入力 + トグルボタン + 自前ドロップダウン */}
+  <div className="relative">
+    <input
+      type="text"
+      value={tournamentName}
+      onChange={(e) => {
+        const v = e.target.value;
+        setTournamentName(v);
+        setLastPickedName(v);
+      }}
+      onFocus={() => setShowTList(true)}
+      className="w-full p-3 pr-10 rounded-xl bg-white text-gray-900 placeholder-gray-400 border border-white/20"
+      placeholder="大会名を入力（候補から選択可）"
+      autoComplete="off"
+      inputMode="text"
+    />
+
+    {/* ▼トグルボタン（タップで開閉） */}
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()} // フォーカス外れ防止
+      onClick={() => setShowTList((v) => !v)}
+      className="absolute inset-y-0 right-0 px-3 text-gray-600 hover:text-gray-800"
+      aria-label="候補を開く"
+    >
+      ▼
+    </button>
+
+    {/* 自前ドロップダウン（Android対応） */}
+    {showTList && (
+      <div
+        className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-xl bg-white text-gray-900 shadow-lg border border-gray-200"
+        onMouseDown={(e) => e.preventDefault()} // クリックでblurさせない
+      >
+        {recentTournaments.filter(Boolean).length > 0 ? (
+          recentTournaments
+            .filter(Boolean)
+            .map((name, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setTournamentName(name);
+                  setLastPickedName(name);
+                  setShowTList(false);
+                }}
+                className={`w-full text-left px-3 py-2 hover:bg-gray-100 ${
+                  name === tournamentName ? "bg-gray-50 font-semibold" : ""
+                }`}
+              >
+                {name}
+              </button>
+            ))
+        ) : (
+          <div className="px-3 py-2 text-sm text-gray-500">候補はまだありません</div>
+        )}
+      </div>
+    )}
+  </div>
 
   {/* よく使う候補チップ */}
-{/* 練習試合 & クリアボタン */}
-<div className="mt-2 flex flex-wrap gap-2">
-  <button
-    type="button"
-    onClick={() => {
-      setTournamentName("練習試合");
-      setLastPickedName("練習試合");
-    }}
-    className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs hover:bg-blue-700"
-  >
-    練習試合
-  </button>
-  <button
-    type="button"
-    onClick={() => {
-      setTournamentName("");
-      setLastPickedName("");
-    }}
-    className="px-3 py-1.5 rounded-full bg-gray-600 text-white text-xs hover:bg-gray-700"
-  >
-    クリア
-  </button>
+  <div className="mt-2 flex flex-wrap gap-2">
+    <button
+      type="button"
+      onClick={() => {
+        setTournamentName("練習試合");
+        setLastPickedName("練習試合");
+        setShowTList(false);
+      }}
+      className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs hover:bg-blue-700"
+    >
+      練習試合
+    </button>
+    <button
+      type="button"
+      onClick={() => {
+        setTournamentName("");
+        setLastPickedName("");
+        setShowTList(false);
+      }}
+      className="px-3 py-1.5 rounded-full bg-gray-600 text-white text-xs hover:bg-gray-700"
+    >
+      クリア
+    </button>
+  </div>
 </div>
 
-</div>
 
 
 
