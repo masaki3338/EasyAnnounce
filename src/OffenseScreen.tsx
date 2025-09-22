@@ -256,6 +256,9 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
     t = t.replace(/\s+/g, " ").trim();
     // 読み固定が必要な語（必要に応じて追加）
     t = t.replace(/投球数/g, "とうきゅうすう");
+    // ✅ 「回表」「回裏」の読み補正を追加
+    t = t.replace(/([0-9０-９一二三四五六七八九十]+)回表/g, "$1かいおもて");
+    t = t.replace(/([0-9０-９一二三四五六七八九十]+)回裏/g, "$1かいうら");
     return t;
   };
 
