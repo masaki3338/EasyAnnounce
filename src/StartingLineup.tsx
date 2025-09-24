@@ -980,7 +980,7 @@ return (
    <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
 <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
   <span className="text-sm font-extrabold text-red-600">
-    ドラッグ＆ドロップで打順通り選手を配置してください
+    ドラッグ＆ドロップで打順通り配置してください
   </span>
 </div>
 

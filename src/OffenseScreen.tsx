@@ -1203,7 +1203,7 @@ const speakText = (text: string) => {
   const synth = window.speechSynthesis;
   if (synth.speaking) synth.cancel(); // 前の音声を止める
   const utter = new SpeechSynthesisUtterance(text);
-  synth.speak(utter);
+ // synth.speak(utter);
 };
 
 // 音声停止
