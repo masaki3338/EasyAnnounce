@@ -570,7 +570,7 @@ await localForage.setItem("pitchCounts", {
   // ✅ この回の投球数は常に表示（ふりがな付き）
   newMessages.push(
 
-    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
+    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の、投球数は${newCurrent}球です。`
   );
 
     // ✅ イニングが変わっている時だけトータルも表示
@@ -658,7 +658,18 @@ await localForage.setItem("pitchCounts", {
 
 };
 
-
+ // 日本語音声の優先選択
+ const pickJaVoice = () => {
+   const s = window.speechSynthesis;
+   const voices = s.getVoices();
+   // 環境により名称は異なるので候補を複数用意
+   const preferred = ["Google 日本語", "Kyoko", "Microsoft Haruka", "Microsoft Ayumi", "Otoya", "Mizuki"];
+   return (
+     voices.find(v => v.lang === "ja-JP" && preferred.some(name => (v.name || "").includes(name))) ||
+     voices.find(v => v.lang === "ja-JP") ||
+     null
+   );
+ };
 
 
   const addScore = async (inningIndex: number, topOrBottom: 'top' | 'bottom') => {
@@ -812,6 +823,11 @@ const handlePitchLimitSpeak = () => {
   const text = normalizeForTTS(pitchLimitMessages.join("。")); // ← 念のため適用
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "ja-JP"; // 明示
+  // 声・話速・声調を微調整（イントネーション改善）
+  const v = pickJaVoice();
+  if (v) utterance.voice = v;
+  utterance.rate = 0.95;  // ややゆっくり
+  utterance.pitch = 1.05; // わずかに高めで語尾沈みを防ぐ
   utteranceRef.current = utterance;
   synthRef.current.speak(utterance);
 };
