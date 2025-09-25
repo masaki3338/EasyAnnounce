@@ -443,7 +443,49 @@ useEffect(() => {
   };
 }, []);
 
+// タイブレークの塁設定を LocalForage から読み出して [1..3] の数値配列に正規化
+// 受理する値の例：
+//  - 文字列: "1塁", "2塁", "3塁", "1,2塁", "2,3塁", "満塁", "1・2", "1,2,3"
+//  - 配列:   [1,2], [2,3], [1,2,3]
+const loadTiebreakBases = async (): Promise<number[]> => {
+  // ① 新UIの保存形式を最優先で読む
+  const cfg = (await localForage.getItem<{ outs?: string; bases?: string }>("tiebreakConfig")) || null;
+  const fromCfg = (() => {
+    if (!cfg?.bases) return null;
+    const s = String(cfg.bases);
+    if (s.includes("満塁")) return [1, 2, 3];
+    const m = s.match(/[123]/g);
+    if (m) return [...new Set(m.map((n) => Number(n)))].filter((x) => x >= 1 && x <= 3).sort();
+    return null;
+  })();
+  if (fromCfg && fromCfg.length) return fromCfg;
 
+  // ② 旧キー互換
+  const raw =
+    (await localForage.getItem<any>("tiebreak:bases")) ??
+    (await localForage.getItem<any>("tiebreak:setting")) ??
+    (await localForage.getItem<any>("tiebreak")) ??
+    null;
+
+  const norm = (v: any): number[] => {
+    if (Array.isArray(v)) {
+      return [...new Set(v.map(Number))].filter((x) => x === 1 || x === 2 || x === 3).sort();
+    }
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (s.includes("満塁")) return [1, 2, 3];
+      const m = s.match(/[123]/g);
+      if (m) return [...new Set(m.map((n) => Number(n)))].filter((x) => x >= 1 && x <= 3).sort();
+    }
+    if (typeof v === "number" && [1, 2, 3].includes(v)) return [v];
+    // 何もなければ後方互換で 1・2塁
+    return [1, 2];
+  };
+
+  return norm(raw);
+};
+
+// クリックされた打順indexからTB文言を作る
 // クリックされた打順indexからTB文言を作る
 const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   // players / battingOrder / assignments / matchInfo は state が未整備でも拾えるようにLFから補完
@@ -466,19 +508,20 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   const top = !!match?.isTop;
 
   const n = orderIds.length || 0;
-  // ガード
   if (n === 0) return "";
 
-  // ランナーは「現在打者の1人前＝1塁」「2人前＝2塁」（循環）
+  // ── 打者と「1人前/2人前/3人前」を取得（循環）
   const idBatter = orderIds[(idx + 0 + n) % n];
-  const idR1     = orderIds[(idx - 1 + n) % n];
-  const idR2     = orderIds[(idx - 2 + n) % n];
+  const idR1     = orderIds[(idx - 1 + n) % n]; // 1人前
+  const idR2     = orderIds[(idx - 2 + n) % n]; // 2人前
+  const idR3     = orderIds[(idx - 3 + n) % n]; // 3人前
 
   const P = (id: number) => team.players.find((p: any) => p?.id === id);
 
   const batter = P(idBatter);
   const r1     = P(idR1);
   const r2     = P(idR2);
+  const r3     = P(idR3);
 
   const honor = (p: any) => (p?.isFemale ? "さん" : "くん");
   const inningText = `${inningNo}回の${top ? "表" : "裏"}の攻撃は、`;
@@ -486,9 +529,11 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   const r1Text = r1
     ? `${(r1.lastName ?? "")}${honor(r1)}、背番号${r1.number ?? "－"}`
     : "（未設定）";
-
   const r2Text = r2
-    ? `${(r2.lastName ?? "") }${honor(r2)}、背番号${r2.number ?? "－"}`
+    ? `${(r2.lastName ?? "")}${honor(r2)}、背番号${r2.number ?? "－"}`
+    : "（未設定）";
+  const r3Text = r3
+    ? `${(r3.lastName ?? "")}${honor(r3)}、背番号${r3.number ?? "－"}`
     : "（未設定）";
 
   const batterOrderNo = idx + 1;
@@ -497,12 +542,19 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
     ? `${batterOrderNo}番、${batterPos}、${(batter.lastName ?? "")}${honor(batter)}`
     : `${batterOrderNo}番、（未設定）`;
 
-  // 表示は whitespace-pre-line で改行を活かす
-  return (
-    `${inningText}\n` +
-    `　ファーストランナーは${r1Text}、セカンドランナーは${r2Text}\n` +
-    `　バッターは${batterText}`
-  );
+  // ── ここから塁の構成を設定に合わせて可変化 ─────────────────────
+  const bases = await loadTiebreakBases(); // 例：[1], [2], [3], [1,2], [2,3], [1,2,3]
+  const lines: string[] = [];
+
+  // 改行は whitespace-pre-line 前提で先頭に全角スペースを入れる
+  if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
+  if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
+  if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
+
+  // 旧仕様の固定文面から、設定に応じた行だけ出す
+  const runnersPart = lines.join("\n");
+
+  return `${inningText}\n${runnersPart}\n　バッターは${batterText}`;
 };
 
 
@@ -1203,7 +1255,7 @@ const speakText = (text: string) => {
   const synth = window.speechSynthesis;
   if (synth.speaking) synth.cancel(); // 前の音声を止める
   const utter = new SpeechSynthesisUtterance(text);
- // synth.speak(utter);
+　synth.speak(utter);
 };
 
 // 音声停止

@@ -510,7 +510,6 @@ return (
       <IconUmpire />
     </div>
     <div className="font-semibold">審判</div>
-    {/* 2審制 チェック（審判の右隣に少し間を空けて配置） */}
 {/* 2審制/4審制 ラジオ（審判の右隣に配置） */}
 <div className="ml-3 inline-flex items-center gap-4 text-sm select-none" role="radiogroup" aria-label="審判人数">
   <label className="inline-flex items-center gap-1">
@@ -533,6 +532,9 @@ return (
     />
     4審制
   </label>
+      <span className="ml-2 text-xs text-white/70 whitespace-nowrap">
+      後攻チームのみ使用
+    </span>
 </div>
 
   </div>
