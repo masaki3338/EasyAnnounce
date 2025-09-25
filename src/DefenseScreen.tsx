@@ -213,6 +213,39 @@ const honor = (id: number) => {
   return p.isFemale ? "さん" : "くん";
 };
 
+// 🔸 同姓（苗字）重複セット
+const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
+useEffect(() => {
+  (async () => {
+    const list = (await localForage.getItem<string[]>("duplicateLastNames")) ?? [];
+    setDupLastNames(new Set(list.map(String)));
+  })();
+}, []);
+
+// 🔸 アナウンス用氏名（重複姓ならフルネーム／カナもフル）
+const getAnnounceNameParts = (p: any) => {
+  const ln = String(p?.lastName ?? "");
+  const fn = String(p?.firstName ?? "");
+  const lnKana = String(p?.lastNameKana ?? "");
+  const fnKana = String(p?.firstNameKana ?? "");
+  const forceFull = ln && dupLastNames.has(ln);
+  return forceFull
+    ? { name: `${ln}${fn}`, kana: `${lnKana}${fnKana}` }
+    : { name: ln || "投手", kana: lnKana || "とうしゅ" };
+};
+
+// 🔸 画面用の <ruby>…</ruby>（重複姓なら「姓」「名」別ルビ）
+const nameRubyHTML = (p: any) => {
+  const ln = String(p?.lastName ?? "");
+  const fn = String(p?.firstName ?? "");
+  const lnKana = String(p?.lastNameKana ?? "");
+  const fnKana = String(p?.firstNameKana ?? "");
+  const forceFull = ln && dupLastNames.has(ln);
+  if (forceFull) {
+    return `<ruby>${ln}<rt>${lnKana}</rt></ruby><ruby>${fn}<rt>${fnKana}</rt></ruby>`;
+  }
+  return `<ruby>${ln || "投手"}<rt>${lnKana || "とうしゅ"}</rt></ruby>`;
+};
 
 // 読み上げ関数
 const speak = (t: string) => {
@@ -434,6 +467,8 @@ const pitcher = savedTeam.players.find(p => p.id === currentPitcherId);
 const pitcherName = pitcher?.lastName ?? "投手";
 const pitcherKana = pitcher?.lastNameKana ?? "とうしゅ";
 const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
+const pitcherRuby = nameRubyHTML(pitcher); // ★ ルビは重複姓でフルに
+
 let current = 0;
 let total = savedPitchCount.total ?? 0;
 
@@ -446,7 +481,7 @@ if (currentPitcherId !== undefined && currentPitcherId === previousPitcherId) {
   total = savedPitchCount.total ?? 0;
 
   const msgs = [
-    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${current}球です。`
+    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${current}球です。`
   ];
 
  
@@ -529,11 +564,13 @@ await localForage.setItem("pitchCounts", {
   const pitcherName = pitcher?.lastName ?? '投手';
   const pitcherKana = pitcher?.lastNameKana ?? 'とうしゅ';
   const pitcherSuffix = pitcher?.isFemale ? "さん" : "くん";
+  const pitcherRuby = nameRubyHTML(pitcher); // ★ ルビは重複姓でフルに
   const newMessages: string[] = [];
 
   // ✅ この回の投球数は常に表示（ふりがな付き）
   newMessages.push(
-    `ピッチャー<ruby>${pitcherName}<rt>${pitcherKana}</rt></ruby>${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
+
+    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
   );
 
     // ✅ イニングが変わっている時だけトータルも表示
@@ -546,10 +583,15 @@ await localForage.setItem("pitchCounts", {
     const warn2 = pitchLimitSelected;
 
     if (newTotal === warn1 || newTotal === warn2) {
+      // ▼ 追加：テキスト用（重複姓なら「姓+名」、そうでなければ苗字のみ）
+      const pitcherParts = getAnnounceNameParts(pitcher);
+
       const specialMsg =
         newTotal === warn2
-          ? `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
-          : `ピッチャー${pitcherName}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
+          ? `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球に到達しました。`
+          : `ピッチャー${pitcherParts.name}${pitcherSuffix}、ただいまの投球で${newTotal}球です。`;
+
+
       setPitchLimitMessages([specialMsg]);
       setShowPitchLimitModal(true);
     }

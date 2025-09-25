@@ -236,6 +236,27 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const rubyFirst = (p: any) =>
     `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
 
+  // === NEW: 苗字重複を考慮した名前整形 ==========================
+const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
+
+useEffect(() => {
+  (async () => {
+    const list = (await localForage.getItem<string[]>("duplicateLastNames")) ?? [];
+    setDupLastNames(new Set(list.map(s => String(s))));
+  })();
+}, []);
+
+// preferLastOnly=true: 「苗字のみ」指定を尊重。ただし重複姓ならフルネームを強制
+const formatNameForAnnounce = (p: any, preferLastOnly: boolean) => {
+  if (!p) return "";
+  const ln = String(p.lastName ?? "");
+  const forceFull = ln && dupLastNames.has(ln);
+  if (forceFull) return rubyFull(p);       // 同姓が複数 → フルネーム（ルビ付）
+  return preferLastOnly ? rubyLast(p) : rubyFull(p);
+};
+// =============================================================
+
+
   const headAnnounceKeyRef = useRef<string>("");
 
   // 直前に終了した回情報（得点モーダル表示中に inning/isTop は“次回”へ変わるため）
@@ -1064,20 +1085,10 @@ await saveMatchInfo({
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
     } else if (inning === 1 && isTop) {
-      // ★ 代打/代走/臨時代走が残っているなら先に守備交代へ
-      const order =
-        (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
-      const hasPending = order.some(e =>
-        e?.reason === "代打" || e?.reason === "代走" || e?.reason === "臨時代走"
-      );
-      if (hasPending) {
-        await localForage.setItem("postDefenseSeatIntro", { enabled: true, at: Date.now() });
-        await localForage.setItem("seatIntroLock", true);
-        onSwitchToDefense();
-      } else {
+      // ★ 1回表は必ずシート紹介を先に表示する（代打/代走が残っていても）
         await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+        await localForage.setItem("seatIntroLock", false);
         await goSeatIntroFromOffense();
-      }
     } else {
       onSwitchToDefense();
     }
@@ -1206,26 +1217,25 @@ const updateAnnouncement = () => {
   const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
 
   const isChecked = checkedIds.includes(player.id);
-
-  const rubyLast  = `<ruby>${player.lastName ?? ""}<rt>${player.lastNameKana ?? ""}</rt></ruby>`;
-  const rubyFirst = `<ruby>${player.firstName ?? ""}<rt>${player.firstNameKana ?? ""}</rt></ruby>`;
-  const nameHTML  = isChecked ? rubyLast : (rubyLast + rubyFirst);
-
   const lines: string[] = [];
-  if (isLeadingBatter) {
-    lines.push(`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br />`);
-  }
 
-  if (!isChecked) {
-    lines.push(
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
-      `${posPrefix}${rubyLast}${honorific}、背番号 ${number}。`
-    );
-  } else {
-    lines.push(
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、背番号 ${number}。`
-    );
-  }
+// 既存の rubyLast / rubyFirst は残してOK（posPrefix 等もそのまま使用）
+const nameHTML = isChecked
+  ? formatNameForAnnounce(player, true)    // 「苗字のみ」指定。ただし重複姓ならフル
+  : formatNameForAnnounce(player, false);  // フルネーム
+
+if (!isChecked) {
+  lines.push(
+    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
+    // 2行目の“苗字のみ”も重複姓ならフルにしたいので、ヘルパー経由で生成
+    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}、背番号 ${number}。`
+  );
+} else {
+  lines.push(
+    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、背番号 ${number}。`
+  );
+}
+
 
   const html = lines.join("");
   setAnnouncement(<span dangerouslySetInnerHTML={{ __html: html }} />);

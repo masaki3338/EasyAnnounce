@@ -150,9 +150,44 @@ useEffect(() => {
     return players.find((p) => Number(p.id) === id);
   };
 
+  // スタメンが9人そろっているかを判定するヘルパー
+const getStartingNineCount = () => {
+  // まず打順リストを優先（存在すればそれで判定）
+  const idsFromOrder =
+    Array.isArray(battingOrder)
+      ? battingOrder
+          .map((e: any) => Number(e?.id ?? e)) // e.id でも e が数値でも対応
+          .filter((id: number) => Number.isFinite(id))
+      : [];
+
+  if (idsFromOrder.length >= 9) return 9;
+
+  // 打順が未設定/不足時は守備配置から補完（DH考慮）
+  const pos9 = ["投","捕","一","二","三","遊","左","中","右"];
+  const hasDH = assignments && assignments["指"] != null;
+  const orderPos = hasDH ? [...pos9.filter(p => p !== "投"), "指"] : pos9;
+
+  const idsFromAssign =
+    orderPos
+      .map((p) => assignments?.[p])
+      .filter((v) => v != null)
+      .map((v) => Number(v))
+      .filter((id) => Number.isFinite(id));
+
+  // 重複除去してカウント
+  const uniq = [...new Set(idsFromAssign)].slice(0, 9);
+  return uniq.length;
+};
+
 // 1) ボタン押下時はモーダルを開くだけ
 const handleStart = async () => {
-  setShowStartHint(true);
+   const count = getStartingNineCount();
+   if (count < 9) {
+     alert("スターティングメンバーを9人設定してください");
+     return;
+   }
+   // 問題なければ開始確認モーダルへ
+   setShowStartHint(true);
 };
 
 // 2) モーダルの「OK」で本当に開始（元の handleStart の中身をこちらへ）
@@ -178,6 +213,9 @@ const proceedStart = async () => {
   await localForage.removeItem("announcedIds");
   // 出場済み（リエントリー判定などに使う）をクリア
   await localForage.removeItem("usedPlayerInfo");
+   // 🧹 守備交代の取消／やり直し履歴も完全クリア（前試合の残骸を消す）
+  await clearUndoRedoHistory();
+
 // === スタメンを「保存した状態」にする（StartingLineupの保存と同等） ===
 
 // 1) 採用する元データ（draft > saved > state > old）
@@ -227,6 +265,29 @@ await localForage.setItem("benchOutIds",            adoptB);
 await localForage.removeItem("startingassignments_draft");
 await localForage.removeItem("startingBattingOrder_draft");
 await localForage.removeItem("startingBenchOutIds_draft");
+// === NEW: 同姓（苗字）重複チェック → LocalForage 保存 =================
+{
+  const team: any = await localForage.getItem("team");
+  const allPlayers: any[] = Array.isArray(team?.players) ? team.players : [];
+
+  const benchOut: number[] = (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
+
+  const benchInPlayers = allPlayers.filter(p => !benchOut.includes(Number(p?.id)));
+
+  const counter = new Map<string, number>();
+  for (const p of benchInPlayers) {
+    const ln = String(p?.lastName ?? "").trim();
+    if (!ln) continue;
+    counter.set(ln, (counter.get(ln) ?? 0) + 1);
+  }
+
+  const duplicateLastNames = [...counter.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([ln]) => ln);
+
+  await localForage.setItem("duplicateLastNames", duplicateLastNames);
+}
+// =======================================================================
 
 
   // ★ 相手チーム名など既存の情報は残しつつ、回・表裏・攻守だけ初期化

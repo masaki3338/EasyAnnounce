@@ -11,8 +11,11 @@ interface Props {
 type PositionInfo = {
   lastName: string;
   lastNameKana: string;
+  firstName: string;       // ★追加
+  firstNameKana: string;   // ★追加
   honorific: string;
 };
+
 
 /* ==== ミニSVGアイコン（依存なし） ==== */
 const IconBack = () => (
@@ -63,6 +66,14 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
   const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
+  // ★ 同姓（苗字）重複セット
+  const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    (async () => {
+      const list = (await localForage.getItem<string[]>("duplicateLastNames")) ?? [];
+      setDupLastNames(new Set(list.map(s => String(s))));
+    })();
+  }, []);
 
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -115,11 +126,14 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
      if (typeof playerId !== "number") continue;
      const player = team.players.find((p: any) => p.id === playerId);
      if (!player) continue;
-     posMap[pos] = {
-       lastName: player.lastName,
-       lastNameKana: player.lastNameKana,
-       honorific: player.isFemale ? "さん" : "くん",
-     };
+      posMap[pos] = {
+        lastName: player.lastName,
+        lastNameKana: player.lastNameKana,
+        firstName: player.firstName,         // ★追加
+        firstNameKana: player.firstNameKana, // ★追加
+        honorific: player.isFemale ? "さん" : "くん",
+      };
+
    }
    setPositions(posMap);
  }
@@ -138,8 +152,13 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
       [
         `${inning} 守ります、${teamName} のシートをお知らせします。`,
         ...positionLabels.map(([pos, label]) => {
-          const player = positions[pos];
-          return `${label} ${player?.lastNameKana || "（みょうじ）"} ${player?.honorific || "くん"}`;
+          const p = positions[pos];
+          const ln = p?.lastName || "";
+          const forceFull = ln && dupLastNames.has(ln);
+          const yomi = forceFull
+            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
+            : `${p?.lastNameKana || ""}`;
+          return `${label} ${yomi} ${p?.honorific || "くん"}`;
         }),
       ].join("、") + "です。";
 
@@ -163,10 +182,17 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
     positionLabels
       .map(([pos, label]) => {
         const player = positions[pos];
-        const nameHTML = player?.lastName
-          ? `<ruby>${player.lastName}<rt>${player.lastNameKana || ""}</rt></ruby>`
+        const p = positions[pos];
+        const ln = p?.lastName || "";
+        const forceFull = ln && dupLastNames.has(ln);
+        const nameHTML = p?.lastName
+          ? (forceFull
+              ? `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
+                `<ruby>${p.firstName || ""}<rt>${p.firstNameKana || ""}</rt></ruby>`
+              : `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`)
           : "（苗字）";
-        return `${label}　${nameHTML}　${player?.honorific || "くん"}`;
+        return `${label}　${nameHTML}　${p?.honorific || "くん"}`;
+
       })
       .join("<br />") + "です。";
 
