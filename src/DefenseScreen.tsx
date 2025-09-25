@@ -570,7 +570,7 @@ await localForage.setItem("pitchCounts", {
   // ✅ この回の投球数は常に表示（ふりがな付き）
   newMessages.push(
 
-    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の、投球数は${newCurrent}球です。`
+    `ピッチャー${pitcherRuby}${pitcherSuffix}、この回の投球数は${newCurrent}球です。`
   );
 
     // ✅ イニングが変わっている時だけトータルも表示
