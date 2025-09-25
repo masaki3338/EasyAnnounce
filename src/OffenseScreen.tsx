@@ -1216,8 +1216,12 @@ const updateAnnouncement = () => {
   const posNameForAnnounce = (pos === "代打" || pos === "代走") ? "" : rawPosName;
   const posPrefix = posNameForAnnounce ? `${posNameForAnnounce} ` : "";
 
-  const isChecked = checkedIds.includes(player.id);
   const lines: string[] = [];
+  if (isLeadingBatter) {
+    lines.push(`${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br />`);
+  }
+  const isChecked = checkedIds.includes(player.id);
+
 
 // 既存の rubyLast / rubyFirst は残してOK（posPrefix 等もそのまま使用）
 const nameHTML = isChecked
