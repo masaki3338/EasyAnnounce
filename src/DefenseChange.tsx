@@ -24,12 +24,12 @@ const getPlayerById = (players: Player[], id: number | null): Player | undefined
 
 type Player = {
   id: number;
-  name?: string;
   lastName?: string;
   firstName?: string;
   lastNameKana?: string;
-  irstNameKana?: string; 
+  firstNameKana?: string; // ← 修正
   number: string;
+  isFemale?: boolean;
 };
 
 type ChangeRecord =
@@ -137,13 +137,33 @@ const firstRuby = (p: Player): string => ruby(p.firstName, p.firstNameKana);
 const honor = (p: Player): string => (p.isFemale ? "さん" : "くん");
 
 /* 姓ルビ＋名ルビ（敬称なし） */
-const fullName = (p: Player): string => `${lastRuby(p)}${firstRuby(p)}`;
+const fullName = (p: Player): string => `${nameRuby(p)}${firstRuby(p)}`;
 
 /* 姓ルビ＋名ルビ＋敬称（控えから入る側） */
 const fullNameHonor = (p: Player): string => `${fullName(p)}${honor(p)}`;
 
 /* 姓ルビ＋敬称（移動／交代される側） */
-const lastWithHonor = (p: Player): string => `${lastRuby(p)}${honor(p)}`;
+const lastWithHonor = (p: Player): string => `${nameRuby(p)}${honor(p)}`;
+// === NEW: 重複姓対応の名前ヘルパー ===============================
+// window.__dupLastNames（上の useEffect で設定）を参照します
+const isDupLast = (p?: Player) => {
+  if (!p || !p.lastName) return false;
+  const set: Set<string> | undefined = (window as any).__dupLastNames;
+  return !!set && set.has(String(p.lastName));
+};
+
+/** 画面用：重複姓なら「姓ルビ＋名ルビ」、単独なら「姓ルビのみ」 */
+const nameRuby = (p: Player): string => {
+  return isDupLast(p) ? `${lastRuby(p)}${firstRuby(p)}` : lastRuby(p);
+};
+
+/** 本文用：重複姓ならフル（姓＋名）＋敬称、単独なら姓のみ＋敬称 */
+const nameWithHonor = (p: Player): string => `${nameRuby(p)}${honor(p)}`;
+
+/** 常にフル（姓＋名）＋敬称（控えが入る側などフル固定にしたい時用） */
+const fullNameWithHonor = (p: Player): string => `${lastRuby(p)}${firstRuby(p)}${honor(p)}`;
+// ================================================================
+
  /* ================================= */
 // ✅ 「先ほど◯◯致しました」を安全生成（未定義→代打にフォールバック）
 const recentHead = (reason?: string) => {
@@ -370,8 +390,8 @@ if (isOriginalStarter || isBackToSameStarter) {
   // ---- 本文（末尾は後段で句点付与）----
   console.log("[SAME-POS-PINCH] add line (sono-mama)", { latestPinchId, currentId, posSym });
   result.push(
-    `先ほど${reasonText}${lastWithHonor(latestPinchPlayer)} に代わりまして、` +
-    `${orderPart}${fullNameHonor(subPlayer)} がそのまま入り ${posJP[posSym]}、`
+  `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)} に代わりまして、` +
+  `${orderPart}${fullNameWithHonor(subPlayer)} がそのまま入り ${posJP[posSym]}、`
   ); 
 
 // ★ 打順は subPlayer 本人の現在の打順を優先
@@ -381,7 +401,7 @@ if (subOrderIdx >= 0) {
   if (!lineupLines.some(l => l.order === subOrder && l.text.includes(posJP[posSym]))) {
     lineupLines.push({
       order: subOrder,
-      text: `${subOrder}番 ${posJP[posSym]} ${fullNameHonor(subPlayer)} 背番号 ${subPlayer.number}`,
+      text: `${subOrder}番 ${posJP[posSym]} ${fullNameWithHonor(subPlayer)} 背番号 ${subPlayer.number}`,
     });
   }
 }
@@ -478,10 +498,10 @@ const useSimpleForm =
 
 // 直後でなければ「先ほど〜致しました」を使わず、位置付きの通常形にする
 const firstLine = useSimpleForm
-  ? `${posFull2} ${lastWithHonor(refPlayer)}に代わりまして、` +
-    `${lastWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`
-  : `先ほど${phrase}致しました${lastWithHonor(refPlayer)} に代わりまして、` +
-    `${lastWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`;
+  ? `${posFull2} ${nameWithHonor(efPlayer)}に代わりまして、` +
+    `${nameWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`
+  : `先ほど${phrase}致しました${nameWithHonor(refPlayer)} に代わりまして、` +
+    `${nameWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`;
 
 //result.push(firstLine);
 console.log("[REENTRY-LINE]", useSimpleForm ? "simple" : "recent", {
@@ -517,13 +537,13 @@ if (
   !lineupLines.some(l =>
     l.order === orderB &&
     l.text.includes(posFull2) &&
-    l.text.includes(lastRuby(B2))
+    l.text.includes(nameRuby(B2))
   )
 ) {
   lineupLines.push({
     order: orderB,
     // リエントリーは背番号なしの体裁
-    text: `${orderB}番 ${posFull2} ${lastWithHonor(B2)}`
+    text: `${orderB}番 ${posFull2} ${nameWithHonor(B2)}`
   });
 }
 
@@ -566,15 +586,15 @@ if (mixedR) {
   const orderTo = battingOrder.findIndex(e => e.id === mixedR.to.id) + 1;
   const orderPart = orderTo > 0 ? `${orderTo}番に ` : "";
   result.push(
-    `${posFull} ${lastWithHonor(mixedR.from)}に代わりまして` +
-    `${orderPart}${fullNameHonor(mixedR.to)}が入り${posJP[mixedR.toPos]}、`
+    `${posFull} ${nameWithHonor(mixedR.from)}に代わりまして` +
+    `${orderPart}${fullNameWithHonor(mixedR.to)}が入り${posJP[mixedR.toPos]}、`
   );
 
   // 打順エリア（6番サード小池…）を必ず積む
   if (orderTo > 0 && !lineupLines.some(l => l.order === orderTo && l.text.includes(posJP[mixedR.toPos]))) {
     lineupLines.push({
       order: orderTo,
-      text: `${orderTo}番 ${posJP[mixedR.toPos]} ${fullNameHonor(mixedR.to)} 背番号 ${mixedR.to.number}`,
+      text: `${orderTo}番 ${posJP[mixedR.toPos]} ${fullNameWithHonor(mixedR.to)} 背番号 ${mixedR.to.number}`,
     });
   }
 
@@ -586,12 +606,12 @@ if (mixedR) {
   // フォールバック：純粋なシフト（元々いた選手が他守備へ動いた）だけのとき
   const move = shift.find(s => s.fromPos === posNowSym);
   if (move) {
-    result.push(`${posFull}の ${lastWithHonor(move.player)}が ${posJP[move.toPos]}、`);
+    result.push(`${posFull}の ${nameWithHonor(move.player)}が ${posJP[move.toPos]}、`);
     skipShiftPairs.add(`${move.player.id}|${move.fromPos}|${move.toPos}`);
 
     const orderM = battingOrder.findIndex(e => e.id === move.player.id) + 1;
     if (orderM > 0 && !lineupLines.some(l => l.order === orderM && l.text.includes(posJP[move.toPos]))) {
-      lineupLines.push({ order: orderM, text: `${orderM}番 ${posJP[move.toPos]} ${lastWithHonor(move.player)}` });
+      lineupLines.push({ order: orderM, text: `${orderM}番 ${posJP[move.toPos]} ${nameWithHonor(move.player)}` });
     }
   }
 }
@@ -683,8 +703,8 @@ if (isBOnField) continue;
 
     // 1行目：控えが別守備に入る（★打順は書かない）
     lines.push(
-      `先ほど${reasonText}${lastWithHonor(pinch)} に代わりまして、` +
-      `${fullNameHonor(subIn)} が入り ${posJP[subInPos]}、`
+      `先ほど${reasonText}${nameWithHonor(pinch)} に代わりまして、` +
+      `${fullNameWithHonor(subIn)} が入り ${posJP[subInPos]}、`
     );
 
 
@@ -703,15 +723,15 @@ if (isBOnField) continue;
 
     if (movedTrueReason === "代走" || movedTrueReason === "臨時代走") {
       // 代走で入った選手が守備へ → 専用文言（句点で締めて追加入力を防ぐ）
-      lines.push(`先ほど代走致しました${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代走致しました${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAISO");
     } else if (movedTrueReason === "代打") {
       // 代打で入った選手が守備へ
-      lines.push(`先ほど代打致しました${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代打致しました${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAIDA");
     } else {
       // 通常シフト
-      lines.push(`${posJP[movedFromPos]}の ${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
+      lines.push(`${posJP[movedFromPos]}の ${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
       console.log("[SPECIAL] 2nd-line as NORMAL");
     }
 
@@ -734,7 +754,7 @@ const pinchOrderIdx = battingOrder.findIndex(e => e.id === entry.id); // 例：6
 if (pinchOrderIdx >= 0) {
   lineup.push({
     order: pinchOrderIdx + 1,
-    txt: `${pinchOrderIdx + 1}番 ${posJP[subInPos]} ${fullNameHonor(subIn)} 背番号 ${subIn.number}`,
+    txt: `${pinchOrderIdx + 1}番 ${posJP[subInPos]} ${fullNameWithHonor(subIn)} 背番号 ${subIn.number}`,
   });
 }
 
@@ -743,7 +763,7 @@ const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
 if (movedOrder >= 0) {
   lineup.push({
     order: movedOrder + 1,
-    txt: `${movedOrder + 1}番 ${posJP[movedToPos]} ${lastWithHonor(movedPlayer)}`,
+    txt: `${movedOrder + 1}番 ${posJP[movedToPos]} ${nameWithHonor(movedPlayer)}`,
   });
 }
 
@@ -843,8 +863,8 @@ const phraseB = headById(otherId);
 const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
 
 const combined =
-  `先ほど${phraseA}${lastWithHonor(pinchPlayer)}が${posJP[toA]}、\n` +
-  `${prefixB}${phraseB}${lastWithHonor(movedPlayer)}が${posJP[fromA]}に入ります。`;
+  `先ほど${phraseA}${nameWithHonor(pinchPlayer)}が${posJP[toA]}、\n` +
+  `${prefixB}${phraseB}${nameWithHonor(movedPlayer)}が${posJP[fromA]}に入ります。`;
 result.push(combined);
 
   // 二重出力防止
@@ -858,10 +878,10 @@ result.push(combined);
   handledPositions.add(fromA);
 
   // 打順行（重複防止付き）
-  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[toA]} ${lastWithHonor(pinchPlayer)}` });
+  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[toA]} ${nameWithHonor(pinchPlayer)}` });
   const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
   if (movedOrder >= 0) {
-    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[fromA]} ${lastWithHonor(movedPlayer)}` });
+    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[fromA]} ${nameWithHonor(movedPlayer)}` });
   }
   return; // 通常分岐へ流さない
   
@@ -870,17 +890,17 @@ result.push(combined);
 
   // ★ 相手が通常選手の場合は従来通り
 // ★ 相手が通常選手の場合は従来通り（2行に分割 + 重複スキップ登録）
-result.push(`先ほど${entry.reason}致しました${lastWithHonor(pinchPlayer)}が${posJP[pos]}、`);
-result.push(`${posJP[pos]}の ${lastWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
+result.push(`先ほど${entry.reason}致しました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
+result.push(`${posJP[pos]}の ${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
 
 // 以降の shift ループで同じ「movedPlayer のシフト」を出さない
 skipShiftPairs.add(`${movedPlayer.id}|${pos}|${movedToPos}`);
 
 
-  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${lastWithHonor(pinchPlayer)}` });
+  lineupLines.push({ order: idx + 1, text: `${idx + 1}番 ${posJP[pos]} ${nameWithHonor(pinchPlayer)}` });
   const movedOrder = battingOrder.findIndex(e => e.id === movedPlayer.id);
   if (movedOrder >= 0) {
-    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[movedToPos]} ${lastWithHonor(movedPlayer)}` });
+    lineupLines.push({ order: movedOrder + 1, text: `${movedOrder + 1}番 ${posJP[movedToPos]} ${nameWithHonor(movedPlayer)}` });
   }
 
   handledIds.add(entry.id);
@@ -1043,8 +1063,8 @@ replace.forEach((r) => {
       )) {
 
     replaceLines.push(
-      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
-      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
+      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
     );
 
     // 打順行（重複防止）
@@ -1053,12 +1073,12 @@ replace.forEach((r) => {
       !lineupLines.some(l =>
         l.order === r.order &&
         l.text.includes(posJP[r.pos]) &&
-        l.text.includes(lastRuby(r.to))
+        l.text.includes(nameRuby(r.to))
       )
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+        text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
       });
     }
 
@@ -1071,8 +1091,8 @@ replace.forEach((r) => {
 
   if (isReentryBlue(r.to.id)) {
     replaceLines.push(
-      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
-      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
+      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
     );
 
     if (
@@ -1080,12 +1100,12 @@ replace.forEach((r) => {
         !lineupLines.some(l =>
           l.order === r.order &&
           l.text.includes(posJP[r.pos]) &&
-          l.text.includes(lastRuby(r.to))
+          l.text.includes(nameRuby(r.to))
         )
       ) {
         lineupLines.push({
           order: r.order,
-          text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+          text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
         });
       }
 
@@ -1125,8 +1145,8 @@ replace.forEach((r) => {
     console.log("[ANN][REPLACE:fired-reentrySameOrder]", { from: r.from.id, to: r.to.id, pos: r.pos, rOrder: r.order });
     // 本文のみ。末尾の「に入ります。」は後段の整形で付与される
     replaceLines.push(
-      `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、` +
-      `${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
+      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
     );
 
   if (
@@ -1134,12 +1154,12 @@ replace.forEach((r) => {
     !lineupLines.some(l =>
       l.order === r.order &&
       l.text.includes(posJP[r.pos]) &&
-      l.text.includes(lastRuby(r.to))
+      l.text.includes(nameRuby(r.to))
     )
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
+      text: `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
     });
   }
 
@@ -1176,7 +1196,7 @@ console.log("[ANN][REPLACE:check-reentryEarly]", { from: r.from.id, to: r.to.id,
 if (isReentryEarly) {
   console.log("[ANN][REPLACE:fired-reentryEarly]", { from: r.from.id, to: r.to.id, pos: r.pos });
   replaceLines.push(
-    `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+    `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
   );
   handledPlayerIds.add(r.from.id);
   handledPlayerIds.add(r.to.id);
@@ -1205,7 +1225,7 @@ if (pinchFromUsed && isSamePosition) {
 
   // ✅ 確定の一文（末尾はここでは句点なし：後段の終端調整で「。」を付与）
   replaceLines.push(
-    `先ほど${phrase}致しました${lastWithHonor(r.from)} に代わりまして、${orderPart}${fullNameHonor(r.to)} がそのまま入り ${posJP[r.pos]}`
+    `先ほど${phrase}致しました${nameWithHonor(r.from)} に代わりまして、${orderPart}${fullNameWithHonor(r.to)} がそのまま入り ${posJP[r.pos]}`
   );
 
   
@@ -1264,7 +1284,7 @@ let line: string;
 
 if (isReentrySameOrder) {
   console.log("[REPLACE] REENTRY same-order", { from: r.from.id, to: r.to.id, pos: r.pos, order: r.order });
-  line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${lastWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`;
+  line = `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`;
 } else if (isPinchFrom) {
   console.log("[ANN][PINCH:enter]", {
     fromId: r.from.id, toId: r.to.id, pos: r.pos, reasonOfFrom, rOrder: r.order,
@@ -1286,10 +1306,10 @@ if (isReentrySameOrder) {
 
   // 「代打本人が守備に入る」ケースは別ブロックで処理済みなので、
   // ここは「代打に代わって控えが入る」専用にする
-  line = `先ほど${reasonOfFrom}致しました${lastWithHonor(r.from)} に代わりまして、` +
-         `${orderPart}${fullNameHonor(r.to)} が入り ${posJP[r.pos]}`;
+  line = `先ほど${reasonOfFrom}致しました${nameWithHonor(r.from)} に代わりまして、` +
+         `${orderPart}${fullNameWithHonor(r.to)} が入り ${posJP[r.pos]}`;
 } else {
-  line = `${posJP[r.pos]} ${lastWithHonor(r.from)} に代わりまして、${fullNameHonor(r.to)}`;
+  line = `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${fullNameWithHonor(r.to)}`;
 }
 
 replaceLines.push(line);
@@ -1311,8 +1331,8 @@ if (r.order > 0 && !lineupLines.some(l =>
   lineupLines.push({
     order: r.order,
     text: isReentryTo
-      ? `${r.order}番 ${posJP[r.pos]} ${lastWithHonor(r.to)}`
-      : `${r.order}番 ${posJP[r.pos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+      ? `${r.order}番 ${posJP[r.pos]} ${nameWithHonor(r.to)}`
+      : `${r.order}番 ${posJP[r.pos]} ${fullNameWithHonor(r.to)} 背番号 ${r.to.number}`
   });
 }
 
@@ -1396,10 +1416,10 @@ const buildFromHead = (fromId: number, fromPosSym: string | undefined): string =
     const kind = reason === "代走" ? "代走致しました"
               : reason === "臨時代走" ? "臨時代走"
               : "代打致しました";
-    return `先ほど${kind}${p ? lastWithHonor(p) : ""} に代わりまして、`;
+    return `先ほど${kind}${p ? nameWithHonor(p) : ""} に代わりまして、`;
   }
   const posFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
-  return `${posFull ? `${posFull}の ` : ""}${p ? lastWithHonor(p) : ""} に代わりまして、`;
+  return `${posFull ? `${posFull}の ` : ""}${p ? nameWithHonor(p) : ""} に代わりまして、`;
 };
 
 mixed.forEach((r, i) => {
@@ -1444,18 +1464,18 @@ const reasonOf = (pid: number): string | undefined => {
 };
 const head = buildFromHead(r.from.id, r.fromPos); // ← 代打/代走でなければ「〈守備〉の 清水くん…」
 addReplaceLine(
-  `${head}${lastWithHonor(r.to)} がリエントリーで入り ${posJP[r.toPos]}`,
+  `${head}${nameWithHonor(r.to)} がリエントリーで入り ${posJP[r.toPos]}`,
   i === mixed.length - 1 && shift.length === 0
 );
 
 
 if (
   r.order > 0 &&
-  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]) && l.text.includes(lastRuby(r.to)))
+  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]) && l.text.includes(nameRuby(r.to)))
 ) {
   lineupLines.push({
     order: r.order,
-    text: `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
+    text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
   });
 }
 
@@ -1482,8 +1502,8 @@ if (
     const orderPart = r.order > 0 ? `${r.order}番に ` : "";
     // 例：「ライトの奥村くんに代わりまして、リエントリーで小池くんがライトへ」
     addReplaceLine(
-      `${posJP[r.fromPos]}の ${lastWithHonor(r.from)} に代わりまして、` +
-      `${orderPart}${lastWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
+      `${posJP[r.fromPos]}の ${nameWithHonor(r.from)} に代わりまして、` +
+      `${orderPart}${nameWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   
@@ -1494,7 +1514,7 @@ if (
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
+        text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
       });
     }
 
@@ -1518,7 +1538,7 @@ if (
       "代打致しました"; // ←「しました」にしたい場合はここを変更
 
     addReplaceLine(
-      `先ほど${phrase}${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+      `先ほど${phrase}${nameWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameWithHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   } else {
@@ -1530,7 +1550,7 @@ if (
   const fromFull = fromSym ? posJP[fromSym] : "";
 
   addReplaceLine(
-    `${fromFull ? `${fromFull}の ` : ""}${lastWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+    `${fromFull ? `${fromFull}の ` : ""}${nameWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameWithHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
     i === mixed.length - 1 && shift.length === 0
   );
 
@@ -1553,8 +1573,8 @@ if (
     lineupLines.push({
       order: r.order,
       text: isReentryTo
-        ? `${r.order}番 ${posJP[r.toPos]} ${lastWithHonor(r.to)}`
-        : `${r.order}番 ${posJP[r.toPos]} ${fullNameHonor(r.to)} 背番号 ${r.to.number}`
+        ? `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
+        : `${r.order}番 ${posJP[r.toPos]} ${fullNameWithHonor(r.to)} 背番号 ${r.to.number}`
     });
   }
 }
@@ -1674,23 +1694,23 @@ if (pinchEntry) {
     const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
 
     result.push(
-      `先ほど${phraseA}${lastWithHonor(playerA)} が ${posJP[toA]}、` +
-      `${prefixB}${phraseB}${lastWithHonor(playerB)} が ${posJP[fromA]}。`
+      `先ほど${phraseA}${nameWithHonor(playerA)} が ${posJP[toA]}、` +
+      `${prefixB}${phraseB}${nameWithHonor(playerB)} が ${posJP[fromA]}。`
     );
 
     // 打順行（重複しないようガード）
     if (
       typeof s.order === "number" &&
-      !lineupLines.some((l) => l.order === s.order && l.text.includes(posJP[toA]) && l.text.includes(lastRuby(playerA)))
+      !lineupLines.some((l) => l.order === s.order && l.text.includes(posJP[toA]) && l.text.includes(nameRuby(playerA)))
     ) {
-      lineupLines.push({ order: s.order, text: `${s.order}番 ${posJP[toA]} ${lastWithHonor(playerA)}` });
+      lineupLines.push({ order: s.order, text: `${s.order}番 ${posJP[toA]} ${nameWithHonor(playerA)}` });
     }
     const otherOrder = battingOrder.findIndex((e) => e.id === playerB.id);
     if (
       otherOrder >= 0 &&
-      !lineupLines.some((l) => l.order === otherOrder + 1 && l.text.includes(posJP[fromA]) && l.text.includes(lastRuby(playerB)))
+      !lineupLines.some((l) => l.order === otherOrder + 1 && l.text.includes(posJP[fromA]) && l.text.includes(nameRuby(playerB)))
     ) {
-      lineupLines.push({ order: otherOrder + 1, text: `${otherOrder + 1}番 ${posJP[fromA]} ${lastWithHonor(playerB)}` });
+      lineupLines.push({ order: otherOrder + 1, text: `${otherOrder + 1}番 ${posJP[fromA]} ${nameWithHonor(playerB)}` });
     }
 
     // 後段の通常処理に流れないよう両者＆両ポジションを処理済みに
@@ -1722,10 +1742,10 @@ if (pinchEntry) {
   );
   const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
   // 「…が センターへ、」の形にする（最後は終端調整で句点）
-  result.push(`${headText}${lastWithHonor(s.player)} が ${tail}へ${ends}`);
+  result.push(`${headText}${nameWithHonor(s.player)} が ${tail}へ${ends}`);
 } else {
   // 通常のシフト出力（従来どおり）
-  result.push(`${head}の ${lastRuby(s.player)}${h} が ${tail} ${ends}`);
+  result.push(`${head}の ${nameRuby(s.player)}${h} が ${tail} ${ends}`);
 }
 // ↑↑↑ ここまで置き換え ↑↑↑
 
@@ -1734,7 +1754,7 @@ if (pinchEntry) {
 // ✅ lineupLines の重複防止付き追加
 if (
   !lineupLines.some(l =>
-    l.order === s.order && l.text.includes(tail) && l.text.includes(lastRuby(s.player))
+    l.order === s.order && l.text.includes(tail) && l.text.includes(nameRuby(s.player))
   )
 ) {
   // ── 追加: DH運用中の「投⇄捕」入替は打順欄には積まない（守備欄だけに出す）
@@ -1746,7 +1766,7 @@ if (
   if (!isPitcherCatcherSwap) {
     lineupLines.push({
       order: s.order,
-      text: `${s.order}番 ${tail} ${lastRuby(s.player)}${h}`
+      text: `${s.order}番 ${tail} ${nameRuby(s.player)}${h}`
     });
   }
 }
@@ -2164,6 +2184,20 @@ const speakVisibleAnnouncement = () => {
     return "";
   };
 
+  // ★ 同姓（苗字）重複セットを読み込む
+  const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    (async () => {
+      const list = (await localForage.getItem<string[]>("duplicateLastNames")) ?? [];
+      const set = new Set(list.map(String));
+      setDupLastNames(set);
+
+      // ヘルパーがどこからでも参照できるように（top-level関数からも使える）
+      (window as any).__dupLastNames = set;
+    })();
+  }, []);
+
+
   // モーダル内の“見えているHTML”を変換
   let text = toReadable(root);
 
@@ -2276,6 +2310,7 @@ const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 const snapshotRef = useRef<string | null>(null);
 // 初回の基準スナップショットを一度だけ作るためのフラグ
 const initDoneRef = useRef(false);
+
 
 // 🔽 これを追加
 useEffect(() => {
@@ -2894,6 +2929,37 @@ const normalText = generateAnnouncementText(
   reentryFixedIds        // ★ 追加
 );
 
+// ▼▼▼ ここから追加（generateAnnouncementText の先頭で宣言）▼▼▼
+const isDup = (p: Player | undefined) =>
+  !!p && !!p.lastName && dupLastNames.has(String(p.lastName));
+
+/** 重複姓なら「姓＋名」をルビで返す。単独なら「姓のみ」をルビで返す */
+const nameRuby = (p: Player | undefined): string => {
+  if (!p) return "";
+  return isDup(p)
+    ? `<ruby>${p.lastName ?? ""}<rt>${p.lastNameKana ?? ""}</rt></ruby>` +
+      `<ruby>${p.firstName ?? ""}<rt>${p.firstNameKana ?? ""}</rt></ruby>`
+    : `<ruby>${p.lastName ?? ""}<rt>${p.lastNameKana ?? ""}</rt></ruby>`;
+};
+
+/** 重複姓なら「姓＋名＋敬称」、単独なら「姓＋敬称」 */
+const nameWithHonor = (p: Player | undefined): string => {
+  if (!p) return "";
+  const honorific = p.isFemale ? "さん" : "くん";
+  return isDup(p)
+    ? `${nameRuby(p)}${honorific}`
+    : `${nameRuby(p)}${honorific}`; // Rubyは同じ。重複時は姓＋名、単独時は姓のみ
+};
+
+/** いつでも「姓＋名＋敬称」（= フル固定。既存の fullNameHonor 相当） */
+const fullNameWithHonor = (p: Player | undefined): string => {
+  if (!p) return "";
+  const honorific = p.isFemale ? "さん" : "くん";
+  return `<ruby>${p.lastName ?? ""}<rt>${p.lastNameKana ?? ""}</rt></ruby>` +
+         `<ruby>${p.firstName ?? ""}<rt>${p.firstNameKana ?? ""}</rt></ruby>` +
+         `${honorific}`;
+};
+// ▲▲▲ ここまで追加 ▲▲▲
 
 // ★ 追加：DH解除押下中は、ヘッダー行の「直後」に告知文を挿入する
 const injectDhDisabledAfterHeader = (txt: string) => {
@@ -2934,8 +3000,8 @@ let normalLines = normalText
 
 // 2) 同一内容の重複行（リエントリーと同旨の通常行）を全ペア分削除
 for (const { A, B, posJP } of reentryPairs) {
-  const keyA = lastWithHonor(A).replace(/\s+/g, "");
-  const keyB = fullNameHonor(B).replace(/\s+/g, "");
+  const keyA = nameWithHonor(A).replace(/\s+/g, "");
+  const keyB = fullNameWithHonor(B).replace(/\s+/g, "");
   normalLines = normalLines.filter((ln) => {
     const t = ln.replace(/\s+/g, "");
     const dup = t.includes(keyA) && t.includes(keyB) && t.includes(posJP);
@@ -2947,8 +3013,8 @@ for (const { A, B, posJP } of reentryPairs) {
 if (reentryPairs.length > 0 && normalLines.length > 0) {
   normalLines = normalLines.map((ln) => {
     for (const { B } of reentryPairs) {
-      const full = fullNameHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby><ruby>碧人<rt>あおと</rt></ruby>くん
-      const last = lastWithHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby>くん
+      const full = fullNameWithHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby><ruby>碧人<rt>あおと</rt></ruby>くん
+      const last = nameWithHonor(B);      // 例: <ruby>米山<rt>よねやま</rt></ruby>くん
       if (ln.includes(full)) {
         // フルネーム→苗字＋敬称 に置換
         ln = ln.replace(full, last);
@@ -4549,8 +4615,13 @@ ${hoverPos === pos
                   const nowPos =
                     Object.entries(assignments).find(([pos, id]) => id === initP)?.[0];
 
-                  if (nowPos && nowPos !== "投" && !changes.some(c => c.type === 4 && c.pos === nowPos)) {
-                    const from = teamPlayers.find(p => p.id === initP);
+                  if (
+                    nowPos &&
+                    nowPos !== "投" &&
+                    !changes.some(c => c.type === 4 && c.pos === nowPos) && // 既に同じshiftがある？
+                    !changes.some(c => c.type === 2 && c.pos === nowPos)   // ★そのポジションに代走行があるなら抑止
+                  ) {
+                    const from = teamPlayers.find((p) => p.id === initP);
                     if (from) {
                       changes.push({
                         key: "pitcher-shift-extra",

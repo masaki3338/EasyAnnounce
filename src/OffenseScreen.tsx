@@ -255,6 +255,10 @@ const formatNameForAnnounce = (p: any, preferLastOnly: boolean) => {
   return preferLastOnly ? rubyLast(p) : rubyFull(p);
 };
 // =============================================================
+// 苗字のみ指定でも、重複姓ならフルを返す formatNameForAnnounce をそのまま使う描画ヘルパ
+const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) => (
+  <span dangerouslySetInnerHTML={{ __html: formatNameForAnnounce(p, preferLastOnly) }} />
+);
 
 
   const headAnnounceKeyRef = useRef<string>("");
@@ -720,6 +724,25 @@ const handleFoulStop = () => {
       // 控え＝「全選手 −（スタメン集合 or DHで含めた投手） −（スタメンが指定したベンチ外）」
       const bench = all.filter((p: any) => !starterIds.has(p.id) && !benchOutIds.includes(p.id));
       setBenchPlayers(bench);
+// bench を setBenchPlayers(bench) した直後に追記
+{
+  const starterList = all.filter((p: any) => starterIds.has(p.id));
+  const pool = [...starterList, ...bench];
+
+  const cnt = new Map<string, number>();
+  pool.forEach((p) => {
+    const ln = String(p?.lastName ?? "").trim();
+    if (!ln) return;
+    cnt.set(ln, (cnt.get(ln) ?? 0) + 1);
+  });
+
+  const dups = [...cnt.entries()]
+    .filter(([, n]) => n >= 2)
+    .map(([ln]) => ln);
+
+  setDupLastNames(new Set(dups));
+  await localForage.setItem("duplicateLastNames", dups);
+}
 
 
       }      
@@ -2315,6 +2338,7 @@ onClick={async () => {
 )}
 
 
+
 {/* ✅ 代打モーダル（スマホ風・中央配置・機能は既存のまま） */}
 {showSubModal && (
   <div className="fixed inset-0 z-50">
@@ -2443,49 +2467,54 @@ onClick={async () => {
                     <br />
                   </>
                 )}
+
                 {currentBatterIndex + 1}番{" "}
-                <ruby>
-                  {getPlayer(battingOrder[currentBatterIndex]?.id)?.lastName}
-                  <rt>{getPlayer(battingOrder[currentBatterIndex]?.id)?.lastNameKana}</rt>
-                </ruby>{" "}
+                {/* 元打者は「苗字のみ」指定だが、重複姓なら自動でフル */}
+                <RenderName p={getPlayer(battingOrder[currentBatterIndex]?.id)} preferLastOnly={true} />{" "}
                 {(getPlayer(battingOrder[currentBatterIndex]?.id)?.isFemale ? "さん" : "くん")} に代わりまして{" "}
-                <ruby>
-                  {selectedSubPlayer?.lastName}
-                  <rt>{selectedSubPlayer?.lastNameKana}</rt>
-                </ruby>{" "}
-                <ruby>
-                  {selectedSubPlayer?.firstName}
-                  <rt>{selectedSubPlayer?.firstNameKana}</rt>
-                </ruby>{" "}
+
+                {/* 代打選手の最初の紹介はフルで見せる */}
+                <RenderName p={selectedSubPlayer} preferLastOnly={false} />{" "}
                 {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、
-                  <br /> {/* 👈 ここを追加 */}
-                  バッターは{" "}
-                <ruby>
-                  {selectedSubPlayer?.lastName}
-                  <rt>{selectedSubPlayer?.lastNameKana}</rt>
-                </ruby>{" "}
-                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、背番号 {selectedSubPlayer?.number}
+                <br />
+
+                バッターは{" "}
+                {/* ここは「苗字のみ」指定だが、重複姓なら自動でフル */}
+                <RenderName p={selectedSubPlayer} preferLastOnly={true} />
+                {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、 
+                背番号 {selectedSubPlayer?.number}
               </span>
+
             </div>
 
             {/* 読み上げ・停止 */}
             {/* 読み上げ／停止（横いっぱい・等幅） */}
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const currentPlayer = getPlayer(battingOrder[currentBatterIndex]?.id);
-                  const sub = selectedSubPlayer;
-                  if (!currentPlayer || !sub) return;
-                  const kanaCurrent = currentPlayer.lastNameKana || currentPlayer.lastName || "";
-                  const kanaSubFull = `${sub.lastNameKana || sub.lastName || ""}${sub.firstNameKana || sub.firstName || ""}`;
-                  const kanaSubLast = sub.lastNameKana || sub.lastName || "";
-                  const honorific = sub.isFemale ? "さん" : "くん";
-                  const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
-                  announce(
-                    `${currentBatterIndex + 1}番 ${kanaCurrent} ${honorificBef} に代わりまして、${kanaSubFull} ${honorific}、` +
-                    `バッターは ${kanaSubLast} ${honorific}、背番号 ${sub.number}`
-                  );
-                }}
+onClick={() => {
+  const currentPlayer = getPlayer(battingOrder[currentBatterIndex]?.id);
+  const sub = selectedSubPlayer;
+  if (!currentPlayer || !sub) return;
+
+  // かな素材（苗字／フル）
+  const kanaCurLast = currentPlayer.lastNameKana || currentPlayer.lastName || "";
+  const kanaCurFull = `${currentPlayer.lastNameKana || currentPlayer.lastName || ""}${currentPlayer.firstNameKana || currentPlayer.firstName || ""}`;
+  const kanaSubLast = sub.lastNameKana || sub.lastName || "";
+  const kanaSubFull = `${sub.lastNameKana || sub.lastName || ""}${sub.firstNameKana || sub.firstName || ""}`;
+
+  // 重複姓ならフルで読む
+  const dupCur = dupLastNames.has(String(currentPlayer.lastName || ""));
+  const dupSub = dupLastNames.has(String(sub.lastName || ""));
+
+  const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
+  const honorific = sub.isFemale ? "さん" : "くん";
+
+  announce(
+    `${currentBatterIndex + 1}番 ${(dupCur ? kanaCurFull : kanaCurLast)} ${honorificBef} に代わりまして、` +
+    `${kanaSubFull} ${honorific}、バッターは ${(dupSub ? kanaSubFull : kanaSubLast)} ${honorific}、背番号 ${sub.number}`
+  );
+}}
+
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                           inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
               >
@@ -2785,27 +2814,25 @@ onClick={async () => {
                         const updated = prev.filter((msg) => !msg.startsWith(prefix));
                         if (!sub) return updated;
 
-                        const rubyLastName = (p: any) =>
-                          `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
-                        const rubyFirstName = (p: any) =>
-                          `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
-                        const rubyFullName = (p: any) => `${rubyLastName(p)}${rubyFirstName(p)}`;
-
+                        // ★ 敬称
                         const honorificFrom = replaced?.isFemale ? "さん" : "くん";
                         const honorificTo = sub?.isFemale ? "さん" : "くん";
 
-                        const fromNameRuby = replaced ? `${rubyLastName(replaced)}${honorificFrom}` : "";
-                        const toNameFull = `${rubyFullName(sub)}${honorificTo}`;
-                        const toNameLast = `${rubyLastName(sub)}${honorificTo}`;
+                        // ★ フル/苗字は formatNameForAnnounce に委譲（重複姓ならフルに自動昇格）
+                        const fromName = replaced ? `${formatNameForAnnounce(replaced, true)}${honorificFrom}` : "";
+                        const toNameFull = `${formatNameForAnnounce(sub, false)}${honorificTo}`;
+                        const toNameLast = `${formatNameForAnnounce(sub, true)}${honorificTo}`;
 
                         const text = checked
-                          ? ((fromNameRuby ? `${prefix} ${fromNameRuby} に代わりまして、` : `${prefix} に代わりまして、`) +
+                          ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
                               `臨時代走、${toNameLast}、臨時代走は ${toNameLast}、背番号 ${sub.number}。`)
-                          : ((fromNameRuby ? `${prefix} ${fromNameRuby} に代わりまして、` : `${prefix} に代わりまして、`) +
+                          : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
                               `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${sub.number}。`);
+
                         setAnnouncementHTML(text);
                         return [...updated, text];
                       });
+
                     }}
                   />
                   <span className="font-bold">臨時代走</span>
@@ -2853,48 +2880,49 @@ onClick={async () => {
                       type="button"
                       disabled={isUsedElsewhere}
                       aria-pressed={isSelected}
-                      onClick={() => {
-                        const base = selectedBase!;
-                        const runnerId =
-                          selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex].id : null;
-                        const replaced = runnerId ? getPlayer(runnerId) : null;
+onClick={() => {
+  const base = selectedBase!;
+  // 代走される元ランナー（打順側）
+  const runnerId = selectedRunnerIndex != null ? battingOrder[selectedRunnerIndex].id : null;
+  const replaced = runnerId ? getPlayer(runnerId) : null;
 
-                        const honorificFrom = replaced?.isFemale ? "さん" : "くん";
-                        const honorificTo = player.isFemale ? "さん" : "くん";
+  // 選択反映
+  setRunnerAssignments(prev => ({ ...prev, [base]: player }));
+  setReplacedRunners(prev => ({ ...prev, [base]: replaced || null }));
+  setSelectedRunnerByBase(prev => ({ ...prev, [base]: player }));
 
-                        const rubyLast = (p: any) =>
-                          `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
-                        const rubyFirst = (p: any) =>
-                          `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
-                        const rubyFull = (p: any) => `${rubyLast(p)}${rubyFirst(p)}`;
+  // 表示用
+  const isTemp = !!tempRunnerFlags[base];
+  const baseKanji = base.replace("1","一").replace("2","二").replace("3","三");
+  const prefix = `${baseKanji}ランナー`;
 
-                        setRunnerAssignments(prev => ({ ...prev, [base]: player }));
-                        setReplacedRunners(prev => ({ ...prev, [base]: replaced || null }));
-                        setSelectedRunnerByBase(prev => ({ ...prev, [base]: player }));
+  // 敬称
+  const honorificFrom = replaced?.isFemale ? "さん" : "くん";
+  const honorificTo   = player.isFemale ? "さん" : "くん";
 
-                        const isTemp = !!tempRunnerFlags[base];
-                        const baseKanji = base.replace("1","一").replace("2","二").replace("3","三");
-                        const prefix = `${baseKanji}ランナー`;
+  // ★重複姓対応：formatNameForAnnounce(person, preferLastOnly)
+  //   preferLastOnly=true → 基本は苗字のみ、同姓重複なら自動でフル（ルビ付）
+  //   preferLastOnly=false → 常にフル（ルビ付）
+  const fromName   = replaced ? `${formatNameForAnnounce(replaced, true)}${honorificFrom}` : "";
+  const toNameFull = `${formatNameForAnnounce(player, false)}${honorificTo}`;
+  const toNameLast = `${formatNameForAnnounce(player,  true)}${honorificTo}`;
 
-                        const fromName =
-                          replaced ? `${rubyLast(replaced)}${honorificFrom}` : "";
-                        const toNameFull = `${rubyFull(player)}${honorificTo}`;
-                        const toNameLast = `${rubyLast(player)}${honorificTo}`;
+  // 文言（HTML）
+  const text = isTemp
+    ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+        `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
+    : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+        `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`);
 
-                        const text = isTemp
-                          ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
-                              `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
-                          : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
-                              `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`);
+  // 同じ塁の既存テキストを置き換え
+  setRunnerAnnouncement(prev => {
+    const updated = prev.filter(msg =>
+      !msg.startsWith(`${base}ランナー`) && !msg.startsWith(`${baseKanji}ランナー`)
+    );
+    return [...updated, text];
+  });
+}}
 
-                        setRunnerAnnouncement(prev => {
-                          const updated = prev.filter(msg =>
-                            !msg.startsWith(`${base}ランナー`) &&
-                            !msg.startsWith(`${baseKanji}ランナー`)
-                          );
-                          return [...updated, text];
-                        });
-                      }}
                       className={[
                         "text-sm px-3 py-2 rounded-xl border text-center transition active:scale-[0.99]",
                         isUsedElsewhere

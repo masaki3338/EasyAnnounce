@@ -331,9 +331,8 @@ return (
     {/* 本体：カード群 */}
     <main className="w-full max-w-md mt-5 space-y-5">
 
-      {/* 大会名 ＋ 本日の 第n試合 */}
-{/* 大会名 ＋ 本日の 第n試合 */}
-<div className="flex-1 space-y-2">
+{/* 大会名（1行目） */}
+<div className="space-y-2">
   {/* 大会名ラベル */}
   <label className="block text-xs text-white/70 mb-1">大会名</label>
 
@@ -423,6 +422,59 @@ return (
     </button>
   </div>
 </div>
+
+{/* 本日の試合 + 次の試合（2行目） */}
+<div className="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
+  {/* 左：本日の 第n試合 */}
+  <div className="w-full sm:w-40">
+    <label className="block text-xs text-white/70 mb-1">本日の試合</label>
+    <select
+      value={matchNumber}
+      onChange={async (e) => {
+        const num = Number(e.target.value);
+        setMatchNumber(num);
+        const existing = await localForage.getItem<any>("matchInfo");
+        await localForage.setItem("matchInfo", { ...(existing || {}), matchNumber: num });
+        await localForage.setItem("matchNumberStash", num);
+        console.log("[MC:change] matchNumber saved →", num);
+      }}
+      className="w-full p-3 rounded-xl bg-white text-gray-900 border border-white/20"
+    >
+      {[1, 2, 3, 4, 5].map((num) => (
+        <option key={num} value={num}>
+          第{num}試合
+        </option>
+      ))}
+    </select>
+  </div>
+
+  {/* 右：次の試合 あり/なし（ラジオ） */}
+  <fieldset className="flex items-center gap-4 p-3 rounded-xl bg-white/10 border border-white/10">
+    <legend className="text-xs text-white/70">次の試合</legend>
+    <label className="inline-flex items-center gap-2 text-sm">
+      <input
+        type="radio"
+        name="nextGame"
+        className="w-4 h-4 accent-rose-600"
+        checked={!noNextGame}
+        onChange={() => setNoNextGame(false)}
+      />
+      あり
+    </label>
+    <label className="inline-flex items-center gap-2 text-sm">
+      <input
+        type="radio"
+        name="nextGame"
+        className="w-4 h-4 accent-rose-600"
+        checked={noNextGame}
+        onChange={() => setNoNextGame(true)}
+      />
+      なし
+    </label>
+  </fieldset>
+</div>
+
+
 
 
 
@@ -520,7 +572,7 @@ return (
       checked={isTwoUmp === true}
       onChange={() => setIsTwoUmp(true)}
     />
-    2審制
+    2審
   </label>
   <label className="inline-flex items-center gap-1">
     <input
@@ -530,7 +582,7 @@ return (
       checked={isTwoUmp === false}
       onChange={() => setIsTwoUmp(false)}
     />
-    4審制
+    4審
   </label>
       <span className="ml-2 text-xs text-white/70 whitespace-nowrap">
       後攻チームのみ使用
