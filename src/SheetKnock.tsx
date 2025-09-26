@@ -264,8 +264,7 @@ const speak = async (text: string, key: string) => {
   };
 
   const startTimer = () => {
-    //if (timeLeft === 0) setTimeLeft(420); // 7分
-    if (timeLeft === 0) setTimeLeft(180); // 7分
+    if (timeLeft === 0) setTimeLeft(420); // 7分
     setTimerActive(true);
     warned2Min.current = false;
   };
@@ -431,7 +430,7 @@ const speak = async (text: string, key: string) => {
   {/* 7分タイマー（元のUIをそのまま移植） */}
   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
     <div className="text-4xl font-black tracking-widest tabular-nums">
-      {timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
+      ⌛{timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
     </div>
     <div className="flex items-center gap-2">
       {timeLeft === 0 && !timerActive ? (
