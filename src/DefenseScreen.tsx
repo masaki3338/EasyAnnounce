@@ -871,10 +871,10 @@ const handlePitchLimitSpeak = () => {
   </span>
 <div className="flex flex-wrap justify-center gap-x-1 text-center">
   <span className="whitespace-nowrap">
-    {myTeamName || "自チーム"} 🆚
+    {myTeamName || "自チーム"} 
   </span>
   <span className="whitespace-normal break-words">
-    {opponentTeamName || "対戦相手"}
+    🆚{opponentTeamName || "対戦相手"}
   </span>
 </div>
 

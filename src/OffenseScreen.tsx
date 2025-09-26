@@ -1356,10 +1356,10 @@ useEffect(() => {
         </span>
         <div className="flex flex-wrap justify-center gap-x-1 text-center">
   <span className="whitespace-nowrap">
-    {teamName || "自チーム"} 🆚
+    {teamName || "自チーム"}
   </span>
   <span className="whitespace-normal break-words">
-    {opponentTeam || "対戦相手"}
+    🆚{opponentTeam || "対戦相手"}
   </span>
 </div>
       </h2>
