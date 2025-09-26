@@ -265,7 +265,7 @@ const saveTeam = async () => {
         onClick={handleBackup}
          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow active:scale-95"
       >
-        💾 バックアップ
+        💽 バックアップ
       </button>
 
       <label className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl shadow active:scale-95 cursor-pointer">
@@ -390,12 +390,24 @@ const saveTeam = async () => {
         </ul>
       </div>
 
-      <button
-        onClick={saveTeam}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl text-lg font-bold shadow active:scale-95"
-      >
-        💾 保存する
-      </button>
+{/* 保存ボタンカード（横いっぱい・常に下に固定表示） */}
+<div className="sticky bottom-0 left-0 right-0 
+                w-full px-0">   {/* ← w-full をここに追加して親を画面幅いっぱいに */}
+  <div className="px-4 py-3 
+                  bg-gradient-to-t from-gray-900/95 to-gray-900/80 
+                  backdrop-blur-md border-t border-white/10">
+    <button
+      onClick={saveTeam}
+      className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white 
+                 text-lg font-extrabold rounded-none shadow-lg 
+                 active:scale-95 transition"
+    >
+     💾 保存する
+    </button>
+  </div>
+</div>
+
+
     </div>
   );
 };
