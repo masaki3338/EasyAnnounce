@@ -557,39 +557,48 @@ return (
 
 {/* 審判 */}
  <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-  <div className="flex items-center gap-3 mb-3">
+<div className="mb-3">
+  {/* 審判ラベル行 */}
+  <div className="flex items-center gap-3 mb-2">
     <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
       <IconUmpire />
     </div>
     <div className="font-semibold">審判</div>
-{/* 2審制/4審制 ラジオ（審判の右隣に配置） */}
-<div className="ml-3 inline-flex items-center gap-4 text-sm select-none" role="radiogroup" aria-label="審判人数">
-  <label className="inline-flex items-center gap-1">
-    <input
-      type="radio"
-      name="umpireMode"
-      className="w-4 h-4 accent-emerald-600"
-      checked={isTwoUmp === true}
-      onChange={() => setIsTwoUmp(true)}
-    />
-    2審
-  </label>
-  <label className="inline-flex items-center gap-1">
-    <input
-      type="radio"
-      name="umpireMode"
-      className="w-4 h-4 accent-emerald-600"
-      checked={isTwoUmp === false}
-      onChange={() => setIsTwoUmp(false)}
-    />
-    4審
-  </label>
-      <span className="ml-2 text-xs text-white/70 whitespace-nowrap">
-      後攻チームのみ使用
-    </span>
-</div>
+  </div>
+
+  {/* 2審制/4審制 ラジオ（審判の下に配置） */}
+  <div
+    className="ml-14 flex flex-col gap-2 text-sm select-none"
+    role="radiogroup"
+    aria-label="審判人数"
+  >
+    <div className="flex gap-4">
+      <label className="inline-flex items-center gap-1">
+        <input
+          type="radio"
+          name="umpireMode"
+          className="w-4 h-4 accent-emerald-600"
+          checked={isTwoUmp === true}
+          onChange={() => setIsTwoUmp(true)}
+        />
+        2審
+      </label>
+      <label className="inline-flex items-center gap-1">
+        <input
+          type="radio"
+          name="umpireMode"
+          className="w-4 h-4 accent-emerald-600"
+          checked={isTwoUmp === false}
+          onChange={() => setIsTwoUmp(false)}
+        />
+        4審
+      </label>
+          <span className="text-xs text-white/70">後攻チームのみ使用</span>
+    </div>
 
   </div>
+</div>
+
 
   <div className="space-y-3">
     {umpires.slice(0, isTwoUmp ? 2 : 4).map((umpire, index) => (
