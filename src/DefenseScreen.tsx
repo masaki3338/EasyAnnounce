@@ -869,9 +869,16 @@ const handlePitchLimitSpeak = () => {
   <span className="px-2 py-1 rounded bg-orange-500 text-white whitespace-nowrap flex-shrink-0">
     守備中
   </span>
-  <span className="truncate">
-    {myTeamName || "自チーム"} 🆚 {opponentTeamName || "対戦相手"}
+<div className="flex flex-wrap justify-center gap-x-1 text-center">
+  <span className="whitespace-nowrap">
+    {myTeamName || "自チーム"} 🆚
   </span>
+  <span className="whitespace-normal break-words">
+    {opponentTeamName || "対戦相手"}
+  </span>
+</div>
+
+
 </h2>
 
 

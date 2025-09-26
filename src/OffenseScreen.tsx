@@ -1354,7 +1354,14 @@ useEffect(() => {
         <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap flex-shrink-0">
           攻撃中
         </span>
-        <span className="truncate">{teamName || "自チーム"} 🆚 {opponentTeam || "対戦相手"}</span>
+        <div className="flex flex-wrap justify-center gap-x-1 text-center">
+  <span className="whitespace-nowrap">
+    {teamName || "自チーム"} 🆚
+  </span>
+  <span className="whitespace-normal break-words">
+    {opponentTeam || "対戦相手"}
+  </span>
+</div>
       </h2>
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
