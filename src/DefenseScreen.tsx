@@ -870,7 +870,7 @@ const handlePitchLimitSpeak = () => {
     守備中
   </span>
   <span className="truncate">
-    {myTeamName || "自チーム"} vs {opponentTeamName || "対戦相手"}
+    {myTeamName || "自チーム"} 🆚 {opponentTeamName || "対戦相手"}
   </span>
 </h2>
 
@@ -1145,15 +1145,26 @@ const handlePitchLimitSpeak = () => {
     🔀守備交代
   </button>
 
-  {/* イニング終了：幅7（元の処理をそのまま移植） */}
-  <button
-    onClick={async () => {
-      setShowModal(true);
-    }}
-    className="col-span-7 h-12 bg-blue-600 text-white rounded shadow hover:bg-blue-700 font-semibold flex items-center justify-center"
-  >
-    イニング終了
-  </button>
+
+{/* イニング終了：幅7（強調版） */}
+<button 
+  onClick={async () => {
+    setShowModal(true);
+  }}
+  className="
+    col-span-7 h-14
+    bg-black hover:bg-gray-900
+    text-white font-extrabold text-lg tracking-widest
+    rounded-2xl shadow-lg
+    transform hover:scale-[1.03] active:scale-[0.97]
+    transition-all duration-150
+    flex items-center justify-center gap-2
+    ring-4 ring-gray-500/50
+  "
+>
+  ⚾ イニング終了 ⚾
+</button>
+
 </div>
 
 {/* ✅ 臨時代走確認モーダル（スマホ風・中央表示・機能そのまま） */}

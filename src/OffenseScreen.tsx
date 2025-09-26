@@ -1354,7 +1354,7 @@ useEffect(() => {
         <span className="px-2 py-1 rounded bg-blue-600 text-white whitespace-nowrap flex-shrink-0">
           攻撃中
         </span>
-        <span className="truncate">{teamName || "自チーム"} vs {opponentTeam || "対戦相手"}</span>
+        <span className="truncate">{teamName || "自チーム"} 🆚 {opponentTeam || "対戦相手"}</span>
       </h2>
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
@@ -1679,11 +1679,21 @@ onClick={() => {
 
       setShowModal(true);
     }}
-    className="w-full h-12 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg shadow"
+    className="
+      w-full h-14
+      bg-black hover:bg-gray-900
+      text-white font-extrabold text-lg tracking-wider
+      rounded-xl shadow-lg
+      flex items-center justify-center gap-2
+      transform hover:scale-[1.02] active:scale-[0.97]
+      transition-all duration-150
+      ring-4 ring-gray-400/40
+    "
   >
-    イニング終了
+    ⚾ イニング終了 ⚾
   </button>
 </div>
+
 
 
   {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
