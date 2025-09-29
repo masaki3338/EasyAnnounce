@@ -207,37 +207,36 @@ const generateAnnouncementText = (
   
   // 打順一致リエントリー（深掘り版）: toIdの“元スタメン”を辿り、
 // その最新sub（連鎖の末端）の打順が fromId の打順と一致（または末端が打順外=0）なら true
+// 打順一致リエントリー（厳格版）:
+// - toId は元スタメン本人であること（チェーンの起点そのもの）
+// - 元スタメン系列の“最新sub（末端）”が fromId と同じ打順スロットを占めていること
 const isReentryBySameOrderDeep = (
   fromId: number,
   toId: number,
   battingOrder: { id: number }[],
-  used: Record<number, UsedPlayerInfo>,
+  used: Record<number, any>,
   initialAssignments: Record<string, number | null>
 ): boolean => {
-  // from（今その枠にいる選手）の打順
+  // 1) fromの打順（1-based）
   const fromIdx = battingOrder.findIndex(e => e.id === fromId);
   if (fromIdx < 0) return false;
   const fromOrder = fromIdx + 1;
 
-  // to（入ろうとしている選手）の“元スタメンID”を逆引き
-  const origId = resolveOriginalStarterId(toId, used as any, initialAssignments as any);
-    // ✅ 元スタメン本人が戻るなら無条件リエントリー
-  if (origId === toId) return true;
-  if (!origId) return false;
+  // 2) toId の“元スタメンID”を逆引き
+  const toOrig = resolveOriginalStarterId(toId, used as any, initialAssignments as any);
+  // 元スタメン本人でなければ不可
+  if (toOrig == null || toOrig !== toId) return false;
 
-  // 元スタメン本人なら無条件リエントリー
-  if (origId === toId) {
-    console.log("[REENTRY:deep] unconditional (origId===toId)", { toId, origId });
-    return true;
-  }
-  // 元スタメン系列の“最新sub（末端）”
-  const latest = resolveLatestSubId(origId, used as any);
+  // 3) 元スタメン系列の最新sub（末端）
+  const latest = resolveLatestSubId(toOrig, used as any);
   const latestIdx = battingOrder.findIndex(e => e.id === latest);
-  const latestOrder = latestIdx >= 0 ? latestIdx + 1 : 0;
+  if (latestIdx < 0) return false;          // ← ★ 末端が打順にいなければ不可（緩和しない）
+  const latestOrder = latestIdx + 1;
 
-  // 末端が同じ打順、または末端が打順外（0=見つからない）でもOK
-  return latestOrder === fromOrder || latestOrder === 0;
+  // 4) “同じ打順”のみOK
+  return latestOrder === fromOrder;
 };
+
 
   // ▼ 追加：usedPlayerInfo から「守備に入った代打/代走のID → 理由」を逆引き
   const pinchReasonById: Record<number, "代打" | "代走" | "臨時代走" | undefined> = {};
@@ -2274,6 +2273,11 @@ const [battingOrderDraft, setBattingOrderDraft] =
 
 // ★ リエントリー可視化用：直前ドロップで青枠にする選手IDを保持
 const [reentryPreviewIds, setReentryPreviewIds] = useState<Set<number>>(new Set());
+// 🆕 青枠をリセットするユーティリティ
+const resetBlue = () => {
+  setReentryPreviewIds(new Set());
+};
+
 // ★ リエントリー可視化（永続）: 一度成立したら保持
 const [reentryFixedIds, setReentryFixedIds] = useState<Set<number>>(new Set());
 // 青枠＝プレビュー or 確定のどちらかに含まれていれば true
@@ -3245,45 +3249,58 @@ console.log("🧾 判定プレチェック", {
   note: fromId == null ? "fromId=null（空き枠へドロップ）→ リエントリー判定は未実施" : "fromIdあり（置き換え）"
 });
 
-// ==== v2 リエントリー判定（元スタメンかつ、スタメン時打順の現（ドラフト）入居者が fromId）====
 // ==== v2 リエントリー判定 ====
-setReentryPreviewIds(new Set()); // 前回の青枠クリア
+// ★ ベンチ→守備のときだけ、かつ「出場済みの元スタメン」を落としたときだけ実行
+if (!fromIsField && toPos !== BENCH) {
+  resetBlue?.();
 
-const isNumber = (v:any): v is number => typeof v === "number";
-let isReentryNow = false;
-let startIdx = -1;
-let wasStarter = false;
-let liveIdAtSlot: number | undefined = undefined;
+  const isNumber = (v: any): v is number => typeof v === "number";
+  let isReentryNow = false;
 
-if (isNumber(toId) && isNumber(fromId)) {
-  // ★ 差し替え：強化版逆引きで“元スタメンID”を取得
-  const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
-  wasStarter = origIdForTo !== null;
+  if (isNumber(toId) && isNumber(fromId)) {
+    // toId = ベンチから落とした選手
+    const origIdForTo = resolveOriginalStarterId(toId, usedPlayerInfo, initialAssignments);
 
-// スタメン時打順スロット（0-based）
-startIdx = wasStarter
-  ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
-  : -1;
+    // 「元スタメンか？」（＝リエントリー候補の素質）
+    const wasStarter = origIdForTo !== null;
 
-// ★ ドロップ先の相手（fromId）が“どの打順スロットにいるか”を直接逆引き
-const fromOrderIdx = battingOrderDraft.findIndex((e) => e?.id === fromId);
+    // 「出場済みの記録（代打/代走など）があるか？」→ ここが無いなら未出場＝控え
+    const hasUsedRecord =
+      wasStarter && !!(usedPlayerInfo as any)?.[Number(origIdForTo)];
 
-// ★ 「元打順（startIdx）」と「相手の現在の打順（fromOrderIdx）」が一致した時だけリエントリー
-const sameBattingSlot = startIdx >= 0 && fromOrderIdx >= 0 && fromOrderIdx === startIdx;
+    // ★ 控え（未出場）はリエントリー判定をスキップして通常交代へ
+    if (!hasUsedRecord) {
+      resetBlue?.(); // 念のため青プレビューを消すだけ
+      // ここでは何も return しない（通常フロー継続）
+    } else {
+      // ここから“出場済みの元スタメン”だけ厳格に判定
+      const startIdx = wasStarter
+        ? startingOrderRef.current.findIndex((e) => e.id === (origIdForTo as number))
+        : -1;
+      const fromOrderIdx = battingOrderDraft.findIndex((e) => e?.id === fromId);
+      const sameBattingSlot = startIdx >= 0 && fromOrderIdx >= 0 && fromOrderIdx === startIdx;
+      const isOffField = !Object.values(assignments || {}).includes(Number(toId));
 
-// 退場済み(= usedPlayerInfoに記録あり) かつ 今はベンチ(=守備にいない) を満たすときだけ
-const hasUsedRecord =
-  origIdForTo != null && !!(usedPlayerInfo as any)?.[Number(origIdForTo)];
-const isOffField = !Object.values(assignments || {}).includes(Number(toId));
+      isReentryNow = wasStarter && sameBattingSlot && hasUsedRecord && isOffField;
 
-isReentryNow = wasStarter && sameBattingSlot && hasUsedRecord && isOffField;
-
-if (isReentryNow) {
-  // プレビューだけ青枠候補にする（固定には入れない）
-  setReentryPreviewIds(new Set([Number(toId)]));
+      if (isReentryNow) {
+        setReentryPreviewIds(new Set([Number(toId)]));  // 厳格OKのときだけ青プレビュー
+      } else {
+        resetBlue?.();
+        window.alert("リエントリー対象選手ではありません。");
+        setHoverPos(null);
+        setDraggingFrom(null);
+        e.dataTransfer.dropEffect = "none";
+        return prev; // 通常交代にも進ませない
+      }
+    }
+  }
+} else {
+  // 守備↔守備はリエントリー判定しない
+  resetBlue?.();
 }
 
-}
+
 
 
 // ↓↓↓ この後の既存処理（setAssignments など）は “上で算出した toId/fromId/srcFrom” を使う ↓↓↓
@@ -3490,6 +3507,13 @@ if (fromId !== null && toId !== null) {
       // --- リエントリー判定（ベンチ→守備の“その位置”だけを入替） ---
     let allowDrop = true; // 🆕 不可ならこのターンの配置を中止
     (() => {
+      // すでに場内にいる選手ならリエントリー判定をスキップ（守備位置移動だけ許可）
+      const alreadyOnField = Object.values(prev).includes(playerId);
+      if (alreadyOnField) {
+        resetBlue?.();   // 青枠が残っていたらクリア
+        return;          // この IIFE を終了（アラートは出さない）
+      }
+
       // playerId はベンチから落とした選手
       const info: any = (usedPlayerInfo as any)?.[playerId]; // ← “元先発B”なら usedPlayerInfo に記録あり
       const reason = info?.reason as "代打" | "代走" | undefined;
@@ -3517,7 +3541,7 @@ if (fromId !== null && toId !== null) {
           setReentryInfos((prev) => prev.filter((x) => x.originalId !== playerId));
           return;
         }
-
+        
         // ✅ 正常なリエントリー：記録を積む（重複防止つき）
         setReentryInfos((prev) => {
           if (replacedId == null) return prev;
@@ -4217,13 +4241,16 @@ const isReentryBlue = player ? alwaysReentryIds.has(player.id) : false;
           draggable
           onDragStart={(e) => handlePositionDragStart(e, pos)}
           className={`text-base md:text-lg font-bold rounded px-2 py-1 leading-tight text-white ${
-            draggingFrom === pos ? "bg-emerald-600" : "bg-black/80"
+            draggingFrom === pos ? "bg-black/80" : "bg-black/80"
           } whitespace-nowrap
-${hoverPos === pos
-    ? "ring-2 ring-inset ring-emerald-400"
-    : (alwaysReentryIds.has(player.id) || isReentryBlue)
-      ? "ring-2 ring-inset ring-blue-400"
-      : (isSub || isChanged) ? "ring-2 ring-inset ring-yellow-400" : ""}`
+${(isReentryBlue) 
+  ? "ring-2 ring-inset ring-blue-400"
+  : (isSub || isChanged)
+    ? "ring-2 ring-inset ring-yellow-400"
+    : (hoverPos === pos)
+      ? "ring-2 ring-inset ring-emerald-400"
+      : ""}
+`
           }
           style={{ minWidth: "78px", maxWidth: "38vw", touchAction: "none" }}
           title={`${player.lastName ?? ""}${player.firstName ?? ""} #${player.number ?? ""}`}
