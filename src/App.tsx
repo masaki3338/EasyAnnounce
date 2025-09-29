@@ -47,6 +47,14 @@ const isIOS = (() => {
   return /iP(hone|ad|od)/.test(ua) || ((/Macintosh/.test(ua)) && "ontouchend" in document);
 })();
 
+// --- Wake Lock 型(簡易) ※TSで型エラーを避けるため ---
+type WakeLockSentinel = {
+  released: boolean;
+  release: () => Promise<void>;
+  addEventListener: (type: string, listener: any) => void;
+  removeEventListener: (type: string, listener: any) => void;
+};
+
 
 
 // 画面の種類を列挙した型
@@ -180,6 +188,9 @@ const App = () => {
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showTiebreakPopup, setShowTiebreakPopup] = useState(false);
+  // ▼ タイブレーク開始後のヒントモーダル
+  const [showTiebreakHint, setShowTiebreakHint] = useState(false);
+
   const [tiebreakMessage, setTiebreakMessage] = useState<string>("");
     // ▼ 投球数ポップアップ用
   const [showPitchListPopup, setShowPitchListPopup] = useState(false);
@@ -196,6 +207,52 @@ const App = () => {
 // --- iOS用：無音1px動画を流すフォールバック ---
 const [iosKeepAwake, setIosKeepAwake] = useState(false);
 const iosVideoRef = useRef<HTMLVideoElement | null>(null);
+
+// --- Screen Wake Lock（まずはこちらを使う） ---
+const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+const acquireWakeLock = async () => {
+  try {
+    // iOS/Safari でも 2025現在はサポート。HTTPS & ユーザー操作直後が前提
+    // @ts-ignore
+    const wl = await (navigator as any).wakeLock?.request?.('screen');
+    if (!wl) throw new Error('Wake Lock unsupported');
+    wakeLockRef.current = wl;
+
+    wl.addEventListener('release', () => {
+      console.log('[WakeLock] released');
+      wakeLockRef.current = null;
+    });
+    console.log('[WakeLock] acquired');
+    return true;
+  } catch (err) {
+    console.warn('[WakeLock] request failed, fallback to silent video', err);
+    return false;
+  }
+};
+
+const releaseWakeLock = async () => {
+  try {
+    await wakeLockRef.current?.release();
+  } catch {}
+  wakeLockRef.current = null;
+};
+
+// タブ復帰で再取得（ユーザーがONのままなら）
+useEffect(() => {
+  const onVis = async () => {
+    if (document.visibilityState === 'visible' && iosKeepAwake) {
+      const ok = await acquireWakeLock();
+      if (!ok) {
+        // Wake Lock不可なら、既存の無音動画フォールバックに切替
+        enableIOSAwake();
+      }
+    }
+  };
+  document.addEventListener('visibilitychange', onVis);
+  return () => document.removeEventListener('visibilitychange', onVis);
+}, [iosKeepAwake]);
+
 
 const enableIOSAwake = () => {
   if (iosVideoRef.current) return; // 既にONなら何もしない
@@ -293,8 +350,21 @@ useEffect(() => {
         <Menu
           onNavigate={setScreen}
           iosKeepAwake={iosKeepAwake}
-          onEnableIOSAwake={enableIOSAwake}
-          onDisableIOSAwake={disableIOSAwake}
+          onEnableIOSAwake={async () => {
+            // 1) Wake Lock を優先
+            const ok = await acquireWakeLock();
+            if (!ok) {
+              // 2) 失敗したら既存の無音動画フォールバック
+              enableIOSAwake();
+            }
+            setIosKeepAwake(true);
+          }}
+          onDisableIOSAwake={async () => {
+            // 解除は両方きっちり
+            await releaseWakeLock().catch(() => {});
+            disableIOSAwake();
+            setIosKeepAwake(false);
+          }}
         />
       )}
 
@@ -1169,17 +1239,17 @@ if (totalMyScore > totalOpponentScore) {
         {/* フッター（開始 / 終了） */}
         <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
           <div className="grid grid-cols-2 gap-2">
-            {/* 開始：フラグON → モーダル閉じる */}
+            {/* 開始：フラグON → モーダル閉じる → ヒント表示 */}
             <button
               onClick={async () => {
                 await localForage.setItem("tiebreak:enabled", true);
                 setShowTiebreakPopup(false);
+                setShowTiebreakHint(true); // ← これが確実に走るように
               }}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold active:scale-[0.99] transition"
             >
               開始
             </button>
-
             {/* 終了：フラグOFF → モーダル閉じる */}
             <button
               onClick={async () => {
@@ -1196,6 +1266,50 @@ if (totalMyScore > totalOpponentScore) {
           <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
         </div>
 
+      </div>
+    </div>
+  </div>
+)}
+{/* ✅ タイブレーク開始後ヒント（OKのみ） */}
+{showTiebreakHint && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="タイブレークの使い方">
+    {/* 背景オーバーレイ */}
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    {/* 中央カード */}
+    <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+      <div
+        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {/* ヘッダー（スマホ風グラデ&ハンドル） */}
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+          <div className="h-5 flex items-center justify-center">
+            <span className="mt-2 block h-1.5 w-12 rounded-full bg-white/60" />
+          </div>
+          <div className="px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold tracking-wide">タイブレーク</h2>
+            <div className="w-9 h-9" />
+          </div>
+        </div>
+
+        {/* 本文 */}
+        <div className="px-4 py-6 overflow-y-auto">
+          <p className="text-gray-800 font-bold leading-relaxed text-center">
+            打者を選択すると、タイブレイク用アナウンス文が表示されます
+          </p>
+        </div>
+
+        {/* フッター（OKのみ） */}
+        <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
+          <button
+            onClick={() => setShowTiebreakHint(false)}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
+          >
+            OK
+          </button>
+          <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+        </div>
       </div>
     </div>
   </div>
