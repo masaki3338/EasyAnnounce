@@ -1303,10 +1303,6 @@ const stopSpeech = () => {
 
 
 useEffect(() => {
-  updateAnnouncement(); // currentBatterIndexが変わるたびに実行
-}, [currentBatterIndex]);
-
-useEffect(() => {
   if (
     players.length > 0 &&
     battingOrder.length > 0 &&
@@ -1315,7 +1311,19 @@ useEffect(() => {
   ) {
     updateAnnouncement();
   }
-}, [players, battingOrder, assignments, teamName]);
+}, [
+  currentBatterIndex,   // 打者番号が変わったとき
+  isLeadingBatter,      // ★ 先頭打者フラグの切替時
+  inning,               // ★ 回が変わったとき
+  isTop,                // ★ 表/裏が変わったとき
+  players,
+  battingOrder,
+  assignments,
+  teamName,
+  checkedIds            // ★ 苗字のみ/フル表示の切替時
+]);
+
+
    const status = (isHome && !isTop) || (!isHome && isTop) ? "攻撃中" : "守備中";
 
   return (
@@ -1535,18 +1543,38 @@ onClick={() => {
     <div
       key={entry.id}
       onClick={async () => {
-        setCurrentBatterIndex(idx);
-        setIsLeadingBatter(true);
-
-        // 🔸 タイブレークフラグONのときだけ専用文言に差し替え
-        const tbEnabled = Boolean(await localForage.getItem("tiebreak:enabled"));
-        if (tbEnabled) {
-          const text = await buildTiebreakTextForIndex(idx);
-          setTiebreakAnno(text);   // ← これで画面表示がTB文言になる（読み上げもこの文面で可能）
+        if (idx === currentBatterIndex) {
+          // すでに選択中の行をタップ → トグル
+          if (isLeadingBatter) {
+            // 「次の打者」ボタンと同じ：非表示にする
+            setTiebreakAnno(null);
+            setAnnouncementOverride(null);
+            setIsLeadingBatter(false);
+          } else {
+            // 非表示 → 表示に戻す
+            setIsLeadingBatter(true);
+            const tbEnabled = Boolean(await localForage.getItem("tiebreak:enabled"));
+            if (tbEnabled) {
+              const text = await buildTiebreakTextForIndex(idx);
+              setTiebreakAnno(text);
+            } else {
+              setTiebreakAnno(null);
+            }
+          }
         } else {
-          setTiebreakAnno(null);   // ← TBでなければ通常表示
+          // 別の行をタップ → その行を選択し、表示ON
+          setCurrentBatterIndex(idx);
+          setIsLeadingBatter(true);
+          const tbEnabled = Boolean(await localForage.getItem("tiebreak:enabled"));
+          if (tbEnabled) {
+            const text = await buildTiebreakTextForIndex(idx);
+            setTiebreakAnno(text);
+          } else {
+            setTiebreakAnno(null);
+          }
         }
       }}
+
 
       className={`px-2 py-0.5 border-b cursor-pointer ${
         isCurrent ? "bg-yellow-200" : ""
