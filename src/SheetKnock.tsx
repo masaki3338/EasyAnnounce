@@ -1,6 +1,7 @@
 // SheetKnock.tsx（全文置き換え）
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
+import { speak as ttsSpeak, stop as ttsStop } from "./lib/tts";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
 declare global {
@@ -227,41 +228,19 @@ const playBeeps = async (
     load();
   }, []);
 
-// 既存の speak を丸ごと置き換え
-const speak = async (text: string, key: string) => {
-  try {
-    // 先に既存読み上げを止める（ブリッジ側も cancel をフックして <audio> を止めます）
-    window.speechSynthesis.cancel();
-    setReadingKey(key);
-
-    // ▼ VOICEVOX を最優先（ttsBridge が注入する window.speakWithVoicevox を利用）
-    if (typeof window.speakWithVoicevox === "function") {
-      const speaker = Number(localStorage.getItem("ttsDefaultSpeaker") || "0") || 30; // 任意の既定
-      const gender  = localStorage.getItem("ttsGender") || undefined;                // "male"/"female" 想定
-      await window.speakWithVoicevox(text, { speaker, gender });
-      return; // 成功したらここで終了
-    }
-
-    // ▼ ブリッジが未ロードなら Web Speech にフォールバック
-    const uttr = new SpeechSynthesisUtterance(text);
-    uttr.lang = "ja-JP";
-    uttr.onend = () => setReadingKey(null);
-    uttr.onerror = () => setReadingKey(null);
-    window.speechSynthesis.speak(uttr);
-  } catch {
-    // 予備のフォールバック
-    const uttr = new SpeechSynthesisUtterance(text);
-    uttr.lang = "ja-JP";
-    uttr.onend = () => setReadingKey(null);
-    uttr.onerror = () => setReadingKey(null);
-    window.speechSynthesis.speak(uttr);
-  }
+// VOICEVOX優先の読み上げ（状態フラグも更新）
+const handleSpeak = async (text: string, key: string) => {
+  setReadingKey(key);          // 押したカードを「再生中」に
+  await ttsSpeak(text);        // VOICEVOX→失敗時WebSpeech
+  setReadingKey(null);         // 再生終了後に解除（※VOX完了イベントは取らないので“押下でON→終わりでOFF”の簡易管理）
 };
 
-  const stopSpeak = () => {
-    window.speechSynthesis.cancel();
-    setReadingKey(null);
-  };
+// 停止（VOICEVOX <audio> と WebSpeech を両方止める）
+const handleStop = () => {
+  ttsStop();
+  setReadingKey(null);
+};
+
 
   const startTimer = () => {
     if (timeLeft === 0) setTimeLeft(420); // 7分
@@ -323,12 +302,12 @@ const speak = async (text: string, key: string) => {
   };
 
   const prepMessage =
-    isHome === "後攻" ? ` ${teamName} はシートノックの準備に入って下さい。` : null;
+    isHome === "後攻" ? ` ${teamName}はシートノックの準備に入って下さい。` : null;
 
   const mainMessage =
     isHome === "後攻"
-      ? ` ${teamName} はシートノックに入って下さい。\nノック時間は7分以内です。`
-      : ` ${teamName} はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+      ? ` ${teamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
+      : ` ${teamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);
@@ -387,8 +366,8 @@ const speak = async (text: string, key: string) => {
         text={prepMessage}
         keyName="prep"
         readingKey={readingKey}
-        onSpeak={speak}
-        onStop={stopSpeak}
+        onSpeak={handleSpeak}
+        onStop={handleStop}
         label="（ノックの準備が出来ていない場合のみ）"
       />
     </StepCard>
@@ -405,8 +384,8 @@ const speak = async (text: string, key: string) => {
     text={mainMessage}
     keyName="main"
     readingKey={readingKey}
-    onSpeak={speak}
-    onStop={stopSpeak}
+    onSpeak={handleSpeak}
+    onStop={handleStop}
   />
 </StepCard>
 
@@ -478,8 +457,8 @@ const speak = async (text: string, key: string) => {
       text={"ノック時間、残り2分です。"}
       keyName="2min"
       readingKey={readingKey}
-      onSpeak={speak}
-      onStop={stopSpeak}
+      onSpeak={handleSpeak}
+      onStop={handleStop}
     />
   </StepCard>
 
@@ -494,8 +473,8 @@ const speak = async (text: string, key: string) => {
       text={"ノックを終了してください。"}
       keyName="end"
       readingKey={readingKey}
-      onSpeak={speak}
-      onStop={stopSpeak}
+      onSpeak={handleSpeak}
+      onStop={handleStop}
     />
   </StepCard>
 

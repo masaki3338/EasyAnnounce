@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+
 
 /* === ミニSVGアイコン（依存なし） === */
 const IconBack = () => (
@@ -85,23 +87,21 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
 
   /* === 読み上げ停止（全停止） === */
   const stopSpeechAll = () => {
-    try { window.speechSynthesis.resume?.(); } catch {}
-    try { window.speechSynthesis.cancel(); } catch {}
-    document.querySelectorAll<HTMLAudioElement>("audio").forEach(a => { try { a.pause(); a.currentTime = 0; } catch {} });
+    ttsStop();                 // ← VOICEVOXの<audio>＆Web Speechの両方を停止
     isSpeakingRef.current = false;
     setSpeaking(false);
-    if (utteranceRef.current) {
-      utteranceRef.current.onend = null as any;
-      utteranceRef.current.onerror = null as any;
-      utteranceRef.current = null;
-    }
+    utteranceRef.current = null;
   };
+
   useEffect(() => {
     const onHide = () => stopSpeechAll();
     window.addEventListener("visibilitychange", onHide);
     return () => { window.removeEventListener("visibilitychange", onHide); stopSpeechAll(); };
   }, []);
   useEffect(() => () => window.speechSynthesis.cancel(), []);
+
+  // 初回だけ VOICEVOX を温める
+  useEffect(() => { void prewarmTTS(); }, []);
 
   /* === データロード === */
   useEffect(() => {
@@ -198,17 +198,15 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const handleSpeak = () => {
     if (isSpeakingRef.current) return;
     isSpeakingRef.current = true;
-    stopSpeechAll();
-    const text = getVisibleAnnounceText();
+    stopSpeechAll(); // 念のため直前に全停止
+    let text = getVisibleAnnounceText();
     if (!text) { isSpeakingRef.current = false; return; }
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = "ja-JP";
-    utt.onstart = () => setSpeaking(true);
-    const clear = () => { setSpeaking(false); isSpeakingRef.current = false; utteranceRef.current = null; };
-    utt.onend = clear; utt.onerror = clear;
-    utteranceRef.current = utt;
-    window.speechSynthesis.speak(utt);
+    setSpeaking(true);
+    // ❗️待たずに発火：体感が大幅に軽くなる。最初の1文を先に再生（progressive）
+    void ttsSpeak(text, { progressive: true, cache: true })
+      .finally(() => { setSpeaking(false); isSpeakingRef.current = false; });
   };
+
   const handleStop = () => { stopSpeechAll(); };
 
   return (
@@ -304,7 +302,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
               const honorific = getHonorific(p);
               return (
                 <p key={entry.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、<br />  {posName} {renderLastName(p)}{honorific} 背番号{p.number}
+                  {idx + 1}番 {posName} {renderFullName(p)}{honorific}、<br />  {posName} {renderLastName(p)}{honorific} 背番号{p.number}。
                 </p>
               );
             })}

@@ -6,6 +6,79 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
+import { speak, stop } from "./lib/tts";
+
+// "15:40" や "15：40" → "15時40分"
+// "15:40〜17:00" → "15時40分から17時00分"
+function normalizeJapaneseTime(text: string): string {
+  if (!text) return text;
+
+  // 時刻範囲（〜, -, − なども許容）
+  text = text.replace(
+    /(\d{1,2})[:：](\d{2})\s*[~〜\-−]\s*(\d{1,2})[:：](\d{2})/g,
+    (_, h1, m1, h2, m2) => {
+      const H1 = String(parseInt(h1, 10));
+      const M1 = String(parseInt(m1, 10));
+      const H2 = String(parseInt(h2, 10));
+      const M2 = String(parseInt(m2, 10));
+      return `${H1}時${M1}分から${H2}時${M2}分`;
+    }
+  );
+
+  // 単独の時刻
+  text = text.replace(
+    /(\d{1,2})[:：](\d{2})(?!\d)/g,
+    (_, h, m) => {
+      const H = String(parseInt(h, 10));
+      const M = String(parseInt(m, 10));
+      return `${H}時${M}分`;
+    }
+  );
+
+  return text;
+}
+
+// 表示用HTML => 読み上げ用テキストに変換（<ruby>は rt 優先、<br> は改行）
+function htmlToTtsText(html: string): string {
+  if (!html) return "";
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+
+  // rubyは rt(ふりがな) を優先。無ければベース文字を読む
+  doc.querySelectorAll("ruby").forEach(ruby => {
+    const rt = ruby.querySelector("rt")?.textContent?.trim();
+    const rb = ruby.querySelector("rb");
+    const base = (rb?.textContent ?? ruby.childNodes[0]?.textContent ?? "").trim();
+    const spoken = rt && rt.length > 0 ? rt : base;
+    const span = doc.createElement("span");
+    span.textContent = spoken;
+    ruby.replaceWith(span);
+  });
+
+  // <br> → 改行
+  doc.querySelectorAll("br").forEach(br => br.replaceWith(doc.createTextNode("\n")));
+
+  // テキスト抽出＆整形
+  let text = doc.body.textContent || "";
+  text = text
+    .replace(/[ \t\u3000]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text;
+}
+
+// 「アナウンス文言エリア」に現在表示されている内容を読ませる
+async function speakFromAnnouncementArea(
+  announcementHTMLOverrideStr?: string,
+  announcementHTMLStr?: string,
+) {
+  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+  let text = htmlToTtsText(html);
+  text = normalizeJapaneseTime(text); // ← 追加：時刻の読み上げを「時・分」に直す
+  if (!text) return;
+  await speak(text); // VOICEVOX優先（失敗時 Web Speech）
+}
 
 // === TIEBREAK OFFENSE ANNO: helpers start ===
 const TBA_POS_JP: Record<string, string> = {
@@ -636,19 +709,11 @@ const toggleChecked = (id: number) => {
 
 
 // コンポーネント関数内に以下を追加
-const foulRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-const handleFoulRead = () => {
-  if (!window.speechSynthesis) return;
-  const text = "ファウルボールの行方には十分ご注意ください";
-  const utterance = new SpeechSynthesisUtterance(text);
-  foulRef.current = utterance;
-  window.speechSynthesis.speak(utterance);
+const handleFoulRead = async () => {
+  await speak("ファウルボールの行方には十分ご注意ください");
 };
-
 const handleFoulStop = () => {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
+  stop();
 };
 
   const [usedPlayerInfo, setUsedPlayerInfo] = useState<Record<number, any>>({});
@@ -945,7 +1010,7 @@ const handleUndo = async () => {
   setHistory(h => h.slice(0, -1));
   setRedo(r => [...r, current]);
   await restoreSnapshot(last);
-  speechSynthesis.cancel();
+  stop();
 };
 
 // やり直し（取り消しを戻す）
@@ -956,7 +1021,7 @@ const handleRedo = async () => {
   setRedo(r => r.slice(0, -1));
   setHistory(h => [...h, current]);
   await restoreSnapshot(next);
-  speechSynthesis.cancel();
+  stop();
 };
 
 
@@ -1178,13 +1243,10 @@ const getAnnouncementName = (player: Player) => {
     : `${player.lastName ?? ""}${player.firstName ?? ""}`;
 };
 
-const announce = (text: string | string[]) => {
+const announce = async (text: string | string[]) => {
   const joined = Array.isArray(text) ? text.join("、") : text;
-  const plain = normalizeForTTS(joined);   // ★ ruby→かな、タグ除去、用語の読み補正
-  if (speechSynthesis.speaking) speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(plain);
-  utter.lang = "ja-JP";
-  speechSynthesis.speak(utter);
+  const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
+  await speak(plain);
 };
 
 const handleNext = () => {  
@@ -1278,28 +1340,26 @@ const prefetchCurrent = () => {
   window.prefetchTTS?.(text);
 };
 
-const handleRead = () => {
-  // ★ 表示中の文言（オーバーライド優先）を読み上げ
-  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
-  const text = normalizeForTTS(html);  // ルビ→かな化＆タグ除去
-  if (!text) return;
-  announce(text);
+// 「アナウンス文言エリア」の表示内容そのままを読み上げ
+const handleRead = async () => {
+  // ★ tiebreak 表示中はそちらを優先（改行→<br> にして HTML と同等に扱う）
+  const htmlFallback = tiebreakAnno ? tiebreakAnno.replace(/\n/g, "<br />") : "";
+  await speakFromAnnouncementArea(
+    announcementHTMLOverrideStr || htmlFallback,
+    announcementHTMLStr       || htmlFallback
+  );
+};
+
+// 停止は統一して stop()
+const handleStop = () => {
+  stop();
 };
 
 
-// 音声読み上げ
-const speakText = (text: string) => {
-  const synth = window.speechSynthesis;
-  if (synth.speaking) synth.cancel(); // 前の音声を止める
-  const utter = new SpeechSynthesisUtterance(text);
-　synth.speak(utter);
-};
 
-// 音声停止
-const stopSpeech = () => {
-  const synth = window.speechSynthesis;
-  if (synth.speaking) synth.cancel();
-};
+// 音声読み上げ（統一）
+const speakText = async (text: string) => { await speak(text); };
+const stopSpeech = () => { stop(); };
 
 
 useEffect(() => {
@@ -2076,10 +2136,8 @@ onClick={async () => {
               {/* 読み上げ・停止（横いっぱい・等幅） */}
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => {
-                    const uttr = new SpeechSynthesisUtterance(popupMessage);
-                    speechSynthesis.cancel(); // 直前の読み上げを停止してから開始
-                    speechSynthesis.speak(uttr);
+                  onClick={async () => {
+                    await speak(popupMessage);   // VOICEVOX優先、失敗時 Web Speech
                   }}
                   className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2"
@@ -2089,7 +2147,7 @@ onClick={async () => {
                 </button>
 
                 <button
-                  onClick={() => speechSynthesis.cancel()}
+                  onClick={() => stop()}
                   className="w-full h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white
                             inline-flex items-center justify-center"
                 >
@@ -2267,7 +2325,7 @@ onClick={async () => {
   </button>
 
   <button
-    onClick={() => speechSynthesis.cancel()}
+    onClick={() => stop()}
     className="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-md"
   >
     停止
@@ -2536,29 +2594,28 @@ onClick={async () => {
             {/* 読み上げ／停止（横いっぱい・等幅） */}
             <div className="grid grid-cols-2 gap-2">
               <button
-onClick={() => {
+onClick={async () => {
   const currentPlayer = getPlayer(battingOrder[currentBatterIndex]?.id);
   const sub = selectedSubPlayer;
   if (!currentPlayer || !sub) return;
 
-  // かな素材（苗字／フル）
   const kanaCurLast = currentPlayer.lastNameKana || currentPlayer.lastName || "";
   const kanaCurFull = `${currentPlayer.lastNameKana || currentPlayer.lastName || ""}${currentPlayer.firstNameKana || currentPlayer.firstName || ""}`;
   const kanaSubLast = sub.lastNameKana || sub.lastName || "";
   const kanaSubFull = `${sub.lastNameKana || sub.lastName || ""}${sub.firstNameKana || sub.firstName || ""}`;
 
-  // 重複姓ならフルで読む
   const dupCur = dupLastNames.has(String(currentPlayer.lastName || ""));
   const dupSub = dupLastNames.has(String(sub.lastName || ""));
 
   const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
   const honorific = sub.isFemale ? "さん" : "くん";
 
-  announce(
-    `${currentBatterIndex + 1}番 ${(dupCur ? kanaCurFull : kanaCurLast)} ${honorificBef} に代わりまして、` +
-    `${kanaSubFull} ${honorific}、バッターは ${(dupSub ? kanaSubFull : kanaSubLast)} ${honorific}、背番号 ${sub.number}`
+  await speak(
+    `${currentBatterIndex + 1}番 ${(dupCur ? kanaCurFull : kanaCurLast)}${honorificBef}に代わりまして、` +
+    `${kanaSubFull}${honorific}、バッターは ${(dupSub ? kanaSubFull : kanaSubLast)}${honorific}、背番号 ${sub.number}`
   );
 }}
+
 
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                           inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
@@ -2568,7 +2625,7 @@ onClick={() => {
               </button>
 
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                           inline-flex items-center justify-center shadow-md ring-1 ring-white/25"
               >
@@ -3041,7 +3098,7 @@ onClick={() => {
 
   {/* 停止＝赤 */}
   <button
-    onClick={() => speechSynthesis.cancel()}
+    onClick={() => stop()}
     className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                inline-flex items-center justify-center shadow-md ring-1 ring-white/25"
   >
@@ -3245,7 +3302,7 @@ if (isTemp) {
                         bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
           <h2 className="text-xl font-extrabold tracking-wide">グラウンド整備</h2>
           <button
-            onClick={() => { stopSpeech(); setShowGroundPopup(false); }}
+            onClick={() => { stop(); setShowGroundPopup(false); }}
             aria-label="閉じる"
             className="rounded-full w-9 h-9 flex items-center justify-center
                        bg-white/15 hover:bg-white/25 active:bg-white/30
@@ -3316,7 +3373,7 @@ if (isTemp) {
               {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => speakText("グランド整備、ありがとうございました。")}
+                  onClick={async () => { await speak("グランド整備、ありがとうございました。"); }}
                   className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2 shadow-md"
                 >
@@ -3325,7 +3382,7 @@ if (isTemp) {
                 </button>
 
                 <button
-                  onClick={stopSpeech}
+                  onClick={() => stop()}
                   className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                             inline-flex items-center justify-center"
                 >
@@ -3340,7 +3397,7 @@ if (isTemp) {
           <div className="pt-1">
             <button
               onClick={() => {
-                stopSpeech();
+                stop();
                 setShowGroundPopup(false);
                 onSwitchToDefense(); // ✅ 守備画面へ
               }}
@@ -3419,10 +3476,8 @@ if (isTemp) {
               <button
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2 shadow-md"
-                onClick={() => {
-                  const msg = new SpeechSynthesisUtterance(`この試合の開始時刻は${gameStartTime}です`);
-                  speechSynthesis.cancel(); // 直前を止めてから開始
-                  speechSynthesis.speak(msg);
+                onClick={async () => {
+                  await speak(normalizeJapaneseTime(`この試合の開始時刻は${gameStartTime}です。`));
                 }}
               >
                 <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -3432,7 +3487,7 @@ if (isTemp) {
               <button
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
               >
                 <span className="whitespace-nowrap leading-none">停止</span>
               </button>
@@ -3482,10 +3537,8 @@ if (isTemp) {
             {/* 読み上げ／停止（横いっぱい・等幅） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(memberExchangeText);
-                  speechSynthesis.cancel();
-                  speechSynthesis.speak(uttr);
+                onClick={async () => {
+                  await speak(memberExchangeText);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                           inline-flex items-center justify-center gap-2"
@@ -3495,7 +3548,7 @@ if (isTemp) {
               </button>
 
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                           inline-flex items-center justify-center"
               >

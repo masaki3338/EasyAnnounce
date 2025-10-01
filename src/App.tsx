@@ -10,6 +10,8 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
+import { speak, stop } from "./lib/tts"; // ファイル先頭付近に追記
+
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 
@@ -296,16 +298,16 @@ useEffect(() => {
 }, []);
 
 
-  const handleSpeak = () => {
-    if ('speechSynthesis' in window) {
-      const msg = new SpeechSynthesisUtterance("この試合は、ただ今で打ち切り、継続試合となります。明日以降に中断した時点から再開いたします。あしからずご了承くださいませ。");
-      window.speechSynthesis.speak(msg);
-    }
+const handleSpeak = async () => {  
+  const txt =
+      "この試合は、ただ今で打ち切り、継続試合となります。\n" +
+      "明日以降に中断した時点から再開いたします。\n" +
+      "あしからずご了承くださいませ。";
+    await speak(txt);
   };
   const handleStop = () => {
-    window.speechSynthesis.cancel();
+    stop();
   };
-  
   useKeepScreenAwake();
 
   useEffect(() => {
@@ -1031,10 +1033,8 @@ if (totalMyScore > totalOpponentScore) {
             {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(endGameAnnouncement);
-                  speechSynthesis.cancel(); // 直前を停止してから開始
-                  speechSynthesis.speak(uttr);
+                onClick={async () => {
+                  await speak(endGameAnnouncement);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -1043,7 +1043,7 @@ if (totalMyScore > totalOpponentScore) {
                 <span>読み上げ</span>
               </button>
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
               >
@@ -1128,10 +1128,8 @@ if (totalMyScore > totalOpponentScore) {
             {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(heatMessage);
-                  speechSynthesis.cancel(); // 直前を停止してから開始
-                  speechSynthesis.speak(uttr);
+                onClick={async () => {
+                  await speak(heatMessage);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -1143,7 +1141,7 @@ if (totalMyScore > totalOpponentScore) {
               </span>
               </button>
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
               >
@@ -1212,10 +1210,8 @@ if (totalMyScore > totalOpponentScore) {
             {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const uttr = new SpeechSynthesisUtterance(tiebreakMessage);
-                  speechSynthesis.cancel(); // 直前を停止してから開始
-                  speechSynthesis.speak(uttr);
+                onClick={async () => {
+                  await speak(tiebreakMessage);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -1226,7 +1222,7 @@ if (totalMyScore > totalOpponentScore) {
               </button>
 
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
               >
@@ -1359,14 +1355,12 @@ if (totalMyScore > totalOpponentScore) {
             {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   const txt =
                     "この試合は、ただ今で打ち切り、継続試合となります。\n" +
                     "明日以降に中断した時点から再開いたします。\n" +
                     "あしからずご了承くださいませ。";
-                  const uttr = new SpeechSynthesisUtterance(txt);
-                  speechSynthesis.cancel();
-                  speechSynthesis.speak(uttr);
+                  await speak(txt);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -1378,7 +1372,7 @@ if (totalMyScore > totalOpponentScore) {
               </button>
 
               <button
-                onClick={() => speechSynthesis.cancel()}
+                onClick={() => stop()}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
               >

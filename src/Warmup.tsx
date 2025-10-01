@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
 const IconBack = () => (
@@ -169,24 +170,24 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     load();
   }, []);
 
-  const team1 = benchSide === "1塁側" ? teamName : opponentName;
+  // 初回だけ VOICEVOX を温めると、最初の読み上げが速くなります
+ useEffect(() => { void prewarmTTS(); }, []);
+
+ const team1 = benchSide === "1塁側" ? teamName : opponentName;
   const team3 = benchSide === "3塁側" ? teamName : opponentName;
 
   // 読み上げ用（かな優先）
   const team1Read = benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
   const team3Read = benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
 
-  const speak = (text: string, key: string) => {
-    window.speechSynthesis.cancel();
-    const uttr = new SpeechSynthesisUtterance(text);
-    uttr.lang = "ja-JP";
-    uttr.onstart = () => setReadingKey(key);
-    uttr.onend = () => setReadingKey(null);
-    uttr.onerror = () => setReadingKey(null);
-    window.speechSynthesis.speak(uttr);
+  // VOICEVOX優先（失敗時 Web Speech に自動フォールバック）
+  // VOICEVOX優先：UIは待たせず、最初の1文を先に再生（progressive）
+  const handleSpeak = (text: string, key: string) => {
+    setReadingKey(key);
+    void ttsSpeak(text, { progressive: true, cache: true });
   };
-  const stopSpeak = () => {
-    window.speechSynthesis.cancel();
+  const handleStop = () => {
+    ttsStop();         // VOXの<audio> も Web Speech も両方停止
     setReadingKey(null);
   };
 
@@ -269,8 +270,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
 
   const mainSpeak =
     `りょうチームはウォーミングアップに入ってください。\n` +
-    `いちるいがわ ${team1Read} はトスバッティング、\n` +
-    `さんるいがわ ${team3Read} はキャッチボールを開始してください。`;
+    `${team1Read}はトスバッティング、\n` +
+    `${team3Read}はキャッチボールを開始してください。`;
 
   return (
       <div
@@ -319,8 +320,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
             speakText={mainSpeak}
             keyName="start"
             readingKey={readingKey}
-            onSpeak={speak}
-            onStop={stopSpeak}
+            onSpeak={handleSpeak}
+            onStop={handleStop}
           />
         </StepCard>
 
@@ -375,11 +376,11 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         {/* 4 交代案内（赤 強め） */}
         <StepCard step={4} icon={<IconMic2 />} title="交代案内" accent="blue">
           <MessageBlock
-            text="両チーム交代してください。"
+            text="両チーム 交代してください。"
             keyName="switch"
             readingKey={readingKey}
-            onSpeak={speak}
-            onStop={stopSpeak}
+            onSpeak={handleSpeak}
+            onStop={handleStop}
           />
         </StepCard>
 
@@ -437,8 +438,8 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
             text="ウォーミングアップを終了してください。"
             keyName="end"
             readingKey={readingKey}
-            onSpeak={speak}
-            onStop={stopSpeak}
+            onSpeak={handleSpeak}
+            onStop={handleStop}
           />
         </StepCard>
 

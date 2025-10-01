@@ -1,295 +1,230 @@
-// src/ttsBridge.ts
-// 目的：speechSynthesis.speak をグローバルに VOICEVOX 再生へブリッジ
-// - 押下直後に <audio> 再生を開始（間に合わなければ即 Web Speech）
-// - 文単位の分割再生（先頭文を最優先）
-// - LRUメモリキャッシュ（同一文はゼロ秒再生）
-// - cancel() 対応
-// - 既存ボタン・画面側の変更は不要
-
+// ttsBridge.ts — VOICEVOX直叩き + キャッシュ + プログレッシブ再生 + WebSpeechフォールバック
 import localForage from "localforage";
 
-type AnyUtt = SpeechSynthesisUtterance & { onend?: (ev?: any) => void };
-
-// ===== ユーティリティ =====
-// 句読点対策版：読点「、」では分割しない。終止符のみ。
-// 必要なら localStorage.eaTtsSplit = 'off' で分割そのものを無効化できます。
-function splitJa(text: string): string[] {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return [];
-
-  // 分割オフ指定（トラブル時の安全スイッチ）
-  if (localStorage.getItem("eaTtsSplit") === "off") return [t];
-
-  // 「。！？!?」の直後のみで分割。読点「、」では切らない。
-  let segs = t.split(/(?<=[。！？!?])/);
-
-  // 連続終止符で空要素が出ないようクリーニング
-  segs = segs.map(s => s.trim()).filter(s => s.length > 0);
-
-  // きょくたんに短い断片（2文字以下）は前の文に吸収（停止しにくくする）
-  const merged: string[] = [];
-  for (const s of segs) {
-    if (merged.length && s.length <= 2) merged[merged.length - 1] += s;
-    else merged.push(s);
-  }
-  return merged.length ? merged : [t];
+// =========== ユーティリティ ===========
+function splitSentencesJa(text: string): string[] {
+  return String(text).split(/(?<=[。、！？\n])\s*/g).map(s => s.trim()).filter(Boolean);
+}
+function hashKey(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h.toString(36);
+}
+async function getCachedBlob(key: string): Promise<Blob | null> {
+  try { return (await localForage.getItem<Blob>(`tts:cache:${key}`)) || null; } catch { return null; }
+}
+async function setCachedBlob(key: string, blob: Blob) {
+  const idxKey = "tts:cache:index";
+  const prev = (await localForage.getItem<string[]>(idxKey)) || [];
+  await localForage.setItem(`tts:cache:${key}`, blob);
+  const next = [key, ...prev.filter(k => k !== key)].slice(0, 12);
+  await localForage.setItem(idxKey, next);
+  for (const drop of prev.slice(12)) await localForage.removeItem(`tts:cache:${drop}`).catch(()=>{});
 }
 
-// 長文は少しだけ待ち時間を増やす（最大3s）
-function computeTimeoutMs(s: string): number {
-  const n = Math.min(80, Math.max(0, s.length)); // 0〜80文字想定
-  return Math.min(3000, 1200 + n * 30);          // 1.2s + 30ms/文字（上限3s）
-}
+type SynthOpts = { baseUrl: string; speaker: number; speedScale: number; cache: boolean };
 
-function sanitizeHtmlToPlain(raw: string): string {
-  return (raw || "")
-    .replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, "$1（$2）")
-    .replace(/<br\s*\/?>/gi, "。")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// 1チャンク合成（既存の voicevoxFetchBlobCached を使う）
+const synthChunk = (t: string, o: SynthOpts) =>
+  voicevoxFetchBlobCached(t, { baseUrl: o.baseUrl, speaker: o.speaker, speedScale: o.speedScale }, o.cache);
 
-// ===== 音声キャッシュ（メモリLRU：ObjectURL） =====
-function currentVoiceKey(): string {
-  const sp = localStorage.getItem("ttsDefaultSpeaker");
-  const g  = localStorage.getItem("ttsGender");
-  return sp && /^\d+$/.test(sp) ? `sp:${sp}` : g ? `g:${g}` : "default";
-}
-const mem = new Map<string, string>(); // key -> ObjectURL
-const MEM_LIMIT = 20;
-const keyOf = (text: string) => `${currentVoiceKey()}|${text}`;
-function remember(k: string, url: string) {
-  mem.set(k, url);
-  if (mem.size > MEM_LIMIT) {
-    const first = mem.keys().next().value as string | undefined;
-    if (first) {
-      const old = mem.get(first);
-      if (old) URL.revokeObjectURL(old);
-      mem.delete(first);
-    }
-  }
-}
-
-// ===== VOICE 設定の取得（localStorage/Forage のどちらでも） =====
-async function getVoiceConfig(): Promise<{ speaker?: number; gender?: "male" | "female"; vk: string }> {
-  const lsSpeaker = localStorage.getItem("ttsDefaultSpeaker");
-  let speaker: number | undefined = /^\d+$/.test(lsSpeaker || "") ? Number(lsSpeaker) : undefined;
-  if (speaker === undefined) {
-    try {
-      const lf = await localForage.getItem<number>("ttsDefaultSpeaker");
-      if (typeof lf === "number") speaker = lf;
-    } catch {}
-  }
-  const g = (localStorage.getItem("ttsGender") || (await localForage.getItem<string>("ttsGender")) || "") as string;
-  const gender = g === "male" || g === "female" ? (g as "male" | "female") : undefined;
-  const vk = encodeURIComponent(currentVoiceKey());
-  return { speaker, gender, vk };
-}
-
-function buildTtsUrlWithVoice(text: string, cfg: { speaker?: number; gender?: "male" | "female"; vk: string }): string {
-  const t = encodeURIComponent(text);
-  if (cfg.speaker !== undefined) return `/api/tts-voicevox?text=${t}&speaker=${cfg.speaker}&vk=${cfg.vk}`;
-  if (cfg.gender)               return `/api/tts-voicevox?text=${t}&gender=${cfg.gender}&vk=${cfg.vk}`;
-  return `/api/tts-voicevox?text=${t}&vk=${cfg.vk}`;
-}
-
-// <audio> の再生を「タイムアウト監視」して、間に合わなければ失敗にする
-function tryPlayWithTimeout(audio: HTMLAudioElement, label: string, ms = 1500): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const ok = () => {
-      if (settled) return;
-      settled = true;
-      audio.removeEventListener("playing", ok);
-      console.log(`[EA-TTS] VOICEVOX playing ${label}`);
-      resolve();
-    };
-    const fail = (err?: any) => {
-      if (settled) return;
-      settled = true;
-      audio.removeEventListener("playing", ok);
-      console.warn(`[EA-TTS] play timeout → WebSpeech (${label})`, err);
-      reject(err);
-    };
-    audio.addEventListener("playing", ok, { once: true });
-    const p = audio.play();
-    if (p && (p as any).catch) (p as any).catch(fail);
-    setTimeout(() => fail(new Error("timeout")), ms);
-  });
-}
-
-// ===== グローバルブリッジ本体 =====
-(function enableGlobalTTSOverride() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-  const ss = window.speechSynthesis as SpeechSynthesis & { __ea_patched?: boolean };
-  if (ss.__ea_patched) return;
-
-  const originalSpeak  = ss.speak.bind(ss);
-  const originalCancel = ss.cancel.bind(ss);
-
-  let currentAudio: HTMLAudioElement | null = null;
-
-  // 先読み（画面側から window.prefetchTTS('文面') で呼べる）
-  (window as any).prefetchTTS = async (text: string) => {
-    const plain = sanitizeHtmlToPlain(text);
-    const key = keyOf(plain);
-    if (!plain || mem.has(key)) return;
-    const cfg = await getVoiceConfig();
-    const url = buildTtsUrlWithVoice(plain, cfg);
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      const ct = (r.headers.get("content-type") || "").toLowerCase();
-      if (!r.ok || !ct.startsWith("audio/")) return;
-      const blob = await r.blob();
-      const obj = URL.createObjectURL(blob);
-      remember(key, obj);
-    } catch {}
-  };
-
-  // speak の置き換え：押した瞬間に <audio> 再生を試行 → 間に合わなければ即 Web Speech
-  // 文が複数ある時は、先頭文を最優先で鳴らしつつ後続を順次再生
-  const bridgedSpeak = async (utter: AnyUtt) => {
-    try {
-      const text = sanitizeHtmlToPlain(utter?.text || "");
-      if (!text) return;
-
-      console.log("[EA-TTS] intercepted:", text);
-      const cfg = await getVoiceConfig();
-      const segments = splitJa(text);
-
-      // 単文：キャッシュ → 取得 → <audio>、間に合わなければ Web Speech
-      if (segments.length <= 1) {
-        const t = segments[0] ?? text;
-        const k = keyOf(t);
-        const hit = mem.get(k);
-        if (hit) {
-          // キャッシュ即時
-          currentAudio = new Audio(hit);
-          currentAudio.onended = () => { try { utter.onend?.(); } catch {} };
-          currentAudio.onerror = () => { console.warn("[EA-TTS] cached audio error → fallback"); mem.delete(k); originalSpeak(utter); };
-          currentAudio.play().catch(err => { console.warn("[EA-TTS] cached play failed → fallback", err); originalSpeak(utter); });
-          return;
-        }
-
-        // ストリーミング開始を最優先
-        const url = buildTtsUrlWithVoice(t, cfg);
-        currentAudio = new Audio();
-        currentAudio.src = url;
-        currentAudio.preload = "auto";
-        currentAudio.onended = () => { try { utter.onend?.(); } catch {} };
-        currentAudio.onerror = () => {
-          console.warn("[EA-TTS] <audio> single error → WebSpeech & prewarm");
-          originalSpeak(utter);
-          try { (window as any).prefetchTTS?.(t); } catch {}
-        };
-
-        console.log("[EA-TTS] VOICEVOX audio play start (single)");
-        tryPlayWithTimeout(currentAudio, "single", computeTimeoutMs(t)).catch(() => {
-          // 1.2〜3s で playing が来ない → 即 Web Speech に切替＋裏でプリウォーム
-          originalSpeak(utter);
-          try { (window as any).prefetchTTS?.(t); } catch {}
-        });
-        return;
-      }
-
-      // 複数文：先頭文を最優先。後続は順次。
-      const playOne = async (idx: number) => {
-        if (idx >= segments.length) { try { utter.onend?.(); } catch {}; return; }
-        const part = segments[idx];
-
-        // キャッシュヒットなら即
-        const pk = keyOf(part);
-        const phit = mem.get(pk);
-        if (phit) {
-          const a = new Audio(phit);
-          currentAudio = a;
-          a.onended = () => playOne(idx + 1);
-          a.onerror  = () => { mem.delete(pk); originalSpeak(new SpeechSynthesisUtterance(part)); };
-          a.play().catch(() => a.onerror?.(new Event("error")));
-          return;
-        }
-
-        const url = buildTtsUrlWithVoice(part, cfg);
-        const a = new Audio();
-        currentAudio = a;
-        a.src = url;
-        a.preload = "auto";
-        a.onplaying = () => console.log(`[EA-TTS] VOICEVOX playing part ${idx+1}/${segments.length}`);
-        a.onended   = () => playOne(idx + 1);
-        a.onerror   = async () => {
-          console.warn("[EA-TTS] <audio> part error → fallback Web Speech for this part");
-          // その文だけ旧TTS、全体は継続
-          originalSpeak(new SpeechSynthesisUtterance(part));
-          // 次の文へ
-          playOne(idx + 1);
-        };
-
-        console.log(`[EA-TTS] VOICEVOX audio play start (part ${idx+1})`);
-        // 先頭文だけは「即読上げ保証」のためタイムアウト監視
-        if (idx === 0) {
-          tryPlayWithTimeout(a, `part ${idx+1}`, computeTimeoutMs(part)).catch(() => {
-            originalSpeak(new SpeechSynthesisUtterance(part));
-            // 後続は通常フローで続ける
-            setTimeout(() => playOne(idx + 1), 0);
-          });
-        } else {
-          a.play().catch(() => a.onerror?.(new Event("error")));
-        }
-
-        // 先読み：次文を裏で温める（失敗は無視）
-        if (idx + 1 < segments.length) {
-          (window as any).prefetchTTS?.(segments[idx + 1]);
-        }
-      };
-
-      // 念のため退避
-      (window as any)._ea_originalSpeak = originalSpeak;
-      playOne(0);
-
-    } catch (e) {
-      console.warn("[EA-TTS] speak wrapper error → fallback", e);
-      originalSpeak(utter);
-    }
-  };
-
-  // 置き換え（直接 or Proxy フォールバック）
+// <audio> を作って再生（終わったらURL解放）
+async function playBlob(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
   try {
-    // @ts-ignore
-    ss.speak = bridgedSpeak;
-    console.log("[EA-TTS] bridged via direct assignment");
-    (window as any).EATTS = { speak: bridgedSpeak };
-  } catch {
-    try {
-      const proxy = new Proxy(ss, {
-        get(target, prop, receiver) {
-          if (prop === "speak") return bridgedSpeak;
-          return Reflect.get(target, prop, receiver);
-        },
-      });
-      // @ts-ignore
-      window.speechSynthesis = proxy;
-      console.log("[EA-TTS] bridged via Proxy");
-      (window as any).EATTS = { speak: bridgedSpeak };
-    } catch {
-      (window as any).EATTS = { speak: bridgedSpeak };
-      console.warn("[EA-TTS] could not patch speechSynthesis; use window.EATTS.speak instead");
+    const a = new Audio(url);
+    currentAudio = a;
+    await a.play();
+    // 再生完了待ち
+    await new Promise<void>(resolve => (a.onended = () => resolve()));
+    if (currentAudio === a) currentAudio = null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// =========== 設定（localStorage） ===========
+const getBaseUrl = () =>
+  (localStorage.getItem("tts:voicevox:baseUrl") ||
+   (window as any).__VOICEVOX_BASE__ ||
+   "http://127.0.0.1:50021").replace(/\/+$/, "");
+
+// 例: 3 (ずんだもん等)   
+const getSpeaker = () => {
+  const sp1 = Number(localStorage.getItem("tts:voicevox:speaker"));
+  if (Number.isFinite(sp1)) return sp1;
+  const sp2 = Number(localStorage.getItem("ttsDefaultSpeaker"));
+  if (Number.isFinite(sp2)) return sp2;
+  const gender = localStorage.getItem("ttsGender");
+  if (gender === "male") return 13;
+  if (gender === "female") return 30;
+  return 3;
+};
+
+// 0.5〜2.0
+const getSpeed = () => {
+  const v = Number(localStorage.getItem("tts:speedScale"));
+  return Number.isFinite(v) && v > 0 ? v : 1.0;
+};
+
+// =========== 再生制御 ===========
+let currentAudio: HTMLAudioElement | null = null;
+
+async function robustPlay(a: HTMLAudioElement) {
+  const p = a.play();
+  if (p && typeof p.then === "function") await p;
+}
+function stopAll() {
+  try {
+    if (currentAudio) {
+      const src = currentAudio.src;
+      currentAudio.pause();
+      currentAudio.src = "";
+      try { if (src?.startsWith("blob:")) URL.revokeObjectURL(src); } catch {}
     }
+  } catch {}
+  currentAudio = null;
+  try { window.speechSynthesis?.cancel(); } catch {}
+}
+
+// =========== VOICEVOX 直叩き ===========
+async function voicevoxFetchBlob(text: string, opts: { baseUrl: string; speaker: number; speedScale: number }): Promise<Blob> {
+  const q = await fetch(`${opts.baseUrl}/audio_query?speaker=${opts.speaker}&text=${encodeURIComponent(text)}`, { method: "POST" });
+  if (!q.ok) throw new Error(`audio_query failed: ${q.status} ${await q.text().catch(()=> "")}`);
+
+  const query = await q.json();
+  query.speedScale = opts.speedScale;
+
+  const s = await fetch(`${opts.baseUrl}/synthesis?speaker=${opts.speaker}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query),
+  });
+  if (!s.ok) throw new Error(`synthesis failed: ${s.status} ${await s.text().catch(()=> "")}`);
+  return await s.blob(); // WAV
+}
+
+async function voicevoxFetchBlobCached(
+  text: string,
+  opts: { baseUrl: string; speaker: number; speedScale: number },
+  cache: boolean
+): Promise<Blob> {
+  if (!cache) return await voicevoxFetchBlob(text, opts);
+  const key = hashKey(`${opts.baseUrl}|${opts.speaker}|${opts.speedScale}|${text}`);
+  const hit = await getCachedBlob(key);
+  if (hit) return hit;
+  const blob = await voicevoxFetchBlob(text, opts);
+  await setCachedBlob(key, blob);
+  return blob;
+}
+
+// =========== 公開 API（lib/tts から呼ぶ） ===========
+export async function bridgedSpeak(
+  text: string,
+  opts?: { progressive?: boolean; cache?: boolean }
+) {
+  stopAll();
+
+  const baseUrl = getBaseUrl();
+  const speaker = getSpeaker();
+  const speedScale = getSpeed();
+  const cache = opts?.cache ?? true;
+  const progressive = !!opts?.progressive;
+
+  // Progressive: 最初の1文だけ先に鳴らす
+// 新: progressive 分岐（ローリング先読み）
+if (progressive) {
+  const parts = splitSentencesJa(text);
+  if (parts.length > 0) {
+    const optsSynth: SynthOpts = { baseUrl, speaker, speedScale, cache };
+
+    // 連続して短過ぎるパートが多いとオーバーヘッドが増えるので、
+    // 目安として ~40 文字未満は次とマージして粒度を調整
+    const merged: string[] = [];
+    for (const seg of parts) {
+      const last = merged[merged.length - 1];
+      if (last && (last.length < 40 || seg.length < 12)) {
+        merged[merged.length - 1] = last + seg;
+      } else {
+        merged.push(seg);
+      }
+    }
+
+    // 先読み窓のサイズ（2～3がおすすめ）
+    const PREFETCH = 2;
+
+    // 先読み用の Promise キューを用意
+    const queue: Array<Promise<Blob>> = [];
+    let idx = 0;
+
+    // 初期プレフィル
+    while (idx < merged.length && queue.length < PREFETCH) {
+      queue.push(synthChunk(merged[idx++], optsSynth));
+    }
+
+    // 最初のチャンクを取って再生開始（ここが“体感即再生”）
+    const firstBlob = await queue.shift()!;
+    await playBlob(await firstBlob);
+
+    // 残りを再生しながら、足りない分を随時先読み
+    while (queue.length || idx < merged.length) {
+      // 先に次の分の先読みを追加（窓を保つ）
+      while (idx < merged.length && queue.length < PREFETCH) {
+        queue.push(synthChunk(merged[idx++], optsSynth));
+      }
+
+      // 次チャンクの完成を待って再生
+      const nextBlob = await queue.shift()!;
+      await playBlob(await nextBlob);
+    }
+    return;
+  }
+}
+
+  // 通常（一括合成）
+  try {
+    const wav = await voicevoxFetchBlobCached(text, { baseUrl, speaker, speedScale }, cache);
+    const url = URL.createObjectURL(wav);
+    const a = new Audio(url);
+    a.onended = () => { try { URL.revokeObjectURL(url); } catch {} if (currentAudio === a) currentAudio = null; };
+    currentAudio = a;
+    await robustPlay(a);
+    return;
+  } catch {
+    // 下で Web Speech
   }
 
-  // cancel() も上書き（現在再生を止める）
-  ss.cancel = () => {
-    try {
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
-      }
-      originalCancel();
-    } catch {}
-  };
+  // Web Speech フォールバック
+  const uttr = new SpeechSynthesisUtterance(text);
+  uttr.rate = speedScale;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(uttr);
+}
 
-  ss.__ea_patched = true;
-  console.log("[EA-TTS] speechSynthesis.speak is now VOICEVOX-bridged");
-})();
+export function bridgedStop() {
+  stopAll();
+}
+
+export async function voicevoxSynthesize(
+  text: string,
+  opts?: { baseUrl?: string; speaker?: number; speedScale?: number; cache?: boolean }
+): Promise<Blob> {
+  if (opts?.baseUrl) (window as any).__VOICEVOX_BASE__ = opts.baseUrl;
+  if (typeof opts?.speaker === "number") localStorage.setItem("tts:voicevox:speaker", String(opts.speaker));
+  if (typeof opts?.speedScale === "number") localStorage.setItem("tts:speedScale", String(opts.speedScale));
+
+  const baseUrl = getBaseUrl();
+  const speaker = typeof opts?.speaker === "number" ? opts.speaker : getSpeaker();
+  const speedScale = typeof opts?.speedScale === "number" ? opts.speedScale : getSpeed();
+  const cache = opts?.cache ?? false;
+
+  return await voicevoxFetchBlobCached(text, { baseUrl, speaker, speedScale }, cache);
+}
+
+export async function prewarmTTS() {
+  try {
+    const baseUrl = getBaseUrl();
+    const speaker = getSpeaker();
+    await voicevoxFetchBlobCached("あ", { baseUrl, speaker, speedScale: 1.0 }, true);
+  } catch {}
+}
