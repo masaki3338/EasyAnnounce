@@ -16,6 +16,7 @@ const IconFemale = () => <span className="text-lg leading-none">👩</span>;
 const IconMale   = () => <span className="text-lg leading-none">👨</span>;
 
 
+
 type Props = {
   onNavigate?: (screen: string) => void;
   onBack?: () => void;
@@ -24,6 +25,7 @@ type Props = {
 export default function TtsSettings({ onNavigate, onBack }: Props) {
   const [ttsGender, setTtsGender] = useState<"female" | "male">("female");
 
+  
   useEffect(() => {
     (async () => {
       const saved = (await localForage.getItem<string>("ttsGender")) as
@@ -39,12 +41,15 @@ const handleSelect = async (g: "male" | "female") => {
   await localForage.setItem("ttsGender", g);
   await localForage.setItem("ttsDefaultSpeaker", g === "male" ? 13 : 30);
 
-  // ★ 追加：ttsBridge が同期で読めるよう localStorage にも保存
+  // ★ 追加：ttsBridge が読めるキーに保存
   try {
     localStorage.setItem("ttsGender", g);
     localStorage.setItem("ttsDefaultSpeaker", String(g === "male" ? 13 : 30));
+    // 👇 これを必ず追加
+    localStorage.setItem("tts:voicevox:speaker", String(g === "male" ? 13 : 30));
   } catch {}
 };
+
 
 
 
