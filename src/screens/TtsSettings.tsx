@@ -29,7 +29,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const [voice, setVoice] = useState<VoiceKey>("femaleA");
   const [speed, setSpeed] = useState<number>(1.0);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  
+
   const warmupTimerRef = useRef<number | null>(null);
 
   // 起動時に localStorage から復元
@@ -83,18 +83,27 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     }, 250);
   };
 
-  // テスト読み上げ
-  const handleTest = async () => {
-    const speaker = VOICES[voice].speaker;
-    localStorage.setItem("tts:voicevox:speaker", String(speaker));
-    localStorage.setItem("ttsDefaultSpeaker", String(speaker));
-    localStorage.setItem("tts:speedScale", String(speed));
-    setIsSpeaking(true);
-    await speak("ファウルボールにご注意ください", {
-      progressive: true,
-      onend: () => setIsSpeaking(false),  // 再生終了で解除
-    });
-  };
+
+// テスト読み上げ（連打ガード + 必ず解除）
+const handleTest = async () => {
+  if (isSpeaking) return; // すでに再生中なら無視（連打防止）
+
+  const speaker = VOICES[voice].speaker;
+  localStorage.setItem("tts:voicevox:speaker", String(speaker));
+  localStorage.setItem("ttsDefaultSpeaker", String(speaker));
+  localStorage.setItem("tts:speedScale", String(speed));
+
+  setIsSpeaking(true);
+  try {
+    // ※ onend に依存せず、Promise 完了（停止/自然終了/エラー）で解除する
+    await speak("ファウルボールにご注意ください", { progressive: true });
+  } catch {
+    // エラー時も握りつぶしてOK（finallyで解除）
+  } finally {
+    setIsSpeaking(false);
+  }
+};
+
 
   return (
     <div
