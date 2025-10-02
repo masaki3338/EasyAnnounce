@@ -68,6 +68,18 @@ function htmlToTtsText(html: string): string {
 
   // ✅ 「回表／回裏」を TTS 用に読み替え
   text = text.replace(/回表/g, "回おもて");
+
+  // ✅ ルビ → かな（TTS用）
+  text = text
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<rt>\s*<\/rt>/g, "");
+
+  // ✅ 「回表／回裏」→「回おもて／回うら」
+  text = text.replace(/回表/g, "回おもて").replace(/回裏/g, "回うら");
+  
+  // ✅ 「4番」→「よばん」（14番/40番などは変更しない）
+  text = text.replace(/(^|[^0-9])4番(?![0-9])/g, "$1よばん");
+
   return text;
 }
 
@@ -383,8 +395,48 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
       const yomi = inningMap[p1] ?? `${p1}かい`;
       return `${yomi}うら`;
     });
-      return t;
-    };
+
+  // ✅ ルビ → かな（TTS用）
+  t = t
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<rt>\s*<\/rt>/g, "");
+
+    return t;
+  };
+
+  // 代打モーダルのプレビューをそのまま読み上げ
+// 代打モーダルのプレビューをそのまま読み上げ（ふりがな優先）
+const speakPinchModal = async () => {
+  const el = document.getElementById("pinch-preview");
+  if (!el) return;
+
+  const raw = el.innerHTML || "";
+
+  // ✅ ルビ → かな（<ruby>漢字<rt>かな</rt></ruby> → かな）
+  //   - <rt> が空のルビは無視
+  //   - 2語連結（姓・名）の <ruby>…</ruby><ruby>…</ruby> にも対応
+  let text = raw
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<rt>\s*<\/rt>/g, "")      // 空の rt は除去
+    .replace(/<br\s*\/?>/gi, "\n")      // 改行
+    .replace(/<[^>]+>/g, " ")           // 残りのタグはスペースに
+    .replace(/[ \t\u3000]+/g, " ")      // 連続空白を1つに
+    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  text = text.replace(/([ぁ-んァ-ヶーｧ-ﾝﾞﾟ一-龥A-Za-z0-9]+)\s+(さん|くん)/g, "$1$2");
+
+  // ✅ 「回表／回裏」は “おもて／うら” と読ませる
+  text = text.replace(/回表/g, "回おもて").replace(/回裏/g, "回うら");
+
+  // ✅ 「4番」→「よばん」（14番/40番などは変更しない）
+  text = text.replace(/(^|[^0-9])4番(?![0-9])/g, "$1よばん");
+
+  await speak(text, { progressive: true });
+};
+
+
+
 
 // 🔸 現在の打順に対してリエントリー対象（元スタメンで退場中）を探す
 // 🔍 リエントリー候補の詳細デバッグ版
@@ -2328,8 +2380,8 @@ onClick={async () => {
                   __html: `
                     ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
                     ${reEntryOrder1 ?? "?"}番
-                    ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"} に代わりまして
-                    ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"} がリエントリーで戻ります。<br/>
+                    ${reEntryFromPlayer ? rubyLast(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
+                    ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。<br/>
                     バッターは ${reEntryTargetPlayer ? rubyLast(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
                   `.trim()
                 }}
@@ -2347,7 +2399,7 @@ onClick={async () => {
       const kanaBLast = reEntryTargetPlayer.lastNameKana || reEntryTargetPlayer.lastName || "";
       announce(
         `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
-        `${reEntryOrder1}番 ${kanaALast}${honorA} に代わりまして ` +
+        `${reEntryOrder1}番 ${kanaALast}${honorA}に代わりまして ` +
         `${kanaBLast}${honorB} がリエントリーで戻ります。` +
         `バッターは ${kanaBLast}${honorB}。`
       );
@@ -2596,7 +2648,7 @@ onClick={async () => {
                 alt="mic"
                 className="w-5 h-5 translate-y-0.5"
               />
-              <span className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block">
+              <span id="pinch-preview" className="whitespace-pre-line text-base font-bold text-red-700 leading-relaxed block">
                 {/* 先頭打者なら通常アナウンスの前置きを追加 */}
                 {isLeadingBatter && (
                   <>
@@ -2607,11 +2659,11 @@ onClick={async () => {
 
                 {currentBatterIndex + 1}番{" "}
                 {/* 元打者は「苗字のみ」指定だが、重複姓なら自動でフル */}
-                <RenderName p={getPlayer(battingOrder[currentBatterIndex]?.id)} preferLastOnly={true} />{" "}
-                {(getPlayer(battingOrder[currentBatterIndex]?.id)?.isFemale ? "さん" : "くん")} に代わりまして{" "}
+                <RenderName p={getPlayer(battingOrder[currentBatterIndex]?.id)} preferLastOnly={true} />
+                {(getPlayer(battingOrder[currentBatterIndex]?.id)?.isFemale ? "さん" : "くん")}に代わりまして
 
                 {/* 代打選手の最初の紹介はフルで見せる */}
-                <RenderName p={selectedSubPlayer} preferLastOnly={false} />{" "}
+                <RenderName p={selectedSubPlayer} preferLastOnly={false} />
                 {(selectedSubPlayer?.isFemale ? "さん" : "くん")}、
                 <br />
 
@@ -2628,28 +2680,7 @@ onClick={async () => {
             {/* 読み上げ／停止（横いっぱい・等幅） */}
             <div className="grid grid-cols-2 gap-2">
               <button
-onClick={async () => {
-  const currentPlayer = getPlayer(battingOrder[currentBatterIndex]?.id);
-  const sub = selectedSubPlayer;
-  if (!currentPlayer || !sub) return;
-
-  const kanaCurLast = currentPlayer.lastNameKana || currentPlayer.lastName || "";
-  const kanaCurFull = `${currentPlayer.lastNameKana || currentPlayer.lastName || ""}${currentPlayer.firstNameKana || currentPlayer.firstName || ""}`;
-  const kanaSubLast = sub.lastNameKana || sub.lastName || "";
-  const kanaSubFull = `${sub.lastNameKana || sub.lastName || ""}${sub.firstNameKana || sub.firstName || ""}`;
-
-  const dupCur = dupLastNames.has(String(currentPlayer.lastName || ""));
-  const dupSub = dupLastNames.has(String(sub.lastName || ""));
-
-  const honorificBef = currentPlayer.isFemale ? "さん" : "くん";
-  const honorific = sub.isFemale ? "さん" : "くん";
-
-  await speak(
-    `${currentBatterIndex + 1}番 ${(dupCur ? kanaCurFull : kanaCurLast)}${honorificBef}に代わりまして、` +
-    `${kanaSubFull}${honorific}、バッターは ${(dupSub ? kanaSubFull : kanaSubLast)}${honorific}、背番号 ${sub.number}`
-  );
-}}
-
+              onClick={speakPinchModal}
 
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                           inline-flex items-center justify-center gap-2 shadow-md ring-1 ring-white/40"
@@ -2726,7 +2757,7 @@ onClick={async () => {
                     const prefix = isLeadingBatter ? `${inning}回${isTop ? "表" : "裏"}、${teamName}の攻撃は、<br/>` : "";
                     const html =
                       `${prefix}${currentBatterIndex + 1}番 ` +
-                      `${rubyLast(replaced2)} ${honorBef} に代わりまして ` +
+                      `${rubyLast(replaced2)} ${honorBef}に代わりまして ` +
                       `${rubyLast(sub2)} ${rubyFirst(sub2)} ${honorSub}、` +
                       `バッターは ${rubyLast(sub2)} ${honorSub}、` +
                       `背番号 ${sub2.number}`;
@@ -2960,9 +2991,9 @@ onClick={async () => {
                         const toNameLast = `${formatNameForAnnounce(sub, true)}${honorificTo}`;
 
                         const text = checked
-                          ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+                          ? ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
                               `臨時代走、${toNameLast}、臨時代走は ${toNameLast}、背番号 ${sub.number}。`)
-                          : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+                          : ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
                               `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${sub.number}。`);
 
                         setAnnouncementHTML(text);
@@ -3045,9 +3076,9 @@ onClick={() => {
 
   // 文言（HTML）
   const text = isTemp
-    ? ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+    ? ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
         `臨時代走、${toNameLast}、臨時代走は ${toNameLast}。`)
-    : ((fromName ? `${prefix} ${fromName} に代わりまして、` : `${prefix} に代わりまして、`) +
+    : ((fromName ? `${prefix} ${fromName}に代わりまして、` : `${prefix}に代わりまして、`) +
         `${toNameFull}、${prefix}は ${toNameLast}、背番号 ${player.number}。`);
 
   // 同じ塁の既存テキストを置き換え

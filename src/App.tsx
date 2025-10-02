@@ -185,6 +185,9 @@ const App = () => {
   const [endTime, setEndTime] = useState(""); 
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");
   const [showHeatPopup, setShowHeatPopup] = useState(false);
+  // 🔒 熱中症アナウンス 連打ロック
+  const [heatSpeaking, setHeatSpeaking] = useState(false);
+  const heatSpeakingRef = useRef(false);
   const [heatMessage] = useState("本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。");
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
   const [showManualPopup, setShowManualPopup] = useState(false);
@@ -297,6 +300,26 @@ useEffect(() => {
   return () => { delete (window as any).__app_go_defense; };
 }, []);
 
+// 熱中症：読み上げ（連打ガード＋完了/停止で解除）
+const handleHeatSpeak = async () => {
+  if (heatSpeakingRef.current) return; // すでに再生中なら無視
+  heatSpeakingRef.current = true;
+  setHeatSpeaking(true);
+  try {
+    await speak(heatMessage); // progressiveにしたいなら { progressive:true } を第2引数に
+  } finally {
+    heatSpeakingRef.current = false;
+    setHeatSpeaking(false);
+  }
+};
+
+// 熱中症：停止（即解除）
+const handleHeatStop = () => {
+  try { stop(); } finally {
+    heatSpeakingRef.current = false;
+    setHeatSpeaking(false);
+  }
+};
 
 const handleSpeak = async () => {  
   const txt =
@@ -624,7 +647,7 @@ if (totalMyScore > totalOpponentScore) {
     `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
     `審判員の皆様、ありがとうございました。\n` +
     `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-    `尚、この試合の終了時刻は ${formatted} です。\n` +
+    `尚、この試合の終了時刻は ${formatted}です。\n` +
     `これより、ピッチングレコードの確認を行います。\n` +
     `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
     `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
@@ -1128,9 +1151,8 @@ if (totalMyScore > totalOpponentScore) {
             {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                onClick={async () => {
-                  await speak(heatMessage);
-                }}
+                onClick={handleHeatSpeak}
+                disabled={heatSpeakingRef.current || heatSpeaking}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
               >
@@ -1141,7 +1163,7 @@ if (totalMyScore > totalOpponentScore) {
               </span>
               </button>
               <button
-                onClick={() => stop()}
+                onClick={handleHeatStop}
                 className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                            inline-flex items-center justify-center"
               >

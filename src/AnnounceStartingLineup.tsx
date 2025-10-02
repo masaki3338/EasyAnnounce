@@ -277,7 +277,7 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
             <p className="text-white whitespace-pre-wrap leading-relaxed">
               お待たせいたしました、
               {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName} 
-              {" 対 "}
+              {"対 "}
               {opponentTeamFurigana ? renderFurigana(awayTeamName, opponentTeamFurigana) : awayTeamName}
               のスターティングラインナップ並びに審判員をお知らせいたします。
             </p>

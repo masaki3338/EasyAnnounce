@@ -19,6 +19,8 @@ const IconMic = () => (
 // HTML要素からテキストを抽出、<ruby>タグは rt（ふりがな）優先で読む
 function toReadable(root: HTMLElement): string {
   const clone = root.cloneNode(true) as HTMLElement;
+
+  // ルビは「かな」を優先
   clone.querySelectorAll("ruby").forEach(ruby => {
     const rt = ruby.querySelector("rt");
     if (rt) {
@@ -27,8 +29,16 @@ function toReadable(root: HTMLElement): string {
       ruby.replaceWith(ruby.textContent || "");
     }
   });
-  return clone.innerText || "";
+
+  // テキスト化
+  let text = clone.innerText || "";
+
+  // ✅ 単独の「4番」だけを「よばん」に（14番/40番などは対象外）
+  text = text.replace(/(^|[^0-9])4番(?![0-9])/g, "$1よばん");
+
+  return text;
 }
+
 
 let ChangeFlg = 0; // 初期値
 
