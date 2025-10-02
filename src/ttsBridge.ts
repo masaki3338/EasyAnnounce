@@ -125,6 +125,28 @@ export async function bridgedSpeak(
 ) {
   stopAll(); // 既存: 再生競合を止める
 
+  // --- 追記: Web Speech 解錠（初回だけ・無音） ---
+  try {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      // 既に話していれば解錠済とみなす
+      const alreadyUnlocked = (window as any).__ws_unlocked__;
+      if (!alreadyUnlocked) {
+        const u = new SpeechSynthesisUtterance(" "); // 空白を読ませる
+        u.lang = "ja-JP";
+        u.volume = 0;      // 無音
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        // できるだけ“今のタップ”のうちに発話開始させる
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+        (window as any).__ws_unlocked__ = true;
+
+        // voice のロードを促す（iOS 用）
+        window.speechSynthesis.getVoices();
+      }
+    }
+  } catch {}
+
   const baseUrl = getBaseUrl();
   const speaker = getSpeaker();
   const speedScale = getSpeed();
@@ -132,55 +154,49 @@ export async function bridgedSpeak(
   const progressive = opts?.progressive ?? true;
 
   // ========== 1) Progressive（ローリング先読み）: 失敗したら通常合成へ ==========
-  if (progressive) {
-    try {
-      const parts = splitSentencesJa(text);
-      if (parts.length > 0) {
-        const optsSynth: SynthOpts = { baseUrl, speaker, speedScale, cache };
+// Progressive: 最初の1文だけ先に鳴らす
+if (progressive) {
+  try {
+    const parts = splitSentencesJa(text);
+    if (parts.length > 0) {
+      const optsSynth: SynthOpts = { baseUrl, speaker, speedScale, cache };
 
-        // 粒度調整（既存ロジックを踏襲）
-        const merged: string[] = [];
-        for (const seg of parts) {
-          const last = merged[merged.length - 1];
-          if (last && (last.length < 40 || seg.length < 12)) {
-            merged[merged.length - 1] = last + seg;
-          } else {
-            merged.push(seg);
-          }
+      // （あなたの既存マージ処理そのまま）
+      const merged: string[] = [];
+      for (const seg of parts) {
+        const last = merged[merged.length - 1];
+        if (last && (last.length < 40 || seg.length < 12)) {
+          merged[merged.length - 1] = last + seg;
+        } else {
+          merged.push(seg);
         }
-
-        const PREFETCH = 2;
-        const queue: Array<Promise<Blob>> = [];
-        let idx = 0;
-
-        // 初期先読み
-        while (idx < merged.length && queue.length < PREFETCH) {
-          queue.push(synthChunk(merged[idx++], optsSynth)); // ← VOICEVOX 合成(分割)
-        }
-
-        // 最初のチャンクを即再生
-        const firstBlobPromise = queue.shift();
-        if (!firstBlobPromise) throw new Error("progressive: empty queue");
-        const firstBlob = await firstBlobPromise;          // ここで失敗したら catch
-        await playBlob(firstBlob);                         // ここで失敗したら catch
-
-        // 残りを再生しながら随時先読み
-        while (queue.length || idx < merged.length) {
-          while (idx < merged.length && queue.length < PREFETCH) {
-            queue.push(synthChunk(merged[idx++], optsSynth)); // 先読み
-          }
-          const nextBlobPromise = queue.shift();
-          if (!nextBlobPromise) break;
-          const nextBlob = await nextBlobPromise;            // ここで失敗したら catch
-          await playBlob(nextBlob);                          // ここで失敗したら catch
-        }
-        return; // progressive 成功で終了
       }
-    } catch (e) {
-      // Progressive 合成/再生が失敗 → 通常（一括合成）へフォールバック
-      // console.warn("[TTS] progressive failed, fallback to single-shot:", e);
+
+      const PREFETCH = 2;
+      const queue: Array<Promise<Blob>> = [];
+      let idx = 0;
+
+      while (idx < merged.length && queue.length < PREFETCH) {
+        queue.push(synthChunk(merged[idx++], optsSynth));
+      }
+
+      const firstBlob = await queue.shift()!;
+      await playBlob(await firstBlob);
+
+      while (queue.length || idx < merged.length) {
+        while (idx < merged.length && queue.length < PREFETCH) {
+          queue.push(synthChunk(merged[idx++], optsSynth));
+        }
+        const nextBlob = await queue.shift()!;
+        await playBlob(await nextBlob);
+      }
+      return; // progressive 完走
     }
+  } catch {
+    // progressive 失敗 → 通常合成へフォールバック
   }
+}
+
 
   // ========== 2) 通常（一括合成）: 失敗したら Web Speech へ ==========
   try {
