@@ -123,83 +123,91 @@ export async function bridgedSpeak(
   text: string,
   opts?: { progressive?: boolean; cache?: boolean }
 ) {
-  stopAll();
+  stopAll(); // 既存: 再生競合を止める
 
   const baseUrl = getBaseUrl();
   const speaker = getSpeaker();
   const speedScale = getSpeed();
   const cache = opts?.cache ?? true;
-  const progressive = opts?.progressive ?? true; 
+  const progressive = opts?.progressive ?? true;
 
-  // Progressive: 最初の1文だけ先に鳴らす
-// 新: progressive 分岐（ローリング先読み）
-if (progressive) {
-  const parts = splitSentencesJa(text);
-  if (parts.length > 0) {
-    const optsSynth: SynthOpts = { baseUrl, speaker, speedScale, cache };
+  // ========== 1) Progressive（ローリング先読み）: 失敗したら通常合成へ ==========
+  if (progressive) {
+    try {
+      const parts = splitSentencesJa(text);
+      if (parts.length > 0) {
+        const optsSynth: SynthOpts = { baseUrl, speaker, speedScale, cache };
 
-    // 連続して短過ぎるパートが多いとオーバーヘッドが増えるので、
-    // 目安として ~40 文字未満は次とマージして粒度を調整
-    const merged: string[] = [];
-    for (const seg of parts) {
-      const last = merged[merged.length - 1];
-      if (last && (last.length < 40 || seg.length < 12)) {
-        merged[merged.length - 1] = last + seg;
-      } else {
-        merged.push(seg);
+        // 粒度調整（既存ロジックを踏襲）
+        const merged: string[] = [];
+        for (const seg of parts) {
+          const last = merged[merged.length - 1];
+          if (last && (last.length < 40 || seg.length < 12)) {
+            merged[merged.length - 1] = last + seg;
+          } else {
+            merged.push(seg);
+          }
+        }
+
+        const PREFETCH = 2;
+        const queue: Array<Promise<Blob>> = [];
+        let idx = 0;
+
+        // 初期先読み
+        while (idx < merged.length && queue.length < PREFETCH) {
+          queue.push(synthChunk(merged[idx++], optsSynth)); // ← VOICEVOX 合成(分割)
+        }
+
+        // 最初のチャンクを即再生
+        const firstBlobPromise = queue.shift();
+        if (!firstBlobPromise) throw new Error("progressive: empty queue");
+        const firstBlob = await firstBlobPromise;          // ここで失敗したら catch
+        await playBlob(firstBlob);                         // ここで失敗したら catch
+
+        // 残りを再生しながら随時先読み
+        while (queue.length || idx < merged.length) {
+          while (idx < merged.length && queue.length < PREFETCH) {
+            queue.push(synthChunk(merged[idx++], optsSynth)); // 先読み
+          }
+          const nextBlobPromise = queue.shift();
+          if (!nextBlobPromise) break;
+          const nextBlob = await nextBlobPromise;            // ここで失敗したら catch
+          await playBlob(nextBlob);                          // ここで失敗したら catch
+        }
+        return; // progressive 成功で終了
       }
+    } catch (e) {
+      // Progressive 合成/再生が失敗 → 通常（一括合成）へフォールバック
+      // console.warn("[TTS] progressive failed, fallback to single-shot:", e);
     }
-
-    // 先読み窓のサイズ（2～3がおすすめ）
-    const PREFETCH = 2;
-
-    // 先読み用の Promise キューを用意
-    const queue: Array<Promise<Blob>> = [];
-    let idx = 0;
-
-    // 初期プレフィル
-    while (idx < merged.length && queue.length < PREFETCH) {
-      queue.push(synthChunk(merged[idx++], optsSynth));
-    }
-
-    // 最初のチャンクを取って再生開始（ここが“体感即再生”）
-    const firstBlob = await queue.shift()!;
-    await playBlob(await firstBlob);
-
-    // 残りを再生しながら、足りない分を随時先読み
-    while (queue.length || idx < merged.length) {
-      // 先に次の分の先読みを追加（窓を保つ）
-      while (idx < merged.length && queue.length < PREFETCH) {
-        queue.push(synthChunk(merged[idx++], optsSynth));
-      }
-
-      // 次チャンクの完成を待って再生
-      const nextBlob = await queue.shift()!;
-      await playBlob(await nextBlob);
-    }
-    return;
   }
-}
 
-  // 通常（一括合成）
+  // ========== 2) 通常（一括合成）: 失敗したら Web Speech へ ==========
   try {
-    const wav = await voicevoxFetchBlobCached(text, { baseUrl, speaker, speedScale }, cache);
+    const wav = await voicevoxFetchBlobCached(text, { baseUrl, speaker, speedScale }, cache); // ← VOICEVOX
     const url = URL.createObjectURL(wav);
     const a = new Audio(url);
     a.onended = () => { try { URL.revokeObjectURL(url); } catch {} if (currentAudio === a) currentAudio = null; };
     currentAudio = a;
-    await robustPlay(a);
+    await robustPlay(a); // ここで失敗したら下の catch
     return;
   } catch {
-    // 下で Web Speech
+    // ここに来たら VOICEVOX ルートは失敗
   }
 
-  // Web Speech フォールバック
-  const uttr = new SpeechSynthesisUtterance(text);
-  uttr.rate = speedScale;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(uttr);
+  // ========== 3) Web Speech フォールバック（VOICEVOX が失敗した時だけ実行） ==========
+  // 既存の仕様に合わせて最小限：rate に speedScale をそのまま反映
+  try {
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.lang = "ja-JP";
+    uttr.rate = Math.max(0.1, Math.min(10, Number(speedScale) || 1));
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(uttr);
+  } catch {
+    // Web Speech が使えない環境では何もしない（既存仕様を維持）
+  }
 }
+
 
 export function bridgedStop() {
   stopAll();
