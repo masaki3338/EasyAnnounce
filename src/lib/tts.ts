@@ -1,6 +1,5 @@
 // lib/tts.ts — 画面から使う薄いAPI（全画面はこれだけ import してください）
 import { bridgedSpeak, bridgedStop, prewarmTTS as bridgePrewarm } from "../ttsBridge";
-
 /** VOICEVOX優先（失敗時 Web Speech）。UIは待たせない運用がおすすめ：void speak(...) */
 export async function speak(
   text: string,
@@ -18,3 +17,5 @@ export function stop() {
 export async function prewarmTTS() {
   return bridgePrewarm();
 }
+// --- 互換エイリアス（旧コード対応） ---
+
