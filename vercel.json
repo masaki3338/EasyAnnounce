@@ -10,6 +10,14 @@
   "rewrites": [
     { "source": "/manual", "destination": "/manual.pdf" }
   ],
+  "functions": {
+    "api/tts-voicevox.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "routes": [
+    { "src": "/api/tts-voicevox(?:/.*)?", "dest": "/api/tts-voicevox.js" }
+  ],
   "cleanUrls": true,
   "trailingSlash": false
 }
