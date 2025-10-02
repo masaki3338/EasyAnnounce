@@ -45,9 +45,14 @@ async function playBlob(blob: Blob): Promise<void> {
 
 // =========== 設定（localStorage） ===========
 const getBaseUrl = () =>
-  (localStorage.getItem("tts:voicevox:baseUrl") ||
-   (window as any).__VOICEVOX_BASE__ ||
-   "http://127.0.0.1:50021").replace(/\/+$/, "");
+  (
+    localStorage.getItem("tts:voicevox:baseUrl") ||
+    (window as any).__VOICEVOX_BASE__ ||
+    // 本番は Vercel の API プロキシを経由
+    (typeof window !== "undefined" && location.protocol === "https:"
+      ? "/api/tts-voicevox"
+      : "http://127.0.0.1:50021")
+  ).replace(/\/+$/, "");
 
 // 例: 3 (ずんだもん等)   
 const getSpeaker = () => {
