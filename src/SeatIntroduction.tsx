@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 interface Props {
   onNavigate: (screen: ScreenType) => void;
@@ -75,7 +76,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
     })();
   }, []);
 
-  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+
 
   const positionLabels: [string, string][] = [
     ["投", "ピッチャー"],
@@ -139,18 +140,17 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
  }
     };
     loadData();
-    return () => {
-      try { speechSynthesis.cancel(); } catch {}
-      utterRef.current = null;
-      setSpeaking(false);
-    };
+    return () => { ttsStop(); setSpeaking(false); };
   }, []);
 
+  // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
+  useEffect(() => { void prewarmTTS(); }, []);
+
   const speakText = () => {
-    stopSpeaking();
+    // 表示と同じ文面（読みやすい句切り）で VOICEVOX 読み上げ
     const text =
       [
-        `${inning} 守ります、${teamName} のシートをお知らせします。`,
+        `${inning} 守ります、${teamName}のシートをお知らせします。`,
         ...positionLabels.map(([pos, label]) => {
           const p = positions[pos];
           const ln = p?.lastName || "";
@@ -158,24 +158,24 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
           const yomi = forceFull
             ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
             : `${p?.lastNameKana || ""}`;
-          return `${label} ${yomi} ${p?.honorific || "くん"}`;
+          return `${label} ${yomi}${p?.honorific || "くん"}`;
         }),
       ].join("、") + "です。";
-
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-    utter.onstart = () => setSpeaking(true);
-    const clear = () => { setSpeaking(false); utterRef.current = null; };
-    utter.onend = clear; utter.onerror = clear;
-    speechSynthesis.speak(utter);
-    utterRef.current = utter;
+    setSpeaking(true);
+    // ❗️待たずに発火（IIFEでtry/finally）
+    void (async () => {
+      try {
+        await ttsSpeak(text, { progressive: true, cache: true });
+      } finally {
+        setSpeaking(false);
+      }
+    })();
   };
-
   const stopSpeaking = () => {
-    try { speechSynthesis.cancel(); } catch {}
-    utterRef.current = null;
+    ttsStop();
     setSpeaking(false);
   };
+
 
   const formattedAnnouncement =
     `${inning}　守ります　${teamName} のシートをお知らせします。\n\n` +

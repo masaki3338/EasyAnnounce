@@ -1,6 +1,7 @@
 // StartGreeting.tsx（全文置き換え）
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 interface Props {
   onNavigate: (screen: string) => void;
@@ -60,6 +61,9 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
     load();
   }, []);
 
+  // 初回だけ VOICEVOX を温める
+  useEffect(() => { void prewarmTTS(); }, []);
+
   const team1st = benchSide === "1塁側" ? teamName : opponentName;
   const team3rd = benchSide === "3塁側" ? teamName : opponentName;
 
@@ -69,9 +73,9 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   const messageSpeak =
     `おまたせいたしました。${tournamentName}。` +
-    `ほんじつの だい ${matchNumber} しあい、` +
-    `${team1stRead} たい ${team3rdRead} の しあい、` +
-    `まもなく かいし でございます。`;
+    `ほんじつの だい${matchNumber}しあい、` +
+    `${team1stRead}たい${team3rdRead}のしあい、` +
+    `まもなくかいしでございます。`;
 
   const message =
     `お待たせいたしました。\n${tournamentName}\n` +
@@ -79,17 +83,14 @@ const StartGreeting: React.FC<Props> = ({ onNavigate, onBack }) => {
     `${team1st} 対 ${team3rd} の試合、\n` +
     `まもなく開始でございます。`;
 
+  // VOICEVOX優先：押して“すぐ返す”。最初の1文を先に鳴らす（progressive）
   const handleSpeak = () => {
-    const utter = new SpeechSynthesisUtterance(messageSpeak);
-    utter.lang = "ja-JP";
-    utter.onstart = () => setReading(true);
-    utter.onend = () => setReading(false);
-    utter.onerror = () => setReading(false);
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utter);
+    setReading(true);
+    void ttsSpeak(messageSpeak, { progressive: true, cache: true })
+      .finally(() => setReading(false));
   };
   const handleStop = () => {
-    speechSynthesis.cancel();
+    ttsStop();        // VOICEVOXの <audio> と Web Speech の両方を停止
     setReading(false);
   };
 

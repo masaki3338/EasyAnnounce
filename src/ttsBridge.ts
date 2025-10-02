@@ -129,7 +129,7 @@ export async function bridgedSpeak(
   const speaker = getSpeaker();
   const speedScale = getSpeed();
   const cache = opts?.cache ?? true;
-  const progressive = !!opts?.progressive;
+  const progressive = opts?.progressive ?? true; 
 
   // Progressive: 最初の1文だけ先に鳴らす
 // 新: progressive 分岐（ローリング先読み）

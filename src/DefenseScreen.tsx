@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -247,15 +248,7 @@ const nameRubyHTML = (p: any) => {
   return `<ruby>${ln || "投手"}<rt>${lnKana || "とうしゅ"}</rt></ruby>`;
 };
 
-// 読み上げ関数
-const speak = (t: string) => {
-  const s = window.speechSynthesis;
-  if (s.speaking) s.cancel();
-  const u = new SpeechSynthesisUtterance(t);
-  u.lang = "ja-JP";
-  s.speak(u);
-};
-const stopSpeak = () => window.speechSynthesis?.cancel();
+
 
 // 代打/代走ポップアップ内の「リエントリー」ボタンから呼ばれる
 const handleReentryCheck = async () => {
@@ -534,7 +527,11 @@ await localForage.setItem("pitchCounts", {
   loadData();
 }, []);
 
+ // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
+ useEffect(() => { void prewarmTTS(); }, []);
 
+ // 画面離脱時は必ず停止
+ useEffect(() => () => { ttsStop(); }, []);
   
   const addPitch = async () => {
     const newCurrent = currentPitchCount + 1;
@@ -807,35 +804,21 @@ const normalizeForTTS = (input: string) => {
 };
 
 
-const handleSpeak = () => {
-  if (synthRef.current?.speaking) synthRef.current.cancel();
-  if (announceMessages.length === 0) return;
-  const text = normalizeForTTS(announceMessages.join("。")); // ← ここを適用
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ja-JP"; // 明示
-  utteranceRef.current = utterance;
-  synthRef.current.speak(utterance);
-};
+ const handleSpeak = () => {
+   if (announceMessages.length === 0) return;
+   const text = normalizeForTTS(announceMessages.join("。"));
+   // UIは待たせない＋先頭文を先に鳴らす
+   void ttsSpeak(text, { progressive: true, cache: true });
+ };
 
-const handlePitchLimitSpeak = () => {
-  if (synthRef.current?.speaking) synthRef.current.cancel();
-  if (pitchLimitMessages.length === 0) return;
-  const text = normalizeForTTS(pitchLimitMessages.join("。")); // ← 念のため適用
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ja-JP"; // 明示
-  // 声・話速・声調を微調整（イントネーション改善）
-  const v = pickJaVoice();
-  if (v) utterance.voice = v;
-  utterance.rate = 0.95;  // ややゆっくり
-  utterance.pitch = 1.05; // わずかに高めで語尾沈みを防ぐ
-  utteranceRef.current = utterance;
-  synthRef.current.speak(utterance);
-};
+ const handlePitchLimitSpeak = () => {
+   if (pitchLimitMessages.length === 0) return;
+   const text = normalizeForTTS(pitchLimitMessages.join("。"));
+   void ttsSpeak(text, { progressive: true, cache: true });
+ };
 
 
-  const handleStop = () => {
-    if (synthRef.current?.speaking) synthRef.current.cancel();
-  };
+const handleStop = () => { ttsStop(); };
 
     return (    
       <div
@@ -1216,7 +1199,7 @@ const handlePitchLimitSpeak = () => {
               {/* 読み上げ（左） */}
               <button
                 type="button"
-                onClick={() => speak(reEntryMessage)}
+                onClick={() => { if (reEntryMessage) void ttsSpeak(reEntryMessage, { progressive:true, cache:true }); }}
                 className="w-full px-3 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-semibold
                           shadow active:scale-95 inline-flex items-center justify-center gap-2"
               >
@@ -1227,7 +1210,7 @@ const handlePitchLimitSpeak = () => {
   {/* 停止（右） */}
   <button
     type="button"
-    onClick={() => window.speechSynthesis?.cancel()}
+    onClick={() => ttsStop()}
     className="w-full px-3 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold
                shadow active:scale-95"
   >
@@ -1454,14 +1437,14 @@ if (typeof reEntryTarget?.index === "number") {
                   <div className="flex flex-wrap gap-2 justify-center">
                     <button
                       className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => speak(reEntryMessage)}
+                      onClick={() => { if (reEntryMessage) void ttsSpeak(reEntryMessage, { progressive:true, cache:true }); }}
                     >
                      
                        読み上げ
                     </button>
                     <button
                       className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                      onClick={() => window.speechSynthesis?.cancel()}
+                      onClick={() => ttsStop()}
                     >
                       停止
                     </button>

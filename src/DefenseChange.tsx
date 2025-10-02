@@ -7,12 +7,28 @@ import { useDrag } from "react-dnd";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { useMemo } from "react"; //
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
     <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
   </svg>
 );
+
+// 既存の import 群のすぐ下あたりに追記
+// HTML要素からテキストを抽出、<ruby>タグは rt（ふりがな）優先で読む
+function toReadable(root: HTMLElement): string {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("ruby").forEach(ruby => {
+    const rt = ruby.querySelector("rt");
+    if (rt) {
+      ruby.replaceWith(rt.textContent || "");
+    } else {
+      ruby.replaceWith(ruby.textContent || "");
+    }
+  });
+  return clone.innerText || "";
+}
 
 let ChangeFlg = 0; // 初期値
 
@@ -389,8 +405,8 @@ if (isOriginalStarter || isBackToSameStarter) {
   // ---- 本文（末尾は後段で句点付与）----
   console.log("[SAME-POS-PINCH] add line (sono-mama)", { latestPinchId, currentId, posSym });
   result.push(
-  `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)} に代わりまして、` +
-  `${orderPart}${fullNameWithHonor(subPlayer)} がそのまま入り ${posJP[posSym]}、`
+  `先ほど${reasonText}${nameWithHonor(latestPinchPlayer)}に代わりまして、` +
+  `${orderPart}${fullNameWithHonor(subPlayer)}がそのまま入り${posJP[posSym]}、`
   ); 
 
 // ★ 打順は subPlayer 本人の現在の打順を優先
@@ -498,9 +514,9 @@ const useSimpleForm =
 // 直後でなければ「先ほど〜致しました」を使わず、位置付きの通常形にする
 const firstLine = useSimpleForm
   ? `${posFull2} ${nameWithHonor(efPlayer)}に代わりまして、` +
-    `${nameWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`
-  : `先ほど${phrase}致しました${nameWithHonor(refPlayer)} に代わりまして、` +
-    `${nameWithHonor(B2)} がリエントリーで ${posFull2}に入ります。`;
+    `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`
+  : `先ほど${phrase}致しました${nameWithHonor(refPlayer)}に代わりまして、` +
+    `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`;
 
 //result.push(firstLine);
 console.log("[REENTRY-LINE]", useSimpleForm ? "simple" : "recent", {
@@ -605,7 +621,7 @@ if (mixedR) {
   // フォールバック：純粋なシフト（元々いた選手が他守備へ動いた）だけのとき
   const move = shift.find(s => s.fromPos === posNowSym);
   if (move) {
-    result.push(`${posFull}の ${nameWithHonor(move.player)}が ${posJP[move.toPos]}、`);
+    result.push(`${posFull}の${nameWithHonor(move.player)}が${posJP[move.toPos]}、`);
     skipShiftPairs.add(`${move.player.id}|${move.fromPos}|${move.toPos}`);
 
     const orderM = battingOrder.findIndex(e => e.id === move.player.id) + 1;
@@ -702,8 +718,8 @@ if (isBOnField) continue;
 
     // 1行目：控えが別守備に入る（★打順は書かない）
     lines.push(
-      `先ほど${reasonText}${nameWithHonor(pinch)} に代わりまして、` +
-      `${fullNameWithHonor(subIn)} が入り ${posJP[subInPos]}、`
+      `先ほど${reasonText}${nameWithHonor(pinch)}に代わりまして、` +
+      `${fullNameWithHonor(subIn)}が入り${posJP[subInPos]}、`
     );
 
 
@@ -722,15 +738,15 @@ if (isBOnField) continue;
 
     if (movedTrueReason === "代走" || movedTrueReason === "臨時代走") {
       // 代走で入った選手が守備へ → 専用文言（句点で締めて追加入力を防ぐ）
-      lines.push(`先ほど代走致しました${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代走致しました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAISO");
     } else if (movedTrueReason === "代打") {
       // 代打で入った選手が守備へ
-      lines.push(`先ほど代打致しました${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}へ。`);
+      lines.push(`先ほど代打致しました${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}へ。`);
       console.log("[SPECIAL] 2nd-line as DAIDA");
     } else {
       // 通常シフト
-      lines.push(`${posJP[movedFromPos]}の ${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
+      lines.push(`${posJP[movedFromPos]}の${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}、`);
       console.log("[SPECIAL] 2nd-line as NORMAL");
     }
 
@@ -890,7 +906,7 @@ result.push(combined);
   // ★ 相手が通常選手の場合は従来通り
 // ★ 相手が通常選手の場合は従来通り（2行に分割 + 重複スキップ登録）
 result.push(`先ほど${entry.reason}致しました${nameWithHonor(pinchPlayer)}が${posJP[pos]}、`);
-result.push(`${posJP[pos]}の ${nameWithHonor(movedPlayer)} が ${posJP[movedToPos]}、`);
+result.push(`${posJP[pos]}の${nameWithHonor(movedPlayer)}が ${posJP[movedToPos]}、`);
 
 // 以降の shift ループで同じ「movedPlayer のシフト」を出さない
 skipShiftPairs.add(`${movedPlayer.id}|${pos}|${movedToPos}`);
@@ -964,7 +980,7 @@ battingOrder.forEach((entry, idx) => {
 
     pinchInSamePos.push({
       reason: (entry.reason === "代打" ? "代打" : "代走"),
-      text: `${head}${entry.reason}致しました${ruby} がそのまま入り ${posJP[pos]}`
+      text: `${head}${entry.reason}致しました${ruby}がそのまま入り ${posJP[pos]}`
     });
 
     // 打順行は従来どおり
@@ -1062,8 +1078,8 @@ replace.forEach((r) => {
       )) {
 
     replaceLines.push(
-      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
-      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
+      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
     );
 
     // 打順行（重複防止）
@@ -1090,8 +1106,8 @@ replace.forEach((r) => {
 
   if (isReentryBlue(r.to.id)) {
     replaceLines.push(
-      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
-      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
+      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
     );
 
     if (
@@ -1144,8 +1160,8 @@ replace.forEach((r) => {
     console.log("[ANN][REPLACE:fired-reentrySameOrder]", { from: r.from.id, to: r.to.id, pos: r.pos, rOrder: r.order });
     // 本文のみ。末尾の「に入ります。」は後段の整形で付与される
     replaceLines.push(
-      `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、` +
-      `${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+      `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、` +
+      `${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
     );
 
   if (
@@ -1195,7 +1211,7 @@ console.log("[ANN][REPLACE:check-reentryEarly]", { from: r.from.id, to: r.to.id,
 if (isReentryEarly) {
   console.log("[ANN][REPLACE:fired-reentryEarly]", { from: r.from.id, to: r.to.id, pos: r.pos });
   replaceLines.push(
-    `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`
+    `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`
   );
   handledPlayerIds.add(r.from.id);
   handledPlayerIds.add(r.to.id);
@@ -1224,7 +1240,7 @@ if (pinchFromUsed && isSamePosition) {
 
   // ✅ 確定の一文（末尾はここでは句点なし：後段の終端調整で「。」を付与）
   replaceLines.push(
-    `先ほど${phrase}致しました${nameWithHonor(r.from)} に代わりまして、${orderPart}${fullNameWithHonor(r.to)} がそのまま入り ${posJP[r.pos]}`
+    `先ほど${phrase}致しました${nameWithHonor(r.from)}に代わりまして、${orderPart}${fullNameWithHonor(r.to)}がそのまま入り${posJP[r.pos]}`
   );
 
   
@@ -1283,7 +1299,7 @@ let line: string;
 
 if (isReentrySameOrder) {
   console.log("[REPLACE] REENTRY same-order", { from: r.from.id, to: r.to.id, pos: r.pos, order: r.order });
-  line = `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${nameWithHonor(r.to)} がリエントリーで ${posJP[r.pos]}`;
+  line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`;
 } else if (isPinchFrom) {
   console.log("[ANN][PINCH:enter]", {
     fromId: r.from.id, toId: r.to.id, pos: r.pos, reasonOfFrom, rOrder: r.order,
@@ -1305,10 +1321,10 @@ if (isReentrySameOrder) {
 
   // 「代打本人が守備に入る」ケースは別ブロックで処理済みなので、
   // ここは「代打に代わって控えが入る」専用にする
-  line = `先ほど${reasonOfFrom}致しました${nameWithHonor(r.from)} に代わりまして、` +
-         `${orderPart}${fullNameWithHonor(r.to)} が入り ${posJP[r.pos]}`;
+  line = `先ほど${reasonOfFrom}致しました${nameWithHonor(r.from)}に代わりまして、` +
+         `${orderPart}${fullNameWithHonor(r.to)}が入り ${posJP[r.pos]}`;
 } else {
-  line = `${posJP[r.pos]} ${nameWithHonor(r.from)} に代わりまして、${fullNameWithHonor(r.to)}`;
+  line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${fullNameWithHonor(r.to)}`;
 }
 
 replaceLines.push(line);
@@ -1358,7 +1374,7 @@ if (replaceLines.length === 1) {
       ? (shift.length > 0 ? base + "に入ります、" : base + "に入ります。")
     : hasHairi
       ? (shift.length > 0 ? base + "、" : base + "。")
-      : (shift.length > 0 ? base + "、" : base + " が入ります。");
+      : (shift.length > 0 ? base + "、" : base + "が入ります。");
 
   result.push(sentence);
 
@@ -1381,7 +1397,7 @@ if (replaceLines.length === 1) {
       ? (shift.length > 0 ? last + "に入ります、" : last + "に入ります。")
     : hasHairiLast
       ? (shift.length > 0 ? last + "、" : last + "。")
-      : (shift.length > 0 ? last + "、" : last + " が入ります。");
+      : (shift.length > 0 ? last + "、" : last + "が入ります。");
 
  console.log("[DEBUG] 判定結果:", { lastIsSonoMama, lastIsReentryBare, hasHairiLast });
 
@@ -1415,10 +1431,10 @@ const buildFromHead = (fromId: number, fromPosSym: string | undefined): string =
     const kind = reason === "代走" ? "代走致しました"
               : reason === "臨時代走" ? "臨時代走"
               : "代打致しました";
-    return `先ほど${kind}${p ? nameWithHonor(p) : ""} に代わりまして、`;
+    return `先ほど${kind}${p ? nameWithHonor(p) : ""}に代わりまして、`;
   }
   const posFull = fromPosSymSafe ? posJP[fromPosSymSafe as keyof typeof posJP] : "";
-  return `${posFull ? `${posFull}の ` : ""}${p ? nameWithHonor(p) : ""} に代わりまして、`;
+  return `${posFull ? `${posFull}の ` : ""}${p ? nameWithHonor(p) : ""}に代わりまして、`;
 };
 
 mixed.forEach((r, i) => {
@@ -1463,7 +1479,7 @@ const reasonOf = (pid: number): string | undefined => {
 };
 const head = buildFromHead(r.from.id, r.fromPos); // ← 代打/代走でなければ「〈守備〉の 清水くん…」
 addReplaceLine(
-  `${head}${nameWithHonor(r.to)} がリエントリーで入り ${posJP[r.toPos]}`,
+  `${head}${nameWithHonor(r.to)}がリエントリーで入り ${posJP[r.toPos]}`,
   i === mixed.length - 1 && shift.length === 0
 );
 
@@ -1501,8 +1517,8 @@ if (
     const orderPart = r.order > 0 ? `${r.order}番に ` : "";
     // 例：「ライトの奥村くんに代わりまして、リエントリーで小池くんがライトへ」
     addReplaceLine(
-      `${posJP[r.fromPos]}の ${nameWithHonor(r.from)} に代わりまして、` +
-      `${orderPart}${nameWithHonor(r.to)} がリエントリーで ${posJP[r.toPos]}へ`,
+      `${posJP[r.fromPos]}の ${nameWithHonor(r.from)}に代わりまして、` +
+      `${orderPart}${nameWithHonor(r.to)}がリエントリーで ${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   
@@ -1537,7 +1553,7 @@ if (
       "代打致しました"; // ←「しました」にしたい場合はここを変更
 
     addReplaceLine(
-      `先ほど${phrase}${nameWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameWithHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+      `先ほど${phrase}${nameWithHonor(r.from)}に代わりまして、${r.order}番に${fullNameWithHonor(r.to)}が入り${posJP[r.toPos]}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
   } else {
@@ -1549,7 +1565,7 @@ if (
   const fromFull = fromSym ? posJP[fromSym] : "";
 
   addReplaceLine(
-    `${fromFull ? `${fromFull}の ` : ""}${nameWithHonor(r.from)} に代わりまして、${r.order}番に ${fullNameWithHonor(r.to)} が入り ${posJP[r.toPos]}へ`,
+    `${fromFull ? `${fromFull}の ` : ""}${nameWithHonor(r.from)}に代わりまして、${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[r.toPos]}へ`,
     i === mixed.length - 1 && shift.length === 0
   );
 
@@ -1693,8 +1709,8 @@ if (pinchEntry) {
     const prefixB = phraseA === phraseB ? "同じく先ほど" : "先ほど";
 
     result.push(
-      `先ほど${phraseA}${nameWithHonor(playerA)} が ${posJP[toA]}、` +
-      `${prefixB}${phraseB}${nameWithHonor(playerB)} が ${posJP[fromA]}。`
+      `先ほど${phraseA}${nameWithHonor(playerA)}が ${posJP[toA]}、` +
+      `${prefixB}${phraseB}${nameWithHonor(playerB)}が ${posJP[fromA]}。`
     );
 
     // 打順行（重複しないようガード）
@@ -1741,10 +1757,10 @@ if (pinchEntry) {
   );
   const headText = hasPriorSame ? `同じく先ほど${phrase}` : `先ほど${phrase}`;
   // 「…が センターへ、」の形にする（最後は終端調整で句点）
-  result.push(`${headText}${nameWithHonor(s.player)} が ${tail}へ${ends}`);
+  result.push(`${headText}${nameWithHonor(s.player)}が ${tail}へ${ends}`);
 } else {
   // 通常のシフト出力（従来どおり）
-  result.push(`${head}の ${nameRuby(s.player)}${h} が ${tail} ${ends}`);
+  result.push(`${head}の${nameRuby(s.player)}${h}が ${tail} ${ends}`);
 }
 // ↑↑↑ ここまで置き換え ↑↑↑
 
@@ -2109,7 +2125,7 @@ type DefenseChangeProps = {
 };
 
 const DefenseChange: React.FC<DefenseChangeProps> = ({ onConfirmed }) => {
-  
+
   // ---- ここから: モーダル読み上げ用（DefenseChange 内） ----
 const modalTextRef = useRef<HTMLDivElement | null>(null);
 // 直前に外れた“元スタメン”の打順Index（例: レフトが外れた等）
@@ -2118,6 +2134,21 @@ const lastVacatedStarterIndex = useRef<number | null>(null);
 // === Drag中のスクロールロック ===
 const scrollLockDepthRef = useRef(0);
 const preventRef = useRef<(e: Event) => void>();
+
+  // === VOICEVOX 読み上げ制御用 ===
+  const [speaking, setSpeaking] = useState(false);
+
+  // 初回マウント時に VOICEVOX をウォームアップ
+  useEffect(() => {
+    void prewarmTTS();
+  }, []);
+
+  // アンマウント時に再生を止める
+  useEffect(() => {
+    return () => {
+      ttsStop();
+    };
+  }, []);
 
 const lockScroll = () => {
   if (++scrollLockDepthRef.current > 1) return;
@@ -2142,93 +2173,46 @@ const unlockScroll = () => {
   }
 };
 
-// 置き換え版：漢字+ルビの重複は rt だけ読む／それ以外は通常テキストを読む
 const speakVisibleAnnouncement = () => {
   const root = modalTextRef.current;
   if (!root) return;
 
-  const toReadable = (node: Node): string => {
-    // ① プレーン文字はそのまま
-    if (node.nodeType === Node.TEXT_NODE) {
-      return node.nodeValue || "";
-    }
-
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as HTMLElement;
-      const tag = el.tagName.toLowerCase();
-
-      // ② <ruby> は <rt> だけを抽出（漢字側は読まない）
-      if (tag === "ruby") {
-        const rts = el.getElementsByTagName("rt");
-        if (rts.length > 0) {
-          let s = "";
-          for (const rt of Array.from(rts)) s += rt.textContent || "";
-          return s;
-        }
-        // 万一 rt が無ければ中身をそのまま
-        return el.textContent || "";
-      }
-
-      // ③ <rt> / <rp> は <ruby>で処理するので個別には読まない
-      if (tag === "rt" || tag === "rp") return "";
-
-      // ④ 改行タグは改行として扱い（後で句点に正規化）
-      if (tag === "br") return "\n";
-
-      // ⑤ それ以外は子孫を順に読む
-      let acc = "";
-      el.childNodes.forEach((child) => { acc += toReadable(child); });
-      return acc;
-    }
-    return "";
-  };
-
-  // ★ 同姓（苗字）重複セットを読み込む
-  const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    (async () => {
-      const list = (await localForage.getItem<string[]>("duplicateLastNames")) ?? [];
-      const set = new Set(list.map(String));
-      setDupLastNames(set);
-
-      // ヘルパーがどこからでも参照できるように（top-level関数からも使える）
-      (window as any).__dupLastNames = set;
-    })();
-  }, []);
-
-
-  // モーダル内の“見えているHTML”を変換
+  // 追加した toReadable をここで呼び出す
   let text = toReadable(root);
 
-  // 正規化処理（追加）
+  // 正規化処理（既存の置換ルール）
   text = text
     .replace(/に入ります/g, "にはいります")
     .replace(/へ入ります/g, "へはいります")
     .replace(/が\s*入り/g, "がはいり")
     .replace(/へ\s*入り/g, "へはいり")
     .replace(/に\s*入り/g, "にはいり")
-    .replace(/そのまま\s*入り/g, "そのままはいり")
-    .replace(/に入ります/g, "にはいります")
-    .replace(/へ入ります/g, "へはいります");
-    speechSynthesis.cancel();
-    
-  // 軽い整形：連続空白/改行→読みやすい形に
+    .replace(/そのまま\s*入り/g, "そのままはいり");
+
   text = text
     .replace(/\u00A0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "。")
     .replace(/。。+/g, "。")
     .trim();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ja-JP";
-  u.rate = 1;
-  u.pitch = 1;
-  u.volume = 1;
-  speechSynthesis.speak(u);
+
+  if (text && !/[。！？]$/.test(text)) text += "。";
+
+  ttsStop();
+  setSpeaking(true);
+  void (async () => {
+    try {
+      await ttsSpeak(text, { progressive: true, cache: true });
+    } finally {
+      setSpeaking(false);
+    }
+  })();
 };
 
 
-  const stopSpeaking  = () => speechSynthesis.cancel();
+
+
+  const stopSpeaking  = () => ttsStop();
   const pauseSpeaking = () => speechSynthesis.pause();
   const resumeSpeaking = () => speechSynthesis.resume();
   // ---- ここまで ----
@@ -2500,7 +2484,7 @@ const handleUndo = async () => {
   setRedo(nextRedo);
   await restoreSnapshot(last);
   await saveHistoryToStorage(nextHist, nextRedo);
-  speechSynthesis.cancel();
+  ttsStop();
 };
 
 // やり直し（永続化も更新）
@@ -2515,7 +2499,7 @@ const handleRedo = async () => {
   setHistory(nextHist);
   await restoreSnapshot(next);
   await saveHistoryToStorage(nextHist, nextRedo);
-  speechSynthesis.cancel();
+  ttsStop();
 };
 
 const [reentryInfos, setReentryInfos] = useState<ReentryEntry[]>([]);
@@ -4090,6 +4074,20 @@ setIsDirty(false);
   });
 }, [assignments, initialAssignments, teamPlayers]);
 
+// === VOICEVOX 初期化・停止処理 ===
+useEffect(() => {
+  // 初回だけ VOICEVOX を温める（初回の待ち時間を短縮）
+  void prewarmTTS();
+}, []);
+
+useEffect(() => {
+  // コンポーネントがアンマウントされた時に確実に停止
+  return () => {
+    ttsStop();
+  };
+}, []);
+
+
 // “戻る”が押されたとき：変更があれば確認、なければそのまま戻る
 const handleBackClick = () => {
   if (isDirty) {
@@ -4106,19 +4104,20 @@ const handleBackToDefense = () => {
 };
 
 
-  const handleSpeak = () => {
-    const effectiveLogs = getEffectiveSubstitutionLogs(substitutionLogs);
-    if (effectiveLogs.length === 0) return;
+const handleSpeak = async () => {
+  const effectiveLogs = getEffectiveSubstitutionLogs(substitutionLogs);
+  if (effectiveLogs.length === 0) return;
 
-    const text = `守備交代をお知らせします。${effectiveLogs.join("、")}`;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ja-JP";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  };
+  const text = `守備交代をお知らせします。${effectiveLogs.join("、")}`;
+  try {
+    await ttsSpeak(text);   // VOICEVOX優先、失敗時は自動でWeb Speechにフォールバック
+  } catch (e) {
+    console.error("TTS failed:", e);
+  }
+};
 
   const handleStop = () => {
-    window.speechSynthesis.cancel();
+    ttsStop();
   };
 
 

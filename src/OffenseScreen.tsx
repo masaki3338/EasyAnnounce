@@ -65,6 +65,9 @@ function htmlToTtsText(html: string): string {
     .replace(/\s*\n\s*/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  // ✅ 「回表／回裏」を TTS 用に読み替え
+  text = text.replace(/回表/g, "回おもて");
   return text;
 }
 
@@ -258,6 +261,9 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
+  // 🔒 読み上げ連打ロック
+  const [speaking, setSpeaking] = useState(false);
+  const isSpeakingRef = useRef(false);
 
   // 🔸 DH解除モーダル表示フラグ
   const [showDhDisableModal, setShowDhDisableModal] = useState(false);
@@ -302,8 +308,9 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
 
   // 🔸 ルビ整形
   const rubyFull = (p: any) =>
-    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` +
-    `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+    //`<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby> ` +  // ← 後ろに半角スペース
+    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` + 
+  `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
   const rubyLast = (p: any) =>
     `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
   const rubyFirst = (p: any) =>
@@ -1028,7 +1035,7 @@ const handleRedo = async () => {
 // base: "1塁"/"2塁"/"3塁" など、fromName: "〇〇くん" or ""、to: 代走に入る選手
 const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, isTemp: boolean): string => {
   if (!to) return "";
-  const toNameFull = `${to.lastName}${to.firstName}くん`;
+  const toNameFull = `${to.lastName} ${to.firstName}くん`;
   const toNameLast = `${to.lastName}くん`;
   const baseKanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
   const prefix = `${baseKanji}ランナー`;
@@ -1234,13 +1241,13 @@ const getPosition = (id: number): string | null => {
 
 
 const getFullName = (player: Player) => {
-  return `${player.lastName ?? ""}${player.firstName ?? ""}`;
+  return `${player.lastName ?? ""} ${player.firstName ?? ""}`;
 };
 
 const getAnnouncementName = (player: Player) => {
   return announcedIds.includes(player.id)
     ? player.lastName ?? ""
-    : `${player.lastName ?? ""}${player.firstName ?? ""}`;
+    : `${player.lastName ?? ""} ${player.firstName ?? ""}`;
 };
 
 const announce = async (text: string | string[]) => {
@@ -1340,20 +1347,46 @@ const prefetchCurrent = () => {
   window.prefetchTTS?.(text);
 };
 
-// 「アナウンス文言エリア」の表示内容そのままを読み上げ
+// 「アナウンス文言エリア」を読み上げ（連打ロック付き）
 const handleRead = async () => {
-  // ★ tiebreak 表示中はそちらを優先（改行→<br> にして HTML と同等に扱う）
+  // すでに再生中なら無視（再押下不可）
+  if (isSpeakingRef.current) return;
+
+  // ロック開始
+  isSpeakingRef.current = true;
+  setSpeaking(true);
+
+  // 表示中の文面（tiebreak表示を優先）を確定して読み上げ
   const htmlFallback = tiebreakAnno ? tiebreakAnno.replace(/\n/g, "<br />") : "";
-  await speakFromAnnouncementArea(
-    announcementHTMLOverrideStr || htmlFallback,
-    announcementHTMLStr       || htmlFallback
-  );
+
+  const release = () => {
+    isSpeakingRef.current = false;
+    setSpeaking(false);
+  };
+
+  try {
+    await speakFromAnnouncementArea(
+      announcementHTMLOverrideStr || htmlFallback,
+      announcementHTMLStr       || htmlFallback
+    );
+  } finally {
+    // 停止ボタン or 再生完了のいずれでも Promise が抜けた時点で解除
+    release();
+  }
 };
 
-// 停止は統一して stop()
+// 停止でロック解除
 const handleStop = () => {
-  stop();
+  try {
+    stop(); // ← あなたの停止関数名に合わせて（例: stop / ttsStop / stopSpeechAll）
+  } finally {
+    // ★ 停止押下と同時にロック解除（読み上げボタンを即押せる）
+    isSpeakingRef.current = false;
+    setSpeaking(false);
+  }
 };
+
+
 
 
 
@@ -1706,7 +1739,7 @@ onClick={() => {
       </button>
 
       <button
-        onClick={stopSpeech}
+        onClick={handleStop}
         className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
         title="停止"
       >
@@ -1735,10 +1768,11 @@ onClick={() => {
     </div>
     {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
     <div className="mt-3 w-full flex gap-2">
-      <button
+     <button
         onMouseDown={prefetchCurrent}
         onTouchStart={prefetchCurrent}
         onClick={handleRead}
+	      disabled={isSpeakingRef.current || speaking}
         className="flex-1 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center justify-center gap-2 shadow-md"
         title="読み上げ"
       >
@@ -1747,7 +1781,7 @@ onClick={() => {
       </button>
 
       <button
-        onClick={stopSpeech}
+        onClick={handleStop}
         className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white inline-flex items-center justify-center shadow-md"
         title="停止"
       >
@@ -3343,7 +3377,7 @@ if (isTemp) {
                 </button>
 
                 <button
-                  onClick={stopSpeech}
+                  onClick={handleStop}
                   className="w-full h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white
                             inline-flex items-center justify-center"
                 >

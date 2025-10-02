@@ -1,5 +1,6 @@
 // Gather.tsx（全文置き換え）
 import React, { useEffect, useRef, useState } from "react";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 interface Props {
   onNavigate: (screen: string) => void; // 画面遷移用コールバック
@@ -36,27 +37,22 @@ const IconMic = () => (
 
 const Gather: React.FC<Props> = ({ onNavigate }) => {
   const message = "両チームの選手はベンチ前にお集まりください。";
-  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [speaking, setSpeaking] = useState(false);
 
-  useEffect(() => {
-    return () => stopSpeaking();
-  }, []);
+  // アンマウント時は停止
+  useEffect(() => () => { ttsStop(); setSpeaking(false); }, []);
 
+  // 初回だけ VOICEVOX をウォームアップ（初回の待ち時間を短縮）
+  useEffect(() => { void prewarmTTS(); }, []);
+
+  // VOICEVOX優先：UIは待たせず、先頭文を先に鳴らす（progressive）
   const speakMessage = () => {
-    stopSpeaking();
-    const utter = new SpeechSynthesisUtterance(message);
-    utter.lang = "ja-JP";
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => setSpeaking(false);
-    utter.onerror = () => setSpeaking(false);
-    speechSynthesis.speak(utter);
-    utterRef.current = utter;
+    setSpeaking(true);
+    void ttsSpeak(message, { progressive: true, cache: true })
+      .finally(() => setSpeaking(false));
   };
-
   const stopSpeaking = () => {
-    try { speechSynthesis.cancel(); } catch {}
-    utterRef.current = null;
+    ttsStop();
     setSpeaking(false);
   };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import localForage from "localforage";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 
 // --- ミニSVGアイコン（外部依存なし） ---
 const IconBack = () => (
@@ -155,7 +156,11 @@ useEffect(() => {
   loadMatchInfo();
 }, []);
 
+ // 初回だけエンジンを温める（合成の初回待ちを短縮）
+ useEffect(() => { void prewarmTTS(); }, []);
 
+ // アンマウント時はTTSを停止
+ useEffect(() => () => { ttsStop(); }, []);
 
 useEffect(() => {
   // 初回は“初期ロード完了”を待ってから基準スナップショットを作る
@@ -217,24 +222,31 @@ const upsertRecentTournaments = async (name: string) => {
   setLastPickedName(""); // 次回に持ち越さない
 };
 
-// 置き換え：読み上げ開始
+// 読み上げ開始（VOICEVOX優先 → 失敗時WebSpeech）
 const speakExchangeMessage = () => {
-  speechSynthesis.cancel();
-  const msg = new SpeechSynthesisUtterance(
-    `${tournamentName} 本日の第一試合、両チームのメンバー交換を行います。両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。メンバーチェックと道具チェックはシートノックの間に行います。`
-  );
-  msg.lang = "ja-JP";
-  msg.onstart = () => setSpeakingExchange(true);
-  const clear = () => setSpeakingExchange(false);
-  msg.onend = clear; msg.onerror = clear;
-  speechSynthesis.speak(msg);
+  const text =
+    `${tournamentName} 本日の第一試合、両チームのメンバー交換を行います。` +
+    `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。` +
+    `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。` +
+    `メンバーチェックと道具チェックはシートノックの間に行います。`;
+
+  setSpeakingExchange(true);
+  // UIは待たせない：IIFEでtry/finally（ttsSpeakがPromiseでもvoidでも安全）
+  void (async () => {
+    try {
+      await ttsSpeak(text, { progressive: true, cache: true });
+    } finally {
+      setSpeakingExchange(false);
+    }
+  })();
 };
 
-// 置き換え：読み上げ停止
+// 読み上げ停止
 const stopExchangeMessage = () => {
-  speechSynthesis.cancel();
+  ttsStop();             // VOICEVOXの<audio> と Web Speech の両方を停止
   setSpeakingExchange(false);
 };
+
 
   const handleUmpireChange = (
     index: number,
