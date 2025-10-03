@@ -369,6 +369,41 @@ const handleSpeak = async () => {
   }, []);
 
 
+// --- VOICEVOX: 起動時にベースURLを高速決定（800ms ローカル→即 Render） ---
+useEffect(() => {
+  // すでにユーザーが明示設定していたら触らない
+  if (localStorage.getItem("tts:voicevox:baseUrl")) return;
+
+  const LOCAL = "http://127.0.0.1:50021";
+  const REMOTE = "https://voicevox-engine-l6ll.onrender.com";
+  const isPrivate =
+    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(location.hostname);
+
+  const probe = async (url: string, ms = 800) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const r = await fetch(url.replace(/\/+$/,"") + "/version", { signal: ctrl.signal, cache: "no-store" });
+      return r.ok;
+    } catch { return false; }
+    finally { clearTimeout(t); }
+  };
+
+  (async () => {
+    let base = REMOTE;
+    if (isPrivate && await probe(LOCAL, 800)) base = LOCAL;  // ローカルが即応答なら採用
+    localStorage.setItem("tts:voicevox:baseUrl", base);
+    localStorage.setItem("tts:engine", "voicevox");
+    console.log("[TTS] baseUrl decided:", base);
+
+    // Render 側は軽くプレウォーム
+    if (base === REMOTE) fetch(REMOTE + "/version", { cache: "no-store" }).catch(() => {});
+  })();
+}, []);
+
+
+
+
   return (
     <>
       {screen === "menu" && (
@@ -861,7 +896,7 @@ if (totalMyScore > totalOpponentScore) {
     `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
     `審判員の皆様、ありがとうございました。\n` +
     `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-    `尚、この試合の終了時刻は ${formatted} です。\n` +
+    `尚、この試合の終了時刻は ${formatted}です。\n` +
     `これより、ピッチングレコードの確認を行います。\n` +
     `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
     `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
