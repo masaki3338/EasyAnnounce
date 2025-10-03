@@ -1,6 +1,15 @@
 // ttsBridge.ts — VOICEVOX直叩き + キャッシュ + プログレッシブ再生 + WebSpeechフォールバック
 import localForage from "localforage";
 
+// ========== ★ 追加：VOICEVOX 共通ユーティリティ ==========
+// 8秒で打ち切る（ハング防止）
+const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+  Promise.race([
+    p,
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error("VOICEVOX timeout")), ms)),
+  ]);
+// ============================================================
+
 // =========== ユーティリティ ===========
 function splitSentencesJa(text: string): string[] {
   return String(text).split(/(?<=[。、！？\n])\s*/g).map(s => s.trim()).filter(Boolean);
@@ -44,15 +53,16 @@ async function playBlob(blob: Blob): Promise<void> {
 }
 
 // =========== 設定（localStorage） ===========
-const getBaseUrl = () =>
-  (
-    localStorage.getItem("tts:voicevox:baseUrl") ||
-    (window as any).__VOICEVOX_BASE__ ||
-    // 本番は Vercel の API プロキシを経由
-    (typeof window !== "undefined" && location.protocol === "https:"
-      ? "/api/tts-voicevox"
-      : "http://127.0.0.1:50021")
-  ).replace(/\/+$/, "");
+// ttsBridge.ts
+export const getBaseUrl = () => {
+  const fromStorage = localStorage.getItem("tts:voicevox:baseUrl");
+  const base =
+    fromStorage ||
+    (window as any).__VOICEVOX_BASE__ || // （使っていれば）ビルド時注入の値
+    "/api/tts-voicevox";                 // 最後の保険：本番は Vercel のプロキシ
+  return String(base).replace(/\/+$/, ""); // ← 末尾スラッシュ除去（重要）
+};
+
 
 // 例: 3 (ずんだもん等)   
 const getSpeaker = () => {

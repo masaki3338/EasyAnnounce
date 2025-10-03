@@ -369,37 +369,46 @@ const handleSpeak = async () => {
   }, []);
 
 
-// --- VOICEVOX: 起動時にベースURLを高速決定（800ms ローカル→即 Render） ---
+// --- VOICEVOX: 起動時にベースURLを高速決定（本番は /api/tts-voicevox を優先） ---
 useEffect(() => {
-  // すでにユーザーが明示設定していたら触らない
+  // 既にユーザーが明示設定済みなら触らない
   if (localStorage.getItem("tts:voicevox:baseUrl")) return;
 
-  const LOCAL = "http://127.0.0.1:50021";
-  const REMOTE = "https://voicevox-engine-l6ll.onrender.com";
-  const isPrivate =
-    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(location.hostname);
+  const isPrivateHost =
+    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/
+      .test(location.hostname);
 
+  const LOCAL = "http://127.0.0.1:50021";
+  const PROXY = "/api/tts-voicevox"; // 本番はこの相対パスを優先
+  const REMOTE = "https://voicevox-engine-l6ll.onrender.com";
+
+  // 800ms だけ疎通チェック
   const probe = async (url: string, ms = 800) => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), ms);
-    try {
-      const r = await fetch(url.replace(/\/+$/,"") + "/version", { signal: ctrl.signal, cache: "no-store" });
-      return r.ok;
-    } catch { return false; }
-    finally { clearTimeout(t); }
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+    try { const r = await fetch(url.replace(/\/+$/,"") + "/version", { signal: c.signal, cache:"no-store" }); return r.ok; }
+    catch { return false; } finally { clearTimeout(t); }
   };
 
   (async () => {
-    let base = REMOTE;
-    if (isPrivate && await probe(LOCAL, 800)) base = LOCAL;  // ローカルが即応答なら採用
+    let base = PROXY;
+    if (isPrivateHost) {
+      // 開発機ならローカル Engine を最優先
+      base = (await probe(LOCAL, 700)) ? LOCAL : PROXY;
+    }
+    // プロキシが無効（例: プレビュー等）なら Render 直叩きへ
+    if (!(await probe(base, 800))) base = REMOTE;
+
     localStorage.setItem("tts:voicevox:baseUrl", base);
     localStorage.setItem("tts:engine", "voicevox");
     console.log("[TTS] baseUrl decided:", base);
 
-    // Render 側は軽くプレウォーム
-    if (base === REMOTE) fetch(REMOTE + "/version", { cache: "no-store" }).catch(() => {});
+    // Render 使用時は軽くプレウォーム（待たせない）
+    if (base === REMOTE || base === PROXY) {
+      fetch(base.replace(/\/+$/,"") + "/version", { cache: "no-store" }).catch(() => {});
+    }
   })();
 }, []);
+
 
 
 
