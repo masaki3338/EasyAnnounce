@@ -195,7 +195,7 @@ if (progressive) {
         }
       }
 
-      const PREFETCH = 2;
+      const PREFETCH = 3;
       const queue: Array<Promise<Blob>> = [];
       let idx = 0;
 
