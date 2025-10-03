@@ -1,15 +1,12 @@
 {
   "headers": [
-    {
-      "source": "/service-worker.js",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache" }
-      ]
-    }
+    { "source": "/service-worker.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
   ],
   "rewrites": [
     { "source": "/manual", "destination": "/manual.pdf" },
 
+    // ← これがミソ：/api/tts-voicevox/<...> を Engine の /<...> に中継
     { "source": "/api/tts-voicevox/(.*)", "destination": "https://voicevox-engine-l6ll.onrender.com/$1" }
   ],
   "cleanUrls": true,
