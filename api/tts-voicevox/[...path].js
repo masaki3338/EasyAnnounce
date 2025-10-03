@@ -36,11 +36,20 @@ module.exports = async (req, res) => {
     headers[k] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
   }
 
-  const init = {
-    method: req.method,
-    headers,
-    body: /^(GET|HEAD|OPTIONS)$/i.test(req.method || '') ? undefined : req,
-  };
+// 送信ボディがあるか判定（content-length or transfer-encoding）
+const hasBody =
+  !/^(GET|HEAD|OPTIONS)$/i.test(req.method || '') &&
+  (req.headers['content-length'] || req.headers['transfer-encoding']);
+
+const init = {
+  method: req.method,
+  headers,
+  body: hasBody ? req : undefined,
+};
+
+// ストリームボディを送る場合は Node18 で duplex が必須
+if (hasBody) init.duplex = 'half';
+
 
   let r;
   try { r = await fetch(upstream, init); }
