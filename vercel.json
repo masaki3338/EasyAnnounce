@@ -1,11 +1,16 @@
 {
   "headers": [
-    { "source": "/service-worker.js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
   ],
   "rewrites": [
-    { "source": "/manual", "destination": "/manual.pdf" },
+    { "source": "/manual", "destination": "/manual.pdf" }
   ],
+
   "cleanUrls": true,
   "trailingSlash": false
 }
