@@ -56,11 +56,17 @@ async function playBlob(blob: Blob): Promise<void> {
 // ttsBridge.ts
 export const getBaseUrl = () => {
   const fromStorage = localStorage.getItem("tts:voicevox:baseUrl");
-  const base =
+  let base =
     fromStorage ||
-    (window as any).__VOICEVOX_BASE__ || // （使っていれば）ビルド時注入の値
-    "/api/tts-voicevox";                 // 最後の保険：本番は Vercel のプロキシ
-  return String(base).replace(/\/+$/, ""); // ← 末尾スラッシュ除去（重要）
+    (window as any).__VOICEVOX_BASE__ ||
+    "/api/tts-voicevox";
+
+  base = String(base).replace(/\/+$/, "");
+
+  if (location.protocol === "https:" && /^http:\/\//i.test(base)) {
+    base = "/api/tts-voicevox";
+  }
+  return base;
 };
 
 
