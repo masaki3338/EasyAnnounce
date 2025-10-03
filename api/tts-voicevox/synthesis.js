@@ -1,9 +1,7 @@
 // api/tts-voicevox/synthesis.js
 module.exports.config = { api: { bodyParser: false } }; // 生ボディで受ける
-
 module.exports = async (req, res) => {
   const TARGET = (process.env.VOICEVOX_URL || 'https://voicevox-engine-l6ll.onrender.com').replace(/\/+$/,'');
-
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -24,18 +22,16 @@ module.exports = async (req, res) => {
     headers[k] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
   }
 
-  // === 計測開始 ===
-  const tAll0 = Date.now(); // 関数全体
-  const t0 = Date.now();    // 上流fetch 前
-
   // JSON ボディをストリーム転送（Node18 の undici は duplex 必須）
+  const hasBody = true;
   const init = { method:'POST', headers, body: req, duplex: 'half' };
+
   const r = await fetch(url, init).catch(e => null);
+  if (!r) { res.status(502).json({ok:false, proxy:'fetch_failed'}); return; }
 
-  const t1 = Date.now();    // 上流fetch 後
-  // === 計測ここまで ===
+  r.headers.forEach((val,key)=>{ if (!['content-length','transfer-encoding','connection','content-encoding'].includes(key.toLowerCase())) res.setHeader(key,val); });
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  if (!r) {
-    res.setHeader('X-Upstream-Time', String(t1 - t0));
-    res.setHeader('X-Proxy-Total', String(Date.now() - tAll0));
-    res.status(502).json({ok:f
+  const buf = Buffer.from(await r.arrayBuffer());
+  res.status(r.status).end(buf);
+};

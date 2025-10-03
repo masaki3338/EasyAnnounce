@@ -1,7 +1,6 @@
 // api/tts-voicevox/audio_query.js
 module.exports = async (req, res) => {
   const TARGET = (process.env.VOICEVOX_URL || 'https://voicevox-engine-l6ll.onrender.com').replace(/\/+$/,'');
-
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -22,34 +21,13 @@ module.exports = async (req, res) => {
     headers[k] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
   }
 
-  // === 計測開始 ===
-  const tAll0 = Date.now();  // 関数全体
-  const t0 = Date.now();     // 上流fetch前
-
-  // audio_query は空ボディPOST → body 付けない
+  // audio_query は **空ボディPOST** → body 付けない
   const init = { method:'POST', headers };
   const r = await fetch(url, init).catch(e => null);
+  if (!r) { res.status(502).json({ok:false, proxy:'fetch_failed'}); return; }
 
-  const t1 = Date.now();     // 上流fetch後
-  // === 計測ここまで ===
-
-  if (!r) {
-    res.setHeader('X-Upstream-Time', String(t1 - t0));
-    res.setHeader('X-Proxy-Total', String(Date.now() - tAll0));
-    res.status(502).json({ok:false, proxy:'fetch_failed'});
-    return;
-  }
-
-  r.headers.forEach((val,key)=>{ 
-    if (!['content-length','transfer-encoding','connection','content-encoding'].includes(key.toLowerCase())) {
-      res.setHeader(key, val);
-    }
-  });
+  r.headers.forEach((val,key)=>{ if (!['content-length','transfer-encoding','connection','content-encoding'].includes(key.toLowerCase())) res.setHeader(key,val); });
   res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // 計測ヘッダを付与（DevTools の Headers で見えます）
-  res.setHeader('X-Upstream-Time', String(t1 - t0));        // 上流(VOICEVOX) 往復＋処理時間
-  res.setHeader('X-Proxy-Total', String(Date.now() - tAll0)); // この関数全体の時間
 
   const buf = Buffer.from(await r.arrayBuffer());
   res.status(r.status).end(buf);
