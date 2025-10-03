@@ -144,6 +144,8 @@ export async function bridgedSpeak(
   text: string,
   opts?: { progressive?: boolean; cache?: boolean }
 ) {
+  console.log("[TTS] baseUrl =", getBaseUrl(), "speaker=", getSpeaker(), "speed=", getSpeed());
+
   stopAll(); // 既存: 再生競合を止める
 
   // --- 追記: Web Speech 解錠（初回だけ・無音） ---
