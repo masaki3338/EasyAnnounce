@@ -5,8 +5,6 @@
   ],
   "rewrites": [
     { "source": "/manual", "destination": "/manual.pdf" },
-
-    { "source": "/api/tts-voicevox/(.*)", "destination": "https://voicevox-engine-l6ll.onrender.com/$1" }
   ],
   "cleanUrls": true,
   "trailingSlash": false
