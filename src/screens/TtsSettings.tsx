@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { speak } from "../lib/tts";
-import { voicevoxSynthesize } from "../ttsBridge";
+
 
 // ── 見た目用ミニアイコン ──
 const IconBack = () => (
@@ -47,11 +47,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   // ウォームアップ（合成のみ）
   const warmup = async (speaker: number, speedVal: number) => {
     try {
-      await voicevoxSynthesize("ファウルボールにご注意ください", {
-        speaker,
-        speedScale: speedVal,
-        cache: true,
-      });
+      await fetch(`${import.meta.env.VITE_TTS_API_BASE || ''}/api/tts-voicevox/version`, { cache: 'no-store' });
     } catch {}
   };
 
@@ -96,7 +92,14 @@ const handleTest = async () => {
   setIsSpeaking(true);
   try {
     // ※ onend に依存せず、Promise 完了（停止/自然終了/エラー）で解除する
-    await speak("ファウルボールにご注意ください", { progressive: true });
+    // ← 人物・速度・締切を明示して渡す（全画面統一の fastSpeak に届く）
+    await speak("ファウルボールにご注意ください", {
+      speaker,                 // ← 選択中の VOICEVOX 話者ID
+      speedScale: speed,       // ← スライダーの速度
+      healthTimeoutMs: 300,    // 300msでヘルスNGなら即フォールバック
+      synthTimeoutMs: 800,     // 合成800ms超なら即フォールバック
+      startDeadlineMs: 1800,   // “最悪≦2秒で開始”の締切
+    });
   } catch {
     // エラー時も握りつぶしてOK（finallyで解除）
   } finally {
