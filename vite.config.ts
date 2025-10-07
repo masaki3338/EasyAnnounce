@@ -48,8 +48,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'https://easy-announce.vercel.app', // ← あなたの Vercel ドメイン
         changeOrigin: true,
+        secure: true,
       },
     },
   },
