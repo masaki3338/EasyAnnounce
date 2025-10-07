@@ -45,11 +45,24 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   }, []);
 
   // ウォームアップ（合成のみ）
-  const warmup = async (speaker: number, speedVal: number) => {
-    try {
-      await fetch(`${import.meta.env.VITE_TTS_API_BASE || ''}/api/tts-voicevox/version`, { cache: 'no-store' });
-    } catch {}
-  };
+// import { resolveVoxBase } from "@/lib/fastTTS"; を追加
+const warmup = async (speaker: number, speedVal: number) => {
+  const base = resolveVoxBase();
+  // /version は失敗しても無視
+  await fetch(`${base}/api/tts-voicevox/version`, { cache: "no-store" }).catch(() => {});
+  // 実合成ウォーム（短い文・短いタイムアウト）
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort("warmup-timeout"), 3000);
+  await fetch(`${base}/api/tts-voicevox/tts-cache`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "テスト", speaker, speedScale: speedVal }),
+    cache: "no-store",
+    signal: ctrl.signal,
+  }).catch(() => {});
+  clearTimeout(t);
+};
+
 
   // 声の選択
   const handleSelect = async (key: VoiceKey) => {
@@ -93,7 +106,7 @@ const handleTest = async () => {
   try {
     // ※ onend に依存せず、Promise 完了（停止/自然終了/エラー）で解除する
     // ← 人物・速度・締切を明示して渡す（全画面統一の fastSpeak に届く）
-    await speak("ファウルボールにご注意ください", {
+    await speak("ファウルボールの行方にご注意ください", {
       speaker,                 // ← 選択中の VOICEVOX 話者ID
       speedScale: speed,       // ← スライダーの速度
       healthTimeoutMs: 300,    // 300msでヘルスNGなら即フォールバック
