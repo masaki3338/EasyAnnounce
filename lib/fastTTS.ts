@@ -1,5 +1,33 @@
 // src/lib/fastTTS.ts
-// ====== VOICEVOX 優先 + 期限内に開始できなければ Web Speech へ自動フォールバック ======
+// ====== VOICEVOX 優先（即合成）+ 締切で Web Speech にフォールバック（レイトハンドオフ対応）======
+
+// ---- 初回ウォームアップ（/version）
+let __VOX_WARMED = false;
+async function warmupVoiceVoxOnce(base: string): Promise<void> {
+  if (__VOX_WARMED) return;
+  try {
+    const url = `${base}/api/tts-voicevox/version`;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort("warmup-timeout"), 5000);
+    await fetch(url, { signal: ctrl.signal, cache: "no-store" }).catch(() => {});
+    clearTimeout(t);
+  } finally {
+    __VOX_WARMED = true;
+  }
+}
+
+/** どこからでも同じ VOICEVOX API BASE を使うためのユーティリティ */
+export function resolveVoxBase(): string {
+  // Vite dev は Vercel を直叩き
+  if (typeof window !== "undefined" && /(?:localhost|127\.0\.0\.1):5173/.test(window.location.host)) {
+    return PROD_BASE;
+  }
+  // 環境変数があれば優先（ただし localhost は除外）
+  const env = ENV_BASE?.trim();
+  if (env && !/localhost|127\.0\.0\.1|^\[?::1\]?/i.test(env)) return env;
+  // 同一オリジン（本番）を相対で
+  return "";
+}
 
 type FastTTSOptions = {
   speaker?: number;
@@ -7,221 +35,52 @@ type FastTTSOptions = {
   pitch?: number;            // Web Speech の抑揚（高さ）
   volume?: number;           // 音量
   voiceName?: string;
-  healthTimeoutMs?: number;  // /version 許容 (ms)
-  synthTimeoutMs?: number;   // /tts-cache 許容 (ms)
+  synthTimeoutMs?: number;   // /tts-cache の許容 (ms)
   startDeadlineMs?: number;  // 発声開始の締切 (ms)
 };
 
 // ===== デフォルト =====
-const DEFAULTS: Required<
-  Pick<
-    FastTTSOptions,
-    "speaker" | "speedScale" | "healthTimeoutMs" | "synthTimeoutMs" | "startDeadlineMs"
-  >
-> = {
+const DEFAULTS: Required<Pick<FastTTSOptions,
+  "speaker" | "speedScale" | "synthTimeoutMs" | "startDeadlineMs">> = {
   speaker: 1,
   speedScale: 1.0,
-  healthTimeoutMs: 3000,
-  synthTimeoutMs: 7000,
-  startDeadlineMs: 3500,
+  synthTimeoutMs: 20000,   // Vercel コールド対策（サーバ側での生成余裕）
+  startDeadlineMs: 4500,   // 体感を早める。実際の締切は下で 6200ms 以上に補正
 };
 
-// ===== ベースURL自動解決（dev/prod/設定ミスでも“生きてる”APIを見つけて固定） =====
-const PROD_BASE = "https://easy-announce.vercel.app"; // ← あなたの Vercel ドメインに合わせてOK
+const PROD_BASE = "https://easy-announce.vercel.app";
 const ENV_BASE =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_TTS_API_BASE) || "";
 
 let __API_BASE_CACHED: string | null = null;
 
+// ---- 汎用タイムアウト
 function withTimeout<T>(p: (signal: AbortSignal) => Promise<T>, ms: number, reason = "timeout") {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(reason), ms);
   return p(ctrl.signal).finally(() => clearTimeout(timer));
 }
 
-// /version を叩いて生存判定
-async function pingVersion(base: string, timeoutMs: number): Promise<boolean> {
-  const url = `${base}/api/tts-voicevox/version`;
-  const res = await withTimeout(
-    (signal) =>
-      fetch(url, {
-        signal,
-        cache: "no-store",
-        method: "GET",
-        credentials: "omit",
-        mode: "cors",
-      }),
-    timeoutMs
-  );
-  return res.ok;
-}
-
-async function resolveApiBase(timeoutMs: number): Promise<string> {
-  if (__API_BASE_CACHED) return __API_BASE_CACHED;
-
-  try {
-    const saved = localStorage.getItem("tts:voicevox:apiBase");
-    if (saved) {
-      __API_BASE_CACHED = saved;
-      console.info("[TTS] API_BASE (cached) =", saved || "(same-origin)");
-      return saved;
-    }
-  } catch {}
-
-  const candidates = [
-    // .env が localhost 等なら無視
-    ENV_BASE && !/localhost|127\.0\.0\.1|^\[?::1\]?/i.test(ENV_BASE) ? ENV_BASE : "",
-    "",        // 同一オリジン（dev は vite proxy / prod は同一ドメイン）
-    PROD_BASE, // 最後の砦：本番直叩き
-  ].filter(Boolean) as string[];
-
-  for (const base of candidates) {
-    try {
-      const ok = await pingVersion(base, timeoutMs);
-      if (ok) {
-        __API_BASE_CACHED = base;
-        try { localStorage.setItem("tts:voicevox:apiBase", base); } catch {}
-        console.info("[TTS] API_BASE resolved =", base || "(same-origin)");
-        return base;
-      }
-    } catch {
-      // 次の候補へ
-    }
-  }
-
-  console.warn("[TTS] API_BASE could not be resolved; fallback to same-origin");
-  __API_BASE_CACHED = "";
-  return "";
-}
-
-// ---- VOICEVOX ヘルスチェック（ベースURLを解決してから実行）
-async function voicevoxHealthy(timeoutMs: number): Promise<{ ok: boolean; base: string }> {
-  try {
-    const base = await resolveApiBase(timeoutMs);
-    const url = `${base}/api/tts-voicevox/version`;
-    const res = await withTimeout(
-      (signal) =>
-        fetch(url, {
-          signal,
-          cache: "no-store",
-          method: "GET",
-          credentials: "omit",
-          mode: "cors",
-        }),
-      timeoutMs
-    );
-    console.info("[TTS] /version", { base: base || "(same-origin)", ok: res.ok, status: res.status });
-    return { ok: res.ok, base };
-  } catch (e) {
-    console.warn("[TTS] /version failed", e);
-    return { ok: false, base: __API_BASE_CACHED || "" };
-  }
-}
-
-// ---- VOICEVOX 合成（JSON → form → GET の順で自動トライ／API差異を吸収）
-async function tryVoicevoxSynthesis(
-  base: string,
-  text: string,
-  o: Required<Pick<FastTTSOptions, "speaker" | "speedScale" | "synthTimeoutMs">>
-): Promise<HTMLAudioElement> {
-  const endpoint = `${base}/api/tts-voicevox/tts-cache`;
-  const q = new URLSearchParams({
-    text,
-    speaker: String(o.speaker),
-    speedScale: String(o.speedScale),
-  });
-
-  const attempts: Array<() => Promise<Response>> = [
-    // ① JSON
-    () =>
-      withTimeout(
-        (signal) =>
-          fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, speaker: o.speaker, speedScale: o.speedScale }),
-            signal,
-          }),
-        o.synthTimeoutMs
-      ),
-    // ② x-www-form-urlencoded
-    () =>
-      withTimeout(
-        (signal) =>
-          fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-            body: q,
-            signal,
-          }),
-        o.synthTimeoutMs
-      ),
-    // ③ GET クエリ
-    () =>
-      withTimeout(
-        (signal) => fetch(`${endpoint}?${q}`, { signal, cache: "no-store" }),
-        o.synthTimeoutMs
-      ),
-  ];
-
-  let lastErr: any = null;
-  for (const req of attempts) {
-    try {
-      const res = await req();
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.warn("[TTS] /tts-cache not ok", { base: base || "(same-origin)", status: res.status, body });
-        if (res.status >= 500) throw new Error(`voicevox ${res.status}: ${body}`);
-        lastErr = new Error(`voicevox ${res.status}: ${body}`);
-        continue; // 次の方式へ
-      }
-      const blob = await res.blob();
-      if (!blob || blob.size === 0) {
-        lastErr = new Error("empty audio blob");
-        continue;
-      }
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.volume = 1.0;
-      audio.onended = () => URL.revokeObjectURL(url);
-      try { (window as any).__VOICE_AUDIO__ = audio; } catch {}
-      console.info("[TTS] /tts-cache ok", { base: base || "(same-origin)" });
-      return audio;
-    } catch (e) {
-      console.warn("[TTS] /tts-cache try failed", e);
-      lastErr = e;
-    }
-  }
-  throw lastErr ?? new Error("voicevox synthesis failed");
-}
-
 // ===================== 読み上げテキスト前処理 =====================
-// 敬称があるときだけ・2文字以上×2ブロックに限定して区切る（安全版）
 function tuneJaNameProsodySafe(text: string): string {
   const honorific = /(さん|くん|ちゃん|選手|監督|コーチ|先生)\b/;
   if (!/[\u3040-\u30FF\u4E00-\u9FFF]/.test(text) || !honorific.test(text)) return text;
-
   let s = text;
-
-  // 1) 漢字/カナの姓名 + 敬称（姓2字以上・名2字以上）
+  // 漢字/カナの姓名 + 敬称（姓2字以上・名2字以上）
   s = s.replace(
     /([一-龥々〆ヵヶァ-ヶー]{2,})\s*([一-龥々〆ヵヶァ-ヶー]{2,})(?=\s*(さん|くん|ちゃん|選手|監督|コーチ|先生)\b)/g,
     "$1、$2"
   );
-
-  // 2) かな姓名 + 敬称（姓3文字以上・名2文字以上）
+  // かな姓名 + 敬称（姓3文字以上・名2文字以上）
   s = s.replace(
     /([ぁ-んゟァ-ヶー]{3,})\s*([ぁ-んゟァ-ヶー]{2,})(?=\s*(さん|くん|ちゃん|選手|監督|コーチ|先生)\b)/g,
     "$1、$2"
   );
-
-  // 3) 敬称の直前にノーブレークスペースで軽いポーズ
+  // 敬称の直前に NBSP
   s = s.replace(/([^\s、・])(?=\s*(さん|くん|ちゃん|選手|監督|コーチ|先生)\b)/g, "$1\u00A0");
-
   return s;
 }
 
-// 両エンジン共通の最終前処理（姓名の半角→中点。“・”の方が確実に短い間になる）
 function preprocessForTTS(raw: string): string {
   let s = raw ?? "";
   s = tuneJaNameProsodySafe(s);
@@ -230,70 +89,133 @@ function preprocessForTTS(raw: string): string {
     /([ぁ-んァ-ヶｧ-ﾝﾞﾟ一-龥]{1,6})\s+([ぁ-んァ-ヶｧ-ﾝﾞﾟ一-龥]{1,6})(?=\s*(さん|くん|ちゃん|選手|監督|コーチ|先生)\b)/g,
     "$1・$2"
   );
-  // 連続スペースを抑制
+  // 連続スペース抑制
   s = s.replace(/[ \t\u3000]{2,}/g, " ");
   return s;
 }
 
-// ---- Web Speech API
-function speakWithWebSpeech(
+// ---- VOICEVOX 合成（相対→ENV→PROD、JSONのみでトライ）
+// ---- VOICEVOX 合成（相対→ENV→PROD、JSONのみでトライ）
+async function tryVoicevoxSynthesisMulti(
   text: string,
-  voiceName?: string,
-  rate?: number,
-  pitch?: number,
-  volume?: number
+  o: Required<Pick<FastTTSOptions, "speaker" | "speedScale" | "synthTimeoutMs">>
+): Promise<{ audio: HTMLAudioElement; base: string }> {
+
+  const bases: string[] = (() => {
+    if (typeof window !== "undefined" && /(?:localhost|127\.0\.0\.1):5173/.test(window.location.host)) {
+      __API_BASE_CACHED = PROD_BASE;
+      try { localStorage.setItem("tts:voicevox:apiBase", PROD_BASE); } catch {}
+      console.info("[TTS] base forced (dev) ->", PROD_BASE);
+      return [PROD_BASE];
+    }
+    if (__API_BASE_CACHED !== null) return [__API_BASE_CACHED, ENV_BASE, PROD_BASE].filter(Boolean) as string[];
+    const envOk = ENV_BASE && !/localhost|127\.0\.0\.1|^\[?::1\]?/i.test(ENV_BASE) ? ENV_BASE : "";
+    return ["", envOk, PROD_BASE].filter(Boolean) as string[];
+  })();
+
+  // ★ 1回の試行時間は短め（最大でも 5s）
+  const perAttemptMs = Math.min(Math.max(o.synthTimeoutMs, 1500), 5000);
+
+  const makeAttempt = (base: string): Promise<Response> => {
+    const endpoint = `${base}/api/tts-voicevox/tts-cache`;
+    const payload = JSON.stringify({ text, speaker: o.speaker, speedScale: o.speedScale });
+    console.info("[TTS] /tts-cache POST", { endpoint, timeoutMs: perAttemptMs });
+    return withTimeout(
+      (signal) => fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        signal,
+        cache: "no-store",
+      }),
+      perAttemptMs
+    );
+  };
+
+  let lastErr: any = null;
+
+  for (const base of bases) {
+    try {
+      const res = await makeAttempt(base);
+
+      // ★ 4xx は“クライアント系（話者未対応など）”として即フォールバック
+      if (res.status >= 400 && res.status < 500) {
+        const body = await res.text().catch(() => "");
+        console.warn("[TTS] /tts-cache client error", { base: base || "(same-origin)", status: res.status, body });
+        throw Object.assign(new Error("vvx_client_error"), { code: "VVX_CLIENT", status: res.status, body });
+      }
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.warn("[TTS] /tts-cache server error", { base: base || "(same-origin)", status: res.status, body });
+        // 5xx だけベース切り替えで再挑戦（次の base へ）
+        lastErr = new Error(`voicevox ${res.status}: ${body}`);
+        continue;
+      }
+
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) { lastErr = new Error("empty audio blob"); continue; }
+
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.volume = 1.0;
+      audio.onended = () => URL.revokeObjectURL(url);
+      try { (window as any).__VOICE_AUDIO__ = audio; } catch {}
+      __API_BASE_CACHED = base;
+      console.info("[TTS] /tts-cache ok", { base: base || "(same-origin)", cache: res.headers.get("x-tts-cache") });
+      return { audio, base };
+    } catch (e) {
+      // ★ タイムアウトやネット失敗も即ベース切替へ（長いリトライはしない）
+      console.warn("[TTS] /tts-cache try failed", e);
+      lastErr = e;
+      continue;
+    }
+  }
+
+  throw lastErr ?? new Error("voicevox synthesis failed");
+}
+
+// ---- Web Speech
+function speakWithWebSpeech(
+  text: string, voiceName?: string, rate?: number, pitch?: number, volume?: number
 ): Promise<void> {
   return new Promise((resolve) => {
     try {
       window.speechSynthesis.cancel();
       try { window.speechSynthesis.resume(); } catch {}
-
       const chunks = text
         .split(/([。！？!?]\s*|\n+)/)
-        .reduce<string[]>((acc, cur, i, arr) => {
-          if (i % 2 === 0) acc.push(cur + (arr[i + 1] || ""));
-          return acc;
-        }, [])
-        .map((s) => s.trim())
-        .filter(Boolean);
-
+        .reduce<string[]>((acc, cur, i, arr) => { if (i % 2 === 0) acc.push(cur + (arr[i + 1] || "")); return acc; }, [])
+        .map(s => s.trim()).filter(Boolean);
       const voices = window.speechSynthesis.getVoices();
-      const selected = voiceName ? voices.find((v) => v.name === voiceName) : undefined;
+      const selected = voiceName ? voices.find(v => v.name === voiceName) : undefined;
       const r = typeof rate === "number" && isFinite(rate) ? Math.max(0.5, Math.min(2.0, rate)) : 1.0;
       const p = typeof pitch === "number" && isFinite(pitch) ? Math.max(0.0, Math.min(2.0, pitch)) : 1.2;
       const v = typeof volume === "number" && isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1.0;
-
       const playNext = (i: number) => {
         if (i >= chunks.length) { resolve(); return; }
         const u = new SpeechSynthesisUtterance(chunks[i]);
         u.lang = "ja-JP";
         if (selected) u.voice = selected;
-        u.rate = r;
-        u.pitch = p;
-        u.volume = v;
+        u.rate = r; u.pitch = p; u.volume = v;
         u.onend = () => setTimeout(() => playNext(i + 1), 60);
         u.onerror = () => setTimeout(() => playNext(i + 1), 0);
         window.speechSynthesis.speak(u);
       };
       playNext(0);
-    } catch {
-      resolve();
-    }
+    } catch { resolve(); }
   });
 }
 
-// ---- モバイル用アンロック（ユーザー操作直後に呼ぶと効果大）
+// ---- モバイル用アンロック
 let __webSpeechUnlocked = false;
 function unlockWebSpeech(voiceName?: string) {
   if (__webSpeechUnlocked) return;
   try {
-    const u = new SpeechSynthesisUtterance(" "); // 1スペースの無音
-    u.lang = "ja-JP";
-    u.volume = 0;
-    u.rate = 1;
-    u.pitch = 1;
+    const u = new SpeechSynthesisUtterance(" ");
+    u.lang = "ja-JP"; u.volume = 0; u.rate = 1; u.pitch = 1;
     if (voiceName) {
-      const v = window.speechSynthesis.getVoices().find((v) => v.name === voiceName);
+      const v = window.speechSynthesis.getVoices().find(v => v.name === voiceName);
       if (v) u.voice = v;
     }
     u.onend = () => { __webSpeechUnlocked = true; };
@@ -302,59 +224,68 @@ function unlockWebSpeech(voiceName?: string) {
   } catch {}
 }
 
-// ---- メイン（VOICEVOX優先・締切で Web Speech に必ず落ちる）
+// ---- メイン（レイトハンドオフ：あとから VOX が来たら乗り換え）
 export async function fastSpeak(text: string, opts: FastTTSOptions = {}) {
-  const {
-    speaker, speedScale, pitch, volume, voiceName,
-    healthTimeoutMs, synthTimeoutMs, startDeadlineMs,
-  } = { ...DEFAULTS, ...opts };
+  const { speaker, speedScale, pitch, volume, voiceName, synthTimeoutMs, startDeadlineMs } =
+    { ...DEFAULTS, ...opts };
 
-  // 読み上げテキスト前処理（姓名の“間”など）
   const tunedText = preprocessForTTS(text);
-
-  // タップ直後にアンロック（await しない）
+  if (!tunedText.trim()) return;
   try { unlockWebSpeech(voiceName); } catch {}
 
-  let started = false;
+  let finished = false;
+  let webSpeechPlaying = false;
+  let webStartRequested = false;
+  let currentAudio: HTMLAudioElement | null = null;
 
   const startWithWebSpeech = async () => {
-    if (started) return;
-    started = true;
+    if (finished || webStartRequested || webSpeechPlaying) return;
+    webStartRequested = true;
+    webSpeechPlaying = true;
     console.info("[TTS] engine=webspeech (fallback or deadline)");
     await speakWithWebSpeech(tunedText, voiceName, speedScale, pitch, volume);
+    webSpeechPlaying = false;
+    if (!currentAudio) finished = true;
   };
 
-  // ❶ 締切タイマー（締切までに開始できなければ Web Speech）
+  // ★ 早めの予備フォールバック（例: 1200ms）
+  const earlyFallbackMs = Math.min(startDeadlineMs, 1200);
+  const earlyTimer = setTimeout(() => { void startWithWebSpeech(); }, earlyFallbackMs);
+
+  // 従来の締切（必要ならさらに遅い時点でもう一度保険）
   const deadline = new Promise<void>((resolve) => {
-    setTimeout(async () => {
-      await startWithWebSpeech();
-      resolve();
-    }, startDeadlineMs);
+    const deadlineMs = startDeadlineMs; // ← 6200ms の下限は撤廃
+    setTimeout(async () => { await startWithWebSpeech(); resolve(); }, deadlineMs);
   });
 
-  // ❷ VOICEVOX 経路（ヘルス→合成→再生）
   const tryVoiceVox = (async () => {
-    const { ok, base } = await voicevoxHealthy(healthTimeoutMs);
-    if (!ok) throw new Error("vvx_unhealthy");
+    try {
+      const { audio } = await tryVoicevoxSynthesisMulti(tunedText, { speaker, speedScale, synthTimeoutMs });
+      currentAudio = audio;
 
-    const audio = await tryVoicevoxSynthesis(base, tunedText, { speaker, speedScale, synthTimeoutMs });
+      // Web Speech 再生中なら止める（レイトハンドオフ）
+      if (webSpeechPlaying) { try { window.speechSynthesis.cancel(); } catch {} webSpeechPlaying = false; }
 
-    if (!started) {
-      started = true;
-      console.info("[TTS] engine=voicevox", { base: base || "(same-origin)" });
-      try {
-        await audio.play();
-      } catch (err) {
-        // iOS の自動再生制限などで失敗したら即フォールバック
-        console.warn("[TTS] voicevox play() failed -> fallback to webspeech", err);
-        started = false;
-        await startWithWebSpeech();
+      if (!finished) {
+        console.info("[TTS] engine=voicevox");
+        try { await audio.play(); } 
+        catch (err) {
+          console.warn("[TTS] voicevox play() failed -> keep webspeech if any", err);
+          if (!webSpeechPlaying) void startWithWebSpeech();
+        } finally {
+          finished = true;
+        }
       }
+    } catch (e: any) {
+      console.warn("[TTS] voicevox path failed", e);
+      // ★ エラーならその場で即 Web Speech に切替（待たない）
+      void startWithWebSpeech();
+      finished = true;
+    } finally {
+      clearTimeout(earlyTimer);
     }
-  })().catch(async () => {
-    if (!started) await startWithWebSpeech();
-  });
+  })();
 
-  // ❸ どちらかが先に「開始」すればOK
   await Promise.race([deadline, tryVoiceVox]);
 }
+
