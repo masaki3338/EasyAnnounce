@@ -216,6 +216,20 @@ const iosVideoRef = useRef<HTMLVideoElement | null>(null);
 // --- Screen Wake Lock（まずはこちらを使う） ---
 const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
+// 画面マウント時に一度だけ軽く叩く（awaitしない）
+try {
+  // 1) /version で関数をウォーム
+  fetch("/api/tts-voicevox/version", { cache: "no-store" });
+
+  // 2) さらに効かせたい場合は超短文で /tts-cache を叩く（任意）
+  fetch("/api/tts-voicevox/tts-cache", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "テスト", speaker: 1, speedScale: 1.0 }),
+    cache: "no-store",
+  });
+} catch {}
+
 const acquireWakeLock = async () => {
   try {
     // iOS/Safari でも 2025現在はサポート。HTTPS & ユーザー操作直後が前提
@@ -367,50 +381,6 @@ const handleSpeak = async () => {
     };
     initializeDatabase();
   }, []);
-
-
-// --- VOICEVOX: 起動時にベースURLを高速決定（本番は /api/tts-voicevox を優先） ---
-useEffect(() => {
-  // 既にユーザーが明示設定済みなら触らない
-  if (localStorage.getItem("tts:voicevox:baseUrl")) return;
-
-  const isPrivateHost =
-    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/
-      .test(location.hostname);
-
-  const LOCAL = "http://127.0.0.1:50021";
-  const PROXY = "/api/tts-voicevox"; // 本番はこの相対パスを優先
-  const REMOTE = "https://voicevox-engine-l6ll.onrender.com";
-
-  // 800ms だけ疎通チェック
-  const probe = async (url: string, ms = 800) => {
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
-    try { const r = await fetch(url.replace(/\/+$/,"") + "/version", { signal: c.signal, cache:"no-store" }); return r.ok; }
-    catch { return false; } finally { clearTimeout(t); }
-  };
-
-  (async () => {
-    let base = PROXY;
-    if (isPrivateHost) {
-      // 開発機ならローカル Engine を最優先
-      base = (await probe(LOCAL, 700)) ? LOCAL : PROXY;
-    }
-    // プロキシが無効（例: プレビュー等）なら Render 直叩きへ
-    if (!(await probe(base, 800))) base = REMOTE;
-
-    localStorage.setItem("tts:voicevox:baseUrl", base);
-    localStorage.setItem("tts:engine", "voicevox");
-    console.log("[TTS] baseUrl decided:", base);
-
-    // Render 使用時は軽くプレウォーム（待たせない）
-    if (base === REMOTE || base === PROXY) {
-      fetch(base.replace(/\/+$/,"") + "/version", { cache: "no-store" }).catch(() => {});
-    }
-  })();
-}, []);
-
-
-
 
 
   return (
@@ -905,7 +875,7 @@ if (totalMyScore > totalOpponentScore) {
     `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
     `審判員の皆様、ありがとうございました。\n` +
     `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-    `尚、この試合の終了時刻は ${formatted}です。\n` +
+    `尚、この試合の終了時刻は ${formatted} です。\n` +
     `これより、ピッチングレコードの確認を行います。\n` +
     `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
     `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;

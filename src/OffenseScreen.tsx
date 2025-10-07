@@ -319,10 +319,11 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [noReEntryMessage, setNoReEntryMessage] = useState<string>("");
 
   // 🔸 ルビ整形
-  const rubyFull = (p: any) =>
-    //`<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby> ` +  // ← 後ろに半角スペース
-    `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>` + 
+// 苗字と名前の間に全角スペースを追加（読み上げ時も区切りやすくする）
+const rubyFull = (p: any) =>
+  `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby> ` +  // ← 半角スペース追加
   `<ruby>${p?.firstName ?? ""}<rt>${p?.firstNameKana ?? ""}</rt></ruby>`;
+
   const rubyLast = (p: any) =>
     `<ruby>${p?.lastName ?? ""}<rt>${p?.lastNameKana ?? ""}</rt></ruby>`;
   const rubyFirst = (p: any) =>
