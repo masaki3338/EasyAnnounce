@@ -175,7 +175,7 @@ const handleTest = async () => {
               >
                 <span className="text-2xl leading-none">{info.emoji}</span>
                 <span>{info.label}</span>
-                <span className="text-xs opacity-80">speaker: {info.speaker}</span>
+
               </button>
             ))}
           </div>
