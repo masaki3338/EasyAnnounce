@@ -46,7 +46,7 @@ const positionNames: { [key: string]: string } = {
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
-  投: { top: "60%", left: "50%" },
+  投: { top: "62%", left: "50%" },
   捕: { top: "90%", left: "50%" },
   一: { top: "65%", left: "82%" },
   二: { top: "44%", left: "66%" },

@@ -42,7 +42,7 @@ type Player = {
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
-  投: { top: '60%', left: '50%' },
+  投: { top: '62%', left: '50%' },
   捕: { top: '90%', left: '50%' },
   一: { top: '63%', left: '80%' },
   二: { top: '44%', left: '66%' },
