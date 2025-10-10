@@ -2089,15 +2089,15 @@ lineupLines
 
 const positionStyles: Record<string, React.CSSProperties> = {
   投: { top: "62%", left: "50%" },
-  捕: { top: "90%", left: "50%" },
-  一: { top: "64%", left: "82%" },
+  捕: { top: "91%", left: "50%" },
+  一: { top: "65%", left: "82%" },
   二: { top: "44%", left: "66%" },
-  三: { top: "64%", left: "18%" },
+  三: { top: "65%", left: "18%" },
   遊: { top: "44%", left: "32%" },
-  左: { top: "22%", left: "18%" },
+  左: { top: "20%", left: "18%" },
   中: { top: "17%", left: "50%" },
-  右: { top: "22%", left: "81%" },
-  指: { top: "88%", left: "81%" },
+  右: { top: "20%", left: "81%" },
+  指: { top: "91%", left: "81%" },
 };
 
 const positions = Object.keys(positionStyles);

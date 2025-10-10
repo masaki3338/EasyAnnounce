@@ -43,15 +43,15 @@ type Player = {
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
   投: { top: '62%', left: '50%' },
-  捕: { top: '90%', left: '50%' },
-  一: { top: '63%', left: '80%' },
+  捕: { top: '91%', left: '50%' },
+  一: { top: '65%', left: '80%' },
   二: { top: '44%', left: '66%' },
-  三: { top: '63%', left: '17%' },
+  三: { top: '65%', left: '17%' },
   遊: { top: '44%', left: '32%' },
   左: { top: '20%', left: '17%' },
   中: { top: '16%', left: '50%' },
   右: { top: '20%', left: '80%' },
-  指: { top: '89%', left: '80%' },
+  指: { top: '91%', left: '80%' },
 };
 
 const positions = Object.keys(positionStyles);
