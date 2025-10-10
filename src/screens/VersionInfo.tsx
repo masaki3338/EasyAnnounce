@@ -116,7 +116,7 @@ export default function VersionInfo({ version, onBack, onOpenContact }: Props) {
           {/* 著作権 */}
           <div>
             <h3 className="font-semibold mb-1">著作権</h3>
-            <p>© {year} MASAKI OKUMURA. All rights reserved.</p>
+            <p>© {year} M.OKUMURA. All rights reserved.</p>
             <p className="mt-2">
               本アプリおよび付随するコンテンツは著作権法等により保護されています。無断複製・転載・再配布を禁じます。
             </p>
