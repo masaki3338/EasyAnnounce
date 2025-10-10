@@ -9,8 +9,12 @@
   ],
   "rewrites": [
     { "source": "/manual", "destination": "/manual.pdf" }
-
   ],
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "functions": {
+    "api/tts-voicevox.ts": {
+      "maxDuration": 60
+    }
+  }
 }
