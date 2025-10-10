@@ -46,14 +46,14 @@ const positionNames: { [key: string]: string } = {
 };
 
 const positionStyles: { [key: string]: React.CSSProperties } = {
-  投: { top: "64%", left: "50%" },
-  捕: { top: "88%", left: "50%" },
-  一: { top: "66%", left: "82%" },
+  投: { top: "60%", left: "50%" },
+  捕: { top: "90%", left: "50%" },
+  一: { top: "65%", left: "82%" },
   二: { top: "44%", left: "66%" },
-  三: { top: "66%", left: "18%" },
+  三: { top: "65%", left: "18%" },
   遊: { top: "44%", left: "32%" },
   左: { top: "22%", left: "18%" },
-  中: { top: "22%", left: "50%" },
+  中: { top: "18%", left: "50%" },
   右: { top: "22%", left: "81%" },
   指: { top: "88%", left: "82%" },
 };
