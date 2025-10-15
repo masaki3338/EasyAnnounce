@@ -3,7 +3,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-
 export default defineConfig({
   plugins: [
     react(),
@@ -12,21 +11,24 @@ export default defineConfig({
       injectRegister: 'auto',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2,mp3,pdf}'],
-        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MBまでPDFも確実に
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         clientsClaim: true,
         skipWaiting: true,
-        // ★ /api/ への「ページ遷移」を SPA 殻にフォールバックしない
+        // ★ /api への「ページ遷移」を SPA 殻にフォールバックしない
         navigateFallbackDenylist: [/^\/api\//],
-        // ★ /api/ リクエストは必ずネットへ（キャッシュしない）
+        // ★ /api リクエストは必ずネットへ（キャッシュしない）
         runtimeCaching: [
           {
-            urlPattern: ({url}) => url.pathname.startsWith('/api/'),
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
-            method: 'GET',
           },
         ],
       },
-      includeAssets: ['favicon.svg', 'robots.txt', 'field.png','EasyAnnounceLOGO.png', 'mic-red.png','Defence.png','Ofence.png','Runner.png','warning-icon.png','manual.pdf'],
+      includeAssets: [
+        'favicon.svg', 'robots.txt', 'field.png', 'EasyAnnounceLOGO.png',
+        'mic-red.png', 'Defence.png', 'Ofence.png', 'Runner.png',
+        'warning-icon.png', 'manual.pdf'
+      ],
       manifest: {
         name: 'Easyアナウンス PONY',
         short_name: 'Easyアナウンス',
@@ -44,17 +46,16 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom']
   },
-  // ▼ ここを追加：/api を vercel dev(3000)へ中継
+  // ★ localhost:5173 から /api/* を Vercel に中継（CORS回避）
   server: {
     proxy: {
       '/api': {
-        target: 'https://easy-announce.vercel.app', // ← あなたの Vercel ドメイン
+        target: 'https://easy-announce.vercel.app', // ← あなたのVercel本番
         changeOrigin: true,
         secure: true,
       },
     },
   },
-
   optimizeDeps: {
     include: ['@react-pdf-viewer/core/lib/styles/index.css']
   }
