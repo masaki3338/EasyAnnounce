@@ -216,19 +216,18 @@ const iosVideoRef = useRef<HTMLVideoElement | null>(null);
 // --- Screen Wake Lock（まずはこちらを使う） ---
 const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-// 画面マウント時に一度だけ軽く叩く（awaitしない）
-try {
-  // 1) /version で関数をウォーム
-  fetch("/api/tts-voicevox/version", { cache: "no-store" });
+// App コンポーネント内のどこか（stateの定義付近）に追加
+const warmedOnceRef = useRef(false);
 
-  // 2) さらに効かせたい場合は超短文で /tts-cache を叩く（任意）
-  fetch("/api/tts-voicevox/tts-cache", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: "テスト", speaker: 1, speedScale: 1.0 }),
-    cache: "no-store",
-  });
-} catch {}
+// マウント時に一度だけ軽いウォームアップ
+useEffect(() => {
+  if (warmedOnceRef.current) return; // ← dev StrictMode の二重実行ガード
+  warmedOnceRef.current = true;
+
+  fetch("/api/tts-voicevox/version", { cache: "no-store" })
+    .catch(() => {});
+}, []);
+
 
 const acquireWakeLock = async () => {
   try {
@@ -1596,6 +1595,12 @@ const Menu = ({
 
 
   useEffect(() => {
+     // VOICEVOXサーバーをウォームアップ
+    fetch("/api/tts-voicevox/version", { cache: "no-store" })
+      .then(r => console.log("[TTS] warmed:", r.status))
+      .catch(() => {});
+
+
     console.log("📺 screen =", screen);
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
