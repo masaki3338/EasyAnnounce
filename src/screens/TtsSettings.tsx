@@ -1,25 +1,13 @@
-// src/components/TtsSettings.tsx
-import React, { useEffect, useState, useRef } from "react";
-import localForage from "localforage";
+// src/components/TtsSettings.tsx  ← 使っている場所に合わせてパスは調整OK
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
+import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
-// ── 見た目用ミニアイコン ──
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
     <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
   </svg>
 );
-
-type VoiceKey = "femaleA" | "femaleB" | "maleA" | "maleB";
-type VoiceInfo = { label: string; speaker: number; emoji: string };
-
-// VOICEVOX の speaker 番号
-const VOICES: Record<VoiceKey, VoiceInfo> = {
-  femaleA: { label: "女性A", speaker: 30,  emoji: "👩"   },
-  femaleB: { label: "女性B", speaker: 109, emoji: "👩‍🦰" },
-  maleA:   { label: "男性A", speaker: 83,  emoji: "👨"   },
-  maleB:   { label: "男性B", speaker: 99,  emoji: "👨‍🦱" },
-};
 
 type Props = {
   onNavigate?: (screen: string) => void;
@@ -27,92 +15,56 @@ type Props = {
 };
 
 export default function TtsSettings({ onNavigate, onBack }: Props) {
-  const [voice, setVoice] = useState<VoiceKey>("femaleA");
-  const [speed, setSpeed] = useState<number>(1.0);
+  const { voices, ready } = useWebSpeechVoices("ja"); // 日本語のみ表示
+  const [speed, setSpeed] = useState<number>(() => {
+    const v = Number(localStorage.getItem("tts:speedScale"));
+    return Number.isFinite(v) ? Math.min(2, Math.max(0.5, v)) : 1.0;
+  });
+  const [selectedName, setSelectedName] = useState<string | "">(localStorage.getItem("tts:webspeech:voiceName") || "");
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const warmupTimerRef = useRef<number | null>(null);
+  const onceRef = useRef(false);
 
-  // 起動時に localStorage から復元
+  // voices が出揃ったら、保存済みが無ければデフォルトを選ぶ
   useEffect(() => {
-    const sp = Number(localStorage.getItem("tts:voicevox:speaker"));
-    if (sp === VOICES.femaleA.speaker) setVoice("femaleA");
-    else if (sp === VOICES.femaleB.speaker) setVoice("femaleB");
-    else if (sp === VOICES.maleA.speaker) setVoice("maleA");
-    else if (sp === VOICES.maleB.speaker) setVoice("maleB");
-
-    const spd = Number(localStorage.getItem("tts:speedScale"));
-    if (Number.isFinite(spd) && spd >= 0.5 && spd <= 2.0) setSpeed(spd);
-  }, []);
-
-  // ウォームアップ（同一オリジン /api のみ）
-  const warmup = async (speaker: number, speedVal: number) => {
-    try {
-      // 1) サーバ起動チェック
-      await fetch(`/api/tts-voicevox/version`, { cache: "no-store" }).catch(() => {});
-      // 2) 軽い合成（3秒で打ち切り）
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort("warmup-timeout"), 3000);
-      await fetch(`/api/tts-voicevox/tts-cache`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "テスト", speaker, speedScale: speedVal }),
-        cache: "no-store",
-        signal: ctrl.signal,
-      }).catch(() => {});
-      clearTimeout(t);
-      console.log("[TTS] warmed");
-    } catch {
-      // 失敗は無視（本番読み上げ時にフォールバックされます）
+    if (!ready || onceRef.current) return;
+    onceRef.current = true;
+    if (!selectedName && voices.length > 0) {
+      const def = voices.find(v => v.default) || voices[0];
+      setSelectedName(def.name);
+      localStorage.setItem("tts:webspeech:voiceName", def.name);
     }
+  }, [ready, voices, selectedName]);
+
+  const selectedLabel = useMemo(() => {
+    const v = voices.find(v => v.name === selectedName);
+    return v ? `${v.name} (${v.lang})` : "未選択";
+  }, [voices, selectedName]);
+
+  const handleSelectVoice = (name: string) => {
+    setSelectedName(name);
+    localStorage.setItem("tts:webspeech:voiceName", name);
   };
 
-  // 声の選択
-  const handleSelect = async (vKey: VoiceKey) => {
-    setVoice(vKey);
-    const speaker = VOICES[vKey].speaker;
-
-    localStorage.setItem("tts:voicevox:speaker", String(speaker));
-    localStorage.setItem("ttsDefaultSpeaker", String(speaker));
-    localStorage.setItem("ttsGender", vKey.startsWith("male") ? "male" : "female");
-    await localForage.setItem("ttsDefaultSpeaker", speaker);
-    await localForage.setItem("ttsGender", vKey.startsWith("male") ? "male" : "female");
-
-    // ウォームアップ（初回タイムアウト回避）
-    await warmup(speaker, speed);
-  };
-
-  // 速度変更（デバウンス付きウォームアップ）
   const handleSpeedChange = (v: number) => {
     const clamped = Math.min(2.0, Math.max(0.5, v));
     setSpeed(clamped);
     localStorage.setItem("tts:speedScale", String(clamped));
-
-    const speaker = VOICES[voice].speaker;
-    if (warmupTimerRef.current) window.clearTimeout(warmupTimerRef.current);
-    warmupTimerRef.current = window.setTimeout(() => {
-      void warmup(speaker, clamped);
-    }, 250);
   };
 
-  // テスト読み上げ（連打ガード + 必ず解除）
   const handleTest = async () => {
     if (isSpeaking) return;
-
-    const speaker = VOICES[voice].speaker;
-    localStorage.setItem("tts:voicevox:speaker", String(speaker));
-    localStorage.setItem("ttsDefaultSpeaker", String(speaker));
-    localStorage.setItem("tts:speedScale", String(speed));
-
     setIsSpeaking(true);
     try {
       await speak("ファウルボールの行方にご注意ください", {
-        speaker,
+        voiceName: selectedName || undefined,
         speedScale: speed,
-        synthTimeoutMs: 10000, // 1回のPOST待機 10s
-        startDeadlineMs: 8000, // 8sで未開始ならWebSpeechへ
+        // Web Speechのみ運用なので厳しめの開始締切にして即スタート体感を上げる
+        healthTimeoutMs: 200,
+        synthTimeoutMs: 400,
+        startDeadlineMs: 1200,
       });
     } catch {
-      // 失敗は握りつぶす
+      // 無視
     } finally {
       setIsSpeaking(false);
     }
@@ -141,45 +93,36 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
         <div className="mt-1 text-center select-none mb-2 w-full">
           <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-              🔊読み上げ設定
+              🔊読み上げ設定（Web Speech）
             </span>
           </h1>
-          <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from白/60 via白/30 to-transparent" />
         </div>
 
-        <section
-          className="w-[100svw] -mx-6 md:mx-0 md:w-full rounded-none md:rounded-2xl p-4 md:p-6
-                     bg-white/10 border border白/10 ring-1 ring-inset ring白/10 shadow"
-        >
-          {/* 声の選択（4人） */}
-          <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto">
-            {(
-              [
-                ["femaleA", VOICES.femaleA],
-                ["femaleB", VOICES.femaleB],
-                ["maleA",   VOICES.maleA],
-                ["maleB",   VOICES.maleB],
-              ] as [VoiceKey, VoiceInfo][]
-            ).map(([vKey, info]) => (
-              <button
-                key={vKey}
-                onClick={() => handleSelect(vKey)}
-                className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border font-semibold active:scale-95
-                  ${voice === vKey
-                    ? "bg-sky-600 text-white border-sky-600 shadow"
-                    : "bg-white/10 text-white border-white/10 hover:bg-white/15"}`}
-                aria-pressed={voice === vKey}
-              >
-                <span className="text-2xl leading-none">{info.emoji}</span>
-                <span>{info.label}</span>
-              </button>
-            ))}
-          </div>
+        <section className="w-[100svw] -mx-6 md:mx-0 md:w-full rounded-none md:rounded-2xl p-4 md:p-6 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow">
+          {/* 声の選択 */}
+          <div className="max-w-lg mx-auto">
+            <label className="block text-sm mb-1">
+              使う音声（端末に入っている日本語音声のみ）
+            </label>
+            <select
+              className="w-full rounded-lg bg-white/90 text-gray-800 p-2"
+              value={selectedName}
+              onChange={(e) => handleSelectVoice(e.target.value)}
+            >
+              {voices.length === 0 && <option value="">（利用可能な音声が見つかりません）</option>}
+              {voices.map(v => (
+                <option key={v.name} value={v.name}>
+                  {v.default ? "★ " : ""}{v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+            <div className="mt-2 text-sm text-white/80">
+              現在の選択：<span className="font-semibold">{selectedLabel}</span>
+            </div>
 
-          <div className="text-center mt-4">
-            <span className="inline-block px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 text-sm">
-              現在の選択：<span className="font-semibold">{VOICES[voice].label}</span>
-            </span>
+            <div className="text-xs text-white/60 mt-2 leading-relaxed">
+              ※ 端末に入っている音声だけが表示されます。<br />
+            </div>
           </div>
 
           {/* 速度スライダー */}
