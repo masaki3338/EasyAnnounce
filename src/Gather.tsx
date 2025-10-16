@@ -1,7 +1,6 @@
 // Gather.tsx（全文置き換え）
 import React, { useEffect, useRef, useState } from "react";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
-
 interface Props {
   onNavigate: (screen: string) => void; // 画面遷移用コールバック
 }

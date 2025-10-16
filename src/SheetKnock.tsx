@@ -1,7 +1,7 @@
 // SheetKnock.tsx（全文置き換え）
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS  } from "./lib/tts";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
 declare global {

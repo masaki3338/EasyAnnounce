@@ -1595,11 +1595,6 @@ const Menu = ({
 
 
   useEffect(() => {
-     // VOICEVOXサーバーをウォームアップ
-    fetch("/api/tts-voicevox/version", { cache: "no-store" })
-      .then(r => console.log("[TTS] warmed:", r.status))
-      .catch(() => {});
-
 
     console.log("📺 screen =", screen);
     (async () => {

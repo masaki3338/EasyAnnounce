@@ -85,20 +85,18 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
 
-  /* === 読み上げ停止（全停止） === */
-  const stopSpeechAll = () => {
-    ttsStop();                 // ← VOICEVOXの<audio>＆Web Speechの両方を停止
-    isSpeakingRef.current = false;
-    setSpeaking(false);
-    utteranceRef.current = null;
-  };
+
+
+
 
   useEffect(() => {
-    const onHide = () => stopSpeechAll();
+    const onHide = () => handleStop();
     window.addEventListener("visibilitychange", onHide);
-    return () => { window.removeEventListener("visibilitychange", onHide); stopSpeechAll(); };
+    return () => { window.removeEventListener("visibilitychange", onHide); handleStop(); };
   }, []);
-  useEffect(() => () => window.speechSynthesis.cancel(), []);
+  useEffect(() => {
+    return () => { handleStop(); };
+  }, []);
 
   // 初回だけ VOICEVOX を温める
   useEffect(() => { void prewarmTTS(); }, []);
@@ -198,16 +196,21 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
   const handleSpeak = () => {
     if (isSpeakingRef.current) return;
     isSpeakingRef.current = true;
-    stopSpeechAll(); // 念のため直前に全停止
+    handleStop(); // 念のため直前に全停止
     let text = getVisibleAnnounceText();
     if (!text) { isSpeakingRef.current = false; return; }
     setSpeaking(true);
     // ❗️待たずに発火：体感が大幅に軽くなる。最初の1文を先に再生（progressive）
-    void ttsSpeak(text, { progressive: true, cache: true })
+    void ttsSpeak(text) // progressive/cacheを使わない
       .finally(() => { setSpeaking(false); isSpeakingRef.current = false; });
   };
 
-  const handleStop = () => { stopSpeechAll(); };
+  const handleStop = () => {
+   ttsStop();                 // ← sessionCounter が進むので連鎖が止まる
+   isSpeakingRef.current = false;
+   setSpeaking(false);
+   utteranceRef.current = null;
+ };
 
   return (
       <div
@@ -351,7 +354,8 @@ const AnnounceStartingLineup: React.FC<{ onNavigate: (screen: ScreenType) => voi
               <span className="inline-flex items-center gap-2"><IconMegaphone /> 読み上げ</span>
             </button>
             <button
-              onClick={handleStop}
+              onPointerDown={handleStop}             // ★押した瞬間に停止
+              onClick={handleStop}                   // （保険で残してOK／二重でも問題なし）
               className="w-full px-4 py-2 rounded-xl bg-gray-600 hover:bg-gray-700 active:scale-95 text-white text-base font-semibold shadow-md"
             >
               停止

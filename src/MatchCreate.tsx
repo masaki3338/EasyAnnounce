@@ -60,6 +60,20 @@ const IconAlert: React.FC = () => (
   />
 );
 
+// 読み上げ用の簡易“語彙辞書”（ここに追記していけばOK）
+function applyReadingOverridesJa(input: string): string {
+  let s = input;
+  // 「メンバー表」→「メンバーひょう」
+  s = s.replace(/メンバー表/g, "メンバーひょう");
+
+  // ほかに直したい読みがあればここに追加
+  // 例）「4番」→「よばん」
+  // s = s.replace(/(?<![0-9０-９])4番(?![0-9０-９])/g, "よばん");
+
+  return s;
+}
+
+
 type MatchCreateProps = {
   onBack: () => void;
   onGoToLineup: () => void;
@@ -229,6 +243,9 @@ const speakExchangeMessage = () => {
     `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。` +
     `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。` +
     `メンバーチェックと道具チェックはシートノックの間に行います。`;
+
+  // ★ 追加：読み上げ用の置換を適用
+  const textForTTS = applyReadingOverridesJa(text);
 
   setSpeakingExchange(true);
   // UIは待たせない：IIFEでtry/finally（ttsSpeakがPromiseでもvoidでも安全）
