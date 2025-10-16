@@ -11,10 +11,5 @@
     { "source": "/manual", "destination": "/manual.pdf" }
   ],
   "cleanUrls": true,
-  "trailingSlash": false,
-  "functions": {
-    "api/tts-voicevox.ts": {
-      "maxDuration": 60
-    }
-  }
+  "trailingSlash": false
 }
