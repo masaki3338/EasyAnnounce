@@ -14,7 +14,7 @@
   "trailingSlash": false,
   "functions": {
     "api/tts-voicevox/[[...path]].ts": {
-      "runtime": "edge",
+      "runtime": "nodejs20.x",
       "maxDuration": 60
     }
   }
