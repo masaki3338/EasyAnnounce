@@ -16,11 +16,17 @@ export default defineConfig({
         skipWaiting: true,
         // ★ /api への「ページ遷移」を SPA 殻にフォールバックしない
         navigateFallbackDenylist: [/^\/api\//],
-        // ★ /api リクエストは必ずネットへ（キャッシュしない）
+        // ★ /api は必ずネットへ（安全のため GET/POST を明示）
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'POST',
           },
         ],
       },
@@ -46,13 +52,13 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom']
   },
-  // ★ localhost:5173 から /api/* を Vercel に中継（CORS回避）
+  // ★ ローカル(5173) → vercel dev(3000) に中継。CORS回避の要。
   server: {
     proxy: {
       '/api': {
-        target: 'https://easy-announce.vercel.app', // ← あなたのVercel本番
+        target: 'http://localhost:3000', // ← vercel dev を起動しておく
         changeOrigin: true,
-        secure: true,
+        secure: false, // http宛なので false でOK（httpsなら true でも可）
       },
     },
   },
