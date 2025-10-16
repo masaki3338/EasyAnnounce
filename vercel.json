@@ -11,11 +11,5 @@
     { "source": "/manual", "destination": "/manual.pdf" }
   ],
   "cleanUrls": true,
-  "trailingSlash": false,
-  "functions": {
-    "api/tts-voicevox/[[...path]].ts": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 60
-    }
-  }
+  "trailingSlash": false
 }
