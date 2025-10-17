@@ -81,15 +81,30 @@ export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
 
   // ローカル設定の既定値
+  // ローカル設定の既定値（LS未設定時のフォールバック）
+  const DEFAULT_RATE   = 1.3;
+  const DEFAULT_PITCH  = 1.0;
+  const DEFAULT_VOLUME = 0.8;
+
   const lsSpeed   = Number(localStorage.getItem("tts:speedScale"));
   const lsWSName  = localStorage.getItem("tts:webspeech:voiceName") || undefined;
+  const lsPitch   = Number(localStorage.getItem("tts:pitch"));
+  const lsVolume  = Number(localStorage.getItem("tts:volume"));
 
   const voiceName = options.voiceName ?? lsWSName;
+
   const rate = Number.isFinite(options.speedScale)
     ? Math.max(0.5, Math.min(2.0, Number(options.speedScale)))
-    : (Number.isFinite(lsSpeed) ? Math.max(0.5, Math.min(2.0, lsSpeed)) : 1.0);
-  const pitch  = Number.isFinite(options.pitch)  ? Math.max(0.0, Math.min(2.0, Number(options.pitch)))  : 1.2;
-  const volume = Number.isFinite(options.volume) ? Math.max(0.0, Math.min(1.0, Number(options.volume))) : 1.0;
+    : (Number.isFinite(lsSpeed) ? Math.max(0.5, Math.min(2.0, lsSpeed)) : DEFAULT_RATE);
+
+  const pitch = Number.isFinite(options.pitch)
+    ? Math.max(0.0, Math.min(2.0, Number(options.pitch)))
+    : (Number.isFinite(lsPitch) ? Math.max(0.0, Math.min(2.0, lsPitch)) : DEFAULT_PITCH);
+
+  const volume = Number.isFinite(options.volume)
+    ? Math.max(0.0, Math.min(1.0, Number(options.volume)))
+    : (Number.isFinite(lsVolume) ? Math.max(0.0, Math.min(1.0, lsVolume)) : DEFAULT_VOLUME);
+
 
   try { await unlockWebSpeech(voiceName); } catch {}
 
@@ -123,6 +138,7 @@ const mySession = sessionCounter;
       u.rate = rate;
       u.pitch = pitch;
       u.volume = volume;
+
 
       u.onend = () => {
         if (mySession !== sessionCounter) return resolve(); // 停止後の連鎖防止
