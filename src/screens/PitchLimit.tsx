@@ -208,6 +208,9 @@ export default function PitchLimit({ onBack }: { onBack: () => void }) {
               </button>
             </div>
           </div>
+        <p className="mt-4 md:mt-6 text-left leading-relaxed text-xs text-white/70 px-4">
+          ※ この設定は「規定投球数の10球前と到達時のアナウンス」で使用されます。
+        </p>
         </section>
       </main>
     </div>
