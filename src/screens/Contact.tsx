@@ -1,15 +1,14 @@
-// Contact.tsx（UIのみ刷新・機能は完全据え置き）
-import React, { useState } from "react";
+// src/Contact.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   onBack: () => void;
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://formspree.io/f/xjkongyv"; // ← あなたのFormspree URL（既存のまま）
+const ENDPOINT = "https://formspree.io/f/xjkongyv"; // 既存のFormspree URL
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
-// ── 見た目用ミニアイコン（ロジック非依存） ──
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
     <path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
@@ -25,11 +24,77 @@ const IconSend = () => (
     <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
   </svg>
 );
+const IconTrash = () => (
+  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden>
+    <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2z"/>
+  </svg>
+);
+const IconImage = () => (
+  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+    <path d="M21 19V5a2 2 0 0 0-2-2H5C3.89 3 3 3.9 3 5v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5 11 17l3.5-4.5L19 20H5l3.5-6.5zM8 8a2 2 0 1 1 .001 3.999A2 2 0 0 1 8 8z"/>
+  </svg>
+);
+
+type Preview = { file: File; url: string };
 
 export default function Contact({ onBack, version = "0.0.1" }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
+  // 添付ファイル（画像のみ・タップ選択）
+  const [files, setFiles] = useState<Preview[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // オブジェクトURL解放
+  useEffect(() => {
+    return () => files.forEach(p => URL.revokeObjectURL(p.url));
+  }, [files]);
+
+  const count = text.length;
+  const totalSizeMB = useMemo(
+    () => (files.reduce((s, f) => s + f.file.size, 0) / (1024 * 1024)),
+    [files]
+  );
+
+  const addFiles = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const arr = Array.from(fileList).filter(f => f.type.startsWith("image/"));
+    if (arr.length === 0) return;
+
+    // 上限（例: 最大10枚 / 画像1枚あたり 10MB / 合計 40MB）
+    const MAX_FILES = 10;
+    const MAX_EACH_MB = 10;
+    const MAX_TOTAL_MB = 40;
+
+    const current = [...files];
+    for (const f of arr) {
+      if (current.length >= MAX_FILES) break;
+      if (f.size > MAX_EACH_MB * 1024 * 1024) {
+        alert(`画像が大きすぎます（${f.name}: 最大 ${MAX_EACH_MB}MB）`);
+        continue;
+      }
+      current.push({ file: f, url: URL.createObjectURL(f) });
+      const sumMB = current.reduce((s, p) => s + p.file.size, 0) / (1024 * 1024);
+      if (sumMB > MAX_TOTAL_MB) {
+        alert(`合計サイズが大きすぎます（最大 ${MAX_TOTAL_MB}MB）`);
+        const last = current.pop();
+        if (last) URL.revokeObjectURL(last.url);
+        break;
+      }
+    }
+    setFiles(current);
+  };
+
+  const removeFile = (idx: number) => {
+    setFiles(prev => {
+      const copy = [...prev];
+      const [rm] = copy.splice(idx, 1);
+      if (rm) URL.revokeObjectURL(rm.url);
+      return copy;
+    });
+  };
+
+  // 送信
   const submit = async () => {
     const body = text.trim();
     if (!body) {
@@ -38,34 +103,37 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
     }
     try {
       setSending(true);
+
+      // multipart/form-data で送る
+      const fd = new FormData();
+      fd.append("_subject", SUBJECT);
+      fd.append("subject", SUBJECT);
+      fd.append("message", body);
+      fd.append("version", version);
+      files.forEach(p => fd.append("file", p.file, p.file.name)); // 複数 file
+
       const res = await fetch(ENDPOINT, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          _subject: SUBJECT,
-          subject: SUBJECT,
-          message: body,
-          version,
-        }),
+        headers: { Accept: "application/json" }, // Content-Type は付けない（ブラウザ任せ）
+        body: fd,
       });
+
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         alert("送信しました。ありがとうございました。");
         setText("");
+        files.forEach(p => URL.revokeObjectURL(p.url));
+        setFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         alert(`送信に失敗しました：${json?.error ?? res.statusText}`);
       }
-    } catch (e) {
+    } catch {
       alert("送信時にエラーが発生しました。ネットワークをご確認ください。");
     } finally {
       setSending(false);
     }
   };
-
-  const count = text.length;
 
   return (
     <div
@@ -76,7 +144,7 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
       }}
     >
       <div className="w-full">
-        {/* ヘッダー：横幅めいっぱい（フルブリード） */}
+        {/* ヘッダー */}
         <div className="w-[100svw] -mx-6 md:mx-0 md:w-full flex items-center justify-between mb-3">
           <button
             onClick={onBack}
@@ -97,14 +165,15 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
             </span>
           </h1>
           <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-          <p className="text-white/70 text-sm mt-2">ご要望・不具合報告など、お気軽にお寄せください。</p>
+          <p className="text-white/70 text-sm mt-2">ご要望・不具合報告など、写真（画像）を添付できます。</p>
         </div>
 
-        {/* 本体カード：横幅めいっぱい（フルブリード） */}
+        {/* 本体カード */}
         <section
           className="w-[100svw] -mx-6 md:mx-0 md:w-full rounded-none md:rounded-2xl p-4 md:p-6
                      bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow space-y-4"
         >
+          {/* 本文 */}
           <label className="block">
             <div className="text-sm text-white/90 mb-2 font-semibold">
               お問い合わせ内容 <span className="text-rose-300">※必須</span>
@@ -115,12 +184,73 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
               rows={10}
               className="w-full rounded-2xl bg-white/90 text-gray-900 border border-white/70 shadow-sm
                          p-4 outline-none focus:ring-2 focus:ring-sky-400 placeholder-gray-600"
-              placeholder="ご自由にご記入ください"
+              placeholder="ご自由にご記入ください（不具合時は再現手順・環境など）"
               required
             />
             <div className="mt-1 text-right text-xs text-white/60">{count} 文字</div>
           </label>
 
+          {/* 添付：タップで写真選択（複数OK） */}
+          <div>
+            <div className="text-sm text-white/90 mb-2 font-semibold">
+              写真を選択して添付
+              <span className="ml-2 text-xs text-white/70">※ 最大10枚／1枚10MB／合計40MB</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 bg-white/15 hover:bg-white/20 border border-white/20"
+            >
+              <IconImage />
+              <span>フォトライブラリから選ぶ</span>
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => addFiles(e.target.files)}
+              className="hidden"
+            />
+
+            {/* プレビュー */}
+            {files.length > 0 && (
+              <>
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {files.map((p, i) => (
+                    <div key={i} className="relative group rounded-xl overflow-hidden border border-white/20 bg-white/10">
+                      <img
+                        src={p.url}
+                        alt={p.file.name}
+                        className="w-full h-32 object-cover"
+                        loading="lazy"
+                      />
+                      <button
+                        onClick={() => removeFile(i)}
+                        className="absolute top-1 right-1 inline-flex items-center gap-1 px-2 py-1 rounded-lg
+                                   bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition"
+                        title="この画像を削除"
+                        type="button"
+                      >
+                        <IconTrash />
+                        削除
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 text-[10px] px-2 py-1 bg-black/50 text-white truncate">
+                        {p.file.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-white/60 text-right">
+                  合計サイズ: {totalSizeMB.toFixed(2)} MB
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 送信 */}
           <div className="text-center">
             <button
               className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-semibold shadow active:scale-95
