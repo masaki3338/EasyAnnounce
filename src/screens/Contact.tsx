@@ -6,7 +6,7 @@ type Props = {
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://formspree.io/f/xjkongyv"; // 既存のFormspree URL
+const ENDPOINT = "https://getform.io/f/aolzdvrb";
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
 const IconBack = () => (
@@ -101,38 +101,60 @@ export default function Contact({ onBack, version = "0.0.1" }: Props) {
       alert("お問い合わせ内容をご入力ください。");
       return;
     }
-    try {
-      setSending(true);
+try {
+  setSending(true);
 
-      // multipart/form-data で送る
-      const fd = new FormData();
-      fd.append("_subject", SUBJECT);
-      fd.append("subject", SUBJECT);
-      fd.append("message", body);
-      fd.append("version", version);
-      files.forEach(p => fd.append("file", p.file, p.file.name)); // 複数 file
+// multipart/form-data で送る（Getform向け）
+const fd = new FormData();
+fd.append("_subject", SUBJECT);
+fd.append("subject", SUBJECT);
+fd.append("message", body);
+fd.append("version", version);
 
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { Accept: "application/json" }, // Content-Type は付けない（ブラウザ任せ）
-        body: fd,
-      });
+// ★ ここを 'file' → 'files[]' に変更（複数添付の推奨形）
+files.forEach(p => fd.append("files[]", p.file, p.file.name));
 
-      const json = await res.json().catch(() => ({}));
-      if (res.ok) {
-        alert("送信しました。ありがとうございました。");
-        setText("");
-        files.forEach(p => URL.revokeObjectURL(p.url));
-        setFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      } else {
-        alert(`送信に失敗しました：${json?.error ?? res.statusText}`);
-      }
-    } catch {
-      alert("送信時にエラーが発生しました。ネットワークをご確認ください。");
-    } finally {
-      setSending(false);
+const res = await fetch(ENDPOINT, {
+  method: "POST",
+  // Content-Type は付けない（ブラウザが boundary を付与）
+  headers: { Accept: "application/json" },
+  body: fd,
+});
+
+  // 失敗時の詳細をできるだけ拾う
+  let detail = "";
+  let json: any = null;
+  try {
+    json = await res.json();
+    if (json?.errors?.length) {
+      detail = json.errors.map((e: any) => e.message || e.code).join("; ");
+    } else if (json?.error) {
+      detail = json.error;
     }
+  } catch {
+    // JSONで返らないケースもあるので握りつぶす
+  }
+
+  if (!res.ok) {
+    console.error("Formspree error:", { status: res.status, statusText: res.statusText, json });
+    alert(`送信に失敗しました：${res.status} ${res.statusText}${detail ? " / " + detail : ""}`);
+    return;
+  }
+
+  alert("送信しました。ありがとうございました。");
+  setText("");
+
+  // 添付の後始末とUIクリア
+  files.forEach(p => URL.revokeObjectURL(p.url));
+  setFiles([]);
+  if (fileInputRef.current) fileInputRef.current.value = "";
+
+} catch {
+  alert("送信時にエラーが発生しました。ネットワークをご確認ください。");
+} finally {
+  setSending(false);
+}
+
   };
 
   return (
