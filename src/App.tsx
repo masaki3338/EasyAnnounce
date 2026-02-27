@@ -40,7 +40,7 @@ import VersionInfo from "./screens/VersionInfo";
 
 
 // バージョン番号を定数で管理
-const APP_VERSION = "0.20 β"
+const APP_VERSION = "0.21 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -147,7 +147,7 @@ const BottomTab: React.FC<{
       className="fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-t border-gray-200"
       style={{ paddingBottom: "max( env(safe-area-inset-bottom), 4px )" }}
     >
-      <div className="grid grid-cols-4 max-w-md mx-auto">
+      <div className="grid grid-cols-4 w-full">
         <TabButton
           label="ホーム"
           active={is("menu")}
@@ -1589,7 +1589,7 @@ return (
     }}
   >
     {/* ← ここを“中央寄せ”の本体ラッパで包む */}
-    <div className="flex-1 w-full max-w-md flex flex-col items-center justify-center">
+    <div className="flex-1 w-full md:max-w-none flex flex-col items-center justify-center">
       {/* ヘッダー */}
 <div className="w-full mb-8 md:mb-10">
   <h1 className="text-center mb-0">

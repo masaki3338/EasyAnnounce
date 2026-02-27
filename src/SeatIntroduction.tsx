@@ -198,7 +198,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   if (!teamName) {
     return (
-      <div className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-center justify-center px-6">
+      <div className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex items-center justify-center px-6">
         読み込み中…
       </div>
     );
@@ -206,7 +206,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   return (
       <div
-        className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
           paddingBottom: "max(16px, env(safe-area-inset-bottom))",
