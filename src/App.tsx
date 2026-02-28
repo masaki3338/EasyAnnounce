@@ -34,6 +34,7 @@ import PitchLimit from "./screens/PitchLimit";
 import TiebreakRule from "./screens/TiebreakRule";
 import Contact from "./screens/Contact";
 import TtsSettings from "./screens/TtsSettings";
+import Qa from "./screens/Qa";
 import VersionInfo from "./screens/VersionInfo";
 
 
@@ -82,6 +83,7 @@ export type ScreenType =
   | "tiebreakRule"
   | "contact"
   | "tts-settings"
+  | "qa"
   | "versionInfo";
 
 const screenMap: { [key: string]: ScreenType } = {
@@ -979,6 +981,10 @@ if (totalMyScore > totalOpponentScore) {
 
 {screen === "tts-settings" && (
   <TtsSettings onBack={() => setScreen("operationSettings")} />
+)}
+
+{screen === "qa" && (
+  <Qa onBack={() => setScreen("operationSettings")} />
 )}
 
 {screen === "contact" && (
