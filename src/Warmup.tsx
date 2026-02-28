@@ -286,7 +286,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
         }}
       >
       {/* ヘッダー */}
-      <header className="w-full max-w-md">
+      <header className="w-full max-w-[720px]">
         <div className="flex items-center justify-between">
 
           <div className="w-10" />
@@ -306,7 +306,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       </header>
 
       {/* 本体：カード群 */}
-      <main className="w-full max-w-md mt-6 space-y-5">
+      <main className="w-full max-w-[720px] mt-6 space-y-5">
         {/* 1 読み上げタイミング（黄） */}
         <StepCard step={1} icon={<IconInfo />} title="読み上げタイミング" accent="amber">
           <div className="text-amber-50/90 text-sm leading-relaxed">
