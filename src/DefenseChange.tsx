@@ -4977,6 +4977,7 @@ if (!fromIsField && toPos !== BENCH) {
 //　確定ボタン　 //
 //**************// 
 const confirmChange = async () => {
+  console.log("[DEBUG] confirm clicked", { assignments, battingReplacements });
   await pushHistory();  // ★確定直前スナップショットを永続化まで行う
   // usedInfo を読み出し
   const usedInfo: Record<
@@ -5181,11 +5182,14 @@ updatedOrder.forEach((entry, idx) => {
   }
 });
 
-  // battingReplacements を確定反映
-  Object.entries(battingReplacements).forEach(([idxStr, repl]) => {
-    const idx = Number(idxStr);
+
+// battingReplacements を確定反映（undefined混在でも落ちないようにガード）
+(Array.isArray(battingReplacements) ? battingReplacements : Object.values(battingReplacements as any))
+  .forEach((repl: any, idx: number) => {
+    if (!repl || typeof repl.id !== "number") return; // ✅ ここが重要（落ちない）
+
     const starterId = finalBattingOrder[idx]?.id;
-    if (starterId == null) return;
+    if (typeof starterId !== "number") return;
 
     const replacementId = repl.id;
     const starterStillOnField = onFieldIds.has(starterId);
