@@ -3023,7 +3023,7 @@ const MiniScribblePad: React.FC<MiniScribblePadProps> = ({ value, onChange }) =>
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-xs font-bold text-slate-700">✍️ メモ（交代確定まで保持）</div>
+        <div className="text-xs font-bold text-slate-700">✍️ 手書きメモ</div>
 
         <div className="flex items-center gap-2">
           <button
@@ -3035,7 +3035,7 @@ const MiniScribblePad: React.FC<MiniScribblePadProps> = ({ value, onChange }) =>
                 : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
             }`}
           >
-            ペン
+            ✏️
           </button>
           <button
             type="button"
@@ -3046,14 +3046,14 @@ const MiniScribblePad: React.FC<MiniScribblePadProps> = ({ value, onChange }) =>
                 : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
             }`}
           >
-            消しゴム
+            🧽
           </button>
           <button
             type="button"
             onClick={clear}
             className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-bold hover:bg-slate-800 active:bg-slate-900"
           >
-            全消し
+            消去
           </button>
         </div>
       </div>
