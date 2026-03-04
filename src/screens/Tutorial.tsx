@@ -29,7 +29,7 @@ export default function Tutorial({ onBack }: Props) {
             onClick={() => (active ? setActive(null) : onBack())}
             className="px-4 py-2 rounded-lg bg-slate-700/60 border border-white/10 text-sm font-bold"
           >
-            ← {active ? "一覧に戻る" : "運用設定に戻る"}
+            ← {active ? "戻る" : "戻る"}
           </button>
 
           <div className="flex-1 text-center">
