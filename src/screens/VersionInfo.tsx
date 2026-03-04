@@ -51,6 +51,11 @@ const historyData: HistoryItem[] = [
     version: "Vesion 0.22β",
     details: ["交代操作を守備番号で入力可能にする機能追加"],
   },
+  {
+    date: "2026.03.04",
+    version: "Vesion 0.23β",
+    details: ["チュートリアル追加"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
