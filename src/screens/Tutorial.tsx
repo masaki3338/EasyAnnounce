@@ -9,7 +9,7 @@ const topics = [
   { key: "start" as const, icon: "🏁", title: "試合開始（試合前アナウンス）", subtitle: "試合前のアナウンス" },
   { key: "defense" as const, icon: "🛡️", title: "試合中（守備時）", subtitle: "投球数・得点・その他メニュー" },
   { key: "offense" as const, icon: "⚾", title: "試合中（攻撃時）", subtitle: "打者読み上げ・代打/代走・得点" },
-  { key: "sub" as const, icon: "🔄", title: "選手交代の手順", subtitle: "選手交代の手順を確認します" },
+  { key: "sub" as const, icon: "🔄", title: "選手交代の手順", subtitle: "選手交代の手順方法" },
 ] as const;
 
 export default function Tutorial({ onBack }: Props) {
@@ -32,11 +32,11 @@ export default function Tutorial({ onBack }: Props) {
             ← {active ? "戻る" : "戻る"}
           </button>
 
-          <div className="flex-1 text-center">
-            <div className="text-lg font-extrabold">
+          <div className="flex-1 text-center min-w-0">
+            <div className="text-base sm:text-lg font-extrabold whitespace-nowrap">
               {active ? activeTopic?.title : "チュートリアル"}
             </div>
-            <div className="text-xs text-slate-300">
+            <div className="text-[11px] text-slate-300 whitespace-nowrap">
               {active ? "画像を左右にスワイプできます" : "基本の流れを確認"}
             </div>
           </div>
@@ -108,10 +108,10 @@ function Step({ n, text }: { n: number; text: string }) {
 /** ====== チーム・選手登録チュートリアル ========*/
 function TeamTutorial() {
   const slides = [
-    { src: "/tutorial/team_1.jpg", label: "STEP1：『チーム・選手登録』を押します" },
-    { src: "/tutorial/team_2.jpg", label: "STEP2：チーム名・ふりがなを入力（ルビ＆読み上げに使用）" },
-    { src: "/tutorial/team_3.jpg", label: "STEP3：選手名・背番号・ふりがなを入力して『追加』" },
-    { src: "/tutorial/team_4.jpg", label: "STEP4：登録内容を確認して『保存する』（編集/削除も可）" },
+    { src: "/tutorial/team_1.jpg", label: "" },
+    { src: "/tutorial/team_2.jpg", label: "" },
+    { src: "/tutorial/team_3.jpg", label: "" },
+    { src: "/tutorial/team_4.jpg", label: "" },
   ];
 
   return (
@@ -131,11 +131,11 @@ function TeamTutorial() {
 /** ====== 試合作成：画像チュートリアル本体 ====== */
 function GameTutorial() {
   const slides = [
-    { src: "/tutorial/game_1.jpg", label: "STEP1：『試合作成』を押します" },
-    { src: "/tutorial/game_2.jpg", label: "STEP2：大会名・試合順・次試合・相手チームを入力" },
-    { src: "/tutorial/game_3.jpg", label: "STEP3：先攻/後攻・1塁側/3塁側・審判名 →『スタメン設定』" },
-    { src: "/tutorial/game_4.jpg", label: "STEP4：スタメン/ベンチ/出場しない選手を配置（配置順＝打順）" },
-    { src: "/tutorial/game_5.jpg", label: "STEP5：表示された打順リストから打順/守備位置を変更できます" },
+    { src: "/tutorial/game_1.jpg", label: "" },
+    { src: "/tutorial/game_2.jpg", label: "" },
+    { src: "/tutorial/game_3.jpg", label: "" },
+    { src: "/tutorial/game_4.jpg", label: "" },
+    { src: "/tutorial/game_5.jpg", label: "" },
   ];
 
   return (
@@ -143,7 +143,7 @@ function GameTutorial() {
       <div className="rounded-2xl bg-slate-700/40 backdrop-blur border border-white/10 p-4 shadow-xl">
         <div className="text-base font-extrabold">📝 試合情報の入力</div>
         <div className="mt-1 text-sm text-slate-200">
-          試合情報 → スタメン設定まで、画像で確認できます
+          試合情報 → スタメン設定まで入力します
         </div>
       </div>
 
@@ -155,11 +155,11 @@ function GameTutorial() {
 /** ====== 試合開始：画像チュートリアル本体 ====== */
 function GameStartTutorial() {
   const slides = [
-    { src: "/tutorial/start_1.jpg", label: "STEP1：『試合開始』を押します" },
-    { src: "/tutorial/start_2.jpg", label: "STEP2：『試合前アナウンス』を押します" },
-    { src: "/tutorial/start_3.jpg", label: "STEP3：試合前に行う項目が順番に表示されます（押すと内容表示）" },
-    { src: "/tutorial/start_4.jpg", label: "STEP4：各項目の画面で、タイミングに従って読み上げます（タイマーあり）" },
-    { src: "/tutorial/start_5.jpg", label: "STEP5：試合前アナウンスが終わったら『試合を開始する』を押します" },
+    { src: "/tutorial/start_1.jpg", label: "" },
+    { src: "/tutorial/start_2.jpg", label: "" },
+    { src: "/tutorial/start_3.jpg", label: "" },
+    { src: "/tutorial/start_4.jpg", label: "" },
+    { src: "/tutorial/start_5.jpg", label: "" },
   ];
 
   return (
@@ -181,11 +181,11 @@ function DefenseTutorial() {
   const slides = [
     {
       src: "/tutorial/defense_1.jpg",
-      label: "STEP1：守備時は投球数カウント・得点入力・イニング終了を操作します",
+      label: "",
     },
     {
       src: "/tutorial/defense_2.jpg",
-      label: "STEP2：右上の『その他』から試合終了/継続/マニュアル等を開けます",
+      label: "",
     },
   ];
 
@@ -194,7 +194,7 @@ function DefenseTutorial() {
       <div className="rounded-2xl bg-slate-700/40 backdrop-blur border border-white/10 p-4 shadow-xl">
         <div className="text-base font-extrabold">🛡️ 試合中（守備時）</div>
         <div className="mt-1 text-sm text-slate-200">
-          守備中は「投球数」「得点」「イニング終了」がメイン操作です
+          守備中は「投球数」「得点」の入力が主な操作です
         </div>
       </div>
 
@@ -208,23 +208,23 @@ function OffenseTutorial() {
   const slides = [
     {
       src: "/tutorial/offense_1.jpg",
-      label: "STEP1：先攻のときは開始時刻の取得が表示→『試合開始』を押します",
+      label: "",
     },
     {
       src: "/tutorial/offense_2.jpg",
-      label: "STEP2：打者の読み上げ →『次の打者』で進めます（代打/代走もここ）",
+      label: "",
     },
     {
       src: "/tutorial/offense_3.jpg",
-      label: "STEP3：代打：控え選手を選ぶと代打アナウンスが表示されます",
+      label: "",
     },
     {
       src: "/tutorial/offense_4.jpg",
-      label: "STEP4：代走：対象ランナー→塁→交代選手を選ぶとアナウンスが表示されます",
+      label: "",
     },
     {
       src: "/tutorial/offense_5.jpg",
-      label: "STEP5：攻撃終了は『イニング終了』→得点入力（得点があればアナウンス表示）",
+      label: "",
     },
   ];
 
@@ -248,12 +248,12 @@ function SubstitutionTutorial() {
 
   // public/tutorial/ に置いた前提
   const numberSlides = [
-    { src: "/tutorial/sub_0.jpg", label: "概要（2通りあります）" },
-    { src: "/tutorial/sub_1.jpg", label: "STEP1：守備交代ボタン" },
-    { src: "/tutorial/sub_2.jpg", label: "STEP2：守備番号で交代" },
-    { src: "/tutorial/sub_3.jpg", label: "STEP3：内容を入力して反映" },
-    { src: "/tutorial/sub_4.jpg", label: "STEP4：交代内容を確認" },
-    { src: "/tutorial/sub_5.jpg", label: "STEP5：読み上げ文が表示" },
+    { src: "/tutorial/sub_0.jpg", label: "" },
+    { src: "/tutorial/sub_1.jpg", label: "" },
+    { src: "/tutorial/sub_2.jpg", label: "" },
+    { src: "/tutorial/sub_3.jpg", label: "" },
+    { src: "/tutorial/sub_4.jpg", label: "" },
+    { src: "/tutorial/sub_5.jpg", label: "" },
   ];
 
   const dragSlides = [
