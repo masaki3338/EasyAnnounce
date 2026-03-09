@@ -6,7 +6,8 @@ type Props = {
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://getform.io/f/hcmbwvdrrvv";
+const ENDPOINT = "https://forminit.com/f/hcmbwvdrvv";
+
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
 const IconBack = () => (
@@ -115,6 +116,10 @@ fd.append("email", email.trim());
 
 // ★ ここを 'file' → 'files[]' に変更（複数添付の推奨形）
 files.forEach(p => fd.append("files[]", p.file, p.file.name));
+
+for (const [key, value] of fd.entries()) {
+  console.log(key, value);
+}
 
 const res = await fetch(ENDPOINT, {
   method: "POST",
