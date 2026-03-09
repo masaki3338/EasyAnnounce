@@ -6,7 +6,7 @@ type Props = {
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://getform.io/f/aolzdvrb";
+const ENDPOINT = "https://getform.io/f/hcmbwvdrrvv";
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
 const IconBack = () => (
@@ -39,6 +39,7 @@ type Preview = { file: File; url: string };
 
 export default function Contact({ onBack, version = "0.0.1" }: Props) {
   const [text, setText] = useState("");
+  const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
 
   // 添付ファイル（画像のみ・タップ選択）
@@ -110,6 +111,7 @@ fd.append("_subject", SUBJECT);
 fd.append("subject", SUBJECT);
 fd.append("message", body);
 fd.append("version", version);
+fd.append("email", email.trim()); 
 
 // ★ ここを 'file' → 'files[]' に変更（複数添付の推奨形）
 files.forEach(p => fd.append("files[]", p.file, p.file.name));
@@ -211,6 +213,25 @@ const res = await fetch(ENDPOINT, {
             />
             <div className="mt-1 text-right text-xs text-white/60">{count} 文字</div>
           </label>
+
+<label className="block">
+  <div className="text-sm text-white/90 mb-2 font-semibold">
+    返信用メールアドレス <span className="text-white/60">（任意）</span>
+  </div>
+
+  <input
+    type="email"
+    value={email}
+    onChange={(e) => setEmail(e.target.value)}
+    className="w-full rounded-2xl bg-white/90 text-gray-900 border border-white/70 shadow-sm
+               p-4 outline-none focus:ring-2 focus:ring-sky-400 placeholder-gray-600"
+    placeholder="返信が必要な場合のみ入力してください"
+  />
+
+  <div className="text-xs text-white/60 mt-1">
+    ※返信が必要な場合のみご入力ください
+  </div>
+</label>
 
           {/* 添付：タップで写真選択（複数OK） */}
           <div>
