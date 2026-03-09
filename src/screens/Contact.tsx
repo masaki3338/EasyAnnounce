@@ -6,7 +6,8 @@ type Props = {
   version?: string; // App.tsx から渡す
 };
 
-const ENDPOINT = "https://forminit.com/f/hcmbwvdrvv";
+
+const ENDPOINT = "https://app.forminit.com/f/hcmbwvdrvv";
 
 const SUBJECT  = "Easyアナウンスお問い合わせ";
 
