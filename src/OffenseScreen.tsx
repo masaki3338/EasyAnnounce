@@ -17,6 +17,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
 import { speak, stop } from "./lib/tts";
+import { getLeagueMode } from "./lib/leagueSettings";
 
 // "15:40" や "15：40" → "15時40分"
 // "15:40〜17:00" → "15時40分から17時00分"
@@ -144,8 +145,8 @@ type OffenseScreenProps = {
   onSwitchToDefense: () => void;
   onGoToSeatIntroduction: () => void;
   onBack?: () => void;
+  openIntentionalWalkTrigger?: number;
 };
-
 
 type MatchInfo = {
   tournamentName?: string;
@@ -269,12 +270,11 @@ declare global { interface Window { prefetchTTS?: (t: string) => void } }
 
 
 
-//const OffenseScreen: React.FC<OffenseScreenProps> = ({ onSwitchToDefense, onBack }) => {
 const OffenseScreen: React.FC<OffenseScreenProps> = ({
   onSwitchToDefense,
-  onGoToSeatIntroduction, // ← 追加！！
-  matchInfo,
-}) => {  
+  onGoToSeatIntroduction,
+  openIntentionalWalkTrigger = 0,
+}) => {
   const [players, setPlayers] = useState<any[]>([]);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
   const [battingOrder, setBattingOrder] = useState<
@@ -311,6 +311,75 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
   const [scoreOverwrite, setScoreOverwrite] = useState(true);
+  const [showIntentionalWalkPopup, setShowIntentionalWalkPopup] = useState(false);
+  const [intentionalWalkText, setIntentionalWalkText] = useState("");
+
+
+const buildIntentionalWalkText = async () => {
+  const currentEntry = battingOrder[currentBatterIndex];
+  const batter = currentEntry ? getPlayer(currentEntry.id) : null;
+
+  if (!batter) {
+    return "申告敬遠です。";
+  }
+
+  const honorific = batter?.isFemale ? "さん" : "くん";
+  const batterName = `${batter.lastName ?? ""}${honorific}`;
+
+  const nextIndex = (currentBatterIndex + 1) % battingOrder.length;
+  const nextEntry = battingOrder[nextIndex];
+  const nextBatter = nextEntry ? getPlayer(nextEntry.id) : null;
+
+  if (!nextBatter) {
+    return `${batterName}、申告敬遠の為、１塁に進塁いたします。`;
+  }
+
+  const nextHonorific = nextBatter?.isFemale ? "さん" : "くん";
+  const nextPos = getPosition(nextBatter.id) ?? "";
+  const nextPosName = nextPos ? (positionNames[nextPos] ?? nextPos) : "";
+  const nextChecked = checkedIds.includes(nextBatter.id);
+  const nextNumber = String(nextBatter.number ?? "").trim();
+
+  let nextBatterText = "";
+
+  if (!nextChecked) {
+    nextBatterText =
+      `${nextIndex + 1}番 ${nextPosName ? `${nextPosName} ` : ""}` +
+      `${nextBatter.lastName ?? ""}${nextBatter.firstName ?? ""}${nextHonorific}、` +
+      `${nextPosName ? `${nextPosName} ` : ""}` +
+      `${nextBatter.lastName ?? ""}${nextHonorific}` +
+      `${nextNumber ? `、背番号${nextNumber}` : ""}`;
+  } else {
+    nextBatterText =
+      `${nextIndex + 1}番 ${nextPosName ? `${nextPosName} ` : ""}` +
+      `${nextBatter.lastName ?? ""}${nextHonorific}` +
+      `${nextNumber ? `` : ""}`;
+  }
+
+  return (
+    `${batterName}、申告敬遠の為、１塁に進塁いたします。\n` +
+    `バッターは ${nextBatterText}。`
+  );
+};
+
+
+const lastIntentionalWalkTriggerRef = useRef(openIntentionalWalkTrigger);
+
+useEffect(() => {
+  if (!openIntentionalWalkTrigger) return;
+
+  // 初回表示時の再実行を防ぐ
+  if (openIntentionalWalkTrigger === lastIntentionalWalkTriggerRef.current) return;
+
+  lastIntentionalWalkTriggerRef.current = openIntentionalWalkTrigger;
+
+  (async () => {
+    const text = await buildIntentionalWalkText();
+    setIntentionalWalkText(text);
+    setShowIntentionalWalkPopup(true);
+  })();
+}, [openIntentionalWalkTrigger]);
+
 
   // 🔒 読み上げ連打ロック
   const [speaking, setSpeaking] = useState(false);
@@ -352,6 +421,16 @@ const OffenseScreen: React.FC<OffenseScreenProps> = ({
 
   // 🔸 リエントリー用 state
   const [showReEntryModal, setShowReEntryModal] = useState(false);
+  const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
+  const getRunnerLabel = (base: string) => {
+    if (leagueMode === "boys") {
+      if (base === "1塁") return "ファーストランナー";
+      if (base === "2塁") return "セカンドランナー";
+      if (base === "3塁") return "サードランナー";
+    }
+    return `${base}ランナー`;
+  };
+
   const [reEntryFromPlayer, setReEntryFromPlayer] = useState<any|null>(null); // Aくん（今いる選手）
   const [reEntryTargetPlayer, setReEntryTargetPlayer] = useState<any|null>(null); // Bくん（戻す元スタメン）
   const [reEntryOrder1, setReEntryOrder1] = useState<number|null>(null); // 1始まりの打順
@@ -623,9 +702,11 @@ const firstOpenAlertShownRef = useRef(false);
 
   const [gameStartTime, setGameStartTime] = useState<string | null>(null);
   const [showStartTimePopup, setShowStartTimePopup] = useState(false);
+  const [afterStartTimeAction, setAfterStartTimeAction] = useState<"scoreModal" | null>(null);
 
   const [announcedIds, setAnnouncedIds] = useState<number[]>([]);
-
+  const batterAnnounceCountsRef = useRef<Record<number, number>>({});
+  const announcedIdsRef = useRef<number[]>([]);
   const [lastPinchAnnouncement, setLastPinchAnnouncement] = useState<React.ReactNode | null>(null);
 
   // 🔹 通常アナウンスでは 代打/代走 を非表示にする
@@ -639,9 +720,35 @@ useEffect(() => {
   localForage.getItem<number[]>("announcedIds").then((saved) => {
     if (Array.isArray(saved)) {
       setAnnouncedIds(saved);
+      announcedIdsRef.current = saved;
     }
   });
 }, []);
+
+useEffect(() => {
+  (async () => {
+    const saved =
+      (await localForage.getItem<string>("gameStartTime")) ||
+      (await localForage.getItem<string>("startTime"));
+
+    if (saved) {
+      setGameStartTime(saved);
+      setStartTime(saved);
+    }
+  })();
+}, []);
+
+useEffect(() => {
+  localForage.getItem<Record<number, number>>("batterAnnounceCounts").then((saved) => {
+    if (saved && typeof saved === "object") {
+      batterAnnounceCountsRef.current = saved;
+    }
+  });
+}, []);
+
+useEffect(() => {
+  announcedIdsRef.current = announcedIds;
+}, [announcedIds]);
 
 // ★ 初回表示から横スクロールを完全禁止
 useEffect(() => {
@@ -711,7 +818,7 @@ const loadTiebreakBases = async (): Promise<number[]> => {
   return norm(raw);
 };
 
-// クリックされた打順indexからTB文言を作る
+
 // クリックされた打順indexからTB文言を作る
 const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   // players / battingOrder / assignments / matchInfo は state が未整備でも拾えるようにLFから補完
@@ -773,9 +880,15 @@ const buildTiebreakTextForIndex = async (idx: number): Promise<string> => {
   const lines: string[] = [];
 
   // 改行は whitespace-pre-line 前提で先頭に全角スペースを入れる
-  if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
-  if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
-  if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
+  if (leagueMode === "boys") {
+    if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
+    if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
+    if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
+  } else {
+    if (bases.includes(1)) lines.push(`　ファーストランナーは${r1Text}`);
+    if (bases.includes(2)) lines.push(`　セカンドランナーは${r2Text}`);
+    if (bases.includes(3)) lines.push(`　サードランナーは${r3Text}`);
+  }
 
   // 旧仕様の固定文面から、設定に応じた行だけ出す
   const runnersPart = lines.join("\n");
@@ -799,6 +912,8 @@ useEffect(() => {
       await localForage.removeItem("checkedIds");
       await localForage.removeItem("announcedIds");
       await localForage.removeItem("usedPlayerInfo");
+      batterAnnounceCountsRef.current = {};
+      await localForage.removeItem("batterAnnounceCounts");
       // リセット済みの合図を消す（次回の再読込でまた動くように）
       await localForage.removeItem("gameStartToken");
     }
@@ -1165,6 +1280,18 @@ const restoreSnapshot = async (s: OffenseSnapshot) => {
     isTop: false,  // or true（分岐に応じて）
     isHome,        // 既存値を維持
   });
+  const isEndOfFirstTop = inning === 1 && isTop === true;
+  const shouldShowStartTimeAtEndOfFirstTop =
+    leagueMode === "boys" &&
+    isEndOfFirstTop &&
+    !!gameStartTime &&
+    !hasShownStartTimePopup.current;
+
+  if (shouldShowStartTimeAtEndOfFirstTop) {
+    setShowStartTimePopup(true);
+    hasShownStartTimePopup.current = true;
+    return;
+  }
 
 };
 
@@ -1202,8 +1329,7 @@ const makeRunnerAnnounce = (base: string, fromName: string, to: Player | null, i
   if (!to) return "";
   const toNameFull = `${to.lastName} ${to.firstName}くん`;
   const toNameLast = `${to.lastName}くん`;
-  const baseKanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
-  const prefix = `${baseKanji}ランナー`;
+  const prefix = getRunnerLabel(base);
 
   const num = (to.number ?? "").trim();
 
@@ -1453,27 +1579,28 @@ const announce = async (text: string | string[]) => {
 };
 
 const handleNext = () => {  
-  setTiebreakAnno(null);          // ← 追加：通常表示に戻す
+  setTiebreakAnno(null);
   setAnnouncementOverride(null);
+
   const next = (currentBatterIndex + 1) % battingOrder.length;
-// ✅ 2人目の打者の前かつ未表示ならポップアップを表示
-  if (next === 1 && gameStartTime && !hasShownStartTimePopup.current) {
+
+  // ✅ ポニーリーグのみ：2人目の打者の前に開始時刻を表示
+  if (
+    leagueMode === "pony" &&
+    next === 1 &&
+    gameStartTime &&
+    !hasShownStartTimePopup.current
+  ) {
     setShowStartTimePopup(true);
-    hasShownStartTimePopup.current = true; // ✅ 表示済みに設定
+    hasShownStartTimePopup.current = true;
+  }
+
+  const currentEntry = battingOrder[currentBatterIndex];
+  if (currentEntry && !checkedIds.includes(currentEntry.id)) {
+    toggleChecked(currentEntry.id);
   }
 
   setCurrentBatterIndex(next);
-  setIsLeadingBatter(false);
-
-  const currentEntry = battingOrder[currentBatterIndex];
-  if (currentEntry) {
-    if (!checkedIds.includes(currentEntry.id)) {
-      toggleChecked(currentEntry.id); // 未チェックの時だけチェックを追加
-    }
-  }
-
-  const nextIndex = (currentBatterIndex + 1) % battingOrder.length;
-  setCurrentBatterIndex(nextIndex);
   setIsLeadingBatter(false);
 };
 
@@ -1487,9 +1614,11 @@ const handlePrev = () => {
 };
 
 const updateAnnouncement = () => {
+
   const entry = battingOrder[currentBatterIndex];
   const player = getPlayer(entry?.id);
   const pos = getPosition(entry?.id);
+  console.log("leagueMode", leagueMode, "player.id", player.id, "announced", announcedIdsRef.current);
 
   if (!player || !pos) {
     setAnnouncement("");
@@ -1516,20 +1645,47 @@ const nameHTML = isChecked
   ? formatNameForAnnounce(player, true)    // 「苗字のみ」指定。ただし重複姓ならフル
   : formatNameForAnnounce(player, false);  // フルネーム
 
-const num = (number ?? "").trim(); // ★追加：背番号判定用
+const num = String(number ?? "").trim();
+const isBoys = leagueMode === "boys";
+const currentPlayerId = Number(player.id);
+
+// ★ この打者が過去に何回紹介されたか
+const announcedCount = batterAnnounceCountsRef.current[currentPlayerId] ?? 0;
+
+// ★ ボーイズで2回目以降なら背番号なし
+const hideNumberForBoys = isBoys && announcedCount >= 1;
 
 if (!isChecked) {
   lines.push(
     `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
-    // 2行目：背番号がある時だけ付ける
     `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
-    `${num ? `、背番号 ${num}。` : "。"}`
+    (
+      hideNumberForBoys
+        ? "。"
+        : (num ? `、背番号 ${num}。` : "。")
+    )
   );
 } else {
-  lines.push(
-    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
-    `${num ? `、背番号 ${num}。` : "。"}`
-  );
+    if (leagueMode === "boys") {
+      lines.push(
+              `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
+              (
+                hideNumberForBoys
+                  ? "。"
+                  : (num ? `` : "。")
+              )
+            );
+    }
+    else{
+      lines.push(
+        `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
+        (
+          hideNumberForBoys
+            ? "。"
+            : (num ? `、背番号 ${num}。` : "。")
+        )
+      );
+    }
 }
 
 
@@ -1549,14 +1705,11 @@ const prefetchCurrent = () => {
 
 // 「アナウンス文言エリア」を読み上げ（連打ロック付き）
 const handleRead = async () => {
-  // すでに再生中なら無視（再押下不可）
   if (isSpeakingRef.current) return;
 
-  // ロック開始
   isSpeakingRef.current = true;
   setSpeaking(true);
 
-  // 表示中の文面（tiebreak表示を優先）を確定して読み上げ
   const htmlFallback = tiebreakAnno ? tiebreakAnno.replace(/\n/g, "<br />") : "";
 
   const release = () => {
@@ -1565,12 +1718,38 @@ const handleRead = async () => {
   };
 
   try {
+    const entry = battingOrder[currentBatterIndex];
+    const entryId = Number(entry?.id);
+
+    if (Number.isFinite(entryId)) {
+      // 既存の announcedIds はそのまま維持
+      if (!announcedIdsRef.current.includes(entryId)) {
+        const next = [...announcedIdsRef.current, entryId];
+        announcedIdsRef.current = next;
+        setAnnouncedIds(next);
+        await localForage.setItem("announcedIds", next);
+      }
+
+      // ★ 打者紹介回数を加算
+      const prevCount = batterAnnounceCountsRef.current[entryId] ?? 0;
+      const nextCounts = {
+        ...batterAnnounceCountsRef.current,
+        [entryId]: prevCount + 1,
+      };
+      batterAnnounceCountsRef.current = nextCounts;
+      await localForage.setItem("batterAnnounceCounts", nextCounts);
+
+      // ★ ボーイズなら文言をすぐ再生成
+      if (leagueMode === "boys") {
+        updateAnnouncement();
+      }
+    }
+
     await speakFromAnnouncementArea(
       announcementHTMLOverrideStr || htmlFallback,
-      announcementHTMLStr       || htmlFallback
+      announcementHTMLStr || htmlFallback
     );
   } finally {
-    // 停止ボタン or 再生完了のいずれでも Promise が抜けた時点で解除
     release();
   }
 };
@@ -1605,15 +1784,17 @@ useEffect(() => {
     updateAnnouncement();
   }
 }, [
-  currentBatterIndex,   // 打者番号が変わったとき
-  isLeadingBatter,      // ★ 先頭打者フラグの切替時
-  inning,               // ★ 回が変わったとき
-  isTop,                // ★ 表/裏が変わったとき
+  currentBatterIndex,
+  isLeadingBatter,
+  inning,
+  isTop,
   players,
   battingOrder,
   assignments,
   teamName,
-  checkedIds            // ★ 苗字のみ/フル表示の切替時
+  checkedIds,
+  announcedIds,
+  leagueMode, // ← 追加
 ]);
 
 
@@ -2162,6 +2343,29 @@ useEffect(() => {
         }
       }
 
+      // ★ ボーイズリーグ：1回表終了時に開始時刻を先に表示
+      const effectiveStartTime = gameStartTime || startTime;
+
+      const shouldShowStartTime =
+        leagueMode === "boys" &&
+        Number(inning) === 1 &&
+        isTop === true &&
+        !isHome && // 先攻のみ
+        !!effectiveStartTime &&
+        !hasShownStartTimePopup.current;
+
+      if (shouldShowStartTime) {
+        if (!gameStartTime && effectiveStartTime) {
+          setGameStartTime(effectiveStartTime);
+        }
+
+        hasShownStartTimePopup.current = true;
+        setAfterStartTimeAction("scoreModal");
+        setShowStartTimePopup(true);
+        return;
+      }
+
+      // 通常の得点入力
       setShowModal(true);
     }}
     className="
@@ -2200,34 +2404,30 @@ useEffect(() => {
     </button>
 
 
-    {/* リエントリー */}
+  {/* リエントリー（ボーイズリーグでは非表示） */}
+{leagueMode !== "boys" && (
   <button
-onClick={async () => {
-  console.log("▶ リエントリーボタン押下");
-  const { A, B, order1 } = await findReentryCandidateForCurrentSpot(); // ← await に変更
-  console.log("find結果:", { A, B, order1 });
+    onClick={async () => {
+      console.log("▶ リエントリーボタン押下");
+      const { A, B, order1 } = await findReentryCandidateForCurrentSpot();
 
-  if (!B) {
-    console.warn("→ アラート表示: この打順にリエントリー可能な選手はいません。");
-    setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
-    alert("この打順にリエントリー可能な選手はいません。");
-    return;
-  }
-  setReEntryFromPlayer(A || null);
-  setReEntryTargetPlayer(B);
-  setReEntryOrder1(order1);
-  setShowReEntryModal(true);
-}}
+      if (!B) {
+        console.warn("→ アラート表示: この打順にリエントリー可能な選手はいません。");
+        setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
+        alert("この打順にリエントリー可能な選手はいません。");
+        return;
+      }
 
-    className="w-full h-10 rounded bg-purple-600 text-white px-2
-              inline-flex items-center justify-center"  // ← 横並び中央
+      setReEntryFromPlayer(A || null);
+      setReEntryTargetPlayer(B);
+      setReEntryOrder1(order1);
+      setShowReEntryModal(true);
+    }}
     title="リエントリー"
   >
-    <span className="whitespace-nowrap leading-none
-                    text-[clamp(12px,3.6vw,16px)] tracking-tight">
-      リエントリー
-    </span>
+    リエントリー
   </button>
+)}
 
 
     {/* 代走 */}
@@ -3547,8 +3747,7 @@ onClick={() => {
 
   // 表示用
   const isTemp = !!tempRunnerFlags[base];
-  const baseKanji = base.replace("1","一").replace("2","二").replace("3","三");
-  const prefix = `${baseKanji}ランナー`;
+  const prefix = getRunnerLabel(base);
 
   // 敬称
   const honorificFrom = replaced?.isFemale ? "さん" : "くん";
@@ -3574,8 +3773,18 @@ onClick={() => {
 
   // 同じ塁の既存テキストを置き換え
   setRunnerAnnouncement(prev => {
-    const updated = prev.filter(msg =>
-      !msg.startsWith(`${base}ランナー`) && !msg.startsWith(`${baseKanji}ランナー`)
+    const labels = [
+      `${base}ランナー`,
+      base === "1塁" ? "一塁ランナー" : "",
+      base === "2塁" ? "二塁ランナー" : "",
+      base === "3塁" ? "三塁ランナー" : "",
+      base === "1塁" ? "ファーストランナー" : "",
+      base === "2塁" ? "セカンドランナー" : "",
+      base === "3塁" ? "サードランナー" : "",
+    ].filter(Boolean);
+
+    const updated = prev.filter(
+      msg => !labels.some(label => msg.startsWith(label))
     );
     return [...updated, text];
   });
@@ -3612,13 +3821,18 @@ onClick={() => {
                       />
                     <div className="space-y-1 font-bold text-red-600 [&_rt]:text-red-700">
                       {["1塁", "2塁", "3塁"].map((base) => {
-                        const kanji = base.replace("1", "一").replace("2", "二").replace("3", "三");
+                        const labels = [
+                          `${base}ランナー`,
+                          base === "1塁" ? "一塁ランナー" : "",
+                          base === "2塁" ? "二塁ランナー" : "",
+                          base === "3塁" ? "三塁ランナー" : "",
+                          base === "1塁" ? "ファーストランナー" : "",
+                          base === "2塁" ? "セカンドランナー" : "",
+                          base === "3塁" ? "サードランナー" : "",
+                        ].filter(Boolean);
+
                         return runnerAnnouncement
-                          .filter(
-                            (msg) =>
-                              msg.startsWith(`${base}ランナー`) ||
-                              msg.startsWith(`${kanji}ランナー`)
-                          )
+                          .filter((msg) => labels.some(label => msg.startsWith(label)))
                           .map((msg, idx) => (
                             <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: msg }} />
                           ));
@@ -4011,12 +4225,14 @@ if (isTemp) {
         {/* 本文 */}
         <div className="px-4 py-4 space-y-4 overflow-y-auto">
           {/* 注意チップ（そのまま） */}
-          <div className="flex items-center gap-2">
-            <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
-              <span className="text-xl">⚠️</span>
-              <span>2番バッター紹介前に🎤</span>
+          {leagueMode !== "boys" && (
+            <div className="flex items-center gap-2">
+              <div className="bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2 rounded-full">
+                <span className="text-xl">⚠️</span>
+                <span>2番バッター紹介前に🎤</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 🔴 アナウンス文言エリア（ここにマイク画像・読み上げ／停止ボタンを内包） */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
@@ -4139,6 +4355,69 @@ if (isTemp) {
           </button>
           <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
         </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ 申告敬遠モーダル */}
+{showIntentionalWalkPopup && (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={() => setShowIntentionalWalkPopup(false)}
+    />
+
+    <div className="absolute inset-0 flex items-center justify-center p-4">
+      <div className="bg-white shadow-2xl rounded-2xl w-full max-w-md flex flex-col">
+
+        <div className="bg-red-600 text-white px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <IconMic />
+            <span className="font-bold">申告敬遠</span>
+          </div>
+
+          <button
+            onClick={() => setShowIntentionalWalkPopup(false)}
+            className="text-white text-lg"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-4">
+          <p className="text-red-700 font-bold whitespace-pre-wrap">
+            {intentionalWalkText}
+          </p>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              onClick={() =>
+                speak(
+                  intentionalWalkText.replaceAll("進塁", "しんるい")
+                )
+              }
+              className="bg-blue-600 text-white rounded-lg py-2"
+            >
+              読み上げ
+            </button>
+
+            <button
+              onClick={() => stop()}
+              className="bg-gray-600 text-white rounded-lg py-2"
+            >
+              停止
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowIntentionalWalkPopup(false)}
+            className="mt-4 w-full bg-green-600 text-white py-2 rounded-lg"
+          >
+            OK
+          </button>
+        </div>
+
       </div>
     </div>
   </div>
