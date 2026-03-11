@@ -38,8 +38,13 @@ type HistoryItem = {
 const historyData: HistoryItem[] = [
   {
     date: "2026.03.05",
-    version: "Vesion 1.00β",
+    version: "Vesion 1.00 β",
     details: ["Release"],
+  },
+  {
+    date: "2026.03.10",
+    version: "Vesion 1.10 β",
+    details: ["Boysリーグモード追加"],
   },
 ];
 
