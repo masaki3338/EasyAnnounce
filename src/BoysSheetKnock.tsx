@@ -312,7 +312,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const startMessage =
     isHome === "後攻"
       ? `${selfTeamLabel}、ノックを始めてください。\nノック時間は5分間です。`
-      : `${selfTeamLabel}、ノックを始めてください。\nノック時間は5分間です。`;
+      : `${selfTeamLabel}、ノックを始めてください。\nノック時間は同じく5分間です。`;
 
   const oneMinuteMessage = `${selfTeamLabel}、ノック時間、あと1分です。`;
 

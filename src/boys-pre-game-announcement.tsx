@@ -18,6 +18,7 @@ export type ScreenType =
   | "startGreeting"
   | "seatIntroduction"
   | "boysPreGameAnnouncement"
+  | "startTimeAnnouncement"
   | "boysSheetKnock";
 
 interface Props {
@@ -63,13 +64,13 @@ const IconMegaphone = () => (
 
 const Greeting = () => (
   <svg {...commonSvgProps} fill="currentColor">
-    <path d="M1.5 4v1.5c0 4.15 2.21 7.78 5.5 9.8V20h15v-2c0-2.66-5.33-4-8-4h-.25C9 14 5 10 5 5.5V4m9 0a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z"/>
+    <path d="M1.5 4v1.5c0 4.15 2.21 7.78 5.5 9.8V20h15v-2c0-2.66-5.33-4-8-4h-.25C9 14 5 10 5 5.5V4m9 0a4 4 0 0 0-4 4a4 4 0 0 0 4 4a4 4 0 0 0 4-4a4 4 0 0 0-4-4Z" />
   </svg>
 );
 
 const IconMic = () => (
   <svg {...commonSvgProps} fill="currentColor">
-    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z"/>
+    <path d="M12 14a3 3 0 003-3V6a3 3 0 10-6 0v5a3 3 0 003 3zm-7-3h2a5 5 0 0010 0h2a7 7 0 01-6 6.9V20h3v2H8v-2h3v-2.1A7 7 0 015 11z" />
   </svg>
 );
 
@@ -159,8 +160,9 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
 
         if (typeof v === "boolean") label = v ? "後攻" : "先攻";
         else if (v === "先攻" || v === "後攻") label = v;
-        else if (typeof (matchInfo as any).isFirst === "boolean")
+        else if (typeof (matchInfo as any).isFirst === "boolean") {
           label = (matchInfo as any).isFirst ? "先攻" : "後攻";
+        }
 
         setAttackLabel(label);
       }
@@ -172,8 +174,8 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
 
   const steps = [
     {
-      key: "boysSheetKnock" as const,
-      title: "シートノックと開始時間案内",
+      key: "startTimeAnnouncement" as const,
+      title: "開始時間案内",
       note: "後攻チーム 🎤",
       icon: <IconInfo />,
       enabled: !isFirst,
@@ -181,9 +183,9 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     {
       key: "boysSheetKnock" as const,
       title: "シートノック",
-      note: "後攻チーム 🎤",
+      note: "両チーム 🎤",
       icon: <IconKnock />,
-      enabled: !isFirst,
+      enabled: true,
     },
     {
       key: "announceStartingLineup" as const,
@@ -195,9 +197,9 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     {
       key: "startGreeting" as const,
       title: "試合開始挨拶",
-      note: "先攻チーム 🎤",
+      note: "後攻チーム 🎤",
       icon: <Greeting />,
-      enabled: isFirst,
+      enabled: !isFirst,
     },
     {
       key: "seatIntroduction" as const,
@@ -208,23 +210,22 @@ const BoysPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     },
   ];
 
-const handleStepClick = async (s: typeof steps[number], index: number) => {
-  if (!s.enabled) {
-    const ok = window.confirm(`${s.title} は現在の担当外です。開きますか？`);
-    if (!ok) return;
-  }
+  const handleStepClick = async (s: typeof steps[number]) => {
+    if (!s.enabled) {
+      const ok = window.confirm(`${s.title} は現在の担当外です。開きますか？`);
+      if (!ok) return;
+    }
 
-  if (s.key === "seatIntroduction") {
-    await localForage.setItem("lastScreen", "announcement");
-  }
+    if (s.key === "seatIntroduction") {
+      await localForage.setItem("lastScreen", "announcement");
+    }
 
-  if (s.key === "boysSheetKnock") {
-    await localForage.setItem("boysSheetKnockStep", index === 0 ? "guide" : "knock");
-  }
+    if (s.key === "boysSheetKnock") {
+      await localForage.setItem("boysSheetKnockStep", "knock");
+    }
 
-  onNavigate(s.key);
-};
-
+    onNavigate(s.key);
+  };
 
   return (
     <div
@@ -241,7 +242,7 @@ const handleStepClick = async (s: typeof steps[number], index: number) => {
         <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
           <span className="text-2xl md:text-3xl">🎤</span>
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
-            ボーイズリーグ 試合前アナウンス
+            試合前アナウンス
           </span>
         </h1>
 
@@ -264,7 +265,7 @@ const handleStepClick = async (s: typeof steps[number], index: number) => {
             icon={s.icon}
             enabled={s.enabled}
             isLast={i === steps.length - 1}
-            onClick={() => handleStepClick(s, i)}
+            onClick={() => handleStepClick(s)}
           />
         ))}
 

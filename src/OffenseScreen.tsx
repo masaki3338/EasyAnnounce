@@ -956,7 +956,17 @@ const toggleChecked = (id: number) => {
 
 // コンポーネント関数内に以下を追加
 const handleFoulRead = async () => {
-  await speak("ファウルボールの行方には十分ご注意ください");
+  const foulText =
+    leagueMode === "boys"
+      ? "ご来場の皆様にお願いをいたします。試合中、スタンドに入りますファウルボールは大変危険でございます。打球の行方には十分ご注意ください。"
+      : "ファウルボールの行方には十分ご注意ください";
+
+  const foulSpeakText =
+    leagueMode === "boys"
+      ? "ごらいじょうのみなさまにおねがいをいたします。しあいちゅう、スタンドにはいりますファウルボールはたいへんきけんでございます。だきゅうのゆくえにはじゅうぶんごちゅういください。"
+      : "ファウルボールの行方には十分ご注意ください";
+
+  await speak(foulSpeakText);
 };
 const handleFoulStop = () => {
   stop();
@@ -1447,15 +1457,30 @@ await saveMatchInfo({
 
 
   if (score > 0) {
-   setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-    if (isHome && inning === 4 && !isTop) setPendingGroundPopup(true);
+    setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
 
-    // ★ 得点あり：まず得点モーダルを表示
-    //    → メンバー交換モーダルは「得点モーダルのOK」側で pendingMemberExchange を見て後出しします
+    if (isHome && inning === 4 && !isTop) {
+      setPendingGroundPopup(true);
+    }
+
+    // 得点ありは従来通りモーダル表示
     setShowScorePopup(true);
   } else {
-    // ★ 無得点でも 3回裏 ×「次の試合なし」= NO のときは、
-    //    得点入力の直後にメンバー交換モーダルを表示してから本来の遷移を行う
+    // ★ ボーイズリーグは0点でも得点モーダルを表示
+    if (leagueMode === "boys") {
+      const halfText = isTop ? "表" : "裏";
+      //setPopupMessage(`${inning}回の${halfText}、${teamName}の得点はありません。`);
+      setPopupMessage(`${teamName}、この回の得点はありません。`);
+
+      if (isHome && inning === 4 && !isTop) {
+        setPendingGroundPopup(true);
+      }
+
+      setShowScorePopup(true);
+      return;
+    }
+
+    // ★ ポニーは従来通り
     if (pendingMemberExchange) {
       const mi = await localForage.getItem<any>("matchInfo");
       const currentGame = Number(mi?.matchNumber) || 1;
@@ -1469,11 +1494,9 @@ await saveMatchInfo({
 
       setMemberExchangeText(txt);
 
-      // このあと行くはずだった遷移を記録
       if (isHome && inning === 4 && !isTop) {
         setAfterMemberExchange("groundPopup");
-      }
-      else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
+      } else if (lastEndedHalfRef.current?.inning === 1 && lastEndedHalfRef.current?.isTop) {
         const order =
           (await localForage.getItem<{ id:number; reason?:string }[]>("battingOrder")) || [];
         const hasPending = order.some(e =>
@@ -1484,19 +1507,17 @@ await saveMatchInfo({
         setAfterMemberExchange("switchDefense");
       }
 
-      setPendingMemberExchange(false);   // フラグ消費
-      setShowMemberExchangeModal(true);  // ← 表示
-      return;                            // 後続はモーダルOKで実行
+      setPendingMemberExchange(false);
+      setShowMemberExchangeModal(true);
+      return;
     }
 
-    // （従来どおりの無得点時フロー）
     if (isHome && inning === 4 && !isTop) {
       setShowGroundPopup(true);
     } else if (inning === 1 && isTop) {
-      // ★ 1回表は必ずシート紹介を先に表示する（代打/代走が残っていても）
-        await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-        await localForage.setItem("seatIntroLock", false);
-        await goSeatIntroFromOffense();
+      await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+      await localForage.setItem("seatIntroLock", false);
+      await goSeatIntroFromOffense();
     } else {
       onSwitchToDefense();
     }
@@ -2176,7 +2197,11 @@ useEffect(() => {
   <div className="flex items-center mb-2">
 
     <span className="text-red-600 font-bold whitespace-pre-line">
-      ファウルボールの行方には十分ご注意ください
+      {leagueMode === "boys"
+        ? `ご来場の皆様にお願いをいたします。
+    試合中、スタンドに入りますファウルボールは大変危険でございます。
+    打球の行方には十分ご注意ください。`
+        : `ファウルボールの行方には十分ご注意ください`}
     </span>
   </div>
 

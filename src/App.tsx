@@ -41,10 +41,11 @@ import AnnounceMindset from "./AnnounceMindset";
 import LeagueSettings from "./screens/LeagueSettings";
 import BoysPreGameAnnouncement from "./boys-pre-game-announcement";
 import BoysSheetKnock from "./BoysSheetKnock";
+import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
-const APP_VERSION = "1.10 β"
+const APP_VERSION = "2.00 β"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -75,7 +76,6 @@ export type ScreenType =
   | "warmup"
   | "sheetKnock"
   | "announceStartingLineup"
-  | "operationSettings"
   | "offense"
   | "defense"
   | "defenseChange"
@@ -84,6 +84,7 @@ export type ScreenType =
   | "seatIntroduction"
   | "boysPreGameAnnouncement"
   | "boysSheetKnock"
+  | "startTimeAnnouncement"
   | "operationSettings"
   | "pitchLimit"
   | "tiebreakRule"
@@ -735,6 +736,21 @@ const handleSpeak = async () => {
             ← 試合前アナウンスメニューに戻る
           </button>
           <SheetKnock onBack={() => setScreen("announcement")} />
+        </>
+      )}
+
+      {screen === "startTimeAnnouncement" && (
+        <>
+          <button
+            className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"
+            onClick={() => setScreen("boysPreGameAnnouncement")}
+          >
+            ← 試合前アナウンス画面に戻る
+          </button>
+          <StartTimeAnnouncement
+            onNavigate={setScreen}
+            onBack={() => setScreen("boysPreGameAnnouncement")}
+          />
         </>
       )}
 
@@ -2419,7 +2435,8 @@ const Menu = ({
             className="text-center -mt-2 mb-4 text-lg font-extrabold italic"
             style={{
               color: "white",
-              WebkitTextStroke: "0.5px red",
+              WebkitTextStroke:
+                leagueMode === "boys" ? "0.5px #3B82F6" : "0.5px red", // Boysは青
             }}
           >
             {leagueMode === "boys"
