@@ -733,23 +733,22 @@ const addPitch = async () => {
   }
 
   // ★ 警告判定も newTotal を基準にする（そのまま）
-  const warn1 = Math.max(0, pitchLimitSelected - 10);
-  const warn2 = pitchLimitSelected;
+const warn1 = Math.max(0, pitchLimitSelected - 10);
+const warn2 = pitchLimitSelected;
 
-  if (newTotal === warn1 || newTotal === warn2) {
-    const pitcherParts = getAnnounceNameParts(pitcher);
-    const specialHead = isBoys
-      ? `${pitcherParts.name}投手`
-      : `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
+// ✅ ボーイズリーグでは投球制限数のお知らせを表示しない
+if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
+  const pitcherParts = getAnnounceNameParts(pitcher);
+  const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-    const specialMsg =
-      newTotal === warn2
-        ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
-        : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+  const specialMsg =
+    newTotal === warn2
+      ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
+      : `${specialHead}、ただいまの投球で${newTotal}球です。`;
 
-    setPitchLimitMessages([specialMsg]);
-    setShowPitchLimitModal(true);
-  }
+  setPitchLimitMessages([specialMsg]);
+  setShowPitchLimitModal(true);
+}
 
   setAnnounceMessages(newMessages);
 };
