@@ -161,6 +161,18 @@ export default function VersionInfo({ version, onBack }: Props) {
           </div>
 
           <div>
+            <h3 className="font-semibold mb-1">免責事項</h3>
+            <p>
+              本アプリは野球試合のアナウンスを支援する目的で提供されています。
+              本アプリの利用または利用できなかったことにより生じたいかなる損害・トラブルについても、
+              開発者は一切の責任を負いません。
+            </p>
+            <p className="mt-2">
+              ご利用にあたっては、利用者ご自身の責任においてご使用ください。
+            </p>
+          </div>
+
+          <div>
             <h3 className="font-semibold mb-1">商標</h3>
             <p>
               Google、Google Cloud は Google LLC の商標です。
