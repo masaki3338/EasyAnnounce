@@ -1459,9 +1459,9 @@ await saveMatchInfo({
   if (score > 0) {
     setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
 
-    if (isHome && inning === 4 && !isTop) {
-      setPendingGroundPopup(true);
-    }
+  if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
+    setPendingGroundPopup(true);
+  }
 
     // 得点ありは従来通りモーダル表示
     setShowScorePopup(true);
@@ -1472,9 +1472,9 @@ await saveMatchInfo({
       //setPopupMessage(`${inning}回の${halfText}、${teamName}の得点はありません。`);
       setPopupMessage(`${teamName}、この回の得点はありません。`);
 
-      if (isHome && inning === 4 && !isTop) {
-        setPendingGroundPopup(true);
-      }
+    if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
+      setPendingGroundPopup(true);
+    }
 
       setShowScorePopup(true);
       return;
@@ -2359,7 +2359,7 @@ useEffect(() => {
       const isThirdBottom =
         Number(inning) === 3 && isTop === false;
 
-      if (isThirdBottom) {
+      if (leagueMode !== "boys" && isThirdBottom) {
         const mi = await localForage.getItem<any>("matchInfo");
         const noNextGame =
           mi?.noNextGame === true || mi?.noNextGame === "true";
