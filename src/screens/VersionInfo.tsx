@@ -150,7 +150,7 @@ export default function VersionInfo({ version, onBack }: Props) {
             <h2 className="text-lg font-bold">法的情報 / Legal</h2>
           </div>
 
-          <p><span className="font-medium">アプリ名：</span>Easyアナウンス</p>
+          <p><span className="font-medium">アプリ名：</span>野球アナウンス支援 Easyアナウンス</p>
 
           <div>
             <h3 className="font-semibold mb-1">著作権</h3>
