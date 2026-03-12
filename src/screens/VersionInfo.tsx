@@ -43,7 +43,7 @@ const historyData: HistoryItem[] = [
   },
   {
     date: "2026.03.10",
-    version: "Vesion 1.10 β",
+    version: "Vesion 2.00 β",
     details: ["Boysリーグモード追加"],
   },
 ];
