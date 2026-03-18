@@ -9,13 +9,11 @@ import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 import {
   deriveCurrentGameState,
-  deriveDefensePreviewState,
   normalizeFieldAssignments,
   reenterPlayerToPosition,
   resolveCurrentPlayerId,
   type UsedPlayerInfoMap,
 } from "./lib/gameState";
-
 /**
  * 守備交代（DefenseChange）画面
  * - 画面デザイン／機能を変えずに、コードの区分け・命名・コメント整理を行った版です。
@@ -3965,11 +3963,11 @@ const previewState = React.useMemo(() => {
   const effectiveBattingOrder =
     battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder ?? [];
 
-  return deriveDefensePreviewState({
+  return {
     battingOrder: effectiveBattingOrder,
     assignments: assignments ?? {},
     usedPlayerInfo: (usedPlayerInfo ?? {}) as UsedPlayerInfoMap,
-  });
+  };
 }, [battingOrder, battingOrderDraft, assignments, usedPlayerInfo]);
 
 const currentGameState = React.useMemo(() => {
