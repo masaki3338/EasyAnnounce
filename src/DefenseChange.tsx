@@ -5409,7 +5409,7 @@ const confirmChange = async () => {
   let finalBattingOrder = [...battingOrder];
   let finalDhEnabledAtStart = dhEnabledAtStart;
 
-  finalAssignments = normalizeFieldAssignments(finalAssignments);
+
 
   // =========================================================
   // 1) 画面に表示されている守備選手を finalAssignments に同期
@@ -5453,7 +5453,7 @@ for (const pos of positions) {
     };
   });
 
-finalAssignments = normalizeFieldAssignments(finalAssignments);
+
 
   // =========================================================
   // 5) DH解除
