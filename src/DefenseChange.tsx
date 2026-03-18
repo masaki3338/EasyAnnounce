@@ -9,7 +9,6 @@ import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
 import {
   deriveCurrentGameState,
-  normalizeFieldAssignments,
   reenterPlayerToPosition,
   resolveCurrentPlayerId,
   type UsedPlayerInfoMap,
