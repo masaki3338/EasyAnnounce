@@ -13,7 +13,7 @@ import {
   resolveCurrentPlayerId,
   type UsedPlayerInfoMap,
 } from "./lib/gameState";
-/**
+/**const posNameToSymbol
  * 守備交代（DefenseChange）画面
  * - 画面デザイン／機能を変えずに、コードの区分け・命名・コメント整理を行った版です。
  * - コメントは日本語で統一しています（変数名などの英字はそのまま使用）。
@@ -111,6 +111,27 @@ const posNameToSymbol: Record<string, string> = {
   センター: "中",
   ライト: "右",
   指名打者: "指",
+};
+
+const normalizeFieldAssignments = (
+  assignments: Record<string, number | null>
+): Record<string, number | null> => {
+  const next = { ...assignments };
+
+  // 同じ選手が複数ポジションに入っていたら、最後に入れた1か所だけ残す
+  const placed = new Map<number, string>();
+
+  for (const [pos, id] of Object.entries(next)) {
+    if (typeof id !== "number") continue;
+
+    const prevPos = placed.get(id);
+    if (prevPos && prevPos !== pos) {
+      next[prevPos] = null;
+    }
+    placed.set(id, pos);
+  }
+
+  return next;
 };
 
 // ★ 最新ID(=いまフィールドに出る toId) から “元スタメンのID” を逆引き
@@ -474,6 +495,30 @@ Object.entries(usedPlayerInfo || {}).forEach(([origIdStr, info]) => {
 
   const latestPinchPlayer = teamPlayers.find(p => p.id === latestPinchId);
   if (!latestPinchPlayer) return;
+
+  const currentMovedFromAnotherPosThisTurn =
+  mixed.some(
+    (m) =>
+      Number(m.to.id) === Number(currentId) &&
+      m.toPos === posSym &&
+      m.fromPos !== posSym
+  ) ||
+  shift.some(
+    (s) =>
+      Number(s.player.id) === Number(currentId) &&
+      s.toPos === posSym &&
+      s.fromPos !== posSym
+  );
+
+  // このターンで別守備から移動してきた選手は
+  // 「そのまま入り◯◯」ではなく通常の replace / mixed / shift で読む
+  if (currentMovedFromAnotherPosThisTurn) {
+    console.log("[SAME-POS-PINCH] skip: current moved from another pos this turn", {
+      currentId,
+      posSym,
+    });
+    return;
+  }
 
   // ★現在の理由（確定後はここが「途中出場」や空になる想定）を優先して見る
   const currentReasonNow =
@@ -4534,40 +4579,94 @@ const handlePositionDragStart = (
   window.addEventListener("drop", onEnd, { once: true });
 };
 
-// ===== 守備位置に表示・操作する「現在の選手ID」を取得 =====
 const getDisplayedPlayerIdForPos = (pos: string): number | null => {
-  // DH
+  // DH は既存ロジック優先
   if (pos === "指") {
     return typeof dhDisplayId === "number" ? dhDisplayId : null;
   }
 
-  // まだ手動で触ってないポジションは代走などを反映
-  if (!touchedFieldPos.has(pos)) {
+  const assignedId =
+    typeof assignments?.[pos] === "number" ? Number(assignments[pos]) : null;
+
+  // その守備位置に紐づく pinch chain 情報
+  const pinchInfoForPos = (() => {
     for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
       if (!info) continue;
 
-      const sym = (posNameToSymbol as any)[(info as any).fromPos] ?? (info as any).fromPos;
+      const reason = String((info as any).reason ?? "").trim();
+      if (!["代打", "代走", "臨時代走"].includes(reason)) continue;
+
+      const sym =
+        (posNameToSymbol as any)[(info as any).fromPos] ?? (info as any).fromPos;
       if (sym !== pos) continue;
 
-      // 代走・代打
-      if (
-        ["代走", "臨時代走", "代打"].includes(String((info as any).reason ?? "")) &&
-        typeof (info as any).subId === "number"
-      ) {
-        return Number((info as any).subId);
-      }
-
-      // 再出場など含めた最終選手
       const origId = Number(origIdStr);
-      const latest = resolveLatestSubId(origId, usedPlayerInfo as any);
-      if (typeof latest === "number") return latest;
+      const subId =
+        typeof (info as any).subId === "number" ? Number((info as any).subId) : null;
+      const latestId = resolveLatestSubId(origId, usedPlayerInfo as any);
+
+      return { origId, subId, latestId, info };
+    }
+    return null;
+  })();
+
+  // pinch履歴が無ければ素直に assignments → currentGameState
+  if (!pinchInfoForPos) {
+    if (typeof assignedId === "number") return assignedId;
+
+    const rawCurrent =
+      typeof currentGameState?.fieldByPos?.[pos] === "number"
+        ? Number(currentGameState.fieldByPos[pos])
+        : null;
+
+    return rawCurrent;
+  }
+
+  const { origId, subId, latestId } = pinchInfoForPos;
+
+  const assignedIsOrig = typeof assignedId === "number" && Number(assignedId) === Number(origId);
+  const assignedIsSub =
+    typeof assignedId === "number" && subId != null && Number(assignedId) === Number(subId);
+  const assignedIsLatest =
+    typeof assignedId === "number" && Number(assignedId) === Number(latestId);
+
+  const assignedIsStarter =
+    typeof assignedId === "number" &&
+    Object.values(initialAssignments || {}).some((id) => Number(id) === Number(assignedId));
+
+  const assignedIsReentryBlue =
+    typeof assignedId === "number" && isReentryBlueId(Number(assignedId));
+
+  // ✅ 最優先:
+  // 手でその守備を触って、そこに元スタメン(=リエントリー選手)を置いたなら
+  // 旧代打/代走ではなく、その assignedId を表示する
+  if (touchedFieldPos.has(pos) && typeof assignedId === "number") {
+    if (assignedIsOrig || assignedIsStarter || assignedIsReentryBlue) {
+      return assignedId;
     }
   }
 
-  // 通常
-  return typeof assignments?.[pos] === "number"
-    ? Number(assignments[pos])
-    : null;
+  // ✅ まだ手で触っていない間だけ、pinch chain の末端を優先
+  if (!touchedFieldPos.has(pos)) {
+    if (typeof latestId === "number") return latestId;
+    if (subId != null) return subId;
+  }
+
+  // ✅ 手で触った後でも、assignments に旧pinch側が残っているなら末端へ補正
+  if (typeof assignedId === "number") {
+    if (assignedIsSub || assignedIsLatest) {
+      return latestId;
+    }
+    return assignedId;
+  }
+
+  // 最後のフォールバック
+  const rawCurrent =
+    typeof currentGameState?.fieldByPos?.[pos] === "number"
+      ? Number(currentGameState.fieldByPos[pos])
+      : null;
+
+  return rawCurrent;
 };
 
   const handleBenchDragStart = (e: React.DragEvent, playerId: number) => {
@@ -6317,43 +6416,43 @@ const dhIsPlacedElsewhere =
 const dhDisplayId = dhIsPlacedElsewhere ? null : dhCurrentId;
 
 
-// 代走がいる場合はその選手を優先表示
-let displayId = currentGameState.fieldByPos[pos] ?? null;
-
-const runnerEntry = Object.entries(usedPlayerInfo || {}).find(([origId, info]: any) => {
-  return (
-    info?.reason === "代走" &&
-    info?.fromPos === pos &&
-    typeof info?.subId === "number"
-  );
-});
-
-if (runnerEntry) {
-  displayId = runnerEntry[1].subId;
-}
-
+// ✅ フィールド図の表示IDは「その守備にひもづく元選手(origId)の連鎖末端」を優先する
 const allowPinchOverride = !touchedFieldPos.has(pos);
 
-// 代打は補助表示用
-const pinchLatestForPos = (() => {
+let displayId = currentGameState.fieldByPos[pos] ?? null;
+
+const latestPinchForPos = (() => {
   if (!allowPinchOverride) return null;
 
   for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
     if (!info) continue;
-    if (!["代打"].includes(String(info.reason ?? ""))) continue;
 
-    const sym = (posNameToSymbol as any)[info.fromPos] ?? info.fromPos;
+    const reason = String((info as any).reason ?? "").trim();
+    if (!["代打", "代走", "臨時代走"].includes(reason)) continue;
+
+    const sym =
+      (posNameToSymbol as any)[(info as any).fromPos] ?? (info as any).fromPos;
     if (sym !== pos) continue;
 
     const origId = Number(origIdStr);
-    const subId = typeof info.subId === "number" ? info.subId : null;
-    if (subId != null) return subId;
+    const latestId = resolveLatestSubId(origId, usedPlayerInfo as any);
 
-    return resolveLatestSubId(origId, usedPlayerInfo as any);
+    if (typeof latestId === "number") {
+      return latestId;
+    }
+
+    if (typeof (info as any).subId === "number") {
+      return Number((info as any).subId);
+    }
   }
 
   return null;
 })();
+
+// ✅ 守備図だけは「最初のsubId」ではなく、必ず連鎖の末端を表示
+if (latestPinchForPos != null) {
+  displayId = latestPinchForPos;
+}
 
 // 代走は assignments より usedPlayerInfo の subId を優先して表示
 const pinchRunnerForPos = (() => {

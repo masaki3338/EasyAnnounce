@@ -680,7 +680,12 @@ const findReentryCandidateForRunner = async () => {
   const order1 = order0 + 1;
 
   const currentEntry = battingOrder[order0];
-  const A = currentEntry ? getPlayer(currentEntry.id) : null;
+  const currentId = Number(currentEntry?.id);
+
+  const A =
+    players.find((p) => Number(p.id) === currentId) ??
+    allPlayers.find((p) => Number(p.id) === currentId) ??
+    null;
 
   console.log("対象打順:", order1);
   console.log("代走される選手A:", A, "entry:", currentEntry);
@@ -693,38 +698,38 @@ const findReentryCandidateForRunner = async () => {
   const startingOrder: Array<{ id: number }> =
     (await localForage.getItem("startingBattingOrder")) || [];
 
-  const starterId = startingOrder[order0]?.id;
-  const B = starterId ? getPlayer(starterId) : null;
+  const starterId = Number(startingOrder[order0]?.id);
+
+  const B =
+    players.find((p) => Number(p.id) === starterId) ??
+    allPlayers.find((p) => Number(p.id) === starterId) ??
+    null;
 
   console.log("startingBattingOrder[", order1, "] =", starterId, B);
 
-  if (!starterId || !B) {
+  if (!Number.isFinite(starterId) || !B) {
     console.log("⛔ 元スタメンBが取得できない");
     return { A, B: null, order1 };
   }
 
-  // その元スタメンが、今も打順に残っているなら戻れない
-  const isInBatting = battingOrder.some((e) => Number(e?.id) === Number(starterId));
-
-  // 代打/代走の置換チェーン上で、現在その打順にいる選手Aまでつながっているか確認
-  const latestSub = resolveLatestSubId(starterId, usedPlayerInfo as any);
-  const isSameLineage = Number(latestSub) === Number(A.id);
-
-  console.log("元スタメンの現在: inBat=", isInBatting);
-  console.log("latestSub =", latestSub, " A.id =", A.id, " isSameLineage =", isSameLineage);
-
-  // ★重要
-  // 攻撃中は assignments に元選手が残っていても、代打で退いているケースがある。
-  // そのため、代走リエントリー判定では isInDefense を見ない。
-  if (!isInBatting && isSameLineage) {
-    console.log("✅ 候補B: startingBattingOrder から採用");
-    return { A, B, order1 };
+  // 今いる選手自身が元スタメンなら戻す相手なし
+  if (Number(starterId) === Number(currentId)) {
+    console.log("⛔ 現在選手自身が元スタメン");
+    return { A, B: null, order1 };
   }
 
-  console.log("⛔ この打順にリエントリー可能な選手はいない");
-  return { A, B: null, order1 };
-};
+  // 元スタメンが今も打順に残っているなら戻れない
+  const isInBatting = battingOrder.some((e) => Number(e?.id) === Number(starterId));
+  console.log("元スタメンが打順内にいるか:", isInBatting);
 
+  if (isInBatting) {
+    console.log("⛔ 元スタメンはまだ打順内にいる");
+    return { A, B: null, order1 };
+  }
+
+  console.log("✅ 代走リエントリー候補:", { A, B, order1 });
+  return { A, B, order1 };
+};
 
 
 // Offense → SeatIntroduction へ行くときの共通ナビ（保存してから遷移）
@@ -1999,9 +2004,6 @@ const findReentryCandidateForCurrentSpot = async (
   order1: number | null;
 }> => {
   try {
-    const usedInfo =
-      (await localForage.getItem<Record<number, any>>("usedPlayerInfo")) || {};
-
     const currentBatting =
       (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder")) || [];
 
@@ -2013,56 +2015,64 @@ const findReentryCandidateForCurrentSpot = async (
 
     const teamPlayers = Array.isArray(players) ? players : [];
 
-    const findOriginalStarterIdFromCurrent = (currentId: number): number | null => {
-      let cursor = currentId;
-      const seen = new Set<number>();
+    const A =
+      teamPlayers.find((p) => Number(p.id) === Number(currentPlayerId)) ??
+      allPlayers.find((p) => Number(p.id) === Number(currentPlayerId)) ??
+      null;
 
-      while (!seen.has(cursor)) {
-        seen.add(cursor);
+    if (!A) return { A: null, B: null, order1: null };
 
-        const hit = Object.entries(usedInfo).find(([_, info]) => {
-          return Number((info as any)?.subId) === cursor;
-        });
+    // まず「今その選手がいる打順」を現在の battingOrder から確定
+    const currentIdx = currentBatting.findIndex(
+      (e) => Number(e?.id) === Number(currentPlayerId)
+    );
 
-        if (!hit) break;
-        cursor = Number(hit[0]);
-      }
+    if (currentIdx < 0) {
+      return { A, B: null, order1: null };
+    }
 
-      return cursor !== currentId ? cursor : null;
-    };
+    const order1 = currentIdx + 1;
 
-const originalId = findOriginalStarterIdFromCurrent(currentPlayerId);
-if (originalId == null) return { A: null, B: null, order1: null };
+    // その打順の元スタメンを startingBattingOrder から直接取得
+    const starterId = Number(startingOrder[currentIdx]?.id);
+    if (!Number.isFinite(starterId)) {
+      return { A, B: null, order1: null };
+    }
 
-// ✅ 「元スタメン」判定は startingBattingOrder を優先し、startingassignments も保険で見る
-const isStarterInBattingOrder = startingOrder.some(
-  (e) => Number(e?.id) === Number(originalId)
-);
-const isStarterInAssignments = Object.values(initialAssignmentsData || {}).some(
-  (id) => Number(id) === Number(originalId)
-);
+    // 今いる選手自身が元スタメンなら、リエントリー対象なし
+    if (Number(starterId) === Number(currentPlayerId)) {
+      return { A, B: null, order1: null };
+    }
 
-const wasStarter = isStarterInBattingOrder || isStarterInAssignments;
-if (!wasStarter) return { A: null, B: null, order1: null };
+    // 元スタメンであることを保険チェック
+    const isStarterInBattingOrder = startingOrder.some(
+      (e) => Number(e?.id) === Number(starterId)
+    );
+    const isStarterInAssignments = Object.values(initialAssignmentsData || {}).some(
+      (id) => Number(id) === Number(starterId)
+    );
+    const wasStarter = isStarterInBattingOrder || isStarterInAssignments;
 
-const A =
-  teamPlayers.find((p) => Number(p.id) === Number(currentPlayerId)) ??
-  allPlayers.find((p) => Number(p.id) === Number(currentPlayerId)) ??
-  null;
+    if (!wasStarter) {
+      return { A, B: null, order1: null };
+    }
 
-const B =
-  teamPlayers.find((p) => Number(p.id) === Number(originalId)) ??
-  allPlayers.find((p) => Number(p.id) === Number(originalId)) ??
-  null;
+    // 元スタメンが今も打順に残っていたら戻せない
+    const isInBatting = currentBatting.some(
+      (e) => Number(e?.id) === Number(starterId)
+    );
+    if (isInBatting) {
+      return { A, B: null, order1: null };
+    }
 
-// ★ 打順は startingBattingOrder を基準に取る
-let order1: number | null = null;
-const idx = startingOrder.findIndex((e) => Number(e?.id) === Number(originalId));
-if (idx >= 0) order1 = idx + 1;
+    const B =
+      teamPlayers.find((p) => Number(p.id) === Number(starterId)) ??
+      allPlayers.find((p) => Number(p.id) === Number(starterId)) ??
+      null;
 
-if (!B || order1 == null) return { A, B: null, order1: null };
+    if (!B) return { A, B: null, order1 };
 
-return { A, B, order1 };
+    return { A, B, order1 };
   } catch (e) {
     console.error("findReentryCandidateForCurrentSpot failed", e);
     return { A: null, B: null, order1: null };
@@ -2073,18 +2083,22 @@ return { A, B, order1 };
 const openReEntryModal = async () => {
   console.log("▶ リエントリー表示を代打モーダル内に切替");
 
-  // ✅ 代打モーダルで見ている選手を最優先
-  const targetId =
-    typeof selectedSubPlayer?.id === "number"
-      ? Number(selectedSubPlayer.id)
-      : battingOrder[currentBatterIndex]?.id;
+  // ★ リエントリー対象は「今の打順の選手」に固定
+  const targetId = Number(battingOrder[currentBatterIndex]?.id);
 
-  if (!targetId) {
+  console.log("[REENTRY] currentBatterIndex =", currentBatterIndex);
+  console.log("[REENTRY] battingOrder[current] =", battingOrder[currentBatterIndex]);
+  console.log("[REENTRY] selectedSubPlayer =", selectedSubPlayer);
+  console.log("[REENTRY] targetId =", targetId);
+
+  if (!Number.isFinite(targetId)) {
     alert("リエントリー対象を判定できません。");
     return;
   }
 
   const { A, B, order1 } = await findReentryCandidateForCurrentSpot(targetId);
+
+  console.log("[REENTRY] result", { A, B, order1 });
 
   if (!B) {
     setNoReEntryMessage("この打順にリエントリー可能な選手はいません。");
@@ -2655,7 +2669,7 @@ useEffect(() => {
       }
     }}
     className="
-      flex-[0.6] h-14
+      flex-[0.6] h-11
       bg-red-600 hover:bg-red-700
       text-white font-bold text-sm
       rounded-lg shadow
@@ -2692,7 +2706,7 @@ useEffect(() => {
       }
     }}
     className="
-      flex-1 h-14
+      flex-1 h-11
       bg-blue-600 hover:bg-blue-700
       text-white font-extrabold text-lg
       rounded-xl shadow-lg
@@ -2754,7 +2768,7 @@ useEffect(() => {
       setShowModal(true);
     }}
     className="
-      flex-[2.2] h-16
+      flex-[2.2] h-12
       bg-black hover:bg-gray-900
       text-white font-extrabold text-xl tracking-wider
       rounded-2xl shadow-xl
@@ -2772,7 +2786,7 @@ useEffect(() => {
 
 
   {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
-  <div className="w-full grid grid-cols-4 gap-2 mt-4">
+  <div className="w-full grid grid-cols-3 gap-2 mt-4">
     {/* DH解除（常に表示。条件を満たさない時は disabled） */}
     <button
       onClick={() => setShowDhDisableModal(true)}
@@ -3610,10 +3624,9 @@ onClick={() => {
                   <span
                     dangerouslySetInnerHTML={{
                       __html: `
-                        ${isLeadingBatter ? `${inning}回の${isTop ? "表" : "裏"}、${teamName || "自チーム"}の攻撃は、<br/>` : `${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>`}
-                        ${reEntryOrder1 ?? "?"}番
-                        ${reEntryFromPlayer ? formatNameForReEntryAnnounce(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
-                        ${reEntryTargetPlayer ? formatNameForReEntryAnnounce(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。<br/>
+                        ${isLeadingBatter ? `${inning}回の${isTop ? "表" : "裏"}、${teamName || "自チーム"}の攻撃は、` : `${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>`}
+                        ${reEntryOrder1 ?? "?"}番 ${reEntryFromPlayer ? formatNameForReEntryAnnounce(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして                        
+                        ${reEntryTargetPlayer ? formatNameForReEntryAnnounce(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。
                         バッターは ${reEntryTargetPlayer ? formatNameForReEntryAnnounce(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}。
                       `.trim(),
                     }}
