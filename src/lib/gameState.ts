@@ -13,19 +13,25 @@ export type UsedPlayerInfoEntry = {
 };
 
 export type UsedPlayerInfoMap = Record<number, UsedPlayerInfoEntry>;
-
 export type AssignmentsMap = Record<string, number | null>;
 
 export type CurrentBattingSlot = {
-  order: number;        // 1〜9
-  originalId: number;   // battingOrder上の元ID
-  currentId: number;    // 実際に今出ているID
+  order: number;
+  originalId: number;
+  currentId: number;
   reason: string;
 };
 
 export type CurrentGameState = {
   battingOrder9: CurrentBattingSlot[];
   fieldByPos: AssignmentsMap;
+  onFieldPlayerIds: number[];
+};
+
+export type DefensePreviewState = {
+  battingOrder: BattingOrderEntry[];
+  assignments: AssignmentsMap;
+  usedPlayerInfo: UsedPlayerInfoMap;
   onFieldPlayerIds: number[];
 };
 
@@ -61,6 +67,87 @@ export const resolveCurrentPlayerId = (
   return cur;
 };
 
+export const normalizeFieldAssignments = (
+  assignments: AssignmentsMap
+): AssignmentsMap => {
+  const next: AssignmentsMap = { ...assignments };
+  const latestPosByPlayer = new Map<number, string>();
+
+  for (const [pos, rawId] of Object.entries(next)) {
+    if (typeof rawId !== "number") continue;
+
+    const playerId = Number(rawId);
+    const oldPos = latestPosByPlayer.get(playerId);
+
+    if (oldPos && oldPos !== pos) {
+      next[oldPos] = null;
+    }
+
+    latestPosByPlayer.set(playerId, pos);
+  }
+
+  return next;
+};
+
+export const reenterPlayerToPosition = (params: {
+  assignments: AssignmentsMap;
+  usedPlayerInfo: UsedPlayerInfoMap;
+  starterId: number;
+  toPos: string;
+}): {
+  assignments: AssignmentsMap;
+  usedPlayerInfo: UsedPlayerInfoMap;
+} => {
+  const { assignments, usedPlayerInfo, starterId, toPos } = params;
+
+  const nextAssignments: AssignmentsMap = { ...assignments };
+  const nextUsed: UsedPlayerInfoMap = { ...usedPlayerInfo };
+
+  for (const pos of Object.keys(nextAssignments)) {
+    if (pos !== toPos && Number(nextAssignments[pos]) === Number(starterId)) {
+      nextAssignments[pos] = null;
+    }
+  }
+
+  nextAssignments[toPos] = starterId;
+
+  if (nextUsed[starterId]) {
+    nextUsed[starterId] = {
+      ...nextUsed[starterId],
+      hasReentered: true,
+    };
+    delete nextUsed[starterId].reason;
+    delete nextUsed[starterId].fromPos;
+    delete nextUsed[starterId].subId;
+  }
+
+  return {
+    assignments: normalizeFieldAssignments(nextAssignments),
+    usedPlayerInfo: nextUsed,
+  };
+};
+
+export const deriveDefensePreviewState = (params: {
+  battingOrder: BattingOrderEntry[];
+  assignments: AssignmentsMap;
+  usedPlayerInfo: UsedPlayerInfoMap;
+}): DefensePreviewState => {
+  const normalizedAssignments = normalizeFieldAssignments(params.assignments);
+
+  const current = deriveCurrentGameState({
+    battingOrder: params.battingOrder,
+    assignments: normalizedAssignments,
+    usedPlayerInfo: params.usedPlayerInfo,
+  });
+
+  return {
+    battingOrder: [...params.battingOrder],
+    assignments: normalizedAssignments,
+    usedPlayerInfo: { ...params.usedPlayerInfo },
+    onFieldPlayerIds: current.onFieldPlayerIds,
+  };
+};
+
 export const deriveCurrentGameState = (params: {
   battingOrder: BattingOrderEntry[];
   assignments: AssignmentsMap;
@@ -68,16 +155,17 @@ export const deriveCurrentGameState = (params: {
 }): CurrentGameState => {
   const { battingOrder, assignments, usedPlayerInfo } = params;
 
-const battingOrder9: CurrentBattingSlot[] = (battingOrder ?? []).map((entry, index) => ({
-  order: index + 1,
-  originalId: entry.id,
-  currentId: entry.id,
-  reason: entry.reason,
-}));
+  const battingOrder9: CurrentBattingSlot[] = (battingOrder ?? []).map((entry, index) => ({
+    order: index + 1,
+    originalId: entry.id,
+    currentId: entry.id,
+    reason: entry.reason,
+  }));
 
+  const normalizedAssignments = normalizeFieldAssignments(assignments ?? {});
   const fieldByPos: AssignmentsMap = {};
 
-  for (const [pos, pid] of Object.entries(assignments ?? {})) {
+  for (const [pos, pid] of Object.entries(normalizedAssignments)) {
     if (typeof pid !== "number") {
       fieldByPos[pos] = null;
       continue;
