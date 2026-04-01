@@ -710,7 +710,7 @@ const fromPos = fromPosRaw
     setAssignments(next);
   };
 
-  const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
+const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
   const entry = battingOrder[targetIndex];
   if (!entry) return;
 
@@ -723,37 +723,110 @@ const fromPos = fromPosRaw
     return;
   }
 
-  setAssignments((prev) => {
-    const next = { ...prev };
+  const prevAssignments = assignments;
+  const next: Assignments = { ...prevAssignments };
 
-    const currentOccupant = prev[currentPos] ?? null;
-    const nextOccupant = prev[nextPos] ?? null;
+  const currentOccupant = prevAssignments[currentPos] ?? null;
+  const nextOccupant = prevAssignments[nextPos] ?? null;
 
-    next[currentPos] = null;
-    next[nextPos] = currentOccupant;
+  // 元の位置を空に
+  next[currentPos] = null;
 
-    if (nextOccupant && nextOccupant !== playerId) {
-      next[currentPos] = nextOccupant;
+  // 選択先へ移動
+  next[nextPos] = currentOccupant;
+
+  // 選択先にいた選手は元の位置へ戻す（交換）
+  if (nextOccupant && nextOccupant !== playerId) {
+    next[currentPos] = nextOccupant;
+  }
+
+  // DH重複禁止
+  if (nextPos === DH) {
+    for (const p of positions) {
+      if (p !== currentPos && next[p] === playerId) next[p] = null;
     }
+  }
 
-    if (nextPos === DH) {
-      for (const p of positions) {
-        if (p !== currentPos && next[p] === playerId) next[p] = null;
-      }
-    }
-    if (nextPos !== DH && next[DH] === playerId) {
-      next[DH] = null;
-    }
+  // 通常守備へ移したらDHから外す
+  if (nextPos !== DH && next[DH] === playerId) {
+    next[DH] = null;
+  }
 
+  // ✅ DHに入れた選手が投手と別人なら大谷ルール解除
+  if (nextPos === DH) {
     const pitcherId = next["投"] ?? null;
     const dhId = next[DH] ?? null;
+
     if (pitcherId && dhId && pitcherId !== dhId) {
       setOhtaniRule(false);
       prevDhIdRef.current = dhId;
       void localForage.setItem("ohtaniRule", false);
     }
+  }
 
-    return next;
+  setAssignments(next);
+
+  // ✅ 打順更新：DHあり/なしの整合を取る
+  setBattingOrder((prev) => {
+    let updated = [...prev];
+
+    const dhId = next[DH] ?? null;
+    const pitcherId = next["投"] ?? null;
+
+    // フィールドのID一覧（投手含む9）
+    const fieldIds = positions
+      .map((pos) => next[pos])
+      .filter((id): id is number => typeof id === "number");
+
+    const fieldSet = new Set(fieldIds);
+
+    if (!dhId) {
+      // DHなし：打順＝フィールド9人（投手含む）
+      updated = updated.filter((e) => fieldSet.has(e.id));
+
+      for (const id of fieldIds) {
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
+    } else {
+      // DHあり：打順＝（投手を除くフィールド8人）＋DH
+      if (pitcherId) {
+        updated = updated.filter((e) => e.id !== pitcherId);
+      }
+
+      const fieldNoPitcherSet = new Set(fieldIds.filter((id) => id !== pitcherId));
+      updated = updated.filter((e) => fieldNoPitcherSet.has(e.id) || e.id === dhId);
+
+      for (const id of fieldIds) {
+        if (id === pitcherId) continue;
+        if (updated.length >= 9) break;
+        if (!updated.some((e) => e.id === id)) {
+          updated.push({ id, reason: "スタメン" });
+        }
+      }
+
+      // DHを必ず打順に入れる
+      if (!updated.some((e) => e.id === dhId)) {
+        if (updated.length < 9) {
+          updated.push({ id: dhId, reason: "スタメン" });
+        } else {
+          updated[updated.length - 1] = { id: dhId, reason: "スタメン" };
+        }
+      }
+    }
+
+    // 重複除去 & 9人制限
+    const seen = new Set<number>();
+    updated = updated
+      .filter((e) => {
+        if (seen.has(e.id)) return false;
+        seen.add(e.id);
+        return true;
+      })
+      .slice(0, 9);
+
+    return updated;
   });
 
   setOpenPosMenuIndex(null);
@@ -1388,10 +1461,8 @@ useEffect(() => {
    * ======================================================= */
   const battingSlots = Array.from({ length: 9 }, (_, i) => battingOrder[i]);
 
-  const selectablePositionKeys =
-  assignments[DH] != null || battingOrder.some((e) => e && assignments[DH] === e.id)
-    ? [...positions, DH]
-    : [...positions];
+
+const selectablePositionKeys = [...positions, DH];
 
   const battingIds = battingOrder
     .map((e) => e?.id)
