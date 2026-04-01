@@ -1624,7 +1624,7 @@ useEffect(() => {
           </h2>
 <div
   ref={benchDropRef}
-  className="flex flex-wrap gap-2 min-h-[60px] p-2 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
+  className="flex flex-wrap gap-1.5 min-h-[52px] p-1.5 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
   onDragOver={allowDrop}
   onDrop={handleDropToBench}
   onTouchEnd={() => {
@@ -1645,7 +1645,7 @@ useEffect(() => {
       onDragStart={(e) => handleDragStart(e, p.id)}
       onTouchStart={() => setTouchDrag({ playerId: p.id })}
       style={{ touchAction: "none" }}
-      className={`px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
+      className={`px-2 py-1 text-[14px] leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm
         ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
     >
       {p.lastName}
@@ -1663,32 +1663,32 @@ useEffect(() => {
             </span>
             出場しない選手
           </h2>
-          <div
-            className="flex flex-wrap gap-2 min-h-[60px] p-2
-              rounded-2xl border ring-1 ring-inset
-              border-rose-600/90 ring-rose-600/60
-              bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25"
-            onDragOver={allowDrop}
-            onDrop={handleDropToBenchOut}
-          >
-            {benchOutPlayers.length === 0 ? (
-              <div className="text-gray-400">出場しない選手はいません</div>
-            ) : (
-              benchOutPlayers.map((p) => (
-                <div
-                  key={p.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, p.id)}
-                  onTouchStart={() => setTouchDrag({ playerId: p.id })}
-                  style={{ touchAction: "none" }}
-                  className="px-2.5 py-1.5 bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
-                >
-                  {p.lastName}
-                  {p.firstName} #{p.number}
-                </div>
-              ))
-            )}
-          </div>
+<div
+  className="flex flex-wrap gap-1.5 min-h-[52px] p-1.5
+    rounded-2xl border ring-1 ring-inset
+    border-rose-600/90 ring-rose-600/60
+    bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25"
+  onDragOver={allowDrop}
+  onDrop={handleDropToBenchOut}
+>
+  {benchOutPlayers.length === 0 ? (
+    <div className="text-gray-400 text-sm">出場しない選手はいません</div>
+  ) : (
+    benchOutPlayers.map((p) => (
+      <div
+        key={p.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, p.id)}
+        onTouchStart={() => setTouchDrag({ playerId: p.id })}
+        style={{ touchAction: "none" }}
+        className="px-2 py-1 text-[14px] leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg cursor-move select-none shadow-sm"
+      >
+        {p.lastName}
+        {p.firstName} #{p.number}
+      </div>
+    ))
+  )}
+</div>
         </div>
 
         {/* 打順 */}
