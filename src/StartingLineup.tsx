@@ -112,6 +112,7 @@ const createEmptyAssignments = (): Assignments =>
  *  メインコンポーネント
  * ======================================================= */
 const StartingLineup = () => {
+  const [openPosMenuIndex, setOpenPosMenuIndex] = useState<number | null>(null);
   /* -----------------------------
    *  未保存チェック（dirty判定）
    * --------------------------- */
@@ -709,6 +710,55 @@ const fromPos = fromPosRaw
     setAssignments(next);
   };
 
+  const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
+  const entry = battingOrder[targetIndex];
+  if (!entry) return;
+
+  const playerId = entry.id;
+  const currentPos =
+    Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? null;
+
+  if (!currentPos || currentPos === nextPos) {
+    setOpenPosMenuIndex(null);
+    return;
+  }
+
+  setAssignments((prev) => {
+    const next = { ...prev };
+
+    const currentOccupant = prev[currentPos] ?? null;
+    const nextOccupant = prev[nextPos] ?? null;
+
+    next[currentPos] = null;
+    next[nextPos] = currentOccupant;
+
+    if (nextOccupant && nextOccupant !== playerId) {
+      next[currentPos] = nextOccupant;
+    }
+
+    if (nextPos === DH) {
+      for (const p of positions) {
+        if (p !== currentPos && next[p] === playerId) next[p] = null;
+      }
+    }
+    if (nextPos !== DH && next[DH] === playerId) {
+      next[DH] = null;
+    }
+
+    const pitcherId = next["投"] ?? null;
+    const dhId = next[DH] ?? null;
+    if (pitcherId && dhId && pitcherId !== dhId) {
+      setOhtaniRule(false);
+      prevDhIdRef.current = dhId;
+      void localForage.setItem("ohtaniRule", false);
+    }
+
+    return next;
+  });
+
+  setOpenPosMenuIndex(null);
+};
+
   /**
    * 守備ラベルからドラッグ開始（swapPosモード）
    * - swapTokenで多重処理を抑止（元仕様）
@@ -995,6 +1045,18 @@ const handleDropToBattingOrder = (
   /* =========================================================
    *  useEffect群（副作用は上から「意味順」に整理）
    * ======================================================= */
+
+  useEffect(() => {
+    const closeMenu = () => setOpenPosMenuIndex(null);
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("touchend", closeMenu);
+
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("touchend", closeMenu);
+    };
+  }, []);
 
   // 透明1x1ゴースト画像（初回だけ生成）
   useEffect(() => {
@@ -1335,6 +1397,11 @@ useEffect(() => {
    *  画面表示用の派生データ（UIに使う）
    * ======================================================= */
   const battingSlots = Array.from({ length: 9 }, (_, i) => battingOrder[i]);
+
+  const selectablePositionKeys =
+  assignments[DH] != null || battingOrder.some((e) => e && assignments[DH] === e.id)
+    ? [...positions, DH]
+    : [...positions];
 
   const battingIds = battingOrder
     .map((e) => e?.id)
@@ -1772,54 +1839,97 @@ useEffect(() => {
                   <div className="flex items-center gap-2 flex-nowrap">
                     <span className="w-10 font-bold">{i + 1}番</span>
 
-                    <span
-                      data-role="poslabel"
-                      data-player-id={entry?.id ?? ""}
-                      className={`w-28 md:w-24 px-1 rounded select-none text-center whitespace-nowrap shrink-0 touch-none
-                        ${
-                          hoverOrderPlayerId === hoverKey && dragKind === "swapPos"
-                            ? "ring-2 ring-emerald-400 bg-emerald-500/20"
-                            : "bg-white/10 border border-white/10"
-                        }
-                        ${entry && pos ? "cursor-move" : "cursor-default"}`}
-                      title={
-                        entry
-                          ? pos
-                            ? "この守備を他の行と入替"
-                            : "守備なし"
-                          : "未設定"
-                      }
-                      draggable={!!entry && !!pos}
-                      onDragStart={(e) => {
-                        if (!entry || !pos) return;
-                        handlePosDragStart(e, entry.id);
-                      }}
-                      onDragOver={(e) => {
-                        if (!entry) return;
-                        allowDrop(e);
-                        setHoverOrderPlayerId(hoverKey);
-                      }}
-                      onDrop={(e) => {
-                        if (!entry) return;
-                        handleDropToPosSpan(e, entry.id);
-                        setHoverOrderPlayerId(null);
-                      }}
-                      onDragEnter={(e) => {
-                        if (!entry) return;
-                        allowDrop(e);
-                        setHoverOrderPlayerId(hoverKey);
-                      }}
-                      onDragLeave={() =>
-                        setHoverOrderPlayerId((v) => (v === hoverKey ? null : v))
-                      }
-                      onTouchStart={(ev) => {
-                        ev.stopPropagation();
-                        if (!entry || !pos) return;
-                        setTouchDrag({ playerId: entry.id });
-                      }}
-                    >
-                      {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
-                    </span>
+<div className="relative flex items-center shrink-0">
+  <span
+    data-role="poslabel"
+    data-player-id={entry?.id ?? ""}
+    className={`w-24 md:w-24 px-1 rounded-l select-none text-center whitespace-nowrap touch-none
+      ${
+        hoverOrderPlayerId === hoverKey && dragKind === "swapPos"
+          ? "ring-2 ring-emerald-400 bg-emerald-500/20"
+          : "bg-white/10 border border-white/10"
+      }
+      ${entry && pos ? "cursor-move" : "cursor-default"}`}
+    title={
+      entry
+        ? pos
+          ? "この守備を他の行と入替"
+          : "守備なし"
+        : "未設定"
+    }
+    draggable={!!entry && !!pos}
+    onDragStart={(e) => {
+      if (!entry || !pos) return;
+      handlePosDragStart(e, entry.id);
+    }}
+    onDragOver={(e) => {
+      if (!entry) return;
+      allowDrop(e);
+      setHoverOrderPlayerId(hoverKey);
+    }}
+    onDrop={(e) => {
+      if (!entry) return;
+      handleDropToPosSpan(e, entry.id);
+      setHoverOrderPlayerId(null);
+    }}
+    onDragEnter={(e) => {
+      if (!entry) return;
+      allowDrop(e);
+      setHoverOrderPlayerId(hoverKey);
+    }}
+    onDragLeave={() =>
+      setHoverOrderPlayerId((v) => (v === hoverKey ? null : v))
+    }
+    onTouchStart={(ev) => {
+      ev.stopPropagation();
+      if (!entry || !pos) return;
+      setTouchDrag({ playerId: entry.id });
+    }}
+  >
+    {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
+  </span>
+
+  <button
+    type="button"
+    className={`w-8 px-0 rounded-r border border-l-0 text-sm font-bold
+      ${
+        openPosMenuIndex === i
+          ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
+          : "bg-white/10 border-white/10 text-white"
+      }`}
+    onClick={(e) => {
+      e.stopPropagation();
+      if (!entry) return;
+      setOpenPosMenuIndex((prev) => (prev === i ? null : i));
+    }}
+    title="守備位置を選択"
+  >
+    ▼
+  </button>
+
+  {entry && openPosMenuIndex === i && (
+    <div
+      className="absolute left-0 top-full z-50 mt-1 w-40 rounded-xl border border-white/10 bg-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {selectablePositionKeys.map((posKey) => (
+        <button
+          key={posKey}
+          type="button"
+          className={`w-full px-3 py-2 text-left text-sm border-b border-white/10 last:border-b-0
+            ${
+              (displayPos ?? "") === posKey
+                ? "bg-emerald-500/20 text-emerald-200 font-bold"
+                : "bg-transparent text-white"
+            }`}
+          onClick={() => changePositionByBattingIndex(i, posKey)}
+        >
+          {positionNames[posKey]}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
 
                     {player ? (
                       <>
