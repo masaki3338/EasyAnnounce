@@ -1049,12 +1049,12 @@ const handleDropToBattingOrder = (
   useEffect(() => {
     const closeMenu = () => setOpenPosMenuIndex(null);
 
+    // スマホでは touchend で先に閉じると
+    // メニュー項目の onClick が発火する前に消えてしまうことがある
     window.addEventListener("click", closeMenu);
-    window.addEventListener("touchend", closeMenu);
 
     return () => {
       window.removeEventListener("click", closeMenu);
-      window.removeEventListener("touchend", closeMenu);
     };
   }, []);
 
@@ -1922,7 +1922,14 @@ useEffect(() => {
                 ? "bg-emerald-500/20 text-emerald-200 font-bold"
                 : "bg-transparent text-white"
             }`}
-          onClick={() => changePositionByBattingIndex(i, posKey)}
+          onClick={(e) => {
+            e.stopPropagation();
+            changePositionByBattingIndex(i, posKey);
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            changePositionByBattingIndex(i, posKey);
+          }}
         >
           {positionNames[posKey]}
         </button>
