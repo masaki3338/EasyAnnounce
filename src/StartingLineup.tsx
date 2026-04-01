@@ -440,9 +440,22 @@ const handleDragStart = (
     }
 
     // 最終的にtoへ配置
-    next[toPos] = playerId;
+// 最終的にtoへ配置
+next[toPos] = playerId;
 
-    setAssignments(next);
+// ✅ DHに入れた選手が投手と別人なら、大谷ルールは解除
+if (toPos === DH) {
+  const pitcherId = next["投"] ?? null;
+  const dhId = next[DH] ?? null;
+
+  if (pitcherId && dhId && pitcherId !== dhId) {
+    setOhtaniRule(false);
+    prevDhIdRef.current = dhId;
+    void localForage.setItem("ohtaniRule", false);
+  }
+}
+
+setAssignments(next);
 
     // 打順更新：DHあり/なしの整合（元仕様）
     setBattingOrder((prev) => {
