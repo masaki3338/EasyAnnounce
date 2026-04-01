@@ -1046,17 +1046,7 @@ const handleDropToBattingOrder = (
    *  useEffect群（副作用は上から「意味順」に整理）
    * ======================================================= */
 
-  useEffect(() => {
-    const closeMenu = () => setOpenPosMenuIndex(null);
 
-    // スマホでは touchend で先に閉じると
-    // メニュー項目の onClick が発火する前に消えてしまうことがある
-    window.addEventListener("click", closeMenu);
-
-    return () => {
-      window.removeEventListener("click", closeMenu);
-    };
-  }, []);
 
   // 透明1x1ゴースト画像（初回だけ生成）
   useEffect(() => {
@@ -1908,33 +1898,72 @@ useEffect(() => {
   </button>
 
   {entry && openPosMenuIndex === i && (
-    <div
-      className="absolute left-0 top-full z-50 mt-1 w-40 rounded-xl border border-white/10 bg-gray-900 shadow-2xl overflow-hidden"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {selectablePositionKeys.map((posKey) => (
-        <button
-          key={posKey}
-          type="button"
-          className={`w-full px-3 py-2 text-left text-sm border-b border-white/10 last:border-b-0
-            ${
-              (displayPos ?? "") === posKey
-                ? "bg-emerald-500/20 text-emerald-200 font-bold"
-                : "bg-transparent text-white"
-            }`}
-          onClick={(e) => {
-            e.stopPropagation();
-            changePositionByBattingIndex(i, posKey);
-          }}
-          onTouchEnd={(e) => {
-            e.stopPropagation();
-            changePositionByBattingIndex(i, posKey);
-          }}
-        >
-          {positionNames[posKey]}
-        </button>
-      ))}
-    </div>
+    <>
+      {/* 背景オーバーレイ：下のボタンへのタップ貫通を防ぐ */}
+      <div
+        className="fixed inset-0 z-[80]"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpenPosMenuIndex(null);
+        }}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpenPosMenuIndex(null);
+        }}
+      />
+
+      {/* 守備位置リスト本体 */}
+      <div
+        className="absolute left-0 top-full z-[90] mt-1 w-44 rounded-xl border border-white/10 bg-gray-900 shadow-2xl overflow-hidden"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        {selectablePositionKeys.map((posKey) => (
+          <button
+            key={posKey}
+            type="button"
+            className={`w-full px-3 py-3 text-left text-sm border-b border-white/10 last:border-b-0 touch-manipulation
+              ${
+                (displayPos ?? "") === posKey
+                  ? "bg-emerald-500/20 text-emerald-200 font-bold"
+                  : "bg-transparent text-white"
+              }`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              changePositionByBattingIndex(i, posKey);
+            }}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              changePositionByBattingIndex(i, posKey);
+            }}
+          >
+            {positionNames[posKey]}
+          </button>
+        ))}
+      </div>
+    </>
   )}
 </div>
 
