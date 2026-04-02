@@ -1968,74 +1968,93 @@ const selectablePositionKeys = [...positions, DH];
     ▼
   </button>
 
-  {entry && openPosMenuIndex === i && (
-    <>
-      {/* 背景オーバーレイ：下のボタンへのタップ貫通を防ぐ */}
-      <div
-        className="fixed inset-0 z-[80]"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpenPosMenuIndex(null);
-        }}
-        onTouchStart={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onTouchEnd={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpenPosMenuIndex(null);
-        }}
-      />
+{entry && openPosMenuIndex === i && (
+  <>
+    {/* 背景オーバーレイ：下のボタンへのタップ貫通を防ぐ */}
+    <div
+      className="fixed inset-0 z-[80]"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpenPosMenuIndex(null);
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+      }}
+    />
 
-      {/* 守備位置リスト本体 */}
-      <div
-        className="absolute left-0 top-full z-[90] mt-1 w-44 rounded-xl border border-white/10 bg-gray-900 shadow-2xl overflow-hidden"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onTouchStart={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onTouchEnd={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-      >
-        {selectablePositionKeys.map((posKey) => (
-          <button
-            key={posKey}
-            type="button"
-            className={`w-full px-3 py-3 text-left text-sm border-b border-white/10 last:border-b-0 touch-manipulation
-              ${
-                (displayPos ?? "") === posKey
-                  ? "bg-emerald-500/20 text-emerald-200 font-bold"
-                  : "bg-transparent text-white"
-              }`}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              changePositionByBattingIndex(i, posKey);
-            }}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              changePositionByBattingIndex(i, posKey);
-            }}
-          >
-            {positionNames[posKey]}
-          </button>
-        ))}
-      </div>
-    </>
-  )}
+    {/* 守備位置リスト本体 */}
+    <div
+      className="absolute left-0 top-full z-[90] mt-1 w-44 max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-gray-900 shadow-2xl"
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchMove={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
+      }}
+    >
+      {selectablePositionKeys.map((posKey) => (
+        <button
+          key={posKey}
+          type="button"
+          className={`w-full px-3 py-3 text-left text-sm border-b border-white/10 last:border-b-0
+            ${
+              (displayPos ?? "") === posKey
+                ? "bg-emerald-500/20 text-emerald-200 font-bold"
+                : "bg-transparent text-white"
+            }`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            changePositionByBattingIndex(i, posKey);
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            const t = e.changedTouches[0];
+            (e.currentTarget as HTMLButtonElement).dataset.touchStartX = String(t.clientX);
+            (e.currentTarget as HTMLButtonElement).dataset.touchStartY = String(t.clientY);
+            (e.currentTarget as HTMLButtonElement).dataset.touchMoved = "0";
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+            const btn = e.currentTarget as HTMLButtonElement;
+            const t = e.changedTouches[0];
+            const sx = Number(btn.dataset.touchStartX ?? "0");
+            const sy = Number(btn.dataset.touchStartY ?? "0");
+            const dx = Math.abs(t.clientX - sx);
+            const dy = Math.abs(t.clientY - sy);
+
+            if (dx > 8 || dy > 8) {
+              btn.dataset.touchMoved = "1";
+            }
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const btn = e.currentTarget as HTMLButtonElement;
+            const moved = btn.dataset.touchMoved === "1";
+
+            if (moved) return; // スクロール扱いなら選択しない
+
+            changePositionByBattingIndex(i, posKey);
+          }}
+        >
+          {positionNames[posKey]}
+        </button>
+      ))}
+    </div>
+  </>
+)}
 </div>
 
                     {player ? (
