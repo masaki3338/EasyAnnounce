@@ -3112,7 +3112,7 @@ const Menu = ({
                   </p>
 
                   <div className="rounded-xl bg-white/70 p-3 space-y-2 shadow-sm">
-                    <p>・規定投球数、タイブレークルールの設定</p>
+                    <p>・規定投球数,タイブレークルールの設定</p>
                     <p>・読み上げの速度などの設定</p>
                     <p>・リーグ（ポニー／ボーイズ）の選択</p>
                   </div>
