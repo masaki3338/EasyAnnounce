@@ -3037,8 +3037,8 @@ const Menu = ({
                 </p>
                 <div className="mt-3 rounded-xl bg-white/80 px-3 py-3 text-center shadow-sm">
                   <p className="text-sm font-bold text-slate-700">使い方はこの順番です</p>
-                  <p className="mt-1 text-sm sm:text-base font-extrabold text-sky-800 whitespace-nowrap overflow-x-auto">
-                    ① チーム・選手登録 → ② 試合作成 → ③ 試合開始
+                  <p className="mt-1 text-[13px] sm:text-sm font-extrabold text-red-600 whitespace-nowrap tracking-tight leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.3)]">
+                    ①チーム・選手登録 ▸ ②試合作成 ▸ ③試合開始
                   </p>
                 </div>
               </div>
