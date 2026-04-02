@@ -142,13 +142,21 @@ const handleTeamChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   setTeam((prev) => ({ ...prev, [name]: value }));
 };
 
-  const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setEditingPlayer((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
+const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value, type, checked } = e.target;
+
+  const nextValue =
+    type === "checkbox"
+      ? checked
+      : name === "number"
+      ? value.replace(/[^0-9]/g, "")
+      : value;
+
+  setEditingPlayer((prev) => ({
+    ...prev,
+    [name]: nextValue,
+  }));
+};
 
 
 
@@ -334,18 +342,21 @@ const saveTeam = async () => {
             <label htmlFor={id} className="block text-sm font-semibold text-white/90 drop-shadow">
               {label}
             </label>
-            <input
-              id={id}
-              name={id}
-              ref={inputRefs[id]}
-              value={(editingPlayer as any)[id] || ""}
-              onChange={handlePlayerChange}
-              className="w-full mt-1 px-3 py-2 rounded-xl
-+             bg-white/90 text-gray-900 placeholder-gray-600
-+             border border-white/70 shadow-sm
-+             focus:outline-none focus:ring-2 focus:ring-sky-400"
-              placeholder={placeholder}
-            />
+              <input
+                id={id}
+                name={id}
+                ref={inputRefs[id]}
+                value={(editingPlayer as any)[id] || ""}
+                onChange={handlePlayerChange}
+                inputMode={id === "number" ? "numeric" : undefined}
+                pattern={id === "number" ? "[0-9]*" : undefined}
+                autoComplete="off"
+                className="w-full mt-1 px-3 py-2 rounded-xl
+                          bg-white/90 text-gray-900 placeholder-gray-600
+                          border border-white/70 shadow-sm
+                          focus:outline-none focus:ring-2 focus:ring-sky-400"
+                placeholder={placeholder}
+              />
           </div>
         ))}
 
