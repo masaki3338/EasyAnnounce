@@ -218,6 +218,8 @@ const StartingLineup = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const onClearClick = () => setShowConfirm(true);
 
+  const [showHelp, setShowHelp] = useState(false);
+
   /* =========================================================
    *  共通：DnDのdrop許可
    * ======================================================= */
@@ -1500,14 +1502,26 @@ const selectablePositionKeys = [...positions, DH];
       onSelectStart={(e) => e.preventDefault()}
     >
       <div className="mt-3 text-center select-none mb-2">
-        <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
-          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
-            <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z" />
-          </svg>
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
-            スタメン設定
-          </span>
-        </h1>
+        <div className="inline-flex items-center gap-2">
+          <h1 className="inline-flex items-center gap-2 text-3xl font-extrabold tracking-wide leading-tight">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
+              <path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h10v2H3v-2z" />
+            </svg>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
+              スタメン設定
+            </span>
+          </h1>
+
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/15 border border-white/20 text-white font-extrabold text-lg shadow hover:bg-white/25 active:scale-95"
+            aria-label="使い方を表示"
+            title="使い方"
+          >
+            ？
+          </button>
+        </div>
         <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
         <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 border border-red-300">
           <span className="text-sm font-extrabold text-red-600">
@@ -2138,6 +2152,74 @@ const selectablePositionKeys = [...positions, DH];
                   YES
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 使い方モーダル */}
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-[1050] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-blue-600 text-white text-center font-bold py-3">
+              スタメン設定の使い方
+            </div>
+
+            <div className="px-5 py-5 text-[15px] leading-relaxed">
+              <div className="rounded-2xl bg-white border border-gray-200 px-4 py-4 space-y-4">
+                <div className="font-bold text-gray-900 text-[16px]">
+                  設定方法は、2種類あります
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
+                      ①
+                    </div>
+                    <div className="font-extrabold text-sky-900 text-[17px] leading-snug">
+                      「フィールド」に選手を長押しして配置する
+                    </div>
+                  </div>
+
+                  <div className="mt-3 ml-11 rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed">
+                    フィールドに配置した順番で打順になります
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-sky-100 border-2 border-sky-300 px-4 py-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-sky-600 text-white font-extrabold text-base flex items-center justify-center">
+                      ②
+                    </div>
+                    <div className="font-extrabold text-sky-900 text-[17px] leading-snug">
+                      「打順」に選手を長押しして配置する
+                    </div>
+                  </div>
+
+                  <div className="mt-3 ml-11 rounded-xl bg-white/80 border border-sky-200 px-3 py-2 text-[13px] text-slate-800 font-semibold leading-relaxed space-y-1">
+                    <div>打順、守備位置は入れ替え可能です</div>
+                    <div>守備位置の選択も可能です</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                className="w-full py-3 rounded-full bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800"
+                onClick={() => setShowHelp(false)}
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>
