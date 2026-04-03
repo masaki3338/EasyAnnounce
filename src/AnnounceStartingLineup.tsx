@@ -198,6 +198,15 @@ const AnnounceStartingLineup: React.FC<{
   );
   const renderFullName = (p: Player) => (<>{renderFurigana(p.lastName, p.lastNameKana)}{renderFurigana(p.firstName, p.firstNameKana)}</>);
   const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
+  const getSpokenFullName = (p: Player) => {
+    const last = (p.lastNameKana || p.lastName || "").trim();
+    const first = (p.firstNameKana || p.firstName || "").trim();
+    return `${last}${first}${getHonorific(p)}`;
+  };
+  const getSpokenLastName = (p: Player) => {
+    const last = (p.lastNameKana || p.lastName || "").trim();
+    return `${last}${getHonorific(p)}`;
+  };
 
   const team1stBaseName = benchSide === "1塁側" ? homeTeamName : awayTeamName;
   const team3rdBaseName = benchSide === "3塁側" ? homeTeamName : awayTeamName;
@@ -218,6 +227,13 @@ const AnnounceStartingLineup: React.FC<{
   const isBoys = leagueMode === "boys";
   const lineupEntries = battingOrder.slice(0, 9);
   const myBenchSide = benchSide || "1塁側";
+
+  const benchPlayers = teamPlayers.filter(
+    (p) =>
+      !startingIds.includes(p.id) &&
+      !benchOutIds.includes(p.id) &&
+      !(shouldAnnouncePitcher && p.id === pitcherId)
+  );
 
   /* === 画面に見えている文言をそのまま読む（rubyはrtを採用） === */
   const getVisibleAnnounceText = (): string => {
@@ -240,17 +256,39 @@ const AnnounceStartingLineup: React.FC<{
   };
 
   /* === 読み上げ操作 === */
-  const handleSpeak = () => {
-    if (isSpeakingRef.current) return;
-    isSpeakingRef.current = true;
-    handleStop(); // 念のため直前に全停止
-    let text = getVisibleAnnounceText();
-    if (!text) { isSpeakingRef.current = false; return; }
-    setSpeaking(true);
-    // ❗️待たずに発火：体感が大幅に軽くなる。最初の1文を先に再生（progressive）
-    void ttsSpeak(text) // progressive/cacheを使わない
-      .finally(() => { setSpeaking(false); isSpeakingRef.current = false; });
-  };
+const handleSpeak = () => {
+  if (isSpeakingRef.current) return;
+  isSpeakingRef.current = true;
+  handleStop(); // 念のため直前に全停止
+
+  let text = getVisibleAnnounceText();
+  if (!text) {
+    isSpeakingRef.current = false;
+    return;
+  }
+
+  // 読み上げだけ最小限の区切りを入れる
+  text = text
+    // 「1番ショート」→「1番、ショート」
+    .replace(/([0-9]+)番\s*/g, "$1番、")
+    // 守備位置の直後だけ区切る
+    .replace(
+      /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
+      "$1、"
+    )
+    
+    // 単独の 0 は「れい」ではなく「ゼロ」
+    .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
+
+    // 句読点の重複を軽く整理
+    .replace(/、、+/g, "、");
+
+  setSpeaking(true);
+  void ttsSpeak(text).finally(() => {
+    setSpeaking(false);
+    isSpeakingRef.current = false;
+  });
+};
 
   const handleStop = () => {
    ttsStop();                 // ← sessionCounter が進むので連鎖が止まる
@@ -349,7 +387,7 @@ const AnnounceStartingLineup: React.FC<{
             ) : isBoys ? (
               <> 対しまして、後攻 {myBenchSide} {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
             ) : (
-              <>続きまして後攻 {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
+              <>続きまして、後攻 {homeTeamFurigana ? renderFurigana(homeTeamName, homeTeamFurigana) : homeTeamName}</>
             )}
           </p>
 
@@ -399,29 +437,22 @@ const AnnounceStartingLineup: React.FC<{
           })()}
 
           {/* 控え */}
-          {!isBoys && (
+          {!isBoys && benchPlayers.length > 0 && (
             <>
               <p className="mt-3 text-white">ベンチ入りの選手をお知らせいたします。</p>
               <div className="mt-1 space-y-1">
-                {teamPlayers
-                  .filter((p) =>
-                    !startingIds.includes(p.id) &&
-                    !benchOutIds.includes(p.id) &&
-                    !(shouldAnnouncePitcher && p.id === pitcherId)
-                  )
-                  .map((p) => {
-                    const num = (p.number ?? "").trim();
-                    return (
-                      <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
-                        {renderFullName(p)}{getHonorific(p)}
-                        {num ? `、背番号${num}、` : "、"}
-                      </p>
-                    );
-                  })}
+                {benchPlayers.map((p) => {
+                  const num = (p.number ?? "").trim();
+                  return (
+                    <p key={p.id} className="text-white whitespace-pre-wrap leading-relaxed">
+                      {renderFullName(p)}{getHonorific(p)}
+                      {num ? `、背番号${num}、` : "、"}
+                    </p>
+                  );
+                })}
               </div>
             </>
           )}
-
 
           {/* 審判（後攻時に続けて告知） */}
           {!isHomeTeamFirstAttack && (
