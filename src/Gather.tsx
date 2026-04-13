@@ -146,106 +146,110 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
         </div>
       </header>
 
-      <main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
-        {/* 集合 */}
-        <section className="rounded-2xl p-3 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-              <IconAlert />
-            </div>
-            <h2 className="font-semibold">集合アナウンス</h2>
-          </div>
-            <p className="text-amber-50/90 text-sm leading-relaxed">
-              グラウンド整備終了後、選手がベンチ前に
-              <span className="mx-1 rounded bg-red-500/20 px-1.5 py-0.5 font-extrabold text-red-300">
-                待機していない場合
-              </span>
-              のみ、案内してください。
-            </p>
-        </section>
-
-        <section
-          className="
-            rounded-2xl p-4 shadow-lg text-left font-semibold
-            border border-rose-600/90
-            bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
-            ring-1 ring-inset ring-rose-600/50
-          "
-        >
-          <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
-            {gatherMessage}
-          </p>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              onClick={handleSpeakGather}
-              disabled={speaking}
-              className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
-            >
-              <IconMic /> 読み上げ
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={!speaking}
-              className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
-            >
-              停止
-            </button>
-          </div>
-        </section>
-
-        {/* 試合開始挨拶 */}
-        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-              <IconAlert />
-            </div>
-            <h2 className="font-semibold">試合開始挨拶</h2>
-          </div>
-          <p className="text-amber-50/90 text-[13px] leading-5">
-            挨拶終了後（後攻チームが守備につく時）
-          </p>
-        </section>
-
-        <section
-          className="
-            rounded-2xl p-4 shadow-lg text-left font-semibold
-            border border-rose-600/90
-            bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
-            ring-1 ring-inset ring-rose-600/50
-          "
-        >
-          <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
-            {startGreetingText}
-          </p>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              onClick={handleSpeakGreeting}
-              disabled={speaking}
-              className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
-            >
-              <IconMic /> 読み上げ
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={!speaking}
-              className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
-            >
-              停止
-            </button>
-          </div>
-        </section>
-
-        <div className="mt-4">
-          <button
-            onClick={() => (onBack ? onBack() : onNavigate("announcement"))}
-            className="w-full py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
-          >
-            ← 戻る
-          </button>
+<main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
+  {/* 集合セット */}
+  <div className="space-y-0">
+    <section className="rounded-t-2xl rounded-b-none p-3 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+          <IconAlert />
         </div>
-      </main>
+        <h2 className="font-semibold">集合アナウンス</h2>
+      </div>
+      <p className="text-amber-50/90 text-sm leading-relaxed">
+        グラウンド整備終了後、選手がベンチ前に
+        <span className="mx-1 rounded bg-red-500/20 px-1.5 py-0.5 font-extrabold text-red-300">
+          待機していない場合
+        </span>
+        のみ、案内してください。
+      </p>
+    </section>
+
+    <section
+      className="
+        rounded-t-none rounded-b-2xl p-4 shadow-lg text-left font-semibold
+        border-x border-b border-rose-600/90
+        bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
+        ring-1 ring-inset ring-rose-600/50
+      "
+    >
+      <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
+        {gatherMessage}
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          onClick={handleSpeakGather}
+          disabled={speaking}
+          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+        >
+          <IconMic /> 読み上げ
+        </button>
+        <button
+          onClick={handleStop}
+          disabled={!speaking}
+          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
+        >
+          停止
+        </button>
+      </div>
+    </section>
+  </div>
+
+  {/* 試合開始挨拶セット */}
+  <div className="space-y-0">
+    <section className="rounded-t-2xl rounded-b-none p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+          <IconAlert />
+        </div>
+        <h2 className="font-semibold">試合開始挨拶</h2>
+      </div>
+      <p className="text-amber-50/90 text-[13px] leading-5">
+        挨拶終了後（後攻チームが守備につく時）
+      </p>
+    </section>
+
+    <section
+      className="
+        rounded-t-none rounded-b-2xl p-4 shadow-lg text-left font-semibold
+        border-x border-b border-rose-600/90
+        bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
+        ring-1 ring-inset ring-rose-600/50
+      "
+    >
+      <p className="text-white whitespace-pre-wrap leading-relaxed drop-shadow">
+        {startGreetingText}
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          onClick={handleSpeakGreeting}
+          disabled={speaking}
+          className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow active:scale-95 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+        >
+          <IconMic /> 読み上げ
+        </button>
+        <button
+          onClick={handleStop}
+          disabled={!speaking}
+          className="w-full px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center disabled:opacity-60"
+        >
+          停止
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <div className="mt-4">
+    <button
+      onClick={() => (onBack ? onBack() : onNavigate("announcement"))}
+      className="w-full py-4 rounded-2xl bg-white/90 hover:bg-white text-gray-900 font-semibold text-lg shadow-lg active:scale-95"
+    >
+      ← 戻る
+    </button>
+  </div>
+</main>
     </div>
   );
 };
