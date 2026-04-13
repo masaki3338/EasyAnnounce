@@ -121,35 +121,35 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
 
   return (
     <div
-      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+      className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4"
       style={{
-        paddingTop: "max(16px, env(safe-area-inset-top))",
-        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+        paddingTop: "max(10px, env(safe-area-inset-top))",
+        paddingBottom: "max(10px, env(safe-area-inset-bottom))",
         WebkitTouchCallout: "none",
         WebkitUserSelect: "none",
         userSelect: "none",
       }}
     >
       <header className="w-full max-w-md md:max-w-none">
-        <div className="mt-3 text-center select-none">
-          <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
+        <div className="mt-1 text-center select-none">
+          <h1 className="inline-flex items-center gap-2 text-2xl md:text-3xl font-extrabold tracking-wide leading-tight">
             <span className="text-2xl md:text-3xl">👥</span>
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-sky-100 to-sky-400 drop-shadow">
               集合 / 試合開始挨拶
             </span>
           </h1>
-          <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs">
+          <div className="mx-auto mt-1 h-0.5 w-20 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+          <div className="mt-2 inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[11px]">
             <IconUsers />
             <span>先攻チーム 🎤</span>
           </div>
         </div>
       </header>
 
-      <main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
+      <main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
         {/* 集合 */}
-        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
-          <div className="flex items-center gap-3 mb-1">
+        <section className="rounded-2xl p-3 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+          <div className="flex items-center gap-2 mb-1">
             <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <IconAlert />
             </div>
@@ -196,13 +196,13 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
 
         {/* 試合開始挨拶 */}
         <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-2 mb-1">
             <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <IconAlert />
             </div>
             <h2 className="font-semibold">試合開始挨拶</h2>
           </div>
-          <p className="text-amber-50/90 text-sm leading-relaxed">
+          <p className="text-amber-50/90 text-[13px] leading-5">
             挨拶終了後（後攻チームが守備につく時）
           </p>
         </section>
