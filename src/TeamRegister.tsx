@@ -51,6 +51,7 @@ const TeamRegister = () => {
   });
   const [showTeamMenu, setShowTeamMenu] = useState(false);
 
+  const [showDeleteTeamConfirm, setShowDeleteTeamConfirm] = useState(false);
 
   const [restoreMessage, setRestoreMessage] = useState("");
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -157,6 +158,46 @@ const TeamRegister = () => {
     loadFolderToForm(folder);
     setShowTeamMenu(false);
   };
+
+  const confirmDeleteCurrentTeam = async () => {
+  if (!teamStore.selectedTeamId) {
+    setFormError("削除する登録が選択されていません");
+    setShowFormErrorModal(true);
+    return;
+  }
+
+  const deletingId = teamStore.selectedTeamId;
+  const remainingTeams = teamStore.teams.filter((folder) => folder.id !== deletingId);
+  const nextSelected = remainingTeams[0] ?? null;
+
+  const nextStore: TeamRegisterStore = {
+    selectedTeamId: nextSelected?.id ?? null,
+    teams: remainingTeams,
+  };
+
+  await localForage.setItem(TEAM_STORE_KEY, nextStore);
+
+  if (nextSelected) {
+    await localForage.setItem("team", nextSelected.team);
+    setTeam(nextSelected.team);
+    setTeamListName(nextSelected.listName);
+  } else {
+    await localForage.removeItem("team");
+    setTeam(EMPTY_TEAM);
+    setTeamListName("");
+  }
+
+  setTeamStore(nextStore);
+  setEditingPlayer({});
+  snapshotRef.current = makeSnapshot(
+    nextSelected?.team ?? EMPTY_TEAM,
+    {},
+    nextSelected?.listName ?? ""
+  );
+  setIsDirty(false);
+  setShowDeleteTeamConfirm(false);
+  setShowTeamMenu(false);
+};
 
 const buildSnapshot = () =>
   JSON.stringify({
@@ -476,6 +517,18 @@ const saveTeam = async () => {
     return;
   }
 
+    const duplicateFolder = teamStore.teams.find(
+    (folder) =>
+      folder.listName.trim() === trimmedListName &&
+      folder.id !== teamStore.selectedTeamId
+  );
+
+  if (duplicateFolder) {
+    setFormError("同じ登録名がすでにあります");
+    setShowFormErrorModal(true);
+    return;
+  }
+
   const updatedTeam: Team = {
     ...team,
     name: trimmedTeamName,
@@ -485,23 +538,18 @@ const saveTeam = async () => {
 
   const now = Date.now();
 
+  const selectedFolder =
+    teamStore.teams.find((folder) => folder.id === teamStore.selectedTeamId) ?? null;
+
+  // 追加条件:
+  // 1) 新規モード(selectedTeamIdなし)
+  // 2) 既存を開いていても、登録名を変更した
+  const shouldCreateNew =
+    !selectedFolder || selectedFolder.listName.trim() !== trimmedListName;
+
   let nextStore: TeamRegisterStore;
 
-  if (teamStore.selectedTeamId) {
-    nextStore = {
-      ...teamStore,
-      teams: teamStore.teams.map((folder) =>
-        folder.id === teamStore.selectedTeamId
-          ? {
-              ...folder,
-              listName: trimmedListName,
-              team: updatedTeam,
-              updatedAt: now,
-            }
-          : folder
-      ),
-    };
-  } else {
+  if (shouldCreateNew) {
     const newId = `team_${now}`;
     const newFolder: TeamFolder = {
       id: newId,
@@ -515,15 +563,28 @@ const saveTeam = async () => {
       selectedTeamId: newId,
       teams: [...teamStore.teams, newFolder],
     };
+  } else {
+    nextStore = {
+      ...teamStore,
+      teams: teamStore.teams.map((folder) =>
+        folder.id === teamStore.selectedTeamId
+          ? {
+              ...folder,
+              listName: trimmedListName,
+              team: updatedTeam,
+              updatedAt: now,
+            }
+          : folder
+      ),
+    };
   }
 
   await localForage.setItem(TEAM_STORE_KEY, nextStore);
-
-  // 旧キーも残しておくと他画面との互換が安全
   await localForage.setItem("team", updatedTeam);
 
   setTeamStore(nextStore);
   setTeam(updatedTeam);
+  setTeamListName(trimmedListName);
 
   snapshotRef.current = makeSnapshot(updatedTeam, {}, trimmedListName);
   setIsDirty(false);
@@ -642,14 +703,26 @@ const saveTeam = async () => {
           >
             登録名
           </label>
-          <input
-            id="teamListName"
-            type="text"
-            value={teamListName}
-            onChange={(e) => setTeamListName(e.target.value)}
-            placeholder="例：東京サンプルズB"
-            className="mx-auto block w-full max-w-[260px] rounded-lg border border-white/20 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-          />
+
+          <div className="mx-auto flex w-full max-w-[320px] items-center gap-2">
+            <input
+              id="teamListName"
+              type="text"
+              value={teamListName}
+              onChange={(e) => setTeamListName(e.target.value)}
+              placeholder="例：東京サンプルズB"
+              className="min-w-0 flex-1 rounded-lg border border-white/20 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteTeamConfirm(true)}
+              disabled={!teamStore.selectedTeamId}
+              className="shrink-0 rounded-lg border border-red-300 bg-red-500 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-red-600 disabled:cursor-not-allowed disabled:border-white/20 disabled:bg-white/20 disabled:text-white/50"
+            >
+              削除
+            </button>
+          </div>
         </div>
         <div>
           <label htmlFor="teamName" className="block text-sm font-semibold text-white/90 drop-shadow">
@@ -1117,6 +1190,39 @@ const saveTeam = async () => {
     </div>
   </div>
 )}
+
+{/* 登録削除モーダル */}
+{showDeleteTeamConfirm && (
+  <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 px-4">
+    <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-gray-900 shadow-2xl">
+      <h3 className="text-lg font-bold text-red-600">登録を削除しますか？</h3>
+      <p className="mt-3 text-sm leading-6">
+        <span className="font-bold">「{teamListName || "この登録"}」</span>
+        を削除します。
+        <br />
+        この操作は元に戻せません。
+      </p>
+
+      <div className="mt-5 flex gap-3">
+        <button
+          type="button"
+          onClick={() => setShowDeleteTeamConfirm(false)}
+          className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2 font-semibold text-gray-700"
+        >
+          キャンセル
+        </button>
+        <button
+          type="button"
+          onClick={confirmDeleteCurrentTeam}
+          className="flex-1 rounded-xl bg-red-500 px-4 py-2 font-bold text-white"
+        >
+          削除する
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
 {/* 入力不足モーダル */}
 {showFormErrorModal && (
