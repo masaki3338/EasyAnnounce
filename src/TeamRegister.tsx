@@ -208,19 +208,35 @@ const buildSnapshot = () =>
 
   // 既存の handleBackup を置き換え
 const handleBackup = async () => {
-  const blob = new Blob([JSON.stringify(teamStore, null, 2)], {
+  const selectedFolder =
+    teamStore.teams.find((folder) => folder.id === teamStore.selectedTeamId) ?? null;
+
+  if (!selectedFolder) {
+    setFormError("バックアップする登録が選択されていません");
+    setShowFormErrorModal(true);
+    return;
+  }
+
+  const backupData = {
+    version: 1,
+    type: "single-team-backup",
+    exportedAt: new Date().toISOString(),
+    folder: selectedFolder,
+  };
+
+  const blob = new Blob([JSON.stringify(backupData, null, 2)], {
     type: "application/json",
   });
 
-  // File System Access API が使える場合（Chrome / Edge 等）
+  const safeName = (selectedFolder.listName || "team")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim();
+
   const anyWindow = window as any;
   if (typeof anyWindow.showSaveFilePicker === "function") {
     try {
       const handle = await anyWindow.showSaveFilePicker({
-        suggestedName: `team_backup_${new Date()
-          .toISOString()
-          .slice(0,19)
-          .replace(/[:T]/g,"-")}.json`,
+        suggestedName: `${safeName}_backup.json`,
         types: [
           {
             description: "JSON file",
@@ -234,35 +250,27 @@ const handleBackup = async () => {
       await writable.write(blob);
       await writable.close();
 
-      //alert(`✅ 保存しました：${handle.name}`);
       setBackupFileName(handle.name);
       setShowBackupComplete(true);
       return;
-      } catch (err: any) {
-        // キャンセル時は何もしない
-        if (err?.name === "AbortError") {
-          return;
-        }
-
-        // それ以外のエラーだけフォールバックへ
-        console.warn("save picker failed:", err);
-      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      console.warn("save picker failed:", err);
+    }
   }
 
-  // ▼ フォールバック（従来どおりの自動ダウンロード）
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "team_backup.json";
+  a.download = `${safeName}_backup.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 
-  setBackupFileName("team_backup.json");
+  setBackupFileName(`${safeName}_backup.json`);
   setShowBackupComplete(true);
 };
-
 
 const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
@@ -271,39 +279,158 @@ const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
+    const now = Date.now();
 
-    if (Array.isArray(data?.teams)) {
-      const store = data as TeamRegisterStore;
-      setTeamStore(store);
+    const buildUniqueListName = (base: string, existingNames: string[]) => {
+      const trimmedBase = (base || "復元データ").trim() || "復元データ";
+      let nextName = trimmedBase;
+      let suffix = 1;
 
-      const selected =
-        store.teams.find((t) => t.id === store.selectedTeamId) ?? store.teams[0];
-
-      if (selected) {
-        setTeam(selected.team);
-        setTeamListName(selected.listName);
-        setEditingPlayer({});
-      } else {
-        setTeam(EMPTY_TEAM);
-        setTeamListName("");
-        setEditingPlayer({});
+      while (existingNames.includes(nextName)) {
+        suffix += 1;
+        nextName = `${trimmedBase} (${suffix})`;
       }
 
-      setRestoreMessage("✅ 複数チームのバックアップを読み込みました。必要なら保存するボタンを押してください。");
+      return nextName;
+    };
+
+    const isTeamLike = (value: any): value is Team => {
+      return (
+        value &&
+        typeof value === "object" &&
+        typeof value.name === "string" &&
+        Array.isArray(value.players)
+      );
+    };
+
+    const isTeamFolderLike = (value: any): value is TeamFolder => {
+      return (
+        value &&
+        typeof value === "object" &&
+        typeof value.listName === "string" &&
+        isTeamLike(value.team)
+      );
+    };
+
+    // ① 新形式: 1チームごとバックアップ
+    if (data?.type === "single-team-backup" && isTeamFolderLike(data?.folder)) {
+      const existingNames = teamStore.teams.map((t) => t.listName.trim());
+      const nextName = buildUniqueListName(data.folder.listName, existingNames);
+
+      const newFolder: TeamFolder = {
+        ...data.folder,
+        id: `team_${now}`,
+        listName: nextName,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const nextStore: TeamRegisterStore = {
+        selectedTeamId: newFolder.id,
+        teams: [...teamStore.teams, newFolder],
+      };
+
+      await localForage.setItem(TEAM_STORE_KEY, nextStore);
+      await localForage.setItem("team", newFolder.team);
+
+      setTeamStore(nextStore);
+      setTeam(newFolder.team);
+      setTeamListName(newFolder.listName);
+      setEditingPlayer({});
+      snapshotRef.current = makeSnapshot(newFolder.team, {}, newFolder.listName);
+      setIsDirty(false);
+      setRestoreMessage(`✅ 「${newFolder.listName}」を復元しました。`);
       return;
     }
 
-    // 旧形式1チームも読めるようにする
-    const oldTeam = data as Team;
-    setTeam(oldTeam);
-    setTeamListName(oldTeam.name ?? "");
-    setEditingPlayer({});
-    setRestoreMessage("✅ バックアップを読み込みました。必要なら保存するボタンを押してください。");
+    // ② 旧形式: 全チームまとめバックアップ
+    if (Array.isArray(data?.teams)) {
+      const incomingTeams = data.teams.filter(isTeamFolderLike);
+
+      if (incomingTeams.length === 0) {
+        setRestoreMessage("❌ 復元対象のチームが見つかりませんでした。");
+        return;
+      }
+
+      const usedNames = teamStore.teams.map((t) => t.listName.trim());
+
+      const renamedTeams: TeamFolder[] = incomingTeams.map((folder, index) => {
+        const baseName = folder.listName || folder.team?.name || `復元データ${index + 1}`;
+        const nextName = buildUniqueListName(baseName, usedNames);
+        usedNames.push(nextName);
+
+        return {
+          ...folder,
+          id: `team_${now}_${index}`,
+          listName: nextName,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+
+      const selectedFolder = renamedTeams[0];
+
+      const nextStore: TeamRegisterStore = {
+        selectedTeamId: selectedFolder.id,
+        teams: [...teamStore.teams, ...renamedTeams],
+      };
+
+      await localForage.setItem(TEAM_STORE_KEY, nextStore);
+      await localForage.setItem("team", selectedFolder.team);
+
+      setTeamStore(nextStore);
+      setTeam(selectedFolder.team);
+      setTeamListName(selectedFolder.listName);
+      setEditingPlayer({});
+      snapshotRef.current = makeSnapshot(selectedFolder.team, {}, selectedFolder.listName);
+      setIsDirty(false);
+      setRestoreMessage(`✅ ${renamedTeams.length}件の登録を復元しました。`);
+      return;
+    }
+
+    // ③ 旧形式: Team単体
+    if (isTeamLike(data)) {
+      const existingNames = teamStore.teams.map((t) => t.listName.trim());
+      const nextName = buildUniqueListName(data.name || "復元データ", existingNames);
+
+      const newFolder: TeamFolder = {
+        id: `team_${now}`,
+        listName: nextName,
+        team: {
+          name: data.name ?? "",
+          furigana: (data as any).furigana ?? "",
+          players: Array.isArray(data.players) ? data.players : [],
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const nextStore: TeamRegisterStore = {
+        selectedTeamId: newFolder.id,
+        teams: [...teamStore.teams, newFolder],
+      };
+
+      await localForage.setItem(TEAM_STORE_KEY, nextStore);
+      await localForage.setItem("team", newFolder.team);
+
+      setTeamStore(nextStore);
+      setTeam(newFolder.team);
+      setTeamListName(newFolder.listName);
+      setEditingPlayer({});
+      snapshotRef.current = makeSnapshot(newFolder.team, {}, newFolder.listName);
+      setIsDirty(false);
+      setRestoreMessage(`✅ 「${newFolder.listName}」を復元しました。`);
+      return;
+    }
+
+    setRestoreMessage("❌ 読み込みに失敗しました。対応していないバックアップ形式です。");
   } catch (error) {
+    console.error("restore error", error);
     setRestoreMessage("❌ 読み込みに失敗しました。ファイル形式を確認してください。");
+  } finally {
+    e.target.value = "";
   }
 };
-
 
   const [editingPlayer, setEditingPlayer] = useState<Partial<Player>>({});
 
@@ -1066,14 +1193,20 @@ const saveTeam = async () => {
                   <div>
                     <div className="font-bold text-slate-900">【バックアップ】</div>
                     <p className="mt-1">
-                      登録内容はバックアップして保存できます。
+                      今開いている登録だけをバックアップして保存できます。
+                      <br />
+                      ほかの登録は含まれません。
                     </p>
                   </div>
 
                   <div>
                     <div className="font-bold text-slate-900">【復元】</div>
                     <p className="mt-1">
-                      保存しておいたバックアップを読み込んで復元できます。
+                      バックアップファイルを読み込むと、
+                      <span className="font-bold text-rose-500">1チーム分の登録として復元</span>
+                      されます。
+                      <br />
+                      同じ登録名がある場合は、別の登録名で追加されます。
                     </p>
                   </div>
                 </div>
