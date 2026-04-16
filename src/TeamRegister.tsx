@@ -20,14 +20,36 @@ type Team = {
   players: Player[];
 };
 
+type TeamFolder = {
+  id: string;
+  listName: string; // 左上リストに表示する名前
+  team: Team;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type TeamRegisterStore = {
+  selectedTeamId: string | null;
+  teams: TeamFolder[];
+};
+
+const TEAM_STORE_KEY = "teamRegisterStore";
+
+const EMPTY_TEAM: Team = {
+  name: "",
+  furigana: "",
+  players: [],
+};
 
 
 const TeamRegister = () => {
-  const [team, setTeam] = useState<Team>({
-    name: "",
-    furigana: "",
-    players: [],
+  const [team, setTeam] = useState<Team>(EMPTY_TEAM);
+  const [teamListName, setTeamListName] = useState("");
+  const [teamStore, setTeamStore] = useState<TeamRegisterStore>({
+    selectedTeamId: null,
+    teams: [],
   });
+  const [showTeamMenu, setShowTeamMenu] = useState(false);
 
 
   const [restoreMessage, setRestoreMessage] = useState("");
@@ -69,15 +91,83 @@ const TeamRegister = () => {
     { id: 'number',        label: '背番号',         placeholder: '10' },
   ];
 
-  const buildSnapshot = () =>
+  const buildEmptySnapshot = () =>
+  JSON.stringify({
+    team: EMPTY_TEAM,
+    editingPlayer: {},
+    teamListName: "",
+  });
+
+  const loadFolderToForm = (folder: TeamFolder) => {
+    setTeam(folder.team);
+    setTeamListName(folder.listName);
+    setEditingPlayer({});
+  };
+
+  const makeSnapshot = (nextTeam: Team, nextEditingPlayer: Partial<Player>, nextTeamListName: string) =>
+      JSON.stringify({
+        team: nextTeam,
+        editingPlayer: nextEditingPlayer,
+        teamListName: nextTeamListName,
+      });
+
+      const clearContinuationGameCache = async () => {
+    const keys = [
+      "lastGameScreen",
+      "startingBattingOrder",
+      "battingOrder",
+      "startingLineup",
+      "lineupAssignments",
+      "matchInfo",
+      "lastBatterIndex",
+      "scores",
+      "usedPlayerInfo",
+      "tempRunnerByOrder",
+      "pitchCounts",
+      "pitcherTotals",
+      "pitcherOrder",
+    ];
+
+    await Promise.all(keys.map((key) => localForage.removeItem(key)));
+  };
+
+  const createNewFolder = async () => {
+    await clearContinuationGameCache();
+
+    setTeamStore((prev) => ({
+      ...prev,
+      selectedTeamId: null,
+    }));
+    setTeamListName("");
+    setTeam(EMPTY_TEAM);
+    setEditingPlayer({});
+    setShowTeamMenu(false);
+  };
+
+  const selectFolder = async (folderId: string) => {
+    const folder = teamStore.teams.find((t) => t.id === folderId);
+    if (!folder) return;
+
+    await clearContinuationGameCache();
+
+    setTeamStore((prev) => ({
+      ...prev,
+      selectedTeamId: folder.id,
+    }));
+    loadFolderToForm(folder);
+    setShowTeamMenu(false);
+  };
+
+const buildSnapshot = () =>
   JSON.stringify({
     team,
     editingPlayer,
+    teamListName,
   });
 
   // 既存の handleBackup を置き換え
 const handleBackup = async () => {
-  const blob = new Blob([JSON.stringify(team, null, 2)], {
+  const blob = new Blob([JSON.stringify(teamStore, null, 2)], {
     type: "application/json",
   });
 
@@ -133,18 +223,45 @@ const handleBackup = async () => {
 };
 
 
-  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      setTeam(data);
-      setRestoreMessage("✅ バックアップを読み込みました。必要なら保存するボタンを押してください。");
-    } catch (error) {
-      setRestoreMessage("❌ 読み込みに失敗しました。ファイル形式を確認してください。");
+const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    if (Array.isArray(data?.teams)) {
+      const store = data as TeamRegisterStore;
+      setTeamStore(store);
+
+      const selected =
+        store.teams.find((t) => t.id === store.selectedTeamId) ?? store.teams[0];
+
+      if (selected) {
+        setTeam(selected.team);
+        setTeamListName(selected.listName);
+        setEditingPlayer({});
+      } else {
+        setTeam(EMPTY_TEAM);
+        setTeamListName("");
+        setEditingPlayer({});
+      }
+
+      setRestoreMessage("✅ 複数チームのバックアップを読み込みました。必要なら保存するボタンを押してください。");
+      return;
     }
-  };
+
+    // 旧形式1チームも読めるようにする
+    const oldTeam = data as Team;
+    setTeam(oldTeam);
+    setTeamListName(oldTeam.name ?? "");
+    setEditingPlayer({});
+    setRestoreMessage("✅ バックアップを読み込みました。必要なら保存するボタンを押してください。");
+  } catch (error) {
+    setRestoreMessage("❌ 読み込みに失敗しました。ファイル形式を確認してください。");
+  }
+};
 
 
   const [editingPlayer, setEditingPlayer] = useState<Partial<Player>>({});
@@ -159,33 +276,62 @@ useEffect(() => {
 }, [editingPlayer.id]);
 
 useEffect(() => {
-  localForage.getItem<Team>("team").then((data) => {
-    if (data) {
-      setTeam(data);
-      snapshotRef.current = JSON.stringify({
-        team: data,
-        editingPlayer: {},
-      });
+  const load = async () => {
+    const store = await localForage.getItem<TeamRegisterStore>(TEAM_STORE_KEY);
+
+    if (store && store.teams.length > 0) {
+      setTeamStore(store);
+
+      const selected =
+        store.teams.find((t) => t.id === store.selectedTeamId) ?? store.teams[0];
+
+      if (selected) {
+        setTeam(selected.team);
+        setTeamListName(selected.listName);
+        snapshotRef.current = makeSnapshot(selected.team, {}, selected.listName);
+      } else {
+        snapshotRef.current = buildEmptySnapshot();
+      }
     } else {
-      snapshotRef.current = JSON.stringify({
-        team: {
-          name: "",
-          furigana: "",
-          players: [],
-        },
-        editingPlayer: {},
-      });
+      // 旧データ互換
+      const oldTeam = await localForage.getItem<Team>("team");
+
+      if (oldTeam) {
+        const now = Date.now();
+        const migrated: TeamFolder = {
+          id: `team_${now}`,
+          listName: oldTeam.name || "チーム1",
+          team: oldTeam,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const nextStore: TeamRegisterStore = {
+          selectedTeamId: migrated.id,
+          teams: [migrated],
+        };
+
+        await localForage.setItem(TEAM_STORE_KEY, nextStore);
+        setTeamStore(nextStore);
+        setTeam(oldTeam);
+        setTeamListName(migrated.listName);
+        snapshotRef.current = makeSnapshot(oldTeam, {}, migrated.listName);
+      } else {
+        snapshotRef.current = buildEmptySnapshot();
+      }
     }
 
     setIsDirty(false);
     initDoneRef.current = true;
-  });
+  };
+
+  load();
 }, []);
 
 useEffect(() => {
   if (!initDoneRef.current) return;
   setIsDirty(buildSnapshot() !== snapshotRef.current);
-}, [team, editingPlayer]);
+}, [team, editingPlayer, teamListName]);
 
 useEffect(() => {
   const appBackBtn = document.getElementById(
@@ -315,22 +461,73 @@ const addOrUpdatePlayer = () => {
   };
 
 const saveTeam = async () => {
-  const updatedTeam = {
+  const trimmedListName = teamListName.trim();
+  const trimmedTeamName = (team.name ?? "").trim();
+
+  if (!trimmedListName) {
+    setFormError("一覧に表示する名前を入力してください");
+    setShowFormErrorModal(true);
+    return;
+  }
+
+  if (!trimmedTeamName) {
+    setFormError("チーム名を入力してください");
+    setShowFormErrorModal(true);
+    return;
+  }
+
+  const updatedTeam: Team = {
     ...team,
+    name: trimmedTeamName,
     furigana: (team.furigana ?? "").trim(),
     players: [...team.players].sort((a, b) => Number(a.number) - Number(b.number)),
   };
 
+  const now = Date.now();
+
+  let nextStore: TeamRegisterStore;
+
+  if (teamStore.selectedTeamId) {
+    nextStore = {
+      ...teamStore,
+      teams: teamStore.teams.map((folder) =>
+        folder.id === teamStore.selectedTeamId
+          ? {
+              ...folder,
+              listName: trimmedListName,
+              team: updatedTeam,
+              updatedAt: now,
+            }
+          : folder
+      ),
+    };
+  } else {
+    const newId = `team_${now}`;
+    const newFolder: TeamFolder = {
+      id: newId,
+      listName: trimmedListName,
+      team: updatedTeam,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    nextStore = {
+      selectedTeamId: newId,
+      teams: [...teamStore.teams, newFolder],
+    };
+  }
+
+  await localForage.setItem(TEAM_STORE_KEY, nextStore);
+
+  // 旧キーも残しておくと他画面との互換が安全
   await localForage.setItem("team", updatedTeam);
+
+  setTeamStore(nextStore);
   setTeam(updatedTeam);
 
-  snapshotRef.current = JSON.stringify({
-    team: updatedTeam,
-    editingPlayer: {},
-  });
+  snapshotRef.current = makeSnapshot(updatedTeam, {}, trimmedListName);
   setIsDirty(false);
   setAllowLeave(false);
-
   setShowSaveComplete(true);
 };
 
@@ -353,6 +550,15 @@ const saveTeam = async () => {
 
   <button
     type="button"
+    onClick={() => setShowTeamMenu((prev) => !prev)}
+    className="absolute left-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xl shadow active:scale-95"
+    aria-label="登録済みチーム一覧を開く"
+  >
+    ☰
+  </button>
+
+  <button
+    type="button"
     onClick={() => setShowHelpModal(true)}
     className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-lg shadow active:scale-95"
     aria-label="チーム／選手登録の使い方"
@@ -361,6 +567,41 @@ const saveTeam = async () => {
   </button>
 
   <div className="mx-auto mt-2 h-0.5 w-24 rounded-full bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
+
+  {showTeamMenu && (
+    <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-2xl border border-white/15 bg-slate-900/95 text-left shadow-2xl backdrop-blur">
+      <button
+        type="button"
+        onClick={createNewFolder}
+        className="block w-full border-b border-white/10 bg-blue-600 px-4 py-3 text-left text-sm font-bold text-white hover:bg-blue-700"
+      >
+        ＋ 新しい登録を作る
+      </button>
+
+      {teamStore.teams.length === 0 ? (
+        <div className="px-4 py-3 text-sm text-white/70">
+          登録済みチームはありません
+        </div>
+      ) : (
+        teamStore.teams.map((folder) => {
+          const active = folder.id === teamStore.selectedTeamId;
+          return (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => selectFolder(folder.id)}
+              className={`block w-full px-4 py-3 text-left text-sm ${
+                active ? "bg-white/20 text-white font-bold" : "text-white/90 hover:bg-white/10"
+              }`}
+            >
+              {folder.listName}
+            </button>
+          );
+        })
+      )}
+    </div>
+  )}
+
 </div>
 
     <div className="flex gap-3 justify-center mt-4 mb-2 w-full">
@@ -390,8 +631,26 @@ const saveTeam = async () => {
    </div>
  )}
 
+
+
       {/* チーム情報入力 */}
       <div className="w-full space-y-4 rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
+        <div>
+          <label
+            htmlFor="teamListName"
+            className="block text-center text-sm font-medium text-white mb-1"
+          >
+            登録名
+          </label>
+          <input
+            id="teamListName"
+            type="text"
+            value={teamListName}
+            onChange={(e) => setTeamListName(e.target.value)}
+            placeholder="例：東京サンプルズB"
+            className="mx-auto block w-full max-w-[260px] rounded-lg border border-white/20 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+          />
+        </div>
         <div>
           <label htmlFor="teamName" className="block text-sm font-semibold text-white/90 drop-shadow">
             チーム名
@@ -551,7 +810,7 @@ const saveTeam = async () => {
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
             <p className="text-[13px] font-semibold leading-5 text-slate-800">
-              この画面では、チーム名と選手を登録します。
+              この画面では、登録名ごとにチーム名と選手を登録できます。
             </p>
 
             <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center">
@@ -559,7 +818,7 @@ const saveTeam = async () => {
                 使い方はこの順番です
               </div>
               <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
-                ①チーム名を登録 → ②選手を追加 → ③必要に応じて編集・バックアップ
+                ①登録名・チーム名を入力 → ②選手を追加 → ③保存 → ④必要に応じて切り替え・編集・バックアップ
               </div>
             </div>
           </div>
@@ -572,10 +831,24 @@ const saveTeam = async () => {
               </div>
               <div className="min-w-0">
                 <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
-                  チーム名を登録
+                  登録名・チーム名を登録
                 </h3>
                 <p className="mt-1.5 text-[13px] font-normal leading-5 text-slate-700">
-                  チーム名を入力します。
+                  まず「登録名」を入力します。
+                </p>
+                <p className="mt-1 text-[13px] font-normal leading-5 text-slate-700">
+                  登録名は、左上のリストに表示される管理用の名前です。
+                  <br />
+                  例：
+                  <br />
+                  ・Aチーム
+                  <br />
+                  ・Bチーム
+                  <br />
+                  ・練習試合用
+                </p>
+                <p className="mt-2 text-[13px] font-normal leading-5 text-slate-700">
+                  その下の「チーム名」は実際に表示されるチーム名です。
                 </p>
                 <p className="mt-1 text-[13px] font-normal leading-5 text-slate-700">
                   ふりがなは、
@@ -601,14 +874,11 @@ const saveTeam = async () => {
                   選手を追加
                 </h3>
 
-                <div className="mt-2 space-y-1 text-[13px] leading-5 text-slate-700">
-                  <p>① 選手名・ふりがな・背番号を入力</p>
+                <div className="mt-2 text-[13px] leading-5 text-slate-700">
                   <p>
-                    ②{" "}
-                    <span className="font-bold text-emerald-700">
-                      【追加】
-                    </span>
-                    ボタンを押す
+                    背番号・選手名・ふりがなを入力して
+                    <span className="font-bold text-sky-700">【追加】</span>
+                    を押します。
                   </p>
                   <p className="font-bold text-rose-500">
                     → 選手が登録されます
@@ -639,69 +909,67 @@ const saveTeam = async () => {
 
                 <div className="mt-2 space-y-3 text-[13px] leading-5 text-slate-700">
                   <div>
+                    <div className="font-bold text-slate-900">【左上リストで切り替え】</div>
+                    <p className="mt-1">
+                      左上のボタンを押すと、登録済みチームの一覧を開けます。
+                      <br />
+                      リストの名前を押すと、その登録内容に切り替わります。
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-slate-900">【新しい登録を作る】</div>
+                    <p className="mt-1">
+                      左上のリストから
+                      <span className="font-bold text-sky-700">【新しい登録を作る】</span>
+                      を押すと、新しいチーム登録を追加できます。
+                    </p>
+                  </div>
+
+                  <div>
                     <div className="font-bold text-slate-900">【編集】</div>
                     <p className="mt-1">
-                      ①{" "}
-                      <span className="font-bold text-sky-700">【編集】</span>
-                      ボタンを押す
+                      ① <span className="font-bold text-sky-700">【編集】</span> ボタンを押す
                       <br />
                       ② 内容を変更する
                       <br />
-                      ③{" "}
-                      <span className="font-bold text-sky-700">【更新】</span>
-                      ボタンを押す
-                      <br />
-                      <span className="font-bold text-rose-500">
-                        → 情報が更新されます
-                      </span>
+                      ③ <span className="font-bold text-sky-700">【更新】</span> を押す
                     </p>
                   </div>
 
                   <div>
                     <div className="font-bold text-slate-900">【削除】</div>
                     <p className="mt-1">
-                      ①{" "}
-                      <span className="font-bold text-red-600">【削除】</span>
-                      ボタンを押す
-                      <br />
-                      ② 確認メッセージで【OK】を押す
-                      <br />
-                      <span className="font-bold text-rose-500">
-                        → 選手が削除されます
-                      </span>
+                      不要な選手は削除できます。
                     </p>
                   </div>
 
                   <div>
                     <div className="font-bold text-slate-900">【バックアップ】</div>
                     <p className="mt-1">
-                      ① バックアップを実行する
-                      <br />
-                      <span className="font-bold text-rose-500">
-                        → 登録データが保存されます
-                      </span>
-                      <br />
-                      ファイル名：日付・時間.json
+                      登録内容はバックアップして保存できます。
                     </p>
                   </div>
 
                   <div>
                     <div className="font-bold text-slate-900">【復元】</div>
                     <p className="mt-1">
-                      ① 復元したいファイルを選ぶ
-                      <br />
-                      <span className="font-bold text-rose-500">
-                        → バックアップ内容が復元されます
-                      </span>
+                      保存しておいたバックアップを読み込んで復元できます。
                     </p>
                   </div>
                 </div>
-
-                <p className="mt-3 text-[12px] font-semibold leading-5 text-emerald-700">
-                  ※ 一度登録すれば、毎回入力する必要はありません。
-                </p>
               </div>
             </div>
+          </div>
+
+          {/* 補足 */}
+          <div className="rounded-[16px] border border-rose-200 bg-rose-50 px-3 py-3">
+            <p className="text-[13px] font-bold leading-5 text-rose-700">
+              ※ 登録名は管理用の名前です
+            </p>
+            <p className="mt-1 text-[13px] leading-5 text-slate-700">
+              実際の表示やアナウンスには「チーム名」と「ふりがな」が使われます。
+            </p>
           </div>
         </div>
       </div>
