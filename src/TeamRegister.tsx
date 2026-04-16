@@ -112,25 +112,30 @@ const TeamRegister = () => {
         teamListName: nextTeamListName,
       });
 
-      const clearContinuationGameCache = async () => {
-    const keys = [
-      "lastGameScreen",
-      "startingBattingOrder",
-      "battingOrder",
-      "startingLineup",
-      "lineupAssignments",
-      "matchInfo",
-      "lastBatterIndex",
-      "scores",
-      "usedPlayerInfo",
-      "tempRunnerByOrder",
-      "pitchCounts",
-      "pitcherTotals",
-      "pitcherOrder",
-    ];
+const clearContinuationGameCache = async () => {
+  const keys = [
+    "lastGameScreen",
+    "startingBattingOrder",
+    "battingOrder",
+    "startingLineup",
+    "lineupAssignments",
+    "matchInfo",
+    "lastBatterIndex",
+    "scores",
+    "usedPlayerInfo",
+    "tempRunnerByOrder",
+    "pitchCounts",
+    "pitcherTotals",
+    "pitcherOrder",
 
-    await Promise.all(keys.map((key) => localForage.removeItem(key)));
-  };
+    // ▼ スタメン設定画面の復元元も空にする
+    "startingassignments",
+    "startingInitialSnapshot",
+    "startingBenchOutIds",
+  ];
+
+  await Promise.all(keys.map((key) => localForage.removeItem(key)));
+};
 
   const createNewFolder = async () => {
     await clearContinuationGameCache();
@@ -281,6 +286,8 @@ const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const data = JSON.parse(text);
     const now = Date.now();
 
+    await clearContinuationGameCache();
+    
     const buildUniqueListName = (base: string, existingNames: string[]) => {
       const trimmedBase = (base || "復元データ").trim() || "復元データ";
       let nextName = trimmedBase;
