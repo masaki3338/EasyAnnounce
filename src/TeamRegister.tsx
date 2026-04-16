@@ -891,7 +891,7 @@ const saveTeam = async () => {
                 使い方はこの順番です
               </div>
               <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
-                ①登録名・チーム名を入力 → ②選手を追加 → ③保存 → ④必要に応じて切り替え・編集・バックアップ
+                ①登録名・チーム名を入力 → ②選手を追加 → ③保存 → ④必要に応じて切り替え・編集・削除・バックアップ
               </div>
             </div>
           </div>
@@ -953,17 +953,14 @@ const saveTeam = async () => {
                     <span className="font-bold text-sky-700">【追加】</span>
                     を押します。
                   </p>
-                  <p className="font-bold text-rose-500">
-                    → 選手が登録されます
-                  </p>
+                  <p className="font-bold text-rose-500">→ 選手が登録されます</p>
                 </div>
 
                 <p className="mt-2 text-[12.5px] leading-5 text-slate-600">
                   ※ ふりがなはルビ表示と読み上げに使用されます。
                 </p>
                 <p className="mt-1 text-[12.5px] leading-5 text-slate-600">
-                  ※ 女子選手にチェックを入れると、呼び方が
-                  「くん」→「さん」になります。
+                  ※ 女子選手にチェックを入れると、呼び方が「くん」→「さん」になります。
                 </p>
               </div>
             </div>
@@ -977,6 +974,44 @@ const saveTeam = async () => {
               </div>
               <div className="min-w-0">
                 <h3 className="text-[15px] font-extrabold leading-tight text-violet-700">
+                  保存のしかた
+                </h3>
+
+                <div className="mt-2 space-y-2 text-[13px] leading-5 text-slate-700">
+                  <p>
+                    入力が終わったら
+                    <span className="font-bold text-sky-700">【保存する】</span>
+                    を押します。
+                  </p>
+                  <p>
+                    <span className="font-bold text-slate-900">同じ登録名のまま保存</span>
+                    すると、今開いている登録に
+                    <span className="font-bold text-rose-500">上書き保存</span>
+                    されます。
+                  </p>
+                  <p>
+                    <span className="font-bold text-slate-900">登録名を変更して保存</span>
+                    すると、
+                    <span className="font-bold text-rose-500">新しい登録として追加</span>
+                    されます。
+                  </p>
+                  <p>
+                    <span className="font-bold text-slate-900">同じ登録名がすでにある場合</span>
+                    は、その名前では保存できません。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 */}
+          <div className="rounded-[16px] border border-amber-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white shadow-sm">
+                4
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-amber-700">
                   登録後にできること
                 </h3>
 
@@ -995,23 +1030,34 @@ const saveTeam = async () => {
                     <p className="mt-1">
                       左上のリストから
                       <span className="font-bold text-sky-700">【新しい登録を作る】</span>
-                      を押すと、新しいチーム登録を追加できます。
+                      を押すと、新しい登録を追加できます。
                     </p>
                   </div>
 
                   <div>
-                    <div className="font-bold text-slate-900">【編集】</div>
+                    <div className="font-bold text-slate-900">【登録を削除】</div>
+                    <p className="mt-1">
+                      登録名入力欄の右側の
+                      <span className="font-bold text-red-600">【削除】</span>
+                      を押すと、今開いている登録を削除できます。
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-slate-900">【選手の編集】</div>
                     <p className="mt-1">
                       ① <span className="font-bold text-sky-700">【編集】</span> ボタンを押す
                       <br />
                       ② 内容を変更する
                       <br />
                       ③ <span className="font-bold text-sky-700">【更新】</span> を押す
+                      <br />
+                      <span className="font-bold text-rose-500">→ 情報が更新されます</span>
                     </p>
                   </div>
 
                   <div>
-                    <div className="font-bold text-slate-900">【削除】</div>
+                    <div className="font-bold text-slate-900">【選手の削除】</div>
                     <p className="mt-1">
                       不要な選手は削除できます。
                     </p>
