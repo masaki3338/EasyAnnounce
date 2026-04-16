@@ -79,7 +79,7 @@ const historyData: HistoryItem[] = [
   {
     date: "2026.04.16",
     version: "Vesion 2.07 β",
-    details: ["複数チーム対応"],
+    details: ["複数チーム対応,守備番号で交代に「と」(守備位置交換)を追加"],
   },
 ];
 
