@@ -1,0 +1,91 @@
+export default function InstaPage() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #d32f2f, #f44336)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+        color: "#fff",
+        textAlign: "center",
+      }}
+    >
+      {/* アプリ名 */}
+      <h1 style={{ fontSize: "28px", marginBottom: "10px" }}>
+        Easyアナウンス
+      </h1>
+
+      {/* サブ */}
+      <p style={{ fontSize: "16px", opacity: 0.9 }}>
+        野球アナウンス、もう迷わない！⚾️
+      </p>
+
+      {/* カード */}
+      <div
+        style={{
+          marginTop: "30px",
+          background: "#fff",
+          borderRadius: "20px",
+          padding: "25px 20px",
+          width: "100%",
+          maxWidth: "320px",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+        }}
+      >
+        <p style={{ marginBottom: "20px", fontWeight: "bold", color: "#333" }}>
+          ダウンロードはこちら
+        </p>
+
+        {/* Android */}
+        <a
+          href="https://play.google.com/store/apps/details?id=com.easyannounce.pony"
+          style={{ textDecoration: "none" }}
+        >
+          <button
+            style={{
+              width: "100%",
+              fontSize: "16px",
+              padding: "15px",
+              marginBottom: "15px",
+              borderRadius: "12px",
+              border: "none",
+              background: "#4CAF50",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            📱 Androidでダウンロード
+          </button>
+        </a>
+
+        {/* iPhone */}
+        <a href="/" style={{ textDecoration: "none" }}>
+          <button
+            style={{
+              width: "100%",
+              fontSize: "16px",
+              padding: "15px",
+              borderRadius: "12px",
+              border: "none",
+              background: "#2196F3",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            🍎 iPhoneで使う
+          </button>
+        </a>
+      </div>
+
+      {/* フッター */}
+      <p style={{ marginTop: "20px", fontSize: "12px", opacity: 0.8 }}>
+        無料で今すぐ使えます
+      </p>
+    </div>
+  );
+}
