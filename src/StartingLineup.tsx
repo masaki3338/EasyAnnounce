@@ -1756,6 +1756,55 @@ const buildBenchRects = (rowIndex: number) => {
   };
 };
 
+const drawOCRDebug = (imageSrc: string, starterArea: OCRRect, benchArea: OCRRect) => {
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+    ctx.drawImage(img, 0, 0);
+
+    // スタメン枠（赤）
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(
+      img.width * starterArea.x,
+      img.height * starterArea.y,
+      img.width * starterArea.w,
+      img.height * starterArea.h
+    );
+
+    // 控え枠（青）
+    ctx.strokeStyle = "blue";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(
+      img.width * benchArea.x,
+      img.height * benchArea.y,
+      img.width * benchArea.w,
+      img.height * benchArea.h
+    );
+
+    const debugUrl = canvas.toDataURL("image/png");
+
+    console.log("[OCR DEBUG IMAGE]");
+    console.log(debugUrl);
+
+    // 画面にも出す（おすすめ）
+    const imgEl = document.createElement("img");
+    imgEl.src = debugUrl;
+    imgEl.style.position = "fixed";
+    imgEl.style.bottom = "10px";
+    imgEl.style.right = "10px";
+    imgEl.style.width = "200px";
+    imgEl.style.border = "2px solid red";
+    imgEl.style.zIndex = "9999";
+    document.body.appendChild(imgEl);
+  };
+  img.src = imageSrc;
+};
+
 const runOrderSheetOCR = async (imageSrc: string) => {
   try {
     setOcrBusy(true);
@@ -1778,6 +1827,8 @@ const runOrderSheetOCR = async (imageSrc: string) => {
       h: 0.20,
     };
 
+    drawOCRDebug(imageSrc, starterArea, benchArea);
+
     const starterCanvas = await cropImageByRatio(imageSrc, starterArea);
     const benchCanvas = await cropImageByRatio(imageSrc, benchArea);
 
@@ -1793,29 +1844,49 @@ const runOrderSheetOCR = async (imageSrc: string) => {
 
     const starters: OCRStarterRow[] = [];
     for (let i = 0; i < 9; i++) {
-      const rects = buildStarterRects(i);
+      const rowHeight = starterCanvas.height / 9;
 
-      const posImg = cropCell(starterCanvas, rects.pos);
-      const nameImg = cropCell(starterCanvas, rects.name);
-      const numImg = cropCell(starterCanvas, rects.num);
+      const rowCanvas = document.createElement("canvas");
+      rowCanvas.width = starterCanvas.width;
+      rowCanvas.height = rowHeight;
 
-      const rawPos = await recognizeCell(Tesseract, posImg, "eng", "digit");
-      const rawName = await recognizeCell(Tesseract, nameImg, "jpn", "name");
-      const rawNum = await recognizeCell(Tesseract, numImg, "eng", "digit");
+      const ctx = rowCanvas.getContext("2d")!;
+      ctx.drawImage(
+        starterCanvas,
+        0,
+        i * rowHeight,
+        starterCanvas.width,
+        rowHeight,
+        0,
+        0,
+        starterCanvas.width,
+        rowHeight
+      );
 
-      const position = normalizePositionOCR(rawPos);
-      const number = normalizeDigitOCR(rawNum);
-      const name = splitJapaneseName(rawName);
+      const text = await recognizeCell(Tesseract, rowCanvas, "jpn+eng", "line");
+
+      console.log("[OCR ROW RAW]", i + 1, text);
+
+      // 例: "8 田中 太郎 12"
+      const parts = text.split(/\s+/).filter(Boolean);
+
+      const position = parts[0] || "";
+      const number = parts[parts.length - 1] || "";
+      const nameParts = parts.slice(1, -1);
+
+      const lastName = nameParts[0] || "";
+      const firstName = nameParts[1] || "";
 
       const row = {
         order: i + 1,
         position,
-        lastName: name.lastName,
-        firstName: name.firstName,
+        lastName,
+        firstName,
         number,
       };
 
-      console.log("[OCR STARTER ROW]", row);
+      console.log("[OCR ROW PARSED]", row);
+
       starters.push(row);
     }
 
@@ -3089,14 +3160,13 @@ const selectablePositionKeys = [...positions, DH];
                 ref={fileInputRef}
                 type="file"
                 accept="image/*,.jpg,.jpeg,.png"
-                capture="environment"
                 className="hidden"
                 onChange={handlePhotoFileChange}
               />
 
               {cameraOpen && (
                 <div className="space-y-3">
-                  <div className="relative w-full rounded-xl overflow-hidden bg-black">
+                  <div className="relative w-full rounded-xl overflow-hidden bg-black pb-24">
                     <video
                       ref={videoRef}
                       autoPlay
@@ -3141,27 +3211,32 @@ const selectablePositionKeys = [...positions, DH];
                         下の枠に控え欄を合わせてください
                       </div>
                     </div>
+
+                    {/* 下固定ボタン */}
+                    <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/55 to-transparent px-3 pt-8 pb-3">
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          className="flex-1 rounded-xl bg-white/20 text-white py-3 font-semibold border border-white/30"
+                          onClick={resetOrderImportState}
+                          disabled={ocrBusy}
+                        >
+                          閉じる
+                        </button>
+                        <button
+                          type="button"
+                          className="flex-[1.4] rounded-xl bg-emerald-500 text-white py-3 font-bold text-lg shadow-lg disabled:opacity-50"
+                          onClick={captureFromCamera}
+                          disabled={ocrBusy}
+                        >
+                          撮影
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800 text-xs leading-5">
                     真上から撮影し、赤枠にできるだけぴったり合わせてください
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      className="flex-1 bg-emerald-600 text-white py-3 rounded font-semibold disabled:opacity-50"
-                      onClick={captureFromCamera}
-                      disabled={ocrBusy}
-                    >
-                      撮影する
-                    </button>
-                    <button
-                      className="flex-1 bg-gray-500 text-white py-3 rounded font-semibold disabled:opacity-50"
-                      onClick={stopCameraStream}
-                      disabled={ocrBusy}
-                    >
-                      閉じる
-                    </button>
                   </div>
                 </div>
               )}
