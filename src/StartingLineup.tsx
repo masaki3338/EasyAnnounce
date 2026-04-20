@@ -4,6 +4,7 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { useNavigate } from "react-router-dom";
+import Tesseract from "tesseract.js";
 
 /* =========================================================
  *  見た目だけのミニSVG（UIは変えない）
