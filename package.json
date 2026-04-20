@@ -7,10 +7,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
     "@dnd-kit/core": "^6.3.1",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/default-layout": "^3.12.0",
     "localforage": "^1.10.0",
+    "lucide-react": "^0.542.0",
+    "nodemailer": "^7.0.5",
+    "nosleep.js": "^0.12.0",
+    "pdfjs-dist": "3.11.174",
     "react": "^18.2.0",
     "react-device-detect": "^2.2.3",
     "react-dnd": "^16.0.1",
@@ -19,6 +26,7 @@
     "react-dnd-touch-backend": "^16.0.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.6.2",
+    "tesseract.js": "^7.0.0",
     "wanakana": "^5.3.1"
   },
   "devDependencies": {
