@@ -1164,11 +1164,20 @@ const handleDropToBattingOrder = (
     setExtraBattingSlots((prev) => Math.min(prev + 1, MAX_BATTING_ORDER - MIN_STARTERS));
   };
 
-  const requestDeleteBattingSlot = (targetIndex: number) => {
-    if (totalBattingSlots <= MIN_STARTERS) return;
-    if (targetIndex < MIN_STARTERS) return;
-    setDeleteTargetIndex(targetIndex);
-  };
+const requestDeleteBattingSlot = (targetIndex: number) => {
+  if (totalBattingSlots <= MIN_STARTERS) return;
+  if (targetIndex < MIN_STARTERS) return;
+
+  // 未配置の10番以降は確認なしで即削除
+  if (!battingOrder[targetIndex]) {
+    setExtraBattingSlots((prev) => Math.max(0, prev - 1));
+    setOpenPosMenuIndex((prev) => (prev === targetIndex ? null : prev));
+    return;
+  }
+
+  // 配置済みだけ確認モーダル
+  setDeleteTargetIndex(targetIndex);
+};
 
   const confirmDeleteBattingSlot = () => {
     if (deleteTargetIndex == null) return;
