@@ -2098,7 +2098,7 @@ useEffect(() => {
                     setTouchDrag(null);
                   }}
                 >
-                  {entry && i >= MIN_STARTERS && totalBattingSlots > MIN_STARTERS && (
+                  {i >= MIN_STARTERS && totalBattingSlots > MIN_STARTERS && (
                     <button
                       type="button"
                       className="absolute right-2 top-2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-300/40 bg-red-500/85 text-white text-sm font-bold shadow hover:bg-red-600 active:bg-red-700"
@@ -2343,7 +2343,7 @@ useEffect(() => {
                 } を削除しますか？`}
               </p>
               <p className="mt-3 text-sm text-gray-600">
-                この選手は打順と守備/DH設定から外れ、出場しない選手へ戻ります。
+                この選手は打順から外れ、出場しない選手へ戻ります。
               </p>
             </div>
             <div className="px-5 pb-5">
@@ -2524,7 +2524,7 @@ useEffect(() => {
                             「打順追加」ボタンで、10人目以降の打者を追加できます。
                           </p>
                           <p className="mt-1 text-[12.5px] leading-5 text-slate-700">
-                            10番打者以降は、左スワイプもしくは右上の×印で削除できます。
+                            10番打者以降は、右上の×印で削除できます。
                           </p>
                         </div>
                       </div>
