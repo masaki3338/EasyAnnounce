@@ -39,6 +39,8 @@ const positions = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"
 // DH（守備位置としてはフィールドに描かないが割当Mapには入れる）
 const DH = "指"; // 守備位置キー
 const allSlots = [...positions, DH] as const;
+const MIN_STARTERS = 9;
+const MAX_BATTING_ORDER = 15;
 
 // 表示用の守備名称
 const positionNames: { [key: string]: string } = {
@@ -78,6 +80,7 @@ type Player = {
 
 // 打順要素（理由は現状「スタメン」固定で使用）
 type BattingEntry = { id: number; reason: "スタメン" };
+type ExtraPositionMap = Record<number, string | null>;
 
 // assignmentsの型（守備位置→選手ID or null）
 type Assignments = { [pos: string]: number | null };
@@ -134,6 +137,8 @@ const StartingLineup = () => {
       battingOrder,
       benchOutIds,
       ohtaniRule,
+      extraBattingSlots,
+      extraPositionMap,
     });
 
   /* -----------------------------
@@ -170,8 +175,10 @@ const StartingLineup = () => {
   // 守備割当（DH含む）
   const [assignments, setAssignments] = useState<Assignments>(createEmptyAssignments());
 
-  // 打順（1～9）
+  // 打順（1～15）
   const [battingOrder, setBattingOrder] = useState<BattingEntry[]>([]);
+  const [extraBattingSlots, setExtraBattingSlots] = useState(0);
+  const [extraPositionMap, setExtraPositionMap] = useState<ExtraPositionMap>({});
 
   // 出場しない選手（ベンチ外）
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
@@ -225,6 +232,7 @@ const StartingLineup = () => {
   const [showSaveComplete, setShowSaveComplete] = useState(false);
   const [showClearComplete, setShowClearComplete] = useState(false);
   const [showLineupError, setShowLineupError] = useState(false);
+  const [deleteTargetIndex, setDeleteTargetIndex] = useState<number | null>(null);
 
   /* =========================================================
    *  共通：DnDのdrop許可
@@ -249,8 +257,8 @@ const StartingLineup = () => {
   const saveAssignments = async () => {
     // ✅ 先頭に “打順が9人いるか” をチェック
     const uniqueIds = Array.from(new Set(battingOrder.map((e) => e?.id).filter(Boolean)));
-    if (uniqueIds.length < 9) {
-      //alert("スタメン9人を設定して下さい");
+    if (uniqueIds.length < MIN_STARTERS) {
+      //alert("スタメンを9人以上設定して下さい");
       setShowLineupError(true);
       return;
     }
@@ -258,11 +266,12 @@ const StartingLineup = () => {
     await localForage.setItem("startingBenchOutIds", benchOutIds);
     await localForage.setItem("startingassignments", assignments);
     await localForage.setItem("startingBattingOrder", battingOrder);
+    await localForage.setItem("startingExtraBattingSlots", extraBattingSlots);
+    await localForage.setItem("startingExtraPositionMap", extraPositionMap);
 
     // ✅ 初期記録（参照用）
     const initialOrder = battingOrder.map((entry, index) => {
-      const position =
-        Object.entries(assignments).find(([_, id]) => id === entry.id)?.[0] ?? "－";
+      const position = getPositionOfPlayer(entry.id) ?? "－";
       return { id: entry.id, order: index + 1, position };
     });
     await localForage.setItem("startingInitialSnapshot", initialOrder);
@@ -289,6 +298,8 @@ const StartingLineup = () => {
     const emptyAssignments = createEmptyAssignments();
     setAssignments(emptyAssignments);
     setBattingOrder([]);
+    setExtraBattingSlots(0);
+    setExtraPositionMap({});
 
     // ★ チーム全員をベンチ外へ
     const team = await localForage.getItem<{ players: Player[] }>("team");
@@ -299,6 +310,8 @@ const StartingLineup = () => {
     await localForage.setItem("startingassignments", emptyAssignments);
     await localForage.setItem("startingBattingOrder", []);
     await localForage.setItem("startingBenchOutIds", allIds);
+    await localForage.setItem("startingExtraBattingSlots", 0);
+    await localForage.setItem("startingExtraPositionMap", {});
 
     // 参照用・ミラーも空に
     await localForage.setItem("startingInitialSnapshot", []);
@@ -311,6 +324,8 @@ const StartingLineup = () => {
       battingOrder: [],
       benchOutIds: allIds,
       ohtaniRule,
+      extraBattingSlots: 0,
+      extraPositionMap: {},
     });
     setIsDirty(false);
 
@@ -523,7 +538,7 @@ setAssignments(next);
 
         for (const id of fieldIds) {
           if (id === pitcherId) continue;
-          if (updated.length >= 9) break;
+          if (updated.length >= MIN_STARTERS) break;
           if (!updated.some((e) => e.id === id)) {
             updated.push({ id, reason: "スタメン" });
           }
@@ -531,7 +546,7 @@ setAssignments(next);
 
         // DHを必ず打順に入れる（元仕様）
         if (!updated.some((e) => e.id === dhId)) {
-          if (updated.length < 9) {
+          if (updated.length < MIN_STARTERS) {
             updated.push({ id: dhId, reason: "スタメン" });
           } else {
             updated[updated.length - 1] = { id: dhId, reason: "スタメン" };
@@ -547,7 +562,7 @@ setAssignments(next);
           seen.add(e.id);
           return true;
         })
-        .slice(0, 9);
+        .slice(0, MAX_BATTING_ORDER);
 
       return updated;
     });
@@ -638,7 +653,7 @@ setAssignments(next);
           seen.add(e.id);
           return true;
         })
-        .slice(0, 9);
+        .slice(0, MAX_BATTING_ORDER);
 
       return updated;
     });
@@ -710,7 +725,7 @@ const fromPos = fromPosRaw
           seen.add(e.id);
           return true;
         })
-        .slice(0, 9);
+        .slice(0, MAX_BATTING_ORDER);
 
       return updated;
     });
@@ -752,44 +767,69 @@ const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
   if (!entry) return;
 
   const playerId = entry.id;
-  const currentPos =
-    Object.entries(assignments).find(([, id]) => id === playerId)?.[0] ?? null;
+  const currentPos = getPositionOfPlayer(playerId) ?? null;
 
-  if (!currentPos || currentPos === nextPos) {
+  if (currentPos === nextPos) {
+    setOpenPosMenuIndex(null);
+    return;
+  }
+
+  const isFieldAssigned = Object.entries(assignments).some(([, id]) => id === playerId);
+  const isExtraSlot = targetIndex >= MIN_STARTERS || !isFieldAssigned;
+
+  if (isExtraSlot) {
+    setAssignments((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key] === playerId) next[key] = null;
+      }
+      if (nextPos !== DH) {
+        const prevOccupant = next[nextPos] ?? null;
+        if (prevOccupant && prevOccupant !== playerId) {
+          setExtraPositionForPlayer(prevOccupant, DH);
+        }
+        next[nextPos] = playerId;
+      }
+      return next;
+    });
+
+    setExtraPositionMap((prev) => {
+      const next = { ...prev };
+      Object.entries(next).forEach(([idStr, pos]) => {
+        if (Number(idStr) !== playerId && pos === nextPos && nextPos !== DH) {
+          next[Number(idStr)] = DH;
+        }
+      });
+      next[playerId] = nextPos;
+      return next;
+    });
+
     setOpenPosMenuIndex(null);
     return;
   }
 
   const prevAssignments = assignments;
   const next: Assignments = { ...prevAssignments };
-
-  const currentOccupant = prevAssignments[currentPos] ?? null;
+  const currentOccupant = prevAssignments[currentPos as string] ?? null;
   const nextOccupant = prevAssignments[nextPos] ?? null;
 
-  // 元の位置を空に
-  next[currentPos] = null;
-
-  // 選択先へ移動
+  next[currentPos as string] = null;
   next[nextPos] = currentOccupant;
 
-  // 選択先にいた選手は元の位置へ戻す（交換）
   if (nextOccupant && nextOccupant !== playerId) {
-    next[currentPos] = nextOccupant;
+    next[currentPos as string] = nextOccupant;
   }
 
-  // DH重複禁止
   if (nextPos === DH) {
     for (const p of positions) {
       if (p !== currentPos && next[p] === playerId) next[p] = null;
     }
   }
 
-  // 通常守備へ移したらDHから外す
   if (nextPos !== DH && next[DH] === playerId) {
     next[DH] = null;
   }
 
-  // ✅ DHに入れた選手が投手と別人なら大谷ルール解除
   if (nextPos === DH) {
     const pitcherId = next["投"] ?? null;
     const dhId = next[DH] ?? null;
@@ -802,68 +842,17 @@ const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
   }
 
   setAssignments(next);
+  removeExtraPositionByPlayer(playerId);
 
-  // ✅ 打順更新：DHあり/なしの整合を取る
   setBattingOrder((prev) => {
-    let updated = [...prev];
-
-    const dhId = next[DH] ?? null;
-    const pitcherId = next["投"] ?? null;
-
-    // フィールドのID一覧（投手含む9）
-    const fieldIds = positions
-      .map((pos) => next[pos])
-      .filter((id): id is number => typeof id === "number");
-
-    const fieldSet = new Set(fieldIds);
-
-    if (!dhId) {
-      // DHなし：打順＝フィールド9人（投手含む）
-      updated = updated.filter((e) => fieldSet.has(e.id));
-
-      for (const id of fieldIds) {
-        if (!updated.some((e) => e.id === id)) {
-          updated.push({ id, reason: "スタメン" });
-        }
-      }
-    } else {
-      // DHあり：打順＝（投手を除くフィールド8人）＋DH
-      if (pitcherId) {
-        updated = updated.filter((e) => e.id !== pitcherId);
-      }
-
-      const fieldNoPitcherSet = new Set(fieldIds.filter((id) => id !== pitcherId));
-      updated = updated.filter((e) => fieldNoPitcherSet.has(e.id) || e.id === dhId);
-
-      for (const id of fieldIds) {
-        if (id === pitcherId) continue;
-        if (updated.length >= 9) break;
-        if (!updated.some((e) => e.id === id)) {
-          updated.push({ id, reason: "スタメン" });
-        }
-      }
-
-      // DHを必ず打順に入れる
-      if (!updated.some((e) => e.id === dhId)) {
-        if (updated.length < 9) {
-          updated.push({ id: dhId, reason: "スタメン" });
-        } else {
-          updated[updated.length - 1] = { id: dhId, reason: "スタメン" };
-        }
-      }
-    }
-
-    // 重複除去 & 9人制限
     const seen = new Set<number>();
-    updated = updated
+    return prev
       .filter((e) => {
         if (seen.has(e.id)) return false;
         seen.add(e.id);
         return true;
       })
-      .slice(0, 9);
-
-    return updated;
+      .slice(0, MAX_BATTING_ORDER);
   });
 
   setOpenPosMenuIndex(null);
@@ -977,11 +966,11 @@ const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
  * ======================================================= */
 
 /**
- * 打順スロット（1～9番）を固定長で作る
+ * 打順スロット（1～15番）を固定長で作る
  * 空きは undefined のまま保持
  */
-const buildBattingSlots = (src: BattingEntry[]) =>
-  Array.from({ length: 9 }, (_, i) => src[i]);
+const buildBattingSlots = (src: BattingEntry[], totalSlots: number) =>
+  Array.from({ length: totalSlots }, (_, i) => src[i]);
 
 /**
  * 打順スロットを正規化
@@ -1003,7 +992,25 @@ const sanitizeBattingSlots = (src: Array<BattingEntry | undefined>): BattingEntr
       id: entry.id,
       reason: "スタメン" as const,
     }))
-    .slice(0, 9);
+    .slice(0, MAX_BATTING_ORDER);
+};
+
+const removeExtraPositionByPlayer = (playerId: number) => {
+  setExtraPositionMap((prev) => {
+    if (!(playerId in prev)) return prev;
+    const next = { ...prev };
+    delete next[playerId];
+    return next;
+  });
+};
+
+const setExtraPositionForPlayer = (playerId: number, pos: string | null) => {
+  setExtraPositionMap((prev) => {
+    const next = { ...prev };
+    if (!pos) delete next[playerId];
+    else next[playerId] = pos;
+    return next;
+  });
 };
 
 /**
@@ -1013,47 +1020,47 @@ const sanitizeBattingSlots = (src: Array<BattingEntry | undefined>): BattingEntr
  * - 出場しない選手から来た場合は自動で benchOut から外す
  */
 const placePlayerAtBattingIndex = (playerId: number, targetIndex: number) => {
-  const slots = buildBattingSlots(battingOrder);
+  const slots = buildBattingSlots(battingOrder, totalBattingSlots);
   const targetEntry = slots[targetIndex];
   const targetPlayerId = targetEntry?.id ?? null;
   const draggedAlreadyInOrder = slots.some((entry) => entry?.id === playerId);
   const targetPos = targetPlayerId ? getPositionOfPlayer(targetPlayerId) : undefined;
+  const isExtraSlot = targetIndex >= MIN_STARTERS;
 
-  // ベンチ入り / 出場しない選手 → 打順 に入れたときの守備処理
   if (!draggedAlreadyInOrder) {
-    setAssignments((prev) => {
-      const next = { ...prev };
-
-      // 置く選手がすでにどこかの守備についていたら一旦外す
-      for (const key of Object.keys(next)) {
-        if (next[key] === playerId) next[key] = null;
+    if (targetPlayerId && targetPos) {
+      if (positions.includes(targetPos as any) || targetPos === DH) {
+        setAssignments((prev) => {
+          const next = { ...prev };
+          for (const key of Object.keys(next)) {
+            if (next[key] === playerId) next[key] = null;
+          }
+          next[targetPos] = playerId;
+          return next;
+        });
+        removeExtraPositionByPlayer(playerId);
+        removeExtraPositionByPlayer(targetPlayerId);
+      } else if (isExtraSlot) {
+        setExtraPositionForPlayer(playerId, targetPos);
       }
-
-      if (targetPlayerId && targetPos) {
-        // ① 置き換え先の打順行に元の守備がある場合
-        //    → その守備を引き継ぐ
-        next[targetPos] = playerId;
-
-        // 押し出された元の選手は守備から外す
+    } else if (isExtraSlot) {
+      setExtraPositionForPlayer(playerId, DH);
+    } else {
+      setAssignments((prev) => {
+        const next = { ...prev };
         for (const key of Object.keys(next)) {
-          if (next[key] === targetPlayerId) next[key] = null;
+          if (next[key] === playerId) next[key] = null;
         }
-      } else {
-        // ② 置き換え先の打順行が「未設定」だった場合
-        //    → 守備番号の若い順（投→捕→一→二→三→遊→左→中→右）の空きへ自動配置
-        const firstEmptyPos = positions.find((pos) => next[pos] == null);
-
-        if (firstEmptyPos) {
-          next[firstEmptyPos] = playerId;
-        }
-      }
-
-      return next;
-    });
+        const firstEmptyPos = positions.find((pos) => next[pos] == null) ?? DH;
+        next[firstEmptyPos] = playerId;
+        return next;
+      });
+      removeExtraPositionByPlayer(playerId);
+    }
   }
 
   setBattingOrder((prev) => {
-    const nextSlots = buildBattingSlots(prev);
+    const nextSlots = buildBattingSlots(prev, totalBattingSlots);
     const fromIndex = nextSlots.findIndex((entry) => entry?.id === playerId);
 
     if (fromIndex !== -1) {
@@ -1067,7 +1074,6 @@ const placePlayerAtBattingIndex = (playerId: number, targetIndex: number) => {
     return sanitizeBattingSlots(nextSlots);
   });
 
-  // 出場しない選手から来た場合は外す
   setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
 };
 
@@ -1149,7 +1155,111 @@ const handleDropToBattingOrder = (
    *  参照系：選手の現在守備位置を逆引き
    * ======================================================= */
   const getPositionOfPlayer = (playerId: number) => {
-    return Object.entries(assignments).find(([_, id]) => id === playerId)?.[0];
+    const assignedPos = Object.entries(assignments).find(([_, id]) => id === playerId)?.[0];
+    if (assignedPos) return assignedPos;
+    return extraPositionMap[playerId] ?? undefined;
+  };
+
+  const addBattingSlot = () => {
+    setExtraBattingSlots((prev) => Math.min(prev + 1, MAX_BATTING_ORDER - MIN_STARTERS));
+  };
+
+  const requestDeleteBattingSlot = (targetIndex: number) => {
+    if (totalBattingSlots <= MIN_STARTERS) return;
+    if (targetIndex < MIN_STARTERS) return;
+    setDeleteTargetIndex(targetIndex);
+  };
+
+  const confirmDeleteBattingSlot = () => {
+    if (deleteTargetIndex == null) return;
+
+    const entry = battingOrder[deleteTargetIndex];
+
+    if (!entry) {
+      setExtraBattingSlots((prev) => Math.max(0, prev - 1));
+      setOpenPosMenuIndex((prev) => (prev === deleteTargetIndex ? null : prev));
+      setDeleteTargetIndex(null);
+      return;
+    }
+
+    const playerId = entry.id;
+    const pitcherId = assignments["投"] ?? null;
+    const currentPos = getPositionOfPlayer(playerId) ?? null;
+
+    const promotedDhId =
+      deleteTargetIndex >= MIN_STARTERS && currentPos && currentPos !== DH
+        ? battingOrder
+            .slice(0, MIN_STARTERS)
+            .map((slot) => slot?.id)
+            .find(
+              (id): id is number =>
+                typeof id === "number" && id !== playerId && getPositionOfPlayer(id) === DH
+            ) ?? null
+        : null;
+
+    const shouldRestorePitcherToOrder =
+      currentPos === DH &&
+      typeof pitcherId === "number" &&
+      pitcherId !== playerId &&
+      !battingOrder.some((e, idx) => idx !== deleteTargetIndex && e?.id === pitcherId);
+
+    setAssignments((prev) => {
+      const next = { ...prev };
+
+      for (const key of Object.keys(next)) {
+        if (next[key] === playerId) next[key] = null;
+      }
+
+      if (typeof promotedDhId === "number" && currentPos && currentPos !== DH) {
+        for (const key of Object.keys(next)) {
+          if (next[key] === promotedDhId) next[key] = null;
+        }
+        next[currentPos] = promotedDhId;
+        next[DH] = null;
+      }
+
+      return next;
+    });
+
+    setExtraPositionMap((prev) => {
+      const next = { ...prev };
+      delete next[playerId];
+      if (typeof promotedDhId === "number") {
+        delete next[promotedDhId];
+      }
+      return next;
+    });
+
+    setBattingOrder((prev) => {
+      const next = prev.filter((_, idx) => idx !== deleteTargetIndex);
+
+      if (shouldRestorePitcherToOrder && typeof pitcherId === "number") {
+        next.splice(Math.min(deleteTargetIndex, next.length), 0, {
+          id: pitcherId,
+          reason: "スタメン",
+        });
+      }
+
+      return sanitizeBattingSlots(next);
+    });
+
+    setExtraBattingSlots((prev) => Math.max(0, prev - 1));
+    setBenchOutIds((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
+    setOpenPosMenuIndex((prev) => (prev === deleteTargetIndex ? null : prev));
+    setDeleteTargetIndex(null);
+  };
+
+  const getAllNonDhPositionOwners = () => {
+    const owners = new Map<string, number>();
+    for (const pos of positions) {
+      const id = assignments[pos];
+      if (typeof id === "number") owners.set(pos, id);
+    }
+    Object.entries(extraPositionMap).forEach(([idStr, pos]) => {
+      if (!pos || pos === DH) return;
+      owners.set(pos, Number(idStr));
+    });
+    return owners;
   };
 
   /* =========================================================
@@ -1233,7 +1343,7 @@ useEffect(() => {
       const seen = new Set<number>();
       updated = updated
         .filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)))
-        .slice(0, 9);
+        .slice(0, MAX_BATTING_ORDER);
 
       return updated;
     });
@@ -1297,13 +1407,17 @@ useEffect(() => {
         const ids = orderPositions
           .map((p) => baseA[p])
           .filter((id): id is number => typeof id === "number");
-        baseO = ids.slice(0, 9).map((id) => ({ id, reason: "スタメン" }));
+        baseO = ids.slice(0, MAX_BATTING_ORDER).map((id) => ({ id, reason: "スタメン" }));
       }
 
       setAssignments(baseA);
-      setBattingOrder(baseO as BattingEntry[]);
+      setBattingOrder((baseO as BattingEntry[]).slice(0, MAX_BATTING_ORDER));
+      setExtraBattingSlots(Math.max(0, Math.min(baseO.length, MAX_BATTING_ORDER) - MIN_STARTERS));
+      setExtraPositionMap({});
       await localForage.setItem("startingassignments", baseA);
-      await localForage.setItem("startingBattingOrder", baseO);
+      await localForage.setItem("startingBattingOrder", (baseO as BattingEntry[]).slice(0, MAX_BATTING_ORDER));
+      await localForage.setItem("startingExtraBattingSlots", Math.max(0, Math.min(baseO.length, MAX_BATTING_ORDER) - MIN_STARTERS));
+      await localForage.setItem("startingExtraPositionMap", {});
     })();
   }, []);
 
@@ -1324,7 +1438,7 @@ useEffect(() => {
     }
     setIsDirty(buildSnapshot() !== snapshotRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignments, battingOrder, benchOutIds]);
+  }, [assignments, battingOrder, benchOutIds, extraBattingSlots, extraPositionMap]);
 
   // draft保存（Start: StartGame等が拾えるように）（元仕様）
   useEffect(() => {
@@ -1336,6 +1450,12 @@ useEffect(() => {
   useEffect(() => {
     localForage.setItem("startingBenchOutIds_draft", benchOutIds);
   }, [benchOutIds]);
+  useEffect(() => {
+    localForage.setItem("startingExtraBattingSlots_draft", extraBattingSlots);
+  }, [extraBattingSlots]);
+  useEffect(() => {
+    localForage.setItem("startingExtraPositionMap_draft", extraPositionMap);
+  }, [extraPositionMap]);
 
   /**
    * グローバルtouchend：
@@ -1445,15 +1565,18 @@ useEffect(() => {
       // 保存済みの完全な守備配置/打順から復元（元仕様）
       const savedAssignments = await localForage.getItem<Assignments>("startingassignments");
       const savedBattingOrder = await localForage.getItem<BattingEntry[]>("startingBattingOrder");
+      const savedExtraBattingSlots = await localForage.getItem<number>("startingExtraBattingSlots");
+      const savedExtraPositionMap = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap");
 
       if (savedAssignments) {
-        // 欠けたキーに備えて全スロットを初期化してからマージ（元仕様）
         const base = createEmptyAssignments();
         const merged = { ...base, ...savedAssignments };
         setAssignments(merged);
+        setExtraBattingSlots(Math.max(0, Math.min(savedExtraBattingSlots ?? 0, MAX_BATTING_ORDER - MIN_STARTERS)));
+        setExtraPositionMap(savedExtraPositionMap ?? {});
 
         if (savedBattingOrder && savedBattingOrder.length) {
-          setBattingOrder(savedBattingOrder.slice(0, 9));
+          setBattingOrder(savedBattingOrder.slice(0, MAX_BATTING_ORDER));
         }
         return;
       }
@@ -1472,7 +1595,9 @@ useEffect(() => {
           newBattingOrder[entry.order - 1] = { id: entry.id, reason: "スタメン" };
         }
         setAssignments(newAssignments);
-        setBattingOrder(newBattingOrder.slice(0, 9));
+        setBattingOrder(newBattingOrder.slice(0, MAX_BATTING_ORDER));
+        setExtraBattingSlots(Math.max(0, Math.min(newBattingOrder.length, MAX_BATTING_ORDER) - MIN_STARTERS));
+        setExtraPositionMap({});
       }
     };
 
@@ -1496,10 +1621,10 @@ useEffect(() => {
   /* =========================================================
    *  画面表示用の派生データ（UIに使う）
    * ======================================================= */
-  const battingSlots = Array.from({ length: 9 }, (_, i) => battingOrder[i]);
+  const totalBattingSlots = MIN_STARTERS + extraBattingSlots;
+  const battingSlots = Array.from({ length: totalBattingSlots }, (_, i) => battingOrder[i]);
 
-
-const selectablePositionKeys = [...positions, DH];
+  const selectablePositionKeys = [...positions, DH];
 
   const battingIds = battingOrder
     .map((e) => e?.id)
@@ -1642,7 +1767,7 @@ const selectablePositionKeys = [...positions, DH];
                           seen.add(x.id);
                           return true;
                         })
-                        .slice(0, 9);
+                        .slice(0, MAX_BATTING_ORDER);
 
                       return updated;
                     });
@@ -1685,7 +1810,7 @@ const selectablePositionKeys = [...positions, DH];
                           seen.add(x.id);
                           return true;
                         })
-                        .slice(0, 9);
+                        .slice(0, MAX_BATTING_ORDER);
 
                       return updated;
                     });
@@ -1888,15 +2013,32 @@ const selectablePositionKeys = [...positions, DH];
 
         {/* 打順 */}
         <div>
-          <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-            <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center">
-              <IconOrder />
-            </span>
-            打順
-            <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10">
-              選手,守備位置を長押しして変更
-            </span>
-          </h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-xl font-semibold flex items-center gap-2 min-w-0">
+              <span className="inline-flex w-9 h-9 rounded-xl bg-white/15 border border-white/20 items-center justify-center shrink-0">
+                <IconOrder />
+              </span>
+              <span className="shrink-0">打順</span>
+              <span className="min-w-0 text-[11px] px-2 py-0.5 rounded-full bg-white/10 border border-white/10 whitespace-nowrap">
+                選手、守備位置を長押しして変更
+              </span>
+  
+            </h2>
+
+            <button
+              type="button"
+              onClick={addBattingSlot}
+              disabled={totalBattingSlots >= MAX_BATTING_ORDER}
+              className={`shrink-0 rounded-xl px-3 py-2 text-[12px] font-bold border ${
+                totalBattingSlots >= MAX_BATTING_ORDER
+                  ? "bg-gray-500/30 text-gray-300 border-gray-500/30"
+                  : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border-blue-500"
+              }`}
+            >
+              打順追加
+            </button>
+
+          </div>
 
           <div className="space-y-2">
             {battingSlots.map((entry, i) => {
@@ -1912,7 +2054,7 @@ const selectablePositionKeys = [...positions, DH];
                   key={entry?.id ?? `slot-${i}`}
                   data-role="posrow"
                   data-player-id={entry?.id ?? ""}
-                  className={`rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 shadow select-none
+                  className={`relative rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 pr-10 shadow select-none
                     ${entry ? "cursor-move" : "cursor-default"}
                     ${
                       hoverOrderPlayerId === hoverKey && dragKind !== "swapPos"
@@ -1956,6 +2098,24 @@ const selectablePositionKeys = [...positions, DH];
                     setTouchDrag(null);
                   }}
                 >
+                  {entry && i >= MIN_STARTERS && totalBattingSlots > MIN_STARTERS && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-300/40 bg-red-500/85 text-white text-sm font-bold shadow hover:bg-red-600 active:bg-red-700"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        requestDeleteBattingSlot(i);
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                      }}
+                      aria-label={`${i + 1}番を削除`}
+                      title="この打順を削除"
+                    >
+                      ×
+                    </button>
+                  )}
                   <div className="flex items-center gap-2 flex-nowrap">
                     <span className="w-10 font-bold">{i + 1}番</span>
 
@@ -2134,6 +2294,7 @@ const selectablePositionKeys = [...positions, DH];
               );
             })}
           </div>
+
         </div>
       </div>
 
@@ -2158,6 +2319,52 @@ const selectablePositionKeys = [...positions, DH];
           ← 戻る
         </button>
       </div>
+
+      {/* 打順削除確認モーダル */}
+      {deleteTargetIndex !== null && battingOrder[deleteTargetIndex] && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDeleteTargetIndex(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            <div className="bg-red-600 text-white text-center font-bold py-3">削除確認</div>
+            <div className="px-6 py-5 text-center text-[15px] leading-relaxed">
+              <p className="whitespace-pre-line font-bold text-gray-800">
+                {`${deleteTargetIndex + 1}番 ${
+                  teamPlayers.find((p) => p.id === battingOrder[deleteTargetIndex]?.id)?.lastName ?? ""
+                }${
+                  teamPlayers.find((p) => p.id === battingOrder[deleteTargetIndex]?.id)?.firstName ?? ""
+                } を削除しますか？`}
+              </p>
+              <p className="mt-3 text-sm text-gray-600">
+                この選手は打順と守備/DH設定から外れ、出場しない選手へ戻ります。
+              </p>
+            </div>
+            <div className="px-5 pb-5">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  className="w-full py-3 rounded-full bg-gray-500 text-white font-semibold hover:bg-gray-600 active:bg-gray-700"
+                  onClick={() => setDeleteTargetIndex(null)}
+                >
+                  NO
+                </button>
+                <button
+                  className="w-full py-3 rounded-full bg-red-600 text-white font-semibold hover:bg-red-700 active:bg-red-800"
+                  onClick={confirmDeleteBattingSlot}
+                >
+                  YES
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* クリア確認モーダル */}
       {showConfirm && (
@@ -2306,6 +2513,18 @@ const selectablePositionKeys = [...positions, DH];
                           </p>
                           <p className="mt-1 text-[12.5px] leading-5 text-slate-700">
                             守備位置は、守備位置のリストから変更することもできます。
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                          <div className="text-[13px] font-bold leading-5 text-amber-900">
+                            練習試合等で10人以上の選手を出場させる場合
+                          </div>
+                          <p className="mt-2 text-[12.5px] leading-5 text-slate-700">
+                            「打順追加」ボタンで、10人目以降の打者を追加できます。
+                          </p>
+                          <p className="mt-1 text-[12.5px] leading-5 text-slate-700">
+                            10番打者以降は、左スワイプもしくは右上の×印で削除できます。
                           </p>
                         </div>
                       </div>
@@ -2503,7 +2722,7 @@ const selectablePositionKeys = [...positions, DH];
 
             <div className="px-6 py-6 text-center">
               <p className="text-[15px] font-bold text-gray-800 leading-relaxed">
-                スタメン9人を設定して下さい
+                スタメンを9人以上設定して下さい
               </p>
             </div>
 
