@@ -3307,7 +3307,7 @@ const Menu = ({
       >
         <div className="text-2xl">🧢</div>
         <div className="mt-2 font-bold">チーム・選手登録</div>
-        <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録</div>
+        <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録等</div>
       </button>
 
       <button
@@ -3316,7 +3316,7 @@ const Menu = ({
       >
         <div className="text-2xl">🗓️</div>
         <div className="mt-2 font-bold">試合作成</div>
-        <div className="text-xs opacity-80 mt-1">対戦相手,先攻後攻等</div>
+        <div className="text-xs opacity-80 mt-1">対戦相手,スタメン設定等</div>
       </button>
 
       <button
@@ -3325,7 +3325,7 @@ const Menu = ({
       >
         <div className="text-2xl">🏁</div>
         <div className="mt-2 font-bold">試合開始</div>
-        <div className="text-xs opacity-80 mt-1">攻守遷移,読み上げ</div>
+        <div className="text-xs opacity-80 mt-1">試合前アナウンス等</div>
       </button>
 
       <button
