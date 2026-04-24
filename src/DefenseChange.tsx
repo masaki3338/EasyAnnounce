@@ -7010,21 +7010,36 @@ const dhBreakReplaceRows = replaceRows.filter(
 );
 
 // 10人以上の追加DHだけ単純交換
-const dhSimpleSwapRows = swapRows.filter(
-  (r) =>
+// 「11(DH) → 5(三)」だけでなく、
+// 「5(三) → 11(DH)」も同じ単純交換として扱う
+const dhSimpleSwapRows = swapRows.filter((r) => {
+  const fromNum = Number(r.from);
+  const toNum = Number(r.to);
+
+  return (
     isExtraDhModeForNumberModal &&
-    isDhModalNumber(Number(r.from)) &&
-    isFieldNumber(Number(r.to))
-);
+    (
+      (isDhModalNumber(fromNum) && isFieldNumber(toNum)) ||
+      (isFieldNumber(fromNum) && isDhModalNumber(toNum))
+    )
+  );
+});
 
 // 通常の守備位置変更
-const normalSwapRows = swapRows.filter(
-  (r) =>
-    !(
-      isDhModalNumber(Number(r.from)) &&
-      isFieldNumber(Number(r.to))
-    )
-);
+// DH単純交換の2方向は通常チェックから外す
+const normalSwapRows = swapRows.filter((r) => {
+  const fromNum = Number(r.from);
+  const toNum = Number(r.to);
+
+  const isExtraDhSimpleSwap =
+    isExtraDhModeForNumberModal &&
+    (
+      (isDhModalNumber(fromNum) && isFieldNumber(toNum)) ||
+      (isFieldNumber(fromNum) && isDhModalNumber(toNum))
+    );
+
+  return !isExtraDhSimpleSwap;
+});
 
 // 通常の控え交代
 const normalReplaceRows = replaceRows.filter(
@@ -7177,31 +7192,43 @@ const replaceBattingSlotPlayer = (orderIdx: number, playerId: number) => {
 // ※ 打順は入れ替えない
 // ※ 投手を打順に入れない
 // -----------------------------
+// -----------------------------
+// ① DH単純交換
+// DH選手 ↔ 守備位置選手
+// 10人以上の追加DH用。
+// 「11(DH) → 5(三)」でも「5(三) → 11(DH)」でも同じ結果にする。
+// -----------------------------
+const handledExtraDhSwapKeys = new Set<string>();
+
 dhSimpleSwapRows.forEach(({ from, to }) => {
-  const fromNum = Number(from);
-  const toNum = Number(to);
+  const aNum = Number(from);
+  const bNum = Number(to);
 
-  const fromSym = numToSym(fromNum); // 基本 "指"
-  const toSym = numToSym(toNum);
+  const dhNum = isDhModalNumber(aNum) ? aNum : isDhModalNumber(bNum) ? bNum : null;
+  const fieldNum = isFieldNumber(aNum) ? aNum : isFieldNumber(bNum) ? bNum : null;
 
-  const dhId = currentByNum.get(fromNum) ?? null;
-  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+  if (dhNum == null || fieldNum == null) return;
 
-  if (!fromSym || !toSym) return;
+  const key = `${Math.min(dhNum, fieldNum)}-${Math.max(dhNum, fieldNum)}`;
+  if (handledExtraDhSwapKeys.has(key)) return;
+  handledExtraDhSwapKeys.add(key);
+
+  const dhId = currentByNum.get(dhNum) ?? null;
+  const outgoingFielderId = currentByNum.get(fieldNum) ?? null;
+
+  const toSym = numToSym(fieldNum);
+  if (!toSym) return;
   if (typeof dhId !== "number") return;
 
   // DH選手を指定守備へ
-  finalByNum.set(toNum, dhId);
+  finalByNum.set(fieldNum, dhId);
 
-  // 元守備選手はDH枠側に回す
-  // ただし assignments["指"] には保存しない。
-  // 「打順にいるが9守備にいない選手」としてDH選手エリアに表示させる。
-  finalByNum.set(fromNum, outgoingFielderId);
+  // 元守備選手は追加DH枠へ
+  finalByNum.set(dhNum, outgoingFielderId);
 
-  // ログ：DH選手が守備へ
+  // ログ
   updateLog("指", dhId, toSym, outgoingFielderId);
 
-  // ログ：元守備選手がDHへ
   if (typeof outgoingFielderId === "number") {
     updateLog(toSym, outgoingFielderId, "指", dhId);
   }
