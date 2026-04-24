@@ -417,10 +417,28 @@ const generateAnnouncementText = (
     return no ? ` 背番号 ${no}` : "";
   };
 
-  const posJP: Record<string, string> = {
-    投: "ピッチャー", 捕: "キャッチャー", 一: "ファースト", 二: "セカンド",
-    三: "サード",   遊: "ショート",     左: "レフト",   中: "センター",  右: "ライト",   指: "指名打者", 
-  };
+const normalizeAnnouncePos = (pos?: string | null): string => {
+  if (!pos || pos === "-" || pos === "－") return "指";
+  if (pos === "DH" || pos === "指名打者") return "指";
+  return pos;
+};
+
+const posJP: Record<string, string> = {
+  投: "ピッチャー",
+  捕: "キャッチャー",
+  一: "ファースト",
+  二: "セカンド",
+  三: "サード",
+  遊: "ショート",
+  左: "レフト",
+  中: "センター",
+  右: "ライト",
+  指: "指名打者",
+  DH: "指名打者",
+  指名打者: "指名打者",
+  "-": "指名打者",
+  "－": "指名打者",
+};
   const reasonMap = Object.fromEntries(
     battingOrder.map(e => [e.id, e.reason])
   ) as Record<number, string>;
@@ -2568,7 +2586,7 @@ handledMixedKeys.add(mixedKey);
         : `${posJP[r.fromPos]} ${nameWithHonor(r.from)}に代わりまして、`;
 
     addReplaceLine(
-      `${head}${nameWithHonor(r.to)}がリエントリーで${posJP[r.toPos]}へ`,
+      `${head}${nameWithHonor(r.to)}がリエントリーで${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指}へ`,
       i === mixed.length - 1 && shift.length === 0
     );
 
@@ -2577,13 +2595,13 @@ handledMixedKeys.add(mixedKey);
       !lineupLines.some(
         (l) =>
           l.order === r.order &&
-          l.text.includes(posJP[r.toPos]) &&
+          l.text.includes(posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指) &&
           l.text.includes(nameRuby(r.to))
       )
     ) {
       lineupLines.push({
         order: r.order,
-        text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
+        text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
       });
     }
 
@@ -2611,7 +2629,7 @@ handledMixedKeys.add(mixedKey);
 if (isReentryBlue(r.to.id)) {
   addReplaceLine(
     `${posJP[r.fromPos]} ${nameWithHonor(r.from)}に代わりまして、` +
-    `${nameWithHonor(r.to)}がリエントリーで${posJP[r.toPos]}へ`,
+    `${nameWithHonor(r.to)}がリエントリーで${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指}へ`,
     i === mixed.length - 1 && shift.length === 0
   );
 
@@ -2621,13 +2639,13 @@ if (isReentryBlue(r.to.id)) {
     !lineupLines.some(
       l =>
         l.order === r.order &&
-        l.text.includes(posJP[r.toPos]) &&
+        l.text.includes(posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指) &&
         l.text.includes(nameRuby(r.to))
     )
   ) {
     lineupLines.push({
       order: r.order,
-      text: `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
+      text: `${r.order}番 ${posJP[normalizeAnnouncePos(r.fromPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
     });
   }
 
@@ -2649,7 +2667,7 @@ const fromSym =
 const head = buildFromHead(r.from.id, fromSym);
 
 addReplaceLine(
-  `${head}${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[r.toPos]}へ`,
+  `${head}${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指}へ`,
   i === mixed.length - 1 && shift.length === 0
 );
 
@@ -2658,7 +2676,7 @@ addReplaceLine(
 // 既存 if (...) { lineupLines.push(...) } の直前～直後を以下に置換
 if (
   r.order > 0 &&
-  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[r.toPos]))
+  !lineupLines.some(l => l.order === r.order && l.text.includes(posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指))
 ) {
   // ── 追加: DH運用中の「投⇄捕」入替は打順欄には積まない（守備欄だけに出す）
   const dhActive = !!assignments?.["指"];
@@ -2671,8 +2689,8 @@ if (
     lineupLines.push({
       order: r.order,
       text: isReentryTo
-        ? `${r.order}番 ${posJP[r.toPos]} ${nameWithHonor(r.to)}`
-        : `${r.order}番 ${posJP[r.toPos]} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`
+      ? `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${nameWithHonor(r.to)}`
+      : `${r.order}番 ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指} ${fullNameWithHonor(r.to)}${backNoSuffix(r.to)}`
     });
   }
 }
@@ -3562,20 +3580,37 @@ const getPositionName = (assignments: Record<string, number | null>, playerId: n
 };
 
 const formatLog = (pos: string, player?: Player | null): string => {
+  const normalizeLogPos = (p?: string | null): string => {
+    const s = String(p ?? "").trim();
+
+    if (!s || s === "-" || s === "－") return "指";
+    if (s === "DH" || s === "指名打者") return "指";
+
+    return s;
+  };
+
   const posFull: Record<string, string> = {
-    "投": "ピッチャー",
-    "捕": "キャッチャー",
-    "一": "ファースト",
-    "二": "セカンド",
-    "三": "サード",
-    "遊": "ショート",
-    "左": "レフト",
-    "中": "センター",
-    "右": "ライト",
+    投: "ピッチャー",
+    捕: "キャッチャー",
+    一: "ファースト",
+    二: "セカンド",
+    三: "サード",
+    遊: "ショート",
+    左: "レフト",
+    中: "センター",
+    右: "ライト",
+    指: "DH",
+    DH: "DH",
+    指名打者: "DH",
+    "-": "DH",
+    "－": "DH",
     [BENCH]: "控え",
   };
-  const label = posFull[pos] ?? pos; // マッチしなければそのまま
-  return `${label}：${formatPlayerLabel(player)}`;
+
+  const normalizedPos = normalizeLogPos(pos);
+  const label = posFull[normalizedPos] ?? normalizedPos;
+
+  return `${label}：${formatPlayerLabel(player ?? undefined)}`;
 };
 
 type DefenseChangeProps = {
@@ -3798,17 +3833,29 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 const [pendingDisableDH, setPendingDisableDH] = useState(false);
 const [dhDisableDirty, setDhDisableDirty] = useState(false);
 
+// ✅ hasDH計算より前に置く
+const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
+
 // ✅ 実際に今DHがいるか、または開始時DHありで未解除ならDHあり扱い
-const hasDH =
-  (typeof assignments?.["指"] === "number" && Number(assignments["指"]) > 0) ||
-  (dhEnabledAtStart && !pendingDisableDH);
+// 10人以上の打順では assignments["指"] が空でも、
+// 「打順にいるが9守備に配置されていない選手」をDHとして扱う
+const FIELD9_POS_FOR_NUMBER_MODAL = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+
+const field9IdsForNumberModal = new Set<number>(
+  FIELD9_POS_FOR_NUMBER_MODAL
+    .map((pos) => (assignments as any)?.[pos])
+    .filter((id) => typeof id === "number")
+    .map((id) => Number(id))
+);
+
+
 
 // --- 守備番号（審判の「1が9」の入力用） ---
-const POS_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
-const posNumbersForModal = hasDH
-  ? POS_NUMBERS
-  : POS_NUMBERS.filter((n) => n !== 10);
-const numberToPosSymbol: Record<number, string> = {
+// --- 守備番号（審判の「1が9」の入力用） ---
+// 1〜9 = 守備位置、10以降 = DH枠
+const BASE_POS_NUMBERS_FOR_MODAL = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+const baseNumberToPosSymbol: Record<number, string> = {
   1: "投",
   2: "捕",
   3: "一",
@@ -3818,11 +3865,100 @@ const numberToPosSymbol: Record<number, string> = {
   7: "左",
   8: "中",
   9: "右",
-  10: "指",
 };
+
+// 9守備にいる選手ID
+const field9IdsForDhModal = new Set<number>(
+  ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"]
+    .map((pos) => (assignments as any)?.[pos])
+    .filter((id) => typeof id === "number")
+    .map((id) => Number(id))
+);
+
+// 打順にいるが9守備にいない選手 = DH候補
+const dhEntriesForNumberModal = (() => {
+  const seen = new Set<number>();
+
+  const entries = (battingOrder ?? [])
+    .map((entry: any, idx: number) => {
+      const id = Number((battingReplacements as any)?.[idx]?.id ?? entry?.id);
+
+      return {
+        battingIndex: idx,
+        battingOrderNo: idx + 1,
+        playerId: id,
+      };
+    })
+    .filter((x) => {
+      if (!Number.isFinite(x.playerId)) return false;
+      if (field9IdsForDhModal.has(x.playerId)) return false;
+      if (seen.has(x.playerId)) return false;
+      seen.add(x.playerId);
+      return true;
+    });
+
+  // assignments["指"] に明示DHがいる場合も漏れ防止で追加
+  const assignedDhId =
+    typeof (assignments as any)?.["指"] === "number"
+      ? Number((assignments as any)["指"])
+      : null;
+
+  if (
+    assignedDhId != null &&
+    Number.isFinite(assignedDhId) &&
+    !seen.has(assignedDhId)
+  ) {
+    const idx = (battingOrder ?? []).findIndex(
+      (entry: any, i: number) =>
+        Number((battingReplacements as any)?.[i]?.id ?? entry?.id) === assignedDhId
+    );
+
+    entries.push({
+      battingIndex: idx >= 0 ? idx : entries.length,
+      battingOrderNo: idx >= 0 ? idx + 1 : entries.length + 10,
+      playerId: assignedDhId,
+    });
+  }
+
+  // 守備番号としては 10, 11, 12... を割り当てる
+  return entries.map((x, idx) => ({
+    ...x,
+    n: 10 + idx,
+    posSym: "指",
+  }));
+})();
+
+const hasDH =
+  !pendingDisableDH &&
+  (
+    dhEntriesForNumberModal.length > 0 ||
+    (typeof assignments?.["指"] === "number" && Number(assignments["指"]) > 0) ||
+    dhEnabledAtStart
+  );
+
+const posNumbersForModal = hasDH
+  ? [
+      ...BASE_POS_NUMBERS_FOR_MODAL,
+      ...dhEntriesForNumberModal.map((x) => x.n),
+    ]
+  : BASE_POS_NUMBERS_FOR_MODAL;
+
+const numberToPosSymbol: Record<number, string> = {
+  ...baseNumberToPosSymbol,
+  ...Object.fromEntries(dhEntriesForNumberModal.map((x) => [x.n, "指"])),
+};
+
+const isDhModalNumber = (n: number) =>
+  dhEntriesForNumberModal.some((x) => Number(x.n) === Number(n));
+
+const getDhPlayerIdByModalNumber = (n: number): number | null => {
+  const hit = dhEntriesForNumberModal.find((x) => Number(x.n) === Number(n));
+  return hit ? Number(hit.playerId) : null;
+};
+
   const [dhDisableSnapshot, setDhDisableSnapshot] =
   useState<{ dhId: number; pitcherId: number } | null>(null);
-  const [battingReplacements, setBattingReplacements] = useState<{ [index: number]: Player }>({});
+
   // 同姓判定セット更新をアナウンス再計算へ反映させるためのトリガ
   const [dupLastNamesTick, setDupLastNamesTick] = useState(0);
   // 同一姓セットを「出場＋控え＋代打（battingReplacements）」から算出して共有
@@ -5736,37 +5872,147 @@ if (!fromIsField && toPos !== BENCH) {
       return;
     }
 
-    // ★ DHを他守備にドロップ → DH解除ではなく、DHと守備選手を単純に入れ替える
-    if (srcFrom === "指" && toPos !== BENCH && toPos !== "指") {
-      setAssignments((prev) => {
-        const dhId = fromDhList && typeof draggedDhPlayerId === "number"
-          ? draggedDhPlayerId
-          : prev["指"];
-        if (typeof dhId !== "number") return prev;
+// ★ DHを他守備にドロップ
+// 9人の通常DH：DH解除。DH選手が守備へ入り、投手が「退いた守備選手の打順」に入る。
+// 10人以上の追加DH：DH選手と守備位置の選手を単純交換。
+if (srcFrom === "指" && toPos !== BENCH && toPos !== "指") {
+  const isExtraDhMode = (battingOrder ?? []).length >= 10;
 
-        const replacedId = prev[toPos] ?? null;
+  setAssignments((prev) => {
+    const dhId =
+      fromDhList && typeof draggedDhPlayerId === "number"
+        ? draggedDhPlayerId
+        : prev["指"];
 
-        // 1) 守備を更新（DH → toPos / その守備にいた選手 → 指）
-        const next = {
-          ...prev,
-          [toPos]: dhId,
-          "指": typeof replacedId === "number" ? replacedId : null,
-        };
+    if (typeof dhId !== "number") return prev;
 
-        // 2) DHは継続するため、DH解除フラグは立てない
-        setPendingDisableDH(false);
-        setDhDisableDirty(false);
+    const replacedId = prev[toPos] ?? null;
+    const pitcherId = prev["投"] ?? null;
 
-        // 3) ログ（視覚上の変更履歴）
-        updateLog("指", dhId, toPos, replacedId);
+    // ======================================================
+    // ① 10人以上の追加DH
+    // DH選手 ⇄ 守備位置の選手を単純交換
+    // ======================================================
+    if (isExtraDhMode) {
+      const next = {
+        ...prev,
+        [toPos]: dhId,
+        // 10人以上では、交代相手をDH扱いにする
+        "指": typeof replacedId === "number" ? replacedId : null,
+      };
 
-        return next;
+      setPendingDisableDH(false);
+      setDhDisableDirty(false);
+
+      // ログ：DHが守備へ
+      updateLog("指", dhId, toPos, replacedId);
+
+      // ログ：元守備選手がDHへ
+      if (typeof replacedId === "number") {
+        updateLog(toPos, replacedId, "指", dhId);
+      }
+
+      return next;
+    }
+
+    // ======================================================
+    // ② 9人の通常DH
+    // DH解除：
+    // DH選手が守備へ入り、DHはなし。
+    // 投手は「退いた守備選手の打順」に入る。
+    // ======================================================
+    const next = {
+      ...prev,
+      [toPos]: dhId,
+      "指": null,
+    };
+
+    // DH解除状態に戻す
+    setDhEnabledAtStart(false);
+    setDhDisableDirty(true);
+    setPendingDisableDH(false);
+    if (ohtaniRule) setOhtaniRule(false);
+
+    // 退いた守備選手の打順を探す
+    if (typeof replacedId === "number" && typeof pitcherId === "number") {
+      let replacedOrderIdx = battingOrder.findIndex((entry, idx) => {
+        const displayId = battingReplacements[idx]?.id ?? entry.id;
+        return Number(displayId) === Number(replacedId);
       });
 
-      setHoverPos(null);
-      setDraggingFrom(null);
-      return;
+      if (replacedOrderIdx < 0) {
+        replacedOrderIdx = startingOrderRef.current.findIndex(
+          (e) => Number(e?.id) === Number(replacedId)
+        );
+      }
+
+      const pitcherPlayer = teamPlayers.find(
+        (p) => Number(p.id) === Number(pitcherId)
+      );
+
+      if (pitcherPlayer && replacedOrderIdx >= 0) {
+        // 打順表示用：退いた守備選手の打順に投手を入れる
+        setBattingReplacements((prevRep) => ({
+          ...prevRep,
+          [replacedOrderIdx]: pitcherPlayer,
+        }));
+
+        // battingOrderDraft も同期
+        setBattingOrderDraft((prevDraft) => {
+          const base =
+            prevDraft?.length === battingOrder.length
+              ? [...prevDraft]
+              : [...battingOrder];
+
+          if (base[replacedOrderIdx]) {
+            base[replacedOrderIdx] = {
+              ...base[replacedOrderIdx],
+              id: pitcherId,
+            };
+          }
+
+          return base;
+        });
+      }
     }
+
+    // 退いた守備選手をベンチへ戻す
+    if (typeof replacedId === "number") {
+      const replacedPlayer = teamPlayers.find(
+        (p) => Number(p.id) === Number(replacedId)
+      );
+
+      if (replacedPlayer) {
+        setBenchPlayers((prevBench) => {
+          if (prevBench.some((p) => Number(p.id) === Number(replacedPlayer.id))) {
+            return prevBench;
+          }
+          return [...prevBench, replacedPlayer];
+        });
+      }
+    }
+
+    // ログ：DH選手が守備へ
+    updateLog("指", dhId, toPos, replacedId);
+
+    // ログ：退いた守備選手の打順へ投手
+    if (typeof replacedId === "number" && typeof pitcherId === "number") {
+      updateLog(toPos, replacedId, "投", pitcherId);
+    }
+
+    return next;
+  });
+
+  setTouchedFieldPos((prev) => {
+    const next = new Set(prev);
+    next.add(toPos);
+    return next;
+  });
+
+  setHoverPos(null);
+  setDraggingFrom(null);
+  return;
+}
       setAssignments((prev) => {
       const newAssignments = { ...prev };
 
@@ -5980,7 +6226,14 @@ if (fromPos === BENCH && toPos !== BENCH) {
       }
     }
 
-    return filteredLogs.filter((_, idx) => !toRemove.has(idx));
+    return filteredLogs
+      .filter((_, idx) => !toRemove.has(idx))
+      .map((log) =>
+        log
+          .replace(/(^|⇄\s*)[-－]：/g, "$1DH：")
+          .replace(/(^|⇄\s*)指：/g, "$1DH：")
+          .replace(/(^|⇄\s*)指名打者：/g, "$1DH：")
+    );
   };
 
 
@@ -6721,599 +6974,664 @@ const applyPosNumberChanges = () => {
     return;
   }
 
-  const isValidNum = (n: number) => Number.isInteger(n) && n >= 1 && n <= 10;
+  const isValidNum = (n: number) =>
+  Number.isInteger(n) && posNumbersForModal.some((x) => Number(x) === Number(n));
   const hasDup = (arr: number[]) => new Set(arr).size !== arr.length;
 
-  // -----------------------------
-  // DH解除特例:
-  // 10(DH) → 1〜9 の swap / replace は
-  // 通常の左右一致チェックから外す
-  // -----------------------------
-  const dhBreakSwapRows = swapRows.filter(
-    (r) => Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9
-  );
+// -----------------------------
+// DH番号 → 守備番号 の特別処理
+//
+// 通常DH（9人＋DH）:
+//   DH解除として扱う
+//   DH選手が守備へ入り、元守備選手の打順へ投手が入る
+//
+// 10人以上:
+//   練習試合用の追加DHなので、DH解除ではなく単純交換として扱う
+// -----------------------------
+const isFieldNumber = (n: number) => n >= 1 && n <= 9;
 
-  const dhBreakReplaceRows = replaceRows.filter(
-    (r) => Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9
-  );
+// 打順が10人以上なら追加DHモード
+const isExtraDhModeForNumberModal = (battingOrder?.length ?? 0) > 9;
 
-  const normalSwapRows = swapRows.filter(
-    (r) => !(Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9)
-  );
+// 通常DHのDH解除 swap
+const dhBreakSwapRows = swapRows.filter(
+  (r) =>
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(Number(r.from)) &&
+    isFieldNumber(Number(r.to))
+);
 
-  const normalReplaceRows = replaceRows.filter(
-    (r) => !(Number(r.from) === 10 && Number(r.to) >= 1 && Number(r.to) <= 9)
-  );
+// 通常DHのDH解除 replace
+const dhBreakReplaceRows = replaceRows.filter(
+  (r) =>
+    !isExtraDhModeForNumberModal &&
+    isDhModalNumber(Number(r.from)) &&
+    isFieldNumber(Number(r.to))
+);
 
-  const swapFromNums = normalSwapRows.map((r) => Number(r.from));
-  const swapToNums = normalSwapRows.map((r) => Number(r.to));
-  const replaceFromNums = normalReplaceRows.map((r) => Number(r.from));
-  const replaceToNums = normalReplaceRows.map((r) => Number(r.to));
+// 10人以上の追加DHだけ単純交換
+const dhSimpleSwapRows = swapRows.filter(
+  (r) =>
+    isExtraDhModeForNumberModal &&
+    isDhModalNumber(Number(r.from)) &&
+    isFieldNumber(Number(r.to))
+);
 
-  const allFromNums = [...swapFromNums, ...replaceFromNums];
-  const allToNums = [...swapToNums, ...replaceToNums];
+// 通常の守備位置変更
+const normalSwapRows = swapRows.filter(
+  (r) =>
+    !(
+      isDhModalNumber(Number(r.from)) &&
+      isFieldNumber(Number(r.to))
+    )
+);
 
-  const countNums = (nums: number[]) => {
-    const map = new Map<number, number>();
-    nums.forEach((n) => {
-      map.set(n, (map.get(n) ?? 0) + 1);
-    });
-    return map;
-  };
+// 通常の控え交代
+const normalReplaceRows = replaceRows.filter(
+  (r) =>
+    !(
+      isDhModalNumber(Number(r.from)) &&
+      isFieldNumber(Number(r.to))
+    )
+);
 
-  const fromCountMap = countNums(allFromNums);
-  const toCountMap = countNums(allToNums);
-  const allTouchedNums = new Set<number>([
-    ...allFromNums,
-    ...allToNums,
-    ...dhBreakSwapRows.map((r) => Number(r.from)),
-    ...dhBreakSwapRows.map((r) => Number(r.to)),
-    ...dhBreakReplaceRows.map((r) => Number(r.from)),
-    ...dhBreakReplaceRows.map((r) => Number(r.to)),
-  ]);
+const swapFromNums = normalSwapRows.map((r) => Number(r.from));
+const swapToNums = normalSwapRows.map((r) => Number(r.to));
+const replaceFromNums = normalReplaceRows.map((r) => Number(r.from));
+const replaceToNums = normalReplaceRows.map((r) => Number(r.to));
 
-  for (const n of new Set<number>([...allFromNums, ...allToNums])) {
-    const fromCount = fromCountMap.get(n) ?? 0;
-    const toCount = toCountMap.get(n) ?? 0;
+const allFromNums = [...swapFromNums, ...replaceFromNums];
+const allToNums = [...swapToNums, ...replaceToNums];
 
-    if (fromCount !== toCount) {
-      setPosNumberError(
-        "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。"
-      );
-      return;
-    }
-  }
+const countNums = (nums: number[]) => {
+  const map = new Map<number, number>();
+  nums.forEach((n) => {
+    map.set(n, (map.get(n) ?? 0) + 1);
+  });
+  return map;
+};
 
-  if (
-    [...swapFromNums, ...swapToNums, ...replaceFromNums, ...replaceToNums].some(
-      (n) => !isValidNum(n)
-    ) ||
-    dhBreakSwapRows.some((r) => !isValidNum(Number(r.from)) || !isValidNum(Number(r.to))) ||
-    dhBreakReplaceRows.some((r) => !isValidNum(Number(r.from)) || !isValidNum(Number(r.to)))
-  ) {
-    setPosNumberError("守備番号は1〜10で入力してください。");
+const fromCountMap = countNums(allFromNums);
+const toCountMap = countNums(allToNums);
+
+const allTouchedNums = new Set<number>([
+  ...allFromNums,
+  ...allToNums,
+
+  ...dhSimpleSwapRows.map((r) => Number(r.from)),
+  ...dhSimpleSwapRows.map((r) => Number(r.to)),
+
+  ...dhBreakSwapRows.map((r) => Number(r.from)),
+  ...dhBreakSwapRows.map((r) => Number(r.to)),
+
+  ...dhBreakReplaceRows.map((r) => Number(r.from)),
+  ...dhBreakReplaceRows.map((r) => Number(r.to)),
+]);
+
+// 通常の守備位置変更だけ、左右の番号数をチェックする
+// DH単純交換は 10 → 8 のような1行指定を許可する
+for (const n of new Set<number>([...allFromNums, ...allToNums])) {
+  const fromCount = fromCountMap.get(n) ?? 0;
+  const toCount = toCountMap.get(n) ?? 0;
+
+  if (fromCount !== toCount) {
+    setPosNumberError(
+      "交代の指定は、左側と右側で同じ番号の組み合わせになるように入力してください。"
+    );
     return;
   }
+}
 
-  if (hasDup(swapFromNums) || hasDup(replaceFromNums) || hasDup(replaceToNums)) {
-    setPosNumberError("同じ守備番号を重複して指定できません。");
-    return;
-  }
+if (
+  [...swapFromNums, ...swapToNums, ...replaceFromNums, ...replaceToNums].some(
+    (n) => !isValidNum(n)
+  ) ||
+  dhSimpleSwapRows.some(
+    (r) => !isValidNum(Number(r.from)) || !isValidNum(Number(r.to))
+  )
+) {
+  setPosNumberError(`守備番号は${posNumbersForModal.join("、")}で入力してください。`);
+  return;
+}
 
-  const numToSym = (n: number) => numberToPosSymbol[n] ?? null;
+if (hasDup(swapFromNums) || hasDup(replaceFromNums) || hasDup(replaceToNums)) {
+  setPosNumberError("同じ守備番号を重複して指定できません。");
+  return;
+}
 
-  // 現在の守備配置（元データ）
-  const currentByNum = new Map<number, number | null>();
-  for (let n = 1; n <= 10; n++) {
-    const sym = numToSym(n);
-    if (!sym) continue;
+const numToSym = (n: number) => numberToPosSymbol[n] ?? null;
+
+// 現在の守備配置
+const currentByNum = new Map<number, number | null>();
+
+for (const n of posNumbersForModal.map(Number)) {
+  const sym = numToSym(n);
+  if (!sym) continue;
+
+  // 10番以降のDH枠は assignments["指"] ではなく、
+  // モーダル表示用DH選手IDから取得する
+  if (isDhModalNumber(n)) {
+    const dhPlayerId = getDhPlayerIdByModalNumber(n);
+    currentByNum.set(
+      n,
+      typeof dhPlayerId === "number" && Number.isFinite(dhPlayerId)
+        ? dhPlayerId
+        : null
+    );
+  } else {
     const v = assignments[sym];
     currentByNum.set(n, typeof v === "number" ? v : null);
   }
+}
 
-  // 最終的に各守備番号に入る選手を決める
-  const finalByNum = new Map<number, number | null>(currentByNum);
+// 最終的に各守備番号に入る選手
+const finalByNum = new Map<number, number | null>(currentByNum);
 
-  allTouchedNums.forEach((n) => {
-    finalByNum.set(n, null);
+allTouchedNums.forEach((n) => {
+  finalByNum.set(n, null);
+});
+
+// 打順差し替え用
+const nextBattingReplacements = { ...battingReplacements };
+
+const nextBattingOrderDraft =
+  battingOrderDraft?.length === battingOrder.length
+    ? [...battingOrderDraft]
+    : [...battingOrder];
+
+let didBreakDh = false;
+
+const findOrderIndexByDisplayedOrStarter = (playerId: number) => {
+  let orderIdx = battingOrder.findIndex((entry, idx) => {
+    const displayId = battingReplacements[idx]?.id ?? entry.id;
+    return Number(displayId) === Number(playerId);
   });
 
-  // 打順差し替え用
-  const nextBattingReplacements = { ...battingReplacements };
-  const nextBattingOrderDraft =
-    battingOrderDraft?.length === 9 ? [...battingOrderDraft] : [...battingOrder];
+  if (orderIdx < 0) {
+    orderIdx = startingOrderRef.current.findIndex(
+      (e) => Number(e?.id) === Number(playerId)
+    );
+  }
 
-  let didBreakDh = false;
+  return orderIdx;
+};
 
-  const findOrderIndexByDisplayedOrStarter = (playerId: number) => {
-    let orderIdx = battingOrder.findIndex((entry, idx) => {
-      const displayId = battingReplacements[idx]?.id ?? entry.id;
-      return Number(displayId) === Number(playerId);
-    });
+const replaceBattingSlotPlayer = (orderIdx: number, playerId: number) => {
+  const player = teamPlayers.find((p) => Number(p.id) === Number(playerId));
+  if (!player) return;
 
-    if (orderIdx < 0) {
+  nextBattingReplacements[orderIdx] = player;
+
+  if (nextBattingOrderDraft[orderIdx]) {
+    nextBattingOrderDraft[orderIdx] = {
+      ...nextBattingOrderDraft[orderIdx],
+      id: playerId,
+    };
+  }
+};
+
+// -----------------------------
+// ① DH単純交換
+// DH選手 → 守備位置
+// 元守備選手 → DH扱い
+// ※ 打順は入れ替えない
+// ※ 投手を打順に入れない
+// -----------------------------
+dhSimpleSwapRows.forEach(({ from, to }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+
+  const fromSym = numToSym(fromNum); // 基本 "指"
+  const toSym = numToSym(toNum);
+
+  const dhId = currentByNum.get(fromNum) ?? null;
+  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+
+  if (!fromSym || !toSym) return;
+  if (typeof dhId !== "number") return;
+
+  // DH選手を指定守備へ
+  finalByNum.set(toNum, dhId);
+
+  // 元守備選手はDH枠側に回す
+  // ただし assignments["指"] には保存しない。
+  // 「打順にいるが9守備にいない選手」としてDH選手エリアに表示させる。
+  finalByNum.set(fromNum, outgoingFielderId);
+
+  // ログ：DH選手が守備へ
+  updateLog("指", dhId, toSym, outgoingFielderId);
+
+  // ログ：元守備選手がDHへ
+  if (typeof outgoingFielderId === "number") {
+    updateLog(toSym, outgoingFielderId, "指", dhId);
+  }
+});
+
+// -----------------------------
+// ①-2 通常DHのDH解除 swap
+// DH選手 → 守備位置
+// 元守備選手の打順 → 投手
+// -----------------------------
+dhBreakSwapRows.forEach(({ from, to }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+
+  const toSym = numToSym(toNum);
+
+  const dhId = currentByNum.get(fromNum) ?? null;
+  const pitcherId = currentByNum.get(1) ?? null;
+  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+
+  if (!toSym) return;
+  if (typeof dhId !== "number") return;
+  if (typeof pitcherId !== "number") return;
+
+  didBreakDh = true;
+
+  // 守備：DH選手が指定守備へ
+  finalByNum.set(toNum, dhId);
+
+  // DH枠は解除
+  finalByNum.set(fromNum, null);
+
+  // 打順：元守備選手の打順へ投手を入れる
+  if (typeof outgoingFielderId === "number") {
+    const orderIdx = findOrderIndexByDisplayedOrStarter(outgoingFielderId);
+
+    if (orderIdx >= 0) {
+      replaceBattingSlotPlayer(orderIdx, pitcherId);
+    }
+  }
+
+  updateLog("指", dhId, toSym, outgoingFielderId);
+});
+
+// -----------------------------
+// ①-3 通常DHのDH解除 replace
+// DHに代わって控え選手が守備へ
+// 元DHの打順へ控え選手
+// 元守備選手の打順へ投手
+// -----------------------------
+dhBreakReplaceRows.forEach(({ from, to, benchPlayerId }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+  const toSym = numToSym(toNum);
+
+  const dhId = currentByNum.get(fromNum) ?? null;
+  const pitcherId = currentByNum.get(1) ?? null;
+  const outgoingFielderId = currentByNum.get(toNum) ?? null;
+  const incomingId = Number(benchPlayerId);
+
+  if (!toSym) return;
+  if (typeof dhId !== "number") return;
+  if (typeof pitcherId !== "number") return;
+  if (!Number.isFinite(incomingId)) return;
+
+  didBreakDh = true;
+
+  // 守備：控え選手が指定守備へ
+  finalByNum.set(toNum, incomingId);
+
+  // DH枠は解除
+  finalByNum.set(fromNum, null);
+
+  // 元DHの打順へ控え選手
+  const dhOrderIdx = findOrderIndexByDisplayedOrStarter(dhId);
+  if (dhOrderIdx >= 0) {
+    replaceBattingSlotPlayer(dhOrderIdx, incomingId);
+  }
+
+  // 元守備選手の打順へ投手
+  if (typeof outgoingFielderId === "number") {
+    const fielderOrderIdx = findOrderIndexByDisplayedOrStarter(outgoingFielderId);
+
+    if (fielderOrderIdx >= 0) {
+      replaceBattingSlotPlayer(fielderOrderIdx, pitcherId);
+    }
+  }
+
+  updateLog("指", dhId, toSym, outgoingFielderId);
+});
+
+// -----------------------------
+// ② 通常の守備位置入れ替え
+// -----------------------------
+normalSwapRows.forEach(({ from, to }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+
+  const movingId = currentByNum.get(fromNum) ?? null;
+
+  if (typeof movingId !== "number") return;
+
+  finalByNum.set(toNum, movingId);
+});
+
+
+// -----------------------------
+// ③ 控え選手が入る交代
+// -----------------------------
+const isOhtaniStartForNumberModal =
+  !isExtraDhModeForNumberModal &&
+  typeof initialAssignments?.["投"] === "number" &&
+  typeof initialAssignments?.["指"] === "number" &&
+  Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
+  
+
+normalReplaceRows.forEach(({ from, to, benchPlayerId }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+  const incomingId = Number(benchPlayerId);
+
+  if (!Number.isFinite(incomingId)) return;
+
+  finalByNum.set(toNum, incomingId);
+
+  const outgoingId = currentByNum.get(fromNum);
+
+  if (typeof outgoingId !== "number") return;
+
+  const incomingPlayer = teamPlayers.find((p) => Number(p.id) === incomingId);
+  if (!incomingPlayer) return;
+
+  // 大谷ルール開始時の「投手のみ交代」は、打順/DHを変更しない。
+  // 例: 1(投) に代わって控え投手が 1(投)
+  // 正しくは assignments["投"] だけ控え選手、assignments["指"] とDH打順は元選手のまま。
+  const isOhtaniPitcherOnlyReplace =
+    isOhtaniStartForNumberModal &&
+    fromNum === 1 &&
+    toNum === 1 &&
+    Number(outgoingId) === Number(initialAssignments?.["投"]);
+
+  if (isOhtaniPitcherOnlyReplace) {
+    return;
+  }
+
+  let orderIdx = battingOrder.findIndex((entry, idx) => {
+    const displayId = battingReplacements[idx]?.id ?? entry.id;
+    return Number(displayId) === Number(outgoingId);
+  });
+
+  if (orderIdx < 0) {
+    const fromSym = numToSym(fromNum);
+    const starterIdAtPos = fromSym ? initialAssignments?.[fromSym] : null;
+
+    if (typeof starterIdAtPos === "number") {
       orderIdx = startingOrderRef.current.findIndex(
-        (e) => Number(e?.id) === Number(playerId)
+        (e) => Number(e?.id) === Number(starterIdAtPos)
       );
     }
+  }
 
-    return orderIdx;
-  };
-
-  const replaceBattingSlotPlayer = (orderIdx: number, playerId: number) => {
-    const player = teamPlayers.find((p) => Number(p.id) === Number(playerId));
-    if (!player) return;
-
-    nextBattingReplacements[orderIdx] = player;
+  if (orderIdx >= 0) {
+    nextBattingReplacements[orderIdx] = incomingPlayer;
 
     if (nextBattingOrderDraft[orderIdx]) {
       nextBattingOrderDraft[orderIdx] = {
         ...nextBattingOrderDraft[orderIdx],
-        id: playerId,
+        id: incomingId,
       };
     }
-  };
+  }
+});
 
-  // ------------------------------------
-  // ① 通常の守備移動
-  // ------------------------------------
-  normalSwapRows.forEach(({ from, to }) => {
-    const fromNum = Number(from);
-    const toNum = Number(to);
-    const movingId = currentByNum.get(fromNum) ?? null;
-    finalByNum.set(toNum, movingId);
-  });
+// ------------------------------------
+// ④-2 投手交代を含む循環移動でDHが解除される特別処理
+//
+// 例:
+//  1(投) に代わり 控え選手が 2(捕)
+//  2(捕) が 3(一)
+//  3(一) が 1(投)
+//
+// 結果:
+//  - DH解除
+//  - 指(DH) は空
+//  - 元DHの打順へ「元1(投)に代わって入った控え選手」を入れる
+//  - 元2, 元3 は打順そのまま、守備だけ変わる
+// ------------------------------------
+const initialDhNum =
+  Array.from(currentByNum.entries()).find(
+    ([n, id]) => isDhModalNumber(n) && typeof id === "number"
+  )?.[0] ?? 10;
 
-  // ------------------------------------
-  // ② 通常の控え交代
-  // ------------------------------------
-  normalReplaceRows.forEach(({ to, benchPlayerId }) => {
-    const toNum = Number(to);
-    finalByNum.set(toNum, Number(benchPlayerId));
-  });
+const initialDhId = currentByNum.get(initialDhNum) ?? null;
+const initialPitcherId = currentByNum.get(1) ?? null;
+const finalPitcherPosId = finalByNum.get(1) ?? null;
 
-  // ------------------------------------
-  // ③ DH解除特別処理（swap版）
-  // 10(DH) → 野手守備
-  //   - DH選手がその守備へ
-  //   - 指(10)は空にする
-  //   - その守備にいた選手の打順へ投手を入れる
-  // ------------------------------------
-  dhBreakSwapRows.forEach(({ to }) => {
-    const toNum = Number(to);
-    const toSym = numToSym(toNum);
+// 「1(投) に代わり 控え選手が X」に該当する replace を拾う
+const pitcherReplaceRow = normalReplaceRows.find((r) => Number(r.from) === 1);
+const incomingForPitcherId = pitcherReplaceRow
+  ? Number(pitcherReplaceRow.benchPlayerId)
+  : null;
+const incomingForPitcherToNum = pitcherReplaceRow
+  ? Number(pitcherReplaceRow.to)
+  : null;
 
-    const dhId = currentByNum.get(10) ?? null;
-    const pitcherId = currentByNum.get(1) ?? null;
-    const outgoingFielderId = currentByNum.get(toNum) ?? null;
+// 元投手が退き、1番には別の既存野手が入り、かつ投手交代の控え選手が1以外に残っている
+const didPitcherReplacementBreakDh =
+  !isExtraDhModeForNumberModal &&
+  typeof initialDhId === "number" &&
+  typeof initialPitcherId === "number" &&
+  typeof incomingForPitcherId === "number" &&
+  Number(finalPitcherPosId) !== Number(initialPitcherId) &&
+  Number(finalPitcherPosId) !== Number(incomingForPitcherId) &&
+  Array.from({ length: 8 }, (_, i) => i + 2).some(
+    (n) => Number(finalByNum.get(n) ?? null) === Number(incomingForPitcherId)
+  ) &&
+  incomingForPitcherToNum !== 1;
 
-    if (!toSym) return;
-    if (typeof dhId !== "number") return;
-    if (typeof pitcherId !== "number") return;
+if (didPitcherReplacementBreakDh) {
+  didBreakDh = true;
 
-    didBreakDh = true;
+  // DH枠を解除
+  finalByNum.set(initialDhNum, null);
 
-    // 守備: DH選手が移動先守備へ
-    finalByNum.set(toNum, dhId);
+  // DHの打順へ「元投手に代わって入った控え選手」を入れる
+  const dhOrderIdx =
+    findOrderIndexByDisplayedOrStarter(initialDhId) >= 0
+      ? findOrderIndexByDisplayedOrStarter(initialDhId)
+      : typeof initialAssignments?.["指"] === "number"
+      ? findOrderIndexByDisplayedOrStarter(Number(initialAssignments["指"]))
+      : -1;
 
-    // DH枠は解除
-    finalByNum.set(10, null);
-
-    // 打順: その守備にいた選手の打順へ投手を入れる
-    if (typeof outgoingFielderId === "number") {
-      let orderIdx = battingOrder.findIndex((entry, idx) => {
-        const displayId = battingReplacements[idx]?.id ?? entry.id;
-        return Number(displayId) === Number(outgoingFielderId);
-      });
-
-      if (orderIdx < 0) {
-        orderIdx = startingOrderRef.current.findIndex(
-          (e) => Number(e?.id) === Number(outgoingFielderId)
-        );
-      }
-
-      if (orderIdx >= 0) {
-        const pitcherPlayer = teamPlayers.find(
-          (p) => Number(p.id) === Number(pitcherId)
-        );
-
-        if (pitcherPlayer) {
-          nextBattingReplacements[orderIdx] = pitcherPlayer;
-        }
-
-        if (nextBattingOrderDraft[orderIdx]) {
-          nextBattingOrderDraft[orderIdx] = {
-            ...nextBattingOrderDraft[orderIdx],
-            id: pitcherId,
-          };
-        }
-      }
-    }
-
-    updateLog("指", dhId, toSym, outgoingFielderId);
-  });
-
-  // ------------------------------------
-  // ④ DH解除特別処理（replace版）
-  // DH に代わり 控え選手が 野手守備へ
-  //   - 控え選手がその守備へ
-  //   - 指(10)は空にする
-  //   - 元DHの打順へ控え選手を入れる
-  //   - 元その守備の選手の打順へ投手を入れる
-  // ------------------------------------
-  dhBreakReplaceRows.forEach(({ to, benchPlayerId }) => {
-    const toNum = Number(to);
-    const toSym = numToSym(toNum);
-
-    const dhId = currentByNum.get(10) ?? null;
-    const pitcherId = currentByNum.get(1) ?? null;
-    const outgoingFielderId = currentByNum.get(toNum) ?? null;
-    const incomingId = Number(benchPlayerId);
-
-    if (!toSym) return;
-    if (typeof dhId !== "number") return;
-    if (typeof pitcherId !== "number") return;
-
-    didBreakDh = true;
-
-    // 守備: 控え選手が移動先守備へ
-    finalByNum.set(toNum, incomingId);
-
-    // DH枠は解除
-    finalByNum.set(10, null);
-
-    // ① 元DHの打順へ控え選手を入れる
-    let dhOrderIdx = battingOrder.findIndex((entry, idx) => {
-      const displayId = battingReplacements[idx]?.id ?? entry.id;
-      return Number(displayId) === Number(dhId);
-    });
-
-    if (dhOrderIdx < 0) {
-      const dhStarterId = initialAssignments?.["指"];
-      if (typeof dhStarterId === "number") {
-        dhOrderIdx = startingOrderRef.current.findIndex(
-          (e) => Number(e?.id) === Number(dhStarterId)
-        );
-      }
-    }
-
-    if (dhOrderIdx >= 0) {
-      const incomingPlayer = teamPlayers.find(
-        (p) => Number(p.id) === Number(incomingId)
-      );
-
-      if (incomingPlayer) {
-        nextBattingReplacements[dhOrderIdx] = incomingPlayer;
-      }
-
-      if (nextBattingOrderDraft[dhOrderIdx]) {
-        nextBattingOrderDraft[dhOrderIdx] = {
-          ...nextBattingOrderDraft[dhOrderIdx],
-          id: incomingId,
-        };
-      }
-    }
-
-    // ② 元その守備の選手の打順へ投手を入れる
-    if (typeof outgoingFielderId === "number") {
-      let fielderOrderIdx = battingOrder.findIndex((entry, idx) => {
-        const displayId = battingReplacements[idx]?.id ?? entry.id;
-        return Number(displayId) === Number(outgoingFielderId);
-      });
-
-      if (fielderOrderIdx < 0) {
-        fielderOrderIdx = startingOrderRef.current.findIndex(
-          (e) => Number(e?.id) === Number(outgoingFielderId)
-        );
-      }
-
-      if (fielderOrderIdx >= 0) {
-        const pitcherPlayer = teamPlayers.find(
-          (p) => Number(p.id) === Number(pitcherId)
-        );
-
-        if (pitcherPlayer) {
-          nextBattingReplacements[fielderOrderIdx] = pitcherPlayer;
-        }
-
-        if (nextBattingOrderDraft[fielderOrderIdx]) {
-          nextBattingOrderDraft[fielderOrderIdx] = {
-            ...nextBattingOrderDraft[fielderOrderIdx],
-            id: pitcherId,
-          };
-        }
-      }
-    }
-
-    updateLog("指", dhId, toSym, outgoingFielderId);
-  });
-
-  // ------------------------------------
-  // ⑤ 投手交代を含む循環移動でDHが解除される特別処理
-  //
-  // 例:
-  //  1(投) に代わり 控え選手が 2(捕)
-  //  2(捕) が 3(一)
-  //  3(一) が 1(投)
-  //
-  // 結果:
-  //  - DH解除
-  //  - 指(10) は空
-  //  - 元DHの打順へ「元1(投)に代わって入った控え選手」を入れる
-  //  - 元2, 元3 は打順そのまま、守備だけ変わる
-  // ------------------------------------
-  const initialDhId = currentByNum.get(10) ?? null;
-  const initialPitcherId = currentByNum.get(1) ?? null;
-  const finalPitcherPosId = finalByNum.get(1) ?? null;
-
-  // 「1(投) に代わり 控え選手が X」に該当する replace を拾う
-  const pitcherReplaceRow = normalReplaceRows.find((r) => Number(r.from) === 1);
-  const incomingForPitcherId = pitcherReplaceRow
-    ? Number(pitcherReplaceRow.benchPlayerId)
-    : null;
-  const incomingForPitcherToNum = pitcherReplaceRow ? Number(pitcherReplaceRow.to) : null;
-
-  // 元投手が退き、1番には別の既存野手が入り、かつ投手交代の控え選手が1以外に残っている
-  const didPitcherReplacementBreakDh =
-    typeof initialDhId === "number" &&
-    typeof initialPitcherId === "number" &&
-    typeof incomingForPitcherId === "number" &&
-    Number(finalPitcherPosId) !== Number(initialPitcherId) &&
-    Number(finalPitcherPosId) !== Number(incomingForPitcherId) &&
-    Array.from({ length: 8 }, (_, i) => i + 2).some(
-      (n) => Number(finalByNum.get(n) ?? null) === Number(incomingForPitcherId)
-    ) &&
-    incomingForPitcherToNum !== 1;
-
-  if (didPitcherReplacementBreakDh) {
-    didBreakDh = true;
-
-    // DH枠を解除
-    finalByNum.set(10, null);
-
-    // DHの打順へ「元投手に代わって入った控え選手」を入れる
-    const dhOrderIdx =
-      findOrderIndexByDisplayedOrStarter(initialDhId) >= 0
-        ? findOrderIndexByDisplayedOrStarter(initialDhId)
-        : typeof initialAssignments?.["指"] === "number"
-        ? findOrderIndexByDisplayedOrStarter(Number(initialAssignments["指"]))
-        : -1;
-
-    if (dhOrderIdx >= 0) {
-      replaceBattingSlotPlayer(dhOrderIdx, incomingForPitcherId);
-    }
-
-    // ログ上もDH解除扱い
-    const incomingToSym =
-      typeof incomingForPitcherToNum === "number" ? numToSym(incomingForPitcherToNum) : null;
-
-    if (incomingToSym) {
-      updateLog("指", initialDhId, incomingToSym, incomingForPitcherId);
-    }
+  if (dhOrderIdx >= 0) {
+    replaceBattingSlotPlayer(dhOrderIdx, incomingForPitcherId);
   }
 
-  // ------------------------------------
-  // ⑥ 投手が投手以外へ移動した結果によるDH解除特別処理
-  // 例: 1→2, 2→3, 3→1 のような循環移動で
-  //     元投手が最終的に1以外へ入った場合
-  //   - DHを解除する
-  //   - 指(10)を空にする
-  //   - DHの打順へ元投手を入れる
-  // ※ ただし「投手交代を含む循環移動」は⑤で処理済み
-  // ------------------------------------
-  const pitcherMovedToNonPitcherPos =
-    !didPitcherReplacementBreakDh &&
-    typeof initialDhId === "number" &&
-    typeof initialPitcherId === "number" &&
-    Number(finalPitcherPosId) !== Number(initialPitcherId) &&
-    Array.from({ length: 8 }, (_, i) => i + 2).some(
-      (n) => Number(finalByNum.get(n) ?? null) === Number(initialPitcherId)
-    );
+  // ログ上もDH解除扱い
+  const incomingToSym =
+    typeof incomingForPitcherToNum === "number"
+      ? numToSym(incomingForPitcherToNum)
+      : null;
 
-  if (pitcherMovedToNonPitcherPos) {
-    didBreakDh = true;
-
-    // DH枠を解除
-    finalByNum.set(10, null);
-
-    // DHの打順へ元投手を入れる
-    const dhOrderIdx =
-      findOrderIndexByDisplayedOrStarter(initialDhId) >= 0
-        ? findOrderIndexByDisplayedOrStarter(initialDhId)
-        : typeof initialAssignments?.["指"] === "number"
-        ? findOrderIndexByDisplayedOrStarter(Number(initialAssignments["指"]))
-        : -1;
-
-    if (dhOrderIdx >= 0) {
-      replaceBattingSlotPlayer(dhOrderIdx, initialPitcherId);
-    }
-
-    // ログ上もDH解除扱いにしておく
-    const pitcherToSym =
-      Array.from({ length: 8 }, (_, i) => i + 2)
-        .map((n) => ({
-          n,
-          id: finalByNum.get(n) ?? null,
-          sym: numToSym(n),
-        }))
-        .find((x) => Number(x.id ?? null) === Number(initialPitcherId))?.sym ?? null;
-
-    if (pitcherToSym) {
-      updateLog("指", initialDhId, pitcherToSym, initialPitcherId);
-    }
+  if (incomingToSym) {
+    updateLog("指", initialDhId, incomingToSym, incomingForPitcherId);
   }
+}
 
-  // ------------------------------------
-  // ⑦ 通常の控え交代の打順差し替え
-  // 「from にいた選手」の打順へ控え選手を入れる
-  // ただし、⑤で「1(投)に代わった控え選手」をDH打順へ移した場合は
-  // その選手を元1の打順にも入れてしまわないよう除外
-  // ------------------------------------
-  normalReplaceRows.forEach(({ from, benchPlayerId }) => {
-    const fromNum = Number(from);
-    const incomingId = Number(benchPlayerId);
-
-    if (
-      didPitcherReplacementBreakDh &&
-      fromNum === 1 &&
-      typeof incomingForPitcherId === "number" &&
-      incomingId === incomingForPitcherId
-    ) {
-      return;
-    }
-
-    const outgoingId = currentByNum.get(fromNum);
-
-    if (typeof outgoingId !== "number") return;
-
-    const incomingPlayer = teamPlayers.find((p) => Number(p.id) === incomingId);
-    if (!incomingPlayer) return;
-
-    let orderIdx = battingOrder.findIndex((entry, idx) => {
-      const displayId = battingReplacements[idx]?.id ?? entry.id;
-      return Number(displayId) === Number(outgoingId);
-    });
-
-    if (orderIdx < 0) {
-      const fromSym = numToSym(fromNum);
-      const starterIdAtPos = fromSym ? initialAssignments?.[fromSym] : null;
-
-      if (typeof starterIdAtPos === "number") {
-        orderIdx = startingOrderRef.current.findIndex(
-          (e) => Number(e?.id) === Number(starterIdAtPos)
-        );
-      }
-    }
-
-    if (orderIdx >= 0) {
-      nextBattingReplacements[orderIdx] = incomingPlayer;
-
-      if (nextBattingOrderDraft[orderIdx]) {
-        nextBattingOrderDraft[orderIdx] = {
-          ...nextBattingOrderDraft[orderIdx],
-          id: incomingId,
-        };
-      }
-    }
-  });
-
-  // assignments 化
-  let nextAssignments: Record<string, number | null> = { ...assignments };
-  for (let n = 1; n <= 10; n++) {
-    const sym = numToSym(n);
-    if (!sym) continue;
-    if (!allTouchedNums.has(n)) continue;
-    nextAssignments[sym] = finalByNum.get(n) ?? null;
-  }
-
-  if (didBreakDh) {
-    nextAssignments["指"] = null;
-  }
-
-  // 大谷ルール時の 投/指 重複だけ許可
-  const allowPitcherDhDuplicate =
-    typeof nextAssignments["投"] === "number" &&
-    typeof nextAssignments["指"] === "number" &&
-    typeof initialAssignments?.["投"] === "number" &&
-    typeof initialAssignments?.["指"] === "number" &&
-    Number(initialAssignments["投"]) === Number(initialAssignments["指"]) &&
-    Number(nextAssignments["投"]) === Number(nextAssignments["指"]);
-
-  nextAssignments = normalizeFieldAssignments(nextAssignments, {
-    allowPitcherDhDuplicate,
-  });
-
-  // ベンチ更新
-  let nextBenchPlayers = [...benchPlayers];
-
-  // 入る控えはベンチから外す
-  normalReplaceRows.forEach(({ benchPlayerId }) => {
-    const incomingId = Number(benchPlayerId);
-    nextBenchPlayers = nextBenchPlayers.filter((p) => Number(p.id) !== incomingId);
-  });
-
-  dhBreakReplaceRows.forEach(({ benchPlayerId }) => {
-    const incomingId = Number(benchPlayerId);
-    nextBenchPlayers = nextBenchPlayers.filter((p) => Number(p.id) !== incomingId);
-  });
-
-  // replace の from 側で退く選手だけベンチへ戻す
-  normalReplaceRows.forEach(({ from }) => {
-    const outgoingId = currentByNum.get(Number(from));
-    if (typeof outgoingId !== "number") return;
-
-    const outgoingPlayer = teamPlayers.find((p) => Number(p.id) === Number(outgoingId));
-    if (!outgoingPlayer) return;
-
-    const stillOnField = Object.values(nextAssignments).some(
-      (id) => Number(id) === Number(outgoingId)
-    );
-
-    if (
-      !stillOnField &&
-      !nextBenchPlayers.some((p) => Number(p.id) === Number(outgoingPlayer.id))
-    ) {
-      nextBenchPlayers = [...nextBenchPlayers, outgoingPlayer];
-    }
-  });
-
-  // touched 守備を記録
-  setTouchedFieldPos((prev) => {
-    const next = new Set(prev);
-    allTouchedNums.forEach((n) => {
-      const sym = numToSym(n);
-      if (sym) next.add(sym);
-    });
-    return next;
-  });
-
-  // ログ
-  normalReplaceRows.forEach(({ from, to, benchPlayerId }) => {
-    const fromNum = Number(from);
-    const toNum = Number(to);
-    const fromSym = numToSym(fromNum);
-    const toSym = numToSym(toNum);
-    const outgoingId = currentByNum.get(fromNum) ?? null;
-
-    if (fromSym && toSym) {
-      updateLog(fromSym, outgoingId, toSym, Number(benchPlayerId));
-    }
-  });
-
-  normalSwapRows.forEach(({ from, to }) => {
-    const fromNum = Number(from);
-    const toNum = Number(to);
-    const fromSym = numToSym(fromNum);
-    const toSym = numToSym(toNum);
-    const movingId = currentByNum.get(fromNum) ?? null;
-    const replacedId = currentByNum.get(toNum) ?? null;
-
-    if (fromSym && toSym) {
-      updateLog(fromSym, movingId, toSym, replacedId);
-    }
-  });
-
-  setBattingReplacements(nextBattingReplacements);
-  setBattingOrderDraft(nextBattingOrderDraft);
-  setBenchPlayers(nextBenchPlayers);
-  setAssignments(nextAssignments);
-
-  if (didBreakDh) {
-    setOhtaniRule(false);
-    setDhEnabledAtStart(false);
-    setDhDisableDirty(true);
-    setPendingDisableDH(false);
-  }
-
-  setShowPosNumberModal(false);
-  setPosNumberRows(
-    Array.from({ length: 9 }, () => ({
-      from: "",
-      mode: "swap",
-      to: "",
-      benchPlayerId: "",
-    }))
+// ------------------------------------
+// ④-3 投手が投手以外へ移動した結果によるDH解除特別処理
+//
+// 例:
+//  1(投) → 4(二)
+//  4(二) → 1(投)
+//
+// 結果:
+//  - DH解除
+//  - 指(DH) は空
+//  - DHの打順へ元投手を入れる
+// ------------------------------------
+const pitcherMovedToNonPitcherPos =
+  !isExtraDhModeForNumberModal &&
+  !didPitcherReplacementBreakDh &&
+  typeof initialDhId === "number" &&
+  typeof initialPitcherId === "number" &&
+  Number(finalPitcherPosId) !== Number(initialPitcherId) &&
+  Array.from({ length: 8 }, (_, i) => i + 2).some(
+    (n) => Number(finalByNum.get(n) ?? null) === Number(initialPitcherId)
   );
+
+if (pitcherMovedToNonPitcherPos) {
+  didBreakDh = true;
+
+  // DH枠を解除
+  finalByNum.set(initialDhNum, null);
+
+  // DHの打順へ元投手を入れる
+  const dhOrderIdx =
+    findOrderIndexByDisplayedOrStarter(initialDhId) >= 0
+      ? findOrderIndexByDisplayedOrStarter(initialDhId)
+      : typeof initialAssignments?.["指"] === "number"
+      ? findOrderIndexByDisplayedOrStarter(Number(initialAssignments["指"]))
+      : -1;
+
+  if (dhOrderIdx >= 0) {
+    replaceBattingSlotPlayer(dhOrderIdx, initialPitcherId);
+  }
+
+  // ログ上もDH解除扱い
+  const pitcherToSym =
+    Array.from({ length: 8 }, (_, i) => i + 2)
+      .map((n) => ({
+        n,
+        id: finalByNum.get(n) ?? null,
+        sym: numToSym(n),
+      }))
+      .find((x) => Number(x.id ?? null) === Number(initialPitcherId))?.sym ?? null;
+
+  if (pitcherToSym) {
+    updateLog("指", initialDhId, pitcherToSym, initialPitcherId);
+  }
+}
+
+// -----------------------------
+// assignments 化
+// -----------------------------
+let nextAssignments: Record<string, number | null> = { ...assignments };
+
+for (const n of posNumbersForModal.map(Number)) {
+  const sym = numToSym(n);
+  if (!sym) continue;
+  if (!allTouchedNums.has(n)) continue;
+
+  // DH番号は assignments["指"] に保存しない。
+  // DHに回った選手は「打順にいるが9守備にいない選手」として
+  // DH選手エリア・打順に表示される。
+  if (isDhModalNumber(n)) {
+    continue;
+  }
+
+  nextAssignments[sym] = finalByNum.get(n) ?? null;
+}
+
+if (didBreakDh) {
+  nextAssignments["指"] = null;
+}
+
+// 大谷ルール時の 投/指 重複だけ許可
+const allowPitcherDhDuplicate =
+  typeof nextAssignments["投"] === "number" &&
+  typeof nextAssignments["指"] === "number" &&
+  typeof initialAssignments?.["投"] === "number" &&
+  typeof initialAssignments?.["指"] === "number" &&
+  Number(initialAssignments["投"]) === Number(initialAssignments["指"]) &&
+  Number(nextAssignments["投"]) === Number(nextAssignments["指"]);
+
+nextAssignments = normalizeFieldAssignments(nextAssignments, {
+  allowPitcherDhDuplicate,
+});
+
+// -----------------------------
+// ベンチ更新
+// -----------------------------
+let nextBenchPlayers = [...benchPlayers];
+
+// 入る控えはベンチから外す
+normalReplaceRows.forEach(({ benchPlayerId }) => {
+  const incomingId = Number(benchPlayerId);
+  nextBenchPlayers = nextBenchPlayers.filter((p) => Number(p.id) !== incomingId);
+});
+
+// replace の from 側で退く選手だけベンチへ戻す
+normalReplaceRows.forEach(({ from }) => {
+  const outgoingId = currentByNum.get(Number(from));
+  if (typeof outgoingId !== "number") return;
+
+  const outgoingPlayer = teamPlayers.find((p) => Number(p.id) === Number(outgoingId));
+  if (!outgoingPlayer) return;
+
+  const stillOnField = Object.values(nextAssignments).some(
+    (id) => Number(id) === Number(outgoingId)
+  );
+
+  if (
+    !stillOnField &&
+    !nextBenchPlayers.some((p) => Number(p.id) === Number(outgoingPlayer.id))
+  ) {
+    nextBenchPlayers = [...nextBenchPlayers, outgoingPlayer];
+  }
+});
+
+// touched 守備を記録
+setTouchedFieldPos((prev) => {
+  const next = new Set(prev);
+  allTouchedNums.forEach((n) => {
+    const sym = numToSym(n);
+    if (sym && sym !== "指") next.add(sym);
+  });
+  return next;
+});
+
+// ログ：控え交代
+normalReplaceRows.forEach(({ from, to, benchPlayerId }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+  const fromSym = numToSym(fromNum);
+  const toSym = numToSym(toNum);
+  const outgoingId = currentByNum.get(fromNum) ?? null;
+
+  if (fromSym && toSym) {
+    updateLog(fromSym, outgoingId, toSym, Number(benchPlayerId));
+  }
+});
+
+// ログ：通常守備入れ替え
+normalSwapRows.forEach(({ from, to }) => {
+  const fromNum = Number(from);
+  const toNum = Number(to);
+  const fromSym = numToSym(fromNum);
+  const toSym = numToSym(toNum);
+  const movingId = currentByNum.get(fromNum) ?? null;
+  const replacedId = currentByNum.get(toNum) ?? null;
+
+  if (fromSym && toSym) {
+    updateLog(fromSym, movingId, toSym, replacedId);
+  }
+});
+
+setBattingReplacements(nextBattingReplacements);
+setBattingOrderDraft(nextBattingOrderDraft);
+setBenchPlayers(nextBenchPlayers);
+setAssignments(nextAssignments);
+
+if (didBreakDh) {
+  setOhtaniRule(false);
+  setDhEnabledAtStart(false);
+  setDhDisableDirty(true);
+  setPendingDisableDH(false);
+}
+
+
+setShowPosNumberModal(false);
+
+setPosNumberRows(
+  Array.from({ length: 9 }, () => ({
+    from: "",
+    mode: "swap",
+    to: "",
+    benchPlayerId: "",
+  }))
+);
 };
 
 // 右側（swap用）守備番号リスト：番号＋守備位置名（※選手名なし）
@@ -7359,11 +7677,27 @@ const getPinchTag = (playerId: number | null | undefined): string => {
   return "";
 };
 
-const getDisplayedIdForPositionNumberModal = (posSym: string): number | null => {
+const getDisplayedIdForPositionNumberModal = (
+  posSym: string,
+  modalNumber?: number
+): number | null => {
   const assignedId =
     typeof (assignments as any)?.[posSym] === "number"
       ? Number((assignments as any)[posSym])
       : null;
+
+  // ✅ 10番以降のDH枠は、番号ごとに別のDH選手を返す
+  // 10 = 1人目のDH、11 = 2人目のDH、12 = 3人目のDH...
+  if (posSym === "指") {
+    if (typeof modalNumber === "number") {
+      const dhPlayerId = getDhPlayerIdByModalNumber(modalNumber);
+      if (typeof dhPlayerId === "number" && Number.isFinite(dhPlayerId)) {
+        return dhPlayerId;
+      }
+    }
+
+    return assignedId;
+  }
 
   // その守備位置に対する代打/代走/臨時代走の最新subIdを優先
   for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
@@ -7417,7 +7751,7 @@ const posNumberOptionsWithPlayer = posNumbersForModal.map((n) => {
     posSym === "指" ? "指名打者" :
     String(posSym ?? "");
 
-  const id = posSym ? getDisplayedIdForPositionNumberModal(posSym) : null;
+  const id = posSym ? getDisplayedIdForPositionNumberModal(posSym, Number(n)) : null;
   const p =
     typeof id === "number"
       ? teamPlayers.find((x) => Number(x.id) === Number(id))
@@ -7434,19 +7768,20 @@ const posNumberOptionsWithPlayer = posNumbersForModal.map((n) => {
 const posNumberOptions = posNumbersForModal.map((n) => {
   const posSym = numberToPosSymbol[Number(n)];
 
-  const posName =
-    (posSym === "投") ? "(ピッチャー)" :
-    (posSym === "捕") ? "(キャッチャー)" :
-    (posSym === "一") ? "(ファースト)" :
-    (posSym === "二") ? "(セカンド)" :
-    (posSym === "三") ? "(サード)" :
-    (posSym === "遊") ? "(ショート)" :
-    (posSym === "左") ? "(レフト)" :
-    (posSym === "中") ? "(センター)" :
-    (posSym === "右") ? "(ライト)" :
-    String(posSym ?? "");
+const posName =
+  (posSym === "投") ? "(ピッチャー)" :
+  (posSym === "捕") ? "(キャッチャー)" :
+  (posSym === "一") ? "(ファースト)" :
+  (posSym === "二") ? "(セカンド)" :
+  (posSym === "三") ? "(サード)" :
+  (posSym === "遊") ? "(ショート)" :
+  (posSym === "左") ? "(レフト)" :
+  (posSym === "中") ? "(センター)" :
+  (posSym === "右") ? "(ライト)" :
+  (posSym === "指") ? "(指名打者)" :
+  String(posSym ?? "");
 
-const id = posSym ? getDisplayedIdForPositionNumberModal(posSym) : null;
+const id = posSym ? getDisplayedIdForPositionNumberModal(posSym, Number(n)) : null;
 const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
 
   // ===== ここから追加 =====
@@ -7941,30 +8276,52 @@ if (!currentPos || currentPos === "-" || currentPos === "－") {
   }
 }
 
-// ③ まだ取れない場合は、元の打順選手の初期守備位置を最後の保険に使う
-if (!currentPos || currentPos === "-" || currentPos === "－") {
-  if (initialPos && initialPos !== "-" && initialPos !== "－") {
-    currentPos = initialPos;
-  }
+// ③ 10人以上の打順では、
+//    「打順にはいるが9守備に配置されていない選手」をDH扱いにする
+//    ※ ここを初期守備位置へのフォールバックより先に行う
+const isBlankPos = (pos?: string | null) =>
+  !pos || pos === "-" || pos === "－";
+
+const FIELD9_POS_KEYS_FOR_ORDER = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+
+const isInField9Now = (pid: number | null) => {
+  if (typeof pid !== "number") return false;
+  return FIELD9_POS_KEYS_FOR_ORDER.some(
+    (pos) => Number((assignments as any)?.[pos]) === Number(pid)
+  );
+};
+
+const isInField9Base = (pid: number | null) => {
+  if (typeof pid !== "number") return false;
+  return FIELD9_POS_KEYS_FOR_ORDER.some(
+    (pos) => Number((orderViewBaseAssignments as any)?.[pos]) === Number(pid)
+  );
+};
+
+const isTenOrMoreBattingOrder = orderViewOrder.length >= 10;
+
+// 現在の選手が、打順にはいるが9守備にいない場合はDH
+if (isTenOrMoreBattingOrder && !isInField9Now(currentDisplayId)) {
+  currentPos = "指";
 }
 
-// ④ 10番以降は、守備位置が未取得なら「指」を表示
-//    ※ 9人時の既存処理は変えない
-const isExtraBatter = index >= 9;
+// 初期状態でも、打順にはいるが9守備にいない選手はDH
+if (isTenOrMoreBattingOrder && !isInField9Base(beforeId)) {
+  initialPos = "指";
+}
 
-if (isExtraBatter) {
-  if (!initialPos || initialPos === "-" || initialPos === "－") {
-    initialPos = "指";
-  }
-  if (!currentPos || currentPos === "-" || currentPos === "－") {
-    currentPos = "指";
+// ④ それでも現在守備位置が取れない場合だけ、最後の保険として初期守備位置を使う
+//    ※ ただし、すでにDH判定された選手は上書きしない
+if (isBlankPos(currentPos)) {
+  if (!isBlankPos(initialPos)) {
+    currentPos = initialPos;
   }
 }
 
 // ⑤ 従来どおり、通常DHスロットは「指」を優先
 if (dhActive && dhSlotIndex === index) {
   currentPos = "指";
-  if (!initialPos || initialPos === "-" || initialPos === "－") {
+  if (isBlankPos(initialPos)) {
     initialPos = "指";
   }
 }
