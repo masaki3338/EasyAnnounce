@@ -476,19 +476,25 @@ const handleDragStart = (
     if (isExtraBattingMode && fromPos === DH && toPos !== DH) {
       const next: Assignments = { ...assignments };
 
-      // DH選手エリアから動かす選手が assignments[DH] に入っていた場合は外す
+      /**
+       * 置き先にいた選手
+       * 例：サードにいた中村
+       */
+      const replacedPlayerId = next[toPos] ?? null;
+
+      // まず、移動するDH選手を全ポジションから外す
+      for (const key of Object.keys(next)) {
+        if (next[key] === playerId) {
+          next[key] = null;
+        }
+      }
+
+      // DHスロットにも残っていたら外す
       if (next[DH] === playerId) {
         next[DH] = null;
       }
 
-      // 同じ選手が他ポジションに残っていたら外す
-      for (const p of positions) {
-        if (next[p] === playerId) {
-          next[p] = null;
-        }
-      }
-
-      // フィールドへ配置
+      // DH選手をフィールドへ配置
       next[toPos] = playerId;
 
       setAssignments(next);
@@ -496,31 +502,68 @@ const handleDragStart = (
       setExtraPositionMap((prev) => {
         const map = { ...prev };
 
-        // フィールドへ入った選手はDH扱いを解除
+        /**
+         * フィールドへ入った選手はDHではなくなる
+         * 例：田中 DH → サード
+         */
         delete map[playerId];
 
-        // 配置先にいた選手をDHへ
-        if (prevPlayerIdAtTo && prevPlayerIdAtTo !== playerId) {
-          map[prevPlayerIdAtTo] = DH;
+        /**
+         * 置き先にいた選手をDHへ
+         * 例：中村 サード → DH
+         */
+        if (replacedPlayerId && replacedPlayerId !== playerId) {
+          map[replacedPlayerId] = DH;
         }
 
         return map;
       });
 
-      // 打順自体は入れ替えない。
-      // ただし両方が打順に存在する状態を維持する。
+      /**
+       * 打順は消さない。
+       * 田中も中村も打順に残す。
+       */
       setBattingOrder((prev) => {
-        const seen = new Set<number>();
-        return prev
-          .filter((e) => {
-            if (seen.has(e.id)) return false;
-            seen.add(e.id);
-            return true;
-          })
-          .slice(0, MAX_BATTING_ORDER);
+        const slots = buildBattingSlots(prev, totalBattingSlots);
+
+        if (!slots.some((entry) => entry?.id === playerId)) {
+          const emptyIndex = slots.findIndex(
+            (entry, idx) => idx >= MIN_STARTERS && !entry
+          );
+
+          if (emptyIndex !== -1) {
+            slots[emptyIndex] = { id: playerId, reason: "スタメン" };
+          } else if (slots.length < totalBattingSlots) {
+            slots.push({ id: playerId, reason: "スタメン" });
+          }
+        }
+
+        if (
+          replacedPlayerId &&
+          !slots.some((entry) => entry?.id === replacedPlayerId)
+        ) {
+          const emptyIndex = slots.findIndex(
+            (entry, idx) => idx >= MIN_STARTERS && !entry
+          );
+
+          if (emptyIndex !== -1) {
+            slots[emptyIndex] = { id: replacedPlayerId, reason: "スタメン" };
+          } else if (slots.length < totalBattingSlots) {
+            slots.push({ id: replacedPlayerId, reason: "スタメン" });
+          }
+        }
+
+        return sanitizeBattingSlots(slots).slice(0, totalBattingSlots);
       });
 
+      // フィールドに入った選手は出場しない選手から外す
       setBenchOutIds((prev) => prev.filter((id) => id !== playerId));
+
+      // 置き換わってDHになった選手もベンチ外ではない
+      if (replacedPlayerId) {
+        setBenchOutIds((prev) => prev.filter((id) => id !== replacedPlayerId));
+      }
+
       setDraggingPlayerId(null);
       setHoverPosKey(null);
       return;
@@ -721,6 +764,19 @@ setAssignments(next);
     });
 
     setDraggingPlayerId(null);
+  };
+
+  const handleTouchDropToPosition = (toPos: string) => {
+    if (!touchDrag) return;
+
+    const fake = makeFakeDragEvent({
+      playerId: String(touchDrag.playerId),
+      "text/plain": String(touchDrag.playerId),
+      fromPosition: touchDrag.fromPos ?? "",
+    });
+
+    handleDropToPosition(fake as React.DragEvent<HTMLDivElement>, toPos);
+    setTouchDrag(null);
   };
 
   const startBenchOutLongPress = (playerId: number) => {
@@ -2141,34 +2197,8 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   setHoverPosKey(null);
                 }}
                 onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
-                onTouchEnd={(ev) => {
-                  if (!touchDrag) return;
-
-                  const t = ev.changedTouches?.[0];
-                  const x = t?.clientX ?? lastTouchRef.current?.x ?? 0;
-                  const y = t?.clientY ?? lastTouchRef.current?.y ?? 0;
-
-                  const el = document.elementFromPoint(x, y) as HTMLElement | null;
-                  const droppedOnBench =
-                    !!benchDropRef.current &&
-                    !!el &&
-                    benchDropRef.current.contains(el);
-
-                  const fake = makeFakeDragEvent({
-                    playerId: String(touchDrag.playerId),
-                    "text/plain": String(touchDrag.playerId),
-                    fromPosition: touchDrag.fromPos ?? "",
-                  });
-
-                  // スマホで DH → ベンチ入り選手 の時だけ、守備位置処理ではなくベンチ処理に送る
-                  if (touchDrag.fromPos === DH && droppedOnBench) {
-                    handleDropToBench(fake);
-                    setTouchDrag(null);
-                    return;
-                  }
-
-                  handleDropToPosition(fake, pos);
-                  setTouchDrag(null);
+                onTouchEnd={() => {
+                  handleTouchDropToPosition(pos);
                 }}
                 style={{
                   ...positionStyles[pos],
@@ -2268,7 +2298,10 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   key={p.id}
                   draggable
                   onDragStart={(e) => handleDragStart(e, p.id, DH)}
-                  onTouchStart={() => setTouchDrag({ playerId: p.id, fromPos: DH })}
+                  onTouchStart={() => {
+                    setTouchDrag({ playerId: p.id, fromPos: DH });
+                    setDraggingPlayerId(p.id);
+                  }}
                   style={{ touchAction: "none" }}
                   className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-yellow-200 rounded-lg cursor-move select-none shadow-sm
                     ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
