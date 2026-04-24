@@ -8007,7 +8007,7 @@ const positionChanged = currentPos !== initialPos;
                       {starter.number ? ` #${starter.number}` : ""}
                     </span>
 
-                    <span className="text-gray-400">→</span>
+                    <span className="text-gray-400">➡</span>
 
                     <span className="text-red-600 font-bold">
                       {withMark(currentPos)}{" "}
@@ -8032,7 +8032,7 @@ const positionChanged = currentPos !== initialPos;
                   <>
                     <span className="text-slate-800">
                       <span className="text-gray-400">{withMark(initialPos)}</span>
-                      <span className="text-gray-400 mx-1">→</span>
+                      <span className="text-gray-400 mx-1">➡</span>
                       <span className="text-red-600 font-bold">{withMark(currentPos)}</span>{" "}
                       <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : ""}>
                         <ruby>
@@ -8207,6 +8207,8 @@ const positionChanged = currentPos !== initialPos;
               jsx: (
                 <li key={`shift-${index}`}>
                   {starter.lastName}{starter.firstName} #{starter.number}
+                  {" "}
+                  {withFull(initialPos)}
                   {" "}➡{" "}
                   {withFull(currentPos)}
                 </li>
