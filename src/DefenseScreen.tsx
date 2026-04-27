@@ -1699,21 +1699,29 @@ const handleStop = () => { ttsStop(); };
       </section>
       <div className="relative w-full max-w-2xl mx-auto my-2">
         <img src="/field.png" alt="フィールド図" className="w-full rounded shadow" />
-        {positions.map(pos => {
+{positions.map(pos => {
+  const isExtraBattingOrder = Array.isArray(battingOrder) && battingOrder.length >= 10;
+
+  // 10人以上のスタメン設定時は、フィールド図のDH選手名は表示しない
+  if (pos === "指" && isExtraBattingOrder) {
+    return null;
+  }
+
           const playerId = assignmentsForDisplay[pos]; // ★ 表示用に差し替え
           const playerNameNum = getPlayerNameNumber(playerId);
-          return (            
-          <div
-            key={pos}
-            className="absolute text-base font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5 whitespace-nowrap text-center"
-            style={{ 
-              ...positionStyles[pos], 
-              transform: 'translate(-50%, -50%)', 
-              minWidth: '80px' 
-            }}
-          >
-            {playerNameNum ?? <span className="text-gray-300">DHなし</span>}
-          </div>
+
+          return (
+            <div
+              key={pos}
+              className="absolute text-base font-bold text-white bg-black bg-opacity-60 rounded px-1 py-0.5 whitespace-nowrap text-center"
+              style={{
+                ...positionStyles[pos],
+                transform: "translate(-50%, -50%)",
+                minWidth: "80px",
+              }}
+            >
+              {playerNameNum ?? <span className="text-gray-300">DHなし</span>}
+            </div>
           );
         })}
       </div>
