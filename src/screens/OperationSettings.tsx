@@ -9,23 +9,17 @@ type Props = {
 
 type FontSizeSetting = "normal" | "large" | "xlarge";
 
-const FONT_SIZE_OPTIONS: Array<{
-  value: FontSizeSetting;
-  label: string;
-  desc: string;
-}> = [
-  { value: "normal", label: "標準", desc: "通常サイズ" },
-  { value: "large", label: "大", desc: "少し大きく" },
-  { value: "xlarge", label: "特大", desc: "かなり大きく" },
-];
+const FONT_SIZE_LABEL: Record<FontSizeSetting, string> = {
+  normal: "標準",
+  large: "大",
+  xlarge: "特大",
+};
 
-const readFontSizeSetting = (): FontSizeSetting => {
+const getSavedFontSize = (): FontSizeSetting => {
   const saved = localStorage.getItem("appFontSize");
-
   if (saved === "large" || saved === "xlarge" || saved === "normal") {
     return saved;
   }
-
   return "normal";
 };
 
@@ -42,9 +36,8 @@ const TileButton: React.FC<{
   onClick: () => void;
 }> = ({ icon, title, desc, onClick }) => (
   <button
-    type="button"
     onClick={onClick}
-    className="w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition flex items-center gap-4 app-button"
+    className="w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition flex items-center gap-4"
   >
     <div className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 border border-white/10 shrink-0">
       {icon}
@@ -58,10 +51,10 @@ const TileButton: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
-  const [fontSize, setFontSize] = useState<FontSizeSetting>("normal");
+  const [fontSize, setFontSize] = useState<FontSizeSetting>(() => getSavedFontSize());
 
   useEffect(() => {
-    const size = readFontSizeSetting();
+    const size = getSavedFontSize();
     setFontSize(size);
     document.documentElement.setAttribute("data-font-size", size);
   }, []);
@@ -80,7 +73,7 @@ export default function OperationSettings({ onNavigate }: Props) {
 
   return (
     <div
-      className="app-page min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6"
+      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6"
       style={{
         paddingTop: "max(16px, env(safe-area-inset-top))",
         paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -111,53 +104,52 @@ export default function OperationSettings({ onNavigate }: Props) {
 
       <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4 py-4">
         {/* 文字サイズ設定 */}
-        <section className="w-full rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-          <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="w-full rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 font-bold text-lg leading-tight">
-                <span className="text-2xl">🔠</span>
+              <div className="font-bold leading-tight flex items-center gap-2">
+                <span className="text-xl">🔠</span>
                 <span>文字サイズ</span>
               </div>
-              <p className="text-xs sm:text-sm text-white/75 mt-1 leading-relaxed">
-                タブレットやスマホで文字が小さい場合に変更できます。
-                アナウンス文言・ボタン・選手名表示に反映されます。
-              </p>
+              <div className="text-xs opacity-80 mt-1">
+                タブレットやスマホで文字が小さい場合に変更します
+              </div>
+            </div>
+            <div className="shrink-0 rounded-full bg-blue-500/25 border border-blue-300/30 px-3 py-1 text-xs font-bold text-blue-100">
+              {FONT_SIZE_LABEL[fontSize]}
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {FONT_SIZE_OPTIONS.map((option) => {
-              const selected = fontSize === option.value;
-
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {(["normal", "large", "xlarge"] as FontSizeSetting[]).map((size) => {
+              const active = fontSize === size;
               return (
                 <button
-                  key={option.value}
+                  key={size}
                   type="button"
-                  onClick={() => handleFontSizeChange(option.value)}
+                  onClick={() => handleFontSizeChange(size)}
                   className={`
-                    rounded-2xl border px-2 py-3 text-center active:scale-95 transition
+                    rounded-xl border px-3 py-3 font-extrabold transition active:scale-95
                     ${
-                      selected
-                        ? "bg-blue-500 border-blue-300 text-white shadow-lg"
-                        : "bg-white/10 border-white/10 text-white hover:bg-white/15"
+                      active
+                        ? "bg-blue-500 text-white border-blue-300 shadow-lg"
+                        : "bg-white/10 text-white border-white/15 hover:bg-white/15"
                     }
                   `}
-                  aria-pressed={selected}
                 >
-                  <div className="font-extrabold text-base sm:text-lg">{option.label}</div>
-                  <div className="text-[11px] sm:text-xs opacity-80 mt-1">{option.desc}</div>
+                  {FONT_SIZE_LABEL[size]}
                 </button>
               );
             })}
           </div>
 
-          <div className="mt-3 rounded-xl bg-black/20 border border-white/10 px-3 py-2 text-xs sm:text-sm text-white/80 leading-relaxed">
-            現在：
-            <span className="font-bold text-white">
-              {FONT_SIZE_OPTIONS.find((option) => option.value === fontSize)?.label ?? "標準"}
-            </span>
+          <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3">
+            <div className="text-xs opacity-80">表示サンプル</div>
+            <div className="mt-1 font-bold leading-relaxed">
+              1番、ショート、山田くん。アナウンス文とボタンの文字が変わります。
+            </div>
           </div>
-        </section>
+        </div>
 
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
@@ -263,7 +255,6 @@ export default function OperationSettings({ onNavigate }: Props) {
                   </div>
 
                   <button
-                    type="button"
                     onClick={() => setShowManual(false)}
                     className="shrink-0 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-3 py-2 text-sm font-semibold"
                     aria-label="閉じる"
@@ -285,7 +276,6 @@ export default function OperationSettings({ onNavigate }: Props) {
               {/* フッター */}
               <div className="shrink-0 px-4 sm:px-5 py-3 border-t border-white/10 bg-slate-900">
                 <button
-                  type="button"
                   onClick={() => setShowManual(false)}
                   className="
                     w-full rounded-2xl
