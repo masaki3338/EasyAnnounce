@@ -346,6 +346,29 @@ useEffect(() => {
   setLeagueMode(getLeagueMode());
 }, []);
 
+// 文字サイズ設定（標準／大／特大）をアプリ全体へ反映
+useEffect(() => {
+  const applyFontSize = () => {
+    const saved = localStorage.getItem("appFontSize");
+
+    const size =
+      saved === "large" || saved === "xlarge" || saved === "normal"
+        ? saved
+        : "normal";
+
+    document.documentElement.setAttribute("data-font-size", size);
+  };
+
+  applyFontSize();
+
+  window.addEventListener("app-font-size-change", applyFontSize);
+
+  return () => {
+    window.removeEventListener("app-font-size-change", applyFontSize);
+  };
+}, []);
+
+
 const formatWaterBreakTime = (sec: number) => {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
