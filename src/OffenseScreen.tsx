@@ -2951,6 +2951,8 @@ useEffect(() => {
 
   return (
 <DndProvider backend={HTML5Backend}>
+  <div className="app-screen-fit">
+    <div className="app-scale-area overflow-y-auto">
 
   <div className="flex justify-end mb-0">
 
@@ -6116,6 +6118,8 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
         )}
 
       </div>
+    </div>
+  </div>
      </DndProvider>
   );
 };

@@ -1,81 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@layer utilities {
-  /* 既存の util クラスがここにあるならその下で OK */
 
-  /* ====== ドラッグ操作をタッチでもスムーズにする ====== */
-  .touch-draggable {
-    touch-action: none;            /* ピンチズーム／スクロールを抑止 */
-    -webkit-user-select: none;     /* iOS/Safari でのテキスト選択防止 */
-    user-select: none;             /* 他ブラウザでのテキスト選択防止 */
+/* =========================================================
+   タブレット表示補正
+   - 端末ごとの差を減らす
+   - 縦幅いっぱいに使う
+   - ボタン・文字を少し大きくする
+   ========================================================= */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #f3f4f6;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* アプリ全体を画面いっぱいに使う */
+.app-screen-fit {
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 中身は端末に合わせて拡大 */
+.app-scale-area {
+  flex: 1;
+  min-height: 0;
+  transform-origin: top center;
+}
+
+/* タブレット向け：文字・ボタンを大きめにする */
+@media (min-width: 700px) and (max-width: 1100px) {
+  body {
+    font-size: 18px;
+  }
+
+  button,
+  select,
+  input,
+  textarea {
+    font-size: 1.05rem;
+    min-height: 42px;
+  }
+
+  .app-scale-area {
+    font-size: 1.05rem;
   }
 }
-/* Field background */
-.field-container {
-  position: relative;
-  width: 600px;
-  height: 360px;
-  margin: 0 auto;
-  background: url('/field.jpg') no-repeat center / contain;
-}
 
-/* Grid absolute layout */
-.position-grid {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+/* 縦長タブレットで下に空白が出る場合の自動拡大 */
+@media (min-width: 700px) and (min-height: 900px) {
+  .app-scale-area {
+    transform: scale(1.08);
+  }
 }
-.position-cell {
-  position: relative;
-  border: 1px solid #ccc;
-  margin: 4px;
-  padding: 4px;
-}
-.position-cell.highlight { background: rgba(0, 255, 0, 0.2); }
-.player { font-weight: bold; }
-.empty { color: #ccc; }
-.pos-label { position: absolute; bottom: 2px; right: 4px; font-size: 12px; }
-
-/* Bench badges */
-.bench-list-badges {
-  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
-}
-.badge {
-  padding: 4px 8px; border-radius: 12px; font-size: 0.875rem;
-}
-.badge-primary { background-color: #e0f7fa; color: #00796b; }
-.badge-secondary { background-color: #f0f0f0; color: #888; text-decoration: line-through; }
-
-/* Data section layout */
-.data-section { display: flex; justify-content: space-between; margin-top: 16px; }
-.buttons button { margin-right: 8px; }
-
-/* Buttons */
-.btn { padding: 8px 16px; border: none; border-radius: 4px; color: white; cursor: pointer; }
-.btn-primary { background-color: #007bff; }
-.btn-danger { background-color: #dc3545; }
-
-/* iOS Safari のドラッグ原点ズレ・スクロール干渉の緩和 */
-.touch-draggable {
-  -webkit-user-drag: element;
-  touch-action: none;
-  cursor: grab;
-}
-.touch-draggable:active {
-  cursor: grabbing;
-}
-
-/* Modal */
-.modal-backdrop {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
-}
-.modal-content {
-  background: #fff; padding: 20px; border-radius: 4px; width: 400px;
-}
-.announcement-text { white-space: pre-wrap; }
-.modal-buttons { text-align: right; margin-top: 10px; }
