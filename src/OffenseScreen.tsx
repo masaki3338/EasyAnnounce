@@ -2952,14 +2952,14 @@ useEffect(() => {
   return (
 <DndProvider backend={HTML5Backend}>
   <div className="app-screen-fit">
-    <div className="app-scale-area overflow-y-auto">
+    <div className="app-scale-area">
 
   <div className="flex justify-end mb-0">
 
 
 </div>
       <div
-        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none overflow-x-hidden"
+        className="offense-fit-content pt-1 pb-2 select-none overflow-x-hidden"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         onPointerDown={(e) => {
