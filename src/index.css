@@ -3,93 +3,97 @@
 @tailwind utilities;
 
 /* =========================================================
-   タブレット表示補正 修正版
-   - 横の見切れを防ぐ
-   - 守備交代画面などの縦スクロールは止めない
-   - 攻撃画面だけ画面内に収めやすくする
+   Android / iPhone の文字サイズ設定を反映しやすくする基本設定
    ========================================================= */
-html,
-body,
-#root {
-  width: 100%;
-  min-height: 100dvh;
-  margin: 0;
-  padding: 0;
-}
-
-html,
-body {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-body {
-  background: #f3f4f6;
+html {
+  font-size: 100%;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
-#root {
-  overflow-x: hidden;
+body {
+  font-size: 1rem;
 }
 
-/* 攻撃画面など、画面に収めたいページ用 */
-.app-screen-fit {
-  width: 100%;
-  max-width: 100%;
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-.app-scale-area {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-/* 攻撃画面の左右見切れ防止 */
-.offense-fit-content {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  padding-left: max(8px, env(safe-area-inset-left));
-  padding-right: max(8px, env(safe-area-inset-right));
-}
-
-/* タブレットでは文字とボタンを少し大きくするだけ */
-@media (min-width: 700px) and (max-width: 1100px) {
-  body {
-    font-size: 17px;
+/* =========================================================
+   共通デザインクラス
+   他の画面でもこれを使うと文字サイズが端末設定に追従しやすい
+   ========================================================= */
+@layer components {
+  .app-screen {
+    @apply min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white px-4 sm:px-6;
   }
 
-  .app-scale-area {
-    font-size: 1.04rem;
+  .app-screen-inner {
+    @apply w-full max-w-2xl mx-auto;
   }
 
-  button,
-  select,
-  input,
-  textarea {
-    font-size: 1.04rem;
-    min-height: 42px;
+  .app-page-title {
+    @apply text-2xl sm:text-3xl font-extrabold tracking-wide leading-tight;
+  }
+
+  .app-sub-title {
+    @apply text-sm sm:text-base opacity-80 font-semibold leading-relaxed;
+  }
+
+  .app-card {
+    @apply rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg;
+  }
+
+  .app-section-title {
+    @apply text-base sm:text-lg font-extrabold mb-2 leading-snug;
+  }
+
+  .app-body {
+    @apply text-base leading-relaxed;
+  }
+
+  .app-body-large {
+    @apply text-lg leading-relaxed;
+  }
+
+  .app-small {
+    @apply text-sm leading-relaxed;
+  }
+
+  .app-button {
+    @apply px-4 py-2 rounded-xl text-base font-semibold shadow-md active:scale-95;
+  }
+
+  .app-button-large {
+    @apply px-6 py-4 rounded-2xl text-lg font-semibold shadow-lg active:scale-95;
+  }
+
+  .announce-box {
+    @apply rounded-2xl bg-white text-gray-900 p-4 shadow-xl border border-gray-200;
+  }
+
+  .announce-text {
+    @apply text-lg leading-relaxed font-semibold whitespace-pre-wrap;
+  }
+
+  .announce-button-row {
+    @apply grid grid-cols-2 gap-3 mt-4;
+  }
+
+  .announce-speak-button {
+    @apply app-button bg-blue-600 text-white;
+  }
+
+  .announce-stop-button {
+    @apply app-button bg-gray-600 text-white;
   }
 }
 
-/* 横見切れ防止 */
-* {
-  box-sizing: border-box;
+/* =========================================================
+   ルビ表示
+   選手名のふりがなも親文字サイズに合わせて拡大縮小する
+   ========================================================= */
+.ruby-text {
+  ruby-position: over;
 }
 
-img,
-table,
-button,
-select,
-input,
-textarea {
-  max-width: 100%;
+.ruby-reading {
+  font-size: 0.5em;
+  line-height: 1;
 }
