@@ -1,32 +1,10 @@
 // src/screens/OperationSettings.tsx
 import type { ScreenType } from "../App";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { getLeagueMode } from "../lib/leagueSettings";
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
-};
-
-type FontSizeSetting = "normal" | "large" | "xlarge";
-
-const FONT_SIZE_LABEL: Record<FontSizeSetting, string> = {
-  normal: "標準",
-  large: "大",
-  xlarge: "特大",
-};
-
-const getSavedFontSize = (): FontSizeSetting => {
-  const saved = localStorage.getItem("appFontSize");
-  if (saved === "large" || saved === "xlarge" || saved === "normal") {
-    return saved;
-  }
-  return "normal";
-};
-
-const applyFontSizeSetting = (size: FontSizeSetting) => {
-  localStorage.setItem("appFontSize", size);
-  document.documentElement.setAttribute("data-font-size", size);
-  window.dispatchEvent(new Event("app-font-size-change"));
 };
 
 const TileButton: React.FC<{
@@ -51,18 +29,6 @@ const TileButton: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
-  const [fontSize, setFontSize] = useState<FontSizeSetting>(() => getSavedFontSize());
-
-  useEffect(() => {
-    const size = getSavedFontSize();
-    setFontSize(size);
-    document.documentElement.setAttribute("data-font-size", size);
-  }, []);
-
-  const handleFontSizeChange = (size: FontSizeSetting) => {
-    setFontSize(size);
-    applyFontSizeSetting(size);
-  };
 
   const leagueMode = getLeagueMode();
   const manualFile = leagueMode === "boys" ? "Boysmanual.pdf" : "manual.pdf";
@@ -102,55 +68,7 @@ export default function OperationSettings({ onNavigate }: Props) {
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4 py-4">
-        {/* 文字サイズ設定 */}
-        <div className="w-full rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-bold leading-tight flex items-center gap-2">
-                <span className="text-xl">🔠</span>
-                <span>文字サイズ</span>
-              </div>
-              <div className="text-xs opacity-80 mt-1">
-                タブレットやスマホで文字が小さい場合に変更します
-              </div>
-            </div>
-            <div className="shrink-0 rounded-full bg-blue-500/25 border border-blue-300/30 px-3 py-1 text-xs font-bold text-blue-100">
-              {FONT_SIZE_LABEL[fontSize]}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            {(["normal", "large", "xlarge"] as FontSizeSetting[]).map((size) => {
-              const active = fontSize === size;
-              return (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => handleFontSizeChange(size)}
-                  className={`
-                    rounded-xl border px-3 py-3 font-extrabold transition active:scale-95
-                    ${
-                      active
-                        ? "bg-blue-500 text-white border-blue-300 shadow-lg"
-                        : "bg-white/10 text-white border-white/15 hover:bg-white/15"
-                    }
-                  `}
-                >
-                  {FONT_SIZE_LABEL[size]}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-3 rounded-xl bg-black/20 border border-white/10 p-3">
-            <div className="text-xs opacity-80">表示サンプル</div>
-            <div className="mt-1 font-bold leading-relaxed">
-              1番、ショート、山田くん。アナウンス文とボタンの文字が変わります。
-            </div>
-          </div>
-        </div>
-
+      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4">
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
           title="規定投球数"
