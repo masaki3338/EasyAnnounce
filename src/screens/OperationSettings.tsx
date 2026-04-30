@@ -1,10 +1,38 @@
 // src/screens/OperationSettings.tsx
 import type { ScreenType } from "../App";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getLeagueMode } from "../lib/leagueSettings";
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
+};
+
+type FontSizeSetting = "normal" | "large" | "xlarge";
+
+const FONT_SIZE_OPTIONS: Array<{
+  value: FontSizeSetting;
+  label: string;
+  desc: string;
+}> = [
+  { value: "normal", label: "標準", desc: "通常サイズ" },
+  { value: "large", label: "大", desc: "少し大きく" },
+  { value: "xlarge", label: "特大", desc: "かなり大きく" },
+];
+
+const readFontSizeSetting = (): FontSizeSetting => {
+  const saved = localStorage.getItem("appFontSize");
+
+  if (saved === "large" || saved === "xlarge" || saved === "normal") {
+    return saved;
+  }
+
+  return "normal";
+};
+
+const applyFontSizeSetting = (size: FontSizeSetting) => {
+  localStorage.setItem("appFontSize", size);
+  document.documentElement.setAttribute("data-font-size", size);
+  window.dispatchEvent(new Event("app-font-size-change"));
 };
 
 const TileButton: React.FC<{
@@ -14,8 +42,9 @@ const TileButton: React.FC<{
   onClick: () => void;
 }> = ({ icon, title, desc, onClick }) => (
   <button
+    type="button"
     onClick={onClick}
-    className="w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition flex items-center gap-4"
+    className="w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition flex items-center gap-4 app-button"
   >
     <div className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/10 border border-white/10 shrink-0">
       {icon}
@@ -29,6 +58,18 @@ const TileButton: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
+  const [fontSize, setFontSize] = useState<FontSizeSetting>("normal");
+
+  useEffect(() => {
+    const size = readFontSizeSetting();
+    setFontSize(size);
+    document.documentElement.setAttribute("data-font-size", size);
+  }, []);
+
+  const handleFontSizeChange = (size: FontSizeSetting) => {
+    setFontSize(size);
+    applyFontSizeSetting(size);
+  };
 
   const leagueMode = getLeagueMode();
   const manualFile = leagueMode === "boys" ? "Boysmanual.pdf" : "manual.pdf";
@@ -39,7 +80,7 @@ export default function OperationSettings({ onNavigate }: Props) {
 
   return (
     <div
-      className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6"
+      className="app-page min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6"
       style={{
         paddingTop: "max(16px, env(safe-area-inset-top))",
         paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -68,7 +109,56 @@ export default function OperationSettings({ onNavigate }: Props) {
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4">
+      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4 py-4">
+        {/* 文字サイズ設定 */}
+        <section className="w-full rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 font-bold text-lg leading-tight">
+                <span className="text-2xl">🔠</span>
+                <span>文字サイズ</span>
+              </div>
+              <p className="text-xs sm:text-sm text-white/75 mt-1 leading-relaxed">
+                タブレットやスマホで文字が小さい場合に変更できます。
+                アナウンス文言・ボタン・選手名表示に反映されます。
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {FONT_SIZE_OPTIONS.map((option) => {
+              const selected = fontSize === option.value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleFontSizeChange(option.value)}
+                  className={`
+                    rounded-2xl border px-2 py-3 text-center active:scale-95 transition
+                    ${
+                      selected
+                        ? "bg-blue-500 border-blue-300 text-white shadow-lg"
+                        : "bg-white/10 border-white/10 text-white hover:bg-white/15"
+                    }
+                  `}
+                  aria-pressed={selected}
+                >
+                  <div className="font-extrabold text-base sm:text-lg">{option.label}</div>
+                  <div className="text-[11px] sm:text-xs opacity-80 mt-1">{option.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 rounded-xl bg-black/20 border border-white/10 px-3 py-2 text-xs sm:text-sm text-white/80 leading-relaxed">
+            現在：
+            <span className="font-bold text-white">
+              {FONT_SIZE_OPTIONS.find((option) => option.value === fontSize)?.label ?? "標準"}
+            </span>
+          </div>
+        </section>
+
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
           title="規定投球数"
@@ -173,6 +263,7 @@ export default function OperationSettings({ onNavigate }: Props) {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => setShowManual(false)}
                     className="shrink-0 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 px-3 py-2 text-sm font-semibold"
                     aria-label="閉じる"
@@ -194,6 +285,7 @@ export default function OperationSettings({ onNavigate }: Props) {
               {/* フッター */}
               <div className="shrink-0 px-4 sm:px-5 py-3 border-t border-white/10 bg-slate-900">
                 <button
+                  type="button"
                   onClick={() => setShowManual(false)}
                   className="
                     w-full rounded-2xl
