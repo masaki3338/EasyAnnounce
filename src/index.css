@@ -3,21 +3,24 @@
 @tailwind utilities;
 
 /* =========================================================
-   タブレット表示補正（横見切れ防止版）
-   - 画面の両端が切れないように 100vw 拡大をやめる
-   - 横方向は必ず画面内に収める
-   - 縦方向はスクロール可能にする
+   タブレット表示補正 修正版
+   - 横の見切れを防ぐ
+   - 守備交代画面などの縦スクロールは止めない
+   - 攻撃画面だけ画面内に収めやすくする
    ========================================================= */
 html,
 body,
 #root {
   width: 100%;
-  max-width: 100%;
-  height: 100%;
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 body {
@@ -26,89 +29,67 @@ body {
   text-size-adjust: 100%;
 }
 
-* {
-  box-sizing: border-box;
+#root {
+  overflow-x: hidden;
 }
 
-/* アプリ全体 */
+/* 攻撃画面など、画面に収めたいページ用 */
 .app-screen-fit {
   width: 100%;
   max-width: 100%;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f3f4f6;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-/* 各画面の中身 */
 .app-scale-area {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1;
   min-height: 0;
   width: 100%;
   max-width: 100%;
-  overflow-y: auto;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
 }
 
-/* 攻撃画面：左右が見切れないようにする */
+/* 攻撃画面の左右見切れ防止 */
 .offense-fit-content {
   width: 100%;
   max-width: 100%;
-  min-width: 0;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: max(4px, env(safe-area-inset-left));
-  padding-right: max(4px, env(safe-area-inset-right));
   overflow-x: hidden;
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
 }
 
-.offense-fit-content * {
-  max-width: 100%;
-}
-
-.offense-fit-content table {
-  width: 100%;
-  table-layout: fixed;
-}
-
-.offense-fit-content button,
-.offense-fit-content select,
-.offense-fit-content input,
-.offense-fit-content textarea {
-  max-width: 100%;
-}
-
-/* タブレット向け：大きくしすぎると横が切れるため控えめにする */
+/* タブレットでは文字とボタンを少し大きくするだけ */
 @media (min-width: 700px) and (max-width: 1100px) {
   body {
     font-size: 17px;
   }
 
   .app-scale-area {
-    font-size: 1.02rem;
+    font-size: 1.04rem;
   }
 
   button,
   select,
   input,
   textarea {
-    font-size: 1.02rem;
-    min-height: 40px;
+    font-size: 1.04rem;
+    min-height: 42px;
   }
 }
 
-/* かなり横幅が狭いタブレット用 */
-@media (max-width: 820px) {
-  .offense-fit-content {
-    padding-left: 3px;
-    padding-right: 3px;
-  }
+/* 横見切れ防止 */
+* {
+  box-sizing: border-box;
+}
 
-  .offense-fit-content button {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
+img,
+table,
+button,
+select,
+input,
+textarea {
+  max-width: 100%;
 }
