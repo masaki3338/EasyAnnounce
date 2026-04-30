@@ -343,7 +343,7 @@ const handleSpeak = () => {
 
   return (
       <div
-        className="starting-lineup-announce-screen min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
+        className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
         style={{
           paddingTop: "max(16px, env(safe-area-inset-top))",
           paddingBottom: "max(16px, env(safe-area-inset-bottom))",
@@ -396,7 +396,7 @@ const handleSpeak = () => {
         <section
           ref={announceBoxRef}
           className="
-            starting-lineup-announce-box rounded-2xl p-4 shadow-lg text-left font-semibold
+            rounded-2xl p-4 shadow-lg text-left font-semibold
             border border-rose-600/90
             bg-gradient-to-br from-rose-600/45 via-rose-500/35 to-rose-400/25
             ring-1 ring-inset ring-rose-600/50
