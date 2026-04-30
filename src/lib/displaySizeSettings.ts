@@ -1,7 +1,15 @@
 // src/lib/displaySizeSettings.ts
 // 端末の画面サイズに合わせて、アプリ全体の表示倍率を自動調整します。
+// 手動設定は不要です。
 
-const getWindowSize = () => {
+type WindowSize = {
+  width: number;
+  height: number;
+  shortSide: number;
+  longSide: number;
+};
+
+const getWindowSize = (): WindowSize => {
   if (typeof window === "undefined") {
     return { width: 390, height: 844, shortSide: 390, longSide: 844 };
   }
@@ -17,27 +25,35 @@ const getWindowSize = () => {
   };
 };
 
+const clamp = (value: number, min: number, max: number) => {
+  return Math.min(max, Math.max(min, value));
+};
+
 export const getAutoDisplayScale = () => {
   const { shortSide, longSide } = getWindowSize();
 
-  // CSS px 基準で判定します。
-  // iPad mini: 768px 前後 / iPad Air: 820px 前後 / 大型Android: 800〜960px前後を想定。
-  if (shortSide >= 1000) return 1.28;
-  if (shortSide >= 900) return 1.24;
-  if (shortSide >= 820) return 1.20;
-  if (shortSide >= 768) return 1.16;
-  if (shortSide >= 600) return 1.10;
+  // スマホは今までに近い大きさ。
+  if (shortSide < 600) {
+    if (longSide >= 900 && shortSide >= 430) return 1.08;
+    return 1;
+  }
 
-  // スマホ横向きで横幅だけ大きい場合は、少しだけ拡大。
-  if (longSide >= 900 && shortSide >= 430) return 1.06;
+  // タブレットは「下の空白が目立つ」ため、前回より強めに拡大します。
+  // 600px〜1000pxの短辺に応じて 1.22〜1.50倍。
+  if (shortSide < 1000) {
+    const t = (shortSide - 600) / 400;
+    return Number(clamp(1.22 + t * 0.28, 1.22, 1.5).toFixed(3));
+  }
 
-  return 1;
+  // 大型タブレット・PC表示。
+  if (shortSide < 1200) return 1.55;
+  return 1.62;
 };
 
 export const getAutoDeviceSizeName = () => {
   const { shortSide } = getWindowSize();
 
-  if (shortSide >= 900) return "large-tablet";
+  if (shortSide >= 1000) return "large-tablet";
   if (shortSide >= 600) return "tablet";
   return "phone";
 };
@@ -45,10 +61,13 @@ export const getAutoDeviceSizeName = () => {
 export const applyAutoDisplaySizeMode = () => {
   if (typeof document === "undefined") return;
 
+  const { shortSide, longSide } = getWindowSize();
   const scale = getAutoDisplayScale();
   const deviceSize = getAutoDeviceSizeName();
 
   document.documentElement.style.setProperty("--app-scale", String(scale));
+  document.documentElement.style.setProperty("--app-short-side", `${shortSide}px`);
+  document.documentElement.style.setProperty("--app-long-side", `${longSide}px`);
   document.documentElement.dataset.displaySizeMode = "auto";
   document.documentElement.dataset.deviceSize = deviceSize;
 };
@@ -64,7 +83,7 @@ export const setupAutoDisplaySizeMode = () => {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       applyAutoDisplaySizeMode();
-    }, 120);
+    }, 80);
   };
 
   window.addEventListener("resize", handleResize);
