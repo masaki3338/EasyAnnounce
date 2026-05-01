@@ -3067,24 +3067,43 @@ useEffect(() => {
         </div>
 
 
-        <table className="w-full border border-gray-400 text-center text-xs mb-2">
-            <colgroup>
-              {/* チーム名列： */}
-              <col className="w-40" />
-              {/* 9回分のスコア列：40pxずつ */}
-              {[...Array(9)].map((_, i) => (
-                <col key={i} className="w-10" />
-              ))}
-              {/* 計列：48px */}
-              <col className="w-12" />
-            </colgroup>
+<div
+  className="w-full px-[clamp(6px,1.6vw,16px)] mb-2"
+  style={{
+    paddingLeft: "max(clamp(6px, 1.6vw, 16px), env(safe-area-inset-left))",
+    paddingRight: "max(clamp(6px, 1.6vw, 16px), env(safe-area-inset-right))",
+  }}
+>
+  <table
+    className="w-full max-w-full border border-gray-400 text-center table-fixed"
+    style={{
+      width: "100%",
+      tableLayout: "fixed",
+      fontSize: "clamp(10px, 1.25vh, 18px)",
+      lineHeight: 1.1,
+    }}
+  >
+        <colgroup>
+          {/* チーム名列：画面幅に合わせて縮む */}
+          <col style={{ width: "28%" }} />
+
+          {/* 1〜9回：残り幅を均等配分 */}
+          {[...Array(9)].map((_, i) => (
+            <col key={i} style={{ width: "6.5%" }} />
+          ))}
+
+          {/* 計列 */}
+          <col style={{ width: "13.5%" }} />
+        </colgroup>
           <thead>
             <tr>
-              <th className="border">回</th>
+              <th className="border py-[clamp(2px,0.55vh,8px)]">回</th>
               {[...Array(9).keys()].map(i => (
-                <th key={i} className="border">{i + 1}</th>
+                <th key={i} className="border py-[clamp(2px,0.55vh,8px)]">
+                  {i + 1}
+                </th>
               ))}
-              <th className="border">計</th>
+              <th className="border py-[clamp(2px,0.55vh,8px)]">計</th>
             </tr>
           </thead>
           <tbody>
@@ -3099,10 +3118,17 @@ useEffect(() => {
               })
               .map((row, rowIdx) => (
                 <tr key={rowIdx} className={row.isMyTeam ? "bg-gray-100" : ""}>
-                  <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-                    <span className="block max-w-[120px] truncate" title={row.name}>
-                      {row.name}
-                    </span>
+                  <td
+                    className={`border px-1 py-[clamp(2px,0.55vh,8px)] ${
+                      row.isMyTeam ? "text-red-600 font-bold" : ""
+                    }`}
+                  >
+                  <span
+                    className="block w-full truncate leading-tight"
+                    title={row.name}
+                  >
+                    {row.name}
+                  </span>
                   </td>
 
                   {[...Array(9).keys()].map(i => {
@@ -3121,8 +3147,8 @@ useEffect(() => {
                     return (
                       <td
                         key={i}
-                        className={`border text-center cursor-pointer hover:bg-gray-200 ${
-                          isNow ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
+                        className={`border text-center cursor-pointer hover:bg-gray-200 font-semibold px-0 py-[clamp(2px,0.5vh,7px)] ${
+                          isNow ? "bg-yellow-300 font-extrabold border-2 border-yellow-500" : ""
                         }`}
                         onClick={() => {
                           const clickedInning = i + 1;
@@ -3216,8 +3242,14 @@ useEffect(() => {
               ))}
           </tbody>
         </table>
-   
-        <div className="space-y-0 text-sm font-bold text-gray-800">
+   </div>
+        <div
+          className="space-y-0 font-bold text-gray-800"
+          style={{
+            fontSize: "clamp(13px, 1.45vh, 22px)",
+            lineHeight: 1.12,
+          }}
+        >
         {currentGameState.battingOrder9.map((slot, idx) => {
           const player = getPlayer(slot.currentId);
           const isCurrent = idx === currentBatterIndex;
@@ -3259,11 +3291,11 @@ useEffect(() => {
                 isCurrent ? "bg-yellow-200" : ""
               }`}
             >
-              <div className="grid grid-cols-[50px_100px_150px_60px] items-center gap-2">
+              <div className="grid grid-cols-[clamp(42px,7vw,70px)_clamp(42px,8vw,90px)_minmax(0,1fr)_clamp(52px,8vw,90px)] items-center gap-2">
                 <div>{slot.order}番</div>
                 <div>{positionLabel}</div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 min-w-0 overflow-hidden">
                   <input
                     type="checkbox"
                     checked={checkedIds.includes(slot.currentId)}
@@ -3271,17 +3303,17 @@ useEffect(() => {
                     className="mr-2"
                   />
 
-                  <ruby>
-                    {player?.lastName ?? ""}
-                    {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
-                  </ruby>
+                <ruby className="truncate max-w-[45%]">
+                  {player?.lastName ?? ""}
+                  {player?.lastNameKana && <rt>{player.lastNameKana}</rt>}
+                </ruby>
 
-                  {player?.firstName?.trim() ? (
-                    <ruby>
-                      {player.firstName}
-                      {player.firstNameKana && <rt>{player.firstNameKana}</rt>}
-                    </ruby>
-                  ) : null}
+                {player?.firstName?.trim() ? (
+                  <ruby className="truncate max-w-[45%]">
+                    {player.firstName}
+                    {player.firstNameKana && <rt>{player.firstNameKana}</rt>}
+                  </ruby>
+                ) : null}
                 </div>
 
                 <div>{formatNumberBadge(player?.number)}</div>
@@ -3294,13 +3326,34 @@ useEffect(() => {
         <div className="w-full grid grid-cols-3 gap-2 my-1">
           <button
             onClick={handlePrev}
-            className="col-span-1 w-full h-8 rounded bg-green-500 text-white text-sm"
+            className="
+              col-span-1 w-full rounded bg-green-500 hover:bg-green-600
+              text-white font-extrabold
+              inline-flex items-center justify-center
+              whitespace-nowrap leading-none
+              active:scale-[0.98] transition
+            "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(13px, 1.65vh, 22px)",
+            }}
           >
             ⬅ 前の打者
           </button>
+
           <button
             onClick={handleNext}
-            className="col-span-2 w-full h-10 rounded bg-green-500 text-white"
+            className="
+              col-span-2 w-full rounded bg-green-500 hover:bg-green-600
+              text-white font-extrabold
+              inline-flex items-center justify-center
+              whitespace-nowrap leading-none
+              active:scale-[0.98] transition
+            "
+            style={{
+              height: "clamp(38px, 4.8vh, 64px)",
+              fontSize: "clamp(15px, 1.95vh, 28px)",
+            }}
           >
             ➡️ 次の打者
           </button>
@@ -3310,12 +3363,18 @@ useEffect(() => {
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
           <div className="mt-2 w-full flex gap-2">
 
-            <span className="text-red-600 font-bold whitespace-pre-line">
+            <span
+              className="text-red-600 font-bold whitespace-pre-line"
+              style={{
+                fontSize: "clamp(16px, 1.75vh, 26px)",
+                lineHeight: 1.35,
+              }}
+            >
               {leagueMode === "boys"
                 ? `ご来場の皆様にお願いをいたします。
             試合中、スタンドに入りますファウルボールは大変危険でございます。
             打球の行方には十分ご注意ください。`
-                : `ファウルボールの行方には十分ご注意ください`}
+                : `ファールボールの行方には十分ご注意ください`}
             </span>
           </div>
 
@@ -3351,9 +3410,15 @@ useEffect(() => {
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
           <div className="flex items-center mb-2">
 
-              <span className="text-red-600 font-bold whitespace-pre-line">
-                {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
-              </span>
+            <span
+              className="text-red-600 font-bold whitespace-pre-line"
+              style={{
+                fontSize: "clamp(17px, 1.9vh, 28px)",
+                lineHeight: 1.35,
+              }}
+            >
+              {tiebreakAnno ?? announcementOverride ?? announcement ?? ""}
+            </span>
 
           </div>
           {/* 🔊 打順アナウンス：読み上げ／停止（横いっぱい・半分ずつ） */}
@@ -3407,14 +3472,19 @@ useEffect(() => {
               }
             }}
             className="
-              flex-[0.7] h-9
+              flex-[0.75] min-w-0
               bg-red-600 hover:bg-red-700
-              text-white font-bold text-sm
-              rounded-lg shadow
+              text-white font-extrabold
+              rounded-xl shadow-lg
               flex items-center justify-center
+              whitespace-nowrap leading-none
               active:scale-[0.96]
               transition
             "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(13px, 1.65vh, 22px)",
+            }}
           >
             得点−1
           </button>
@@ -3444,14 +3514,19 @@ useEffect(() => {
               }
             }}
             className="
-              flex-1 h-9
+              flex-1 min-w-0
               bg-blue-600 hover:bg-blue-700
-              text-white font-extrabold text-lg
+              text-white font-extrabold
               rounded-xl shadow-lg
               flex items-center justify-center
+              whitespace-nowrap leading-none
               active:scale-[0.97]
               transition
             "
+            style={{
+              height: "clamp(34px, 4.2vh, 56px)",
+              fontSize: "clamp(14px, 1.75vh, 24px)",
+            }}
           >
             得点＋1
           </button>
@@ -3506,61 +3581,90 @@ useEffect(() => {
               setShowModal(true);
             }}
             className="
-              flex-[2.1] h-10
+              flex-[2.1] min-w-0
               bg-black hover:bg-gray-900
-              text-white font-extrabold text-xl tracking-wider
+              text-white font-extrabold tracking-wider
               rounded-2xl shadow-xl
               flex items-center justify-center gap-2
+              whitespace-nowrap leading-none
               active:scale-[0.97]
               transition
               ring-4 ring-gray-400/40
             "
+            style={{
+              height: "clamp(38px, 4.8vh, 64px)",
+              fontSize: "clamp(15px, 1.95vh, 28px)",
+            }}
           >
             ⚾イニング終了
           </button>
         </div>
 
-        {/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → リエントリー → 代走 → 代打） */}
-        <div className="w-full grid grid-cols-3 gap-2 mt-2">
-          {/* DH解除（常に表示。条件を満たさない時は disabled） */}
-          <button
-            onClick={() => setShowDhDisableModal(true)}
-            disabled={!isDhTurn || !dhActive || !pitcherId}
-            className="w-full h-8 rounded bg-gray-800 text-white px-2 text-sm
-                      inline-flex items-center justify-center
-                      disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed"
-            title="DH解除"
-          >
-            <span className="whitespace-nowrap leading-none tracking-tight
-                            text-[clamp(10px,3.2vw,16px)]">
-              DH解除
-            </span>
-          </button>
+{/* 操作ボタン（横いっぱい・等幅・固定順：DH解除 → 代走 → 代打） */}
+<div className="w-full grid grid-cols-3 gap-2 mt-2">
+  {/* DH解除（常に表示。条件を満たさない時は disabled） */}
+  <button
+    onClick={() => setShowDhDisableModal(true)}
+    disabled={!isDhTurn || !dhActive || !pitcherId}
+    className="
+      w-full rounded bg-gray-800 text-white px-2
+      inline-flex items-center justify-center
+      disabled:bg-gray-300 disabled:text-white disabled:cursor-not-allowed
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="DH解除"
+  >
+    <span className="whitespace-nowrap font-extrabold tracking-tight">
+      DH解除
+    </span>
+  </button>
 
+  {/* 代走 */}
+  <button
+    onClick={() => {
+      setRunnerModalMode("runner");
+      setShowRunnerModal(true);
+    }}
+    className="
+      w-full rounded bg-orange-600 text-white
+      inline-flex items-center justify-center
+      font-extrabold whitespace-nowrap
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="代走"
+  >
+    🏃‍♂️代走
+  </button>
 
-
-
-          {/* 代走 */}
-          <button
-            onClick={() => {
-              setRunnerModalMode("runner");
-              setShowRunnerModal(true);
-            }}
-            className="w-full h-8 rounded bg-orange-600 text-white text-sm"
-            title="代走"
-          >
-            🏃‍♂️代走
-          </button>
-
-          {/* 代打 */}
-          <button
-            onClick={() => setShowSubModal(true)}
-            className="w-full h-8 rounded bg-orange-600 text-white text-sm"
-            title="代打"
-          >
-            🏏代打
-          </button>
-        </div>
+  {/* 代打 */}
+  <button
+    onClick={() => setShowSubModal(true)}
+    className="
+      w-full rounded bg-orange-600 text-white
+      inline-flex items-center justify-center
+      font-extrabold whitespace-nowrap
+      active:scale-[0.98] transition
+    "
+    style={{
+      height: "clamp(34px, 4.2vh, 54px)",
+      fontSize: "clamp(14px, 1.75vh, 24px)",
+      lineHeight: 1,
+    }}
+    title="代打"
+  >
+    🏏代打
+  </button>
+</div>
 
         {/* ✅ DH解除のポップアップ */}
         {showDhDisableModal && (() => {
@@ -3772,7 +3876,7 @@ useEffect(() => {
                       await restoreOffenseInningStartSnapshot();
                     }}
                   >
-                    回の最初に戻す                    
+                    この回の最初に戻す                    
                   </button>
                   
                   <button

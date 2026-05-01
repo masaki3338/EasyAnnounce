@@ -1580,24 +1580,36 @@ const handleStop = () => { ttsStop(); };
   </div>
 </div>
 
-        <table className="w-full border border-gray-400 text-center text-sm">
-          <colgroup>
-            {/* チーム名列： */}
-            <col className="w-40" />
-            {/* 9回分のスコア列：40pxずつ */}
-            {[...Array(9)].map((_, i) => (
-              <col key={i} className="w-10" />
-            ))}
-            {/* 計列：48px */}
-            <col className="w-12" />
-          </colgroup>
+        <table
+          className="
+            w-full
+            table-fixed
+            border border-gray-400
+            text-center
+            text-[clamp(13px,2.05dvh,20px)]
+          "
+        >
+        <colgroup>
+          {/* チーム名列 */}
+          <col className="w-[28%]" />
+
+          {/* 9回分のスコア列 */}
+          {[...Array(9)].map((_, i) => (
+            <col key={i} className="w-[7%]" />
+          ))}
+
+          {/* 計列 */}
+          <col className="w-[9%]" />
+        </colgroup>
           <thead>
             <tr>
-              <th className="border">回</th>
+              <th className="border h-[clamp(24px,3.8dvh,40px)]">回</th>
               {[...Array(9).keys()].map(i => (
-                <th key={i} className="border">{i + 1}</th>
+                <th key={i} className="border h-[clamp(24px,3.8dvh,40px)]">
+                  {i + 1}
+                </th>
               ))}
-              <th className="border">計</th>
+              <th className="border h-[clamp(24px,3.8dvh,40px)]">計</th>
             </tr>
           </thead>
           <tbody>
@@ -1613,11 +1625,27 @@ const handleStop = () => { ttsStop(); };
     .map((row, rowIndex) => {
       return (
         <tr key={rowIndex} className={row.isMyTeam ? "bg-gray-100" : ""}>
-        <td className={`border ${row.isMyTeam ? "text-red-600 font-bold" : ""}`}>
-          <span className="block max-w-[120px] truncate" title={row.name}>
-            {row.name}
-          </span>
-        </td>
+<td
+  className={`
+    border
+    h-[clamp(28px,4.2dvh,46px)]
+    px-1
+    ${row.isMyTeam ? "text-red-600 font-bold" : ""}
+  `}
+>
+  <span
+    className="
+      block
+      max-w-full
+      truncate
+      text-[clamp(12px,1.9dvh,18px)]
+      leading-tight
+    "
+    title={row.name}
+  >
+    {row.name}
+  </span>
+</td>
 
 
           {[...Array(9).keys()].map((i) => {
@@ -1643,9 +1671,13 @@ const handleStop = () => { ttsStop(); };
             return (
             <td
               key={i}
-              className={`border cursor-pointer text-center hover:bg-gray-200 ${
-                isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""
-              }`}
+              className={`
+                border cursor-pointer text-center hover:bg-gray-200
+                h-[clamp(28px,4.2dvh,46px)]
+                font-semibold
+                tabular-nums
+                ${isHighlight ? "bg-yellow-300 font-bold border-2 border-yellow-500" : ""}
+              `}
               onClick={() => {
                 const clickedInning = i + 1;
 
@@ -1680,7 +1712,15 @@ const handleStop = () => { ttsStop(); };
             </td>
             );
           })}
-          <td className="border font-bold text-center">
+          <td
+            className="
+              border
+              font-bold
+              text-center
+              h-[clamp(28px,4.2dvh,46px)]
+              tabular-nums
+            "
+          >
             {(() => {
               const nInning = Number(inning);
 
@@ -1731,54 +1771,109 @@ const handleStop = () => { ttsStop(); };
         })}
       </div>
 
-{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※ボタン比率 1:1 */}
-<div className="w-full grid grid-cols-12 items-center gap-2 sm:gap-3 my-2">
-  {/* －1（4/12） */}
-<button
-  onClick={subtractPitch}
-  className="col-span-4 mx-auto w-[80%] h-10 rounded bg-yellow-500 text-white hover:bg-yellow-600 whitespace-nowrap"
->
-  ⚾︎投球数－１
-</button>
-
-  {/* 中央表示（4/12） */}
-<div className="col-span-4 min-w-0 text-center leading-tight">
-  {/* この回の投球数 */}
-  <p className="whitespace-nowrap leading-none tracking-tight text-[clamp(13px,3.6vw,18px)]">
-    <span className="font-semibold align-middle">この回の投球数:</span>{" "}
-    <strong className="tabular-nums align-middle text-[clamp(14px,4.2vw,20px)]">
-      {currentPitchCount}
-    </strong>
-  </p>
-
-{/* 累計投球数（タップで変更） */}
-<button
-  type="button"
-  onClick={() => openTotalPitchModal(totalPitchCount)}
+{/* 投球数（左=－1｜中央=表示｜右=＋1）  ※スマホは従来通り／タブレット以上は高さ連動 */}
+<div
   className="
-    mt-1 inline-flex items-center gap-2
-    rounded-full bg-emerald-600 text-white
-    px-3 py-1.5
-    shadow-md
-    active:scale-[0.97]
-    focus:outline-none
+    w-full
+    grid grid-cols-12
+    items-center
+    gap-2 sm:gap-3
+    my-2
+    md:my-[clamp(8px,1.5dvh,16px)]
   "
 >
-  <span className="text-xs opacity-90">累計投球</span>
-  <span className="font-bold tabular-nums text-base">
-    {totalPitchCount}
-  </span>
-  <span className="text-xs opacity-80">球</span>
-</button>
+  {/* －1（4/12） */}
+  <button
+    onClick={subtractPitch}
+    className="
+      col-span-4
+      mx-auto
+      w-[80%]
+      h-10
+      md:h-[clamp(42px,5.2dvh,58px)]
+      rounded
+      bg-yellow-500 text-white hover:bg-yellow-600
+      whitespace-nowrap
+      text-sm
+      md:text-[clamp(15px,2.2dvh,22px)]
+      font-bold
+    "
+  >
+    ⚾︎投球数－１
+  </button>
 
+  {/* 中央表示（4/12） */}
+  <div className="col-span-4 min-w-0 text-center leading-tight">
+    {/* この回の投球数 */}
+    <p
+      className="
+        whitespace-nowrap
+        leading-none
+        tracking-tight
+        text-[clamp(13px,3.6vw,18px)]
+        md:text-[clamp(15px,2.1dvh,22px)]
+      "
+    >
+      <span className="font-semibold align-middle">この回の投球数:</span>{" "}
+      <strong
+        className="
+          tabular-nums
+          align-middle
+          text-[clamp(14px,4.2vw,20px)]
+          md:text-[clamp(18px,2.8dvh,30px)]
+        "
+      >
+        {currentPitchCount}
+      </strong>
+    </p>
 
-</div>
+    {/* 累計投球数（タップで変更） */}
+    <button
+      type="button"
+      onClick={() => openTotalPitchModal(totalPitchCount)}
+      className="
+        mt-1
+        md:mt-[clamp(5px,0.9dvh,10px)]
+        inline-flex items-center gap-2
+        md:gap-[clamp(6px,1dvh,12px)]
+        rounded-full bg-emerald-600 text-white
+        px-3 py-1.5
+        md:px-[clamp(12px,2dvh,22px)]
+        md:py-[clamp(6px,1.2dvh,12px)]
+        shadow-md
+        active:scale-[0.97]
+        focus:outline-none
+      "
+    >
+      <span className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-90">
+        累計投球
+      </span>
 
+      <span className="font-bold tabular-nums text-base md:text-[clamp(18px,2.8dvh,30px)]">
+        {totalPitchCount}
+      </span>
+
+      <span className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80">
+        球
+      </span>
+    </button>
+  </div>
 
   {/* ＋1（4/12） */}
   <button
     onClick={addPitch}
-    className="col-span-4 w-full h-10 rounded bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
+    className="
+      col-span-4
+      w-full
+      h-10
+      md:h-[clamp(42px,5.2dvh,58px)]
+      rounded
+      bg-green-500 text-white hover:bg-green-600
+      whitespace-nowrap
+      text-sm
+      md:text-[clamp(15px,2.2dvh,22px)]
+      font-bold
+    "
   >
     ⚾️投球数＋１
   </button>
@@ -1790,65 +1885,161 @@ const handleStop = () => { ttsStop(); };
 
 {/* 🔽 マイクアイコン付きアナウンスエリア */}
 {announceMessages.length > 0 && (
-  <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
+  <div
+    className="
+      border border-red-500
+      bg-red-200 text-red-700
+      p-2 md:p-[clamp(8px,1.4dvh,14px)]
+      rounded
+      relative text-left
+    "
+  >
     {/* 🔴 上段：マイクアイコン + 注意書き */}
-    <div className="flex items-start gap-2">
-      <img src="/mic-red.png" alt="mic" className="w-6 h-6 mt-[-2px]" />
-      <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-0 text-xs font-semibold whitespace-nowrap leading-tight">
-        <span className="mr-2 text-2xl">⚠️</span> 守備回終了時に🎤
+    <div className="flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
+      <img
+        src="/mic-red.png"
+        alt="mic"
+        className="
+          w-6 h-6 mt-[-2px] shrink-0
+          md:w-[clamp(24px,3.2dvh,34px)]
+          md:h-[clamp(24px,3.2dvh,34px)]
+        "
+      />
+
+      <div
+        className="
+          bg-yellow-100 text-yellow-800
+          border-l-4 border-yellow-500
+          px-2 py-0
+          text-xs
+          md:px-[clamp(8px,1.4dvh,14px)]
+          md:py-[clamp(2px,0.8dvh,6px)]
+          md:text-[clamp(13px,1.9dvh,20px)]
+          font-semibold
+          whitespace-nowrap
+          leading-tight
+        "
+      >
+        <span className="mr-2 text-2xl md:text-[clamp(22px,3.2dvh,34px)]">⚠️</span>
+        守備回終了時に🎤
       </div>
     </div>
 
-    {/* 🔽 下段：アナウンスメッセージとボタン（縦に表示） */}
-    <div className="flex flex-col text-red-600 text-lg font-bold space-y-1 mt-2 leading-tight">
-      {announceMessages.map((msg, index) => (
-        <p
-          key={index}
-          className="leading-tight"
-          dangerouslySetInnerHTML={{ __html: msg }}
-        />
-      ))}
+    {/* 🔽 下段：アナウンスメッセージとボタン */}
+    <div
+      className="
+        flex flex-col
+        text-red-600
+        text-lg
+        md:text-[clamp(20px,3.2dvh,34px)]
+        font-bold
+        space-y-1
+        md:space-y-[clamp(4px,0.8dvh,8px)]
+        mt-2
+        md:mt-[clamp(8px,1.4dvh,14px)]
+        leading-tight
+      "
+    >
+{announceMessages.map((msg, index) => {
+  const isPitchCountMessage =
+    msg.includes("投球数") ||
+    msg.includes("トータル") ||
+    msg.includes("合計投球数") ||
+    msg.includes("球です");
 
-      {/* ボタン（横並び） */}
-      {/* 読み上げ／停止（横いっぱい・等幅、改行なし） */}
-      <div className="mt-2 grid grid-cols-2 gap-2">
+  return (
+    <p
+      key={index}
+      className={`
+        leading-tight
+        ${
+          isPitchCountMessage
+            ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
+            : ""
+        }
+      `}
+      dangerouslySetInnerHTML={{ __html: msg }}
+    />
+  );
+})}
+      {/* 読み上げ／停止 */}
+      <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
         <button
           onClick={handleSpeak}
- className="w-full h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-          inline-flex items-center justify-center gap-2 text-sm"
+          className="
+            w-full
+            h-8
+            md:h-[clamp(34px,4.8dvh,52px)]
+            rounded-xl
+            bg-blue-600 hover:bg-blue-700
+            text-white
+            inline-flex items-center justify-center gap-2
+            text-sm
+            md:text-[clamp(14px,2.1dvh,22px)]
+            md:font-bold
+          "
         >
           <span className="inline-flex items-center gap-2 whitespace-nowrap align-middle">
-            <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
+            <IconMic
+              className="
+                w-5 h-5 shrink-0
+                md:w-[clamp(20px,2.8dvh,30px)]
+                md:h-[clamp(20px,2.8dvh,30px)]
+              "
+              aria-hidden="true"
+            />
             <span className="leading-none">読み上げ</span>
           </span>
-
         </button>
 
         <button
           onClick={handleStop}
-className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
-          inline-flex items-center justify-center text-sm"
+          className="
+            w-full
+            h-8
+            md:h-[clamp(34px,4.8dvh,52px)]
+            rounded-xl
+            bg-red-600 hover:bg-red-700
+            text-white
+            inline-flex items-center justify-center
+            text-sm
+            md:text-[clamp(14px,2.1dvh,22px)]
+            md:font-bold
+          "
         >
           <span className="whitespace-nowrap leading-none">停止</span>
         </button>
       </div>
-
     </div>
   </div>
 )}
 
 {/* 🔽 守備交代 + 得点±1 + イニング終了（1行固定） */}
-<div className="my-3 flex gap-2">
+<div
+  className="
+    my-3
+    md:my-[clamp(10px,1.8dvh,18px)]
+    flex gap-2
+    md:gap-[clamp(8px,1.4dvh,14px)]
+  "
+>
   {/* 守備交代 */}
   <button
     type="button"
     onClick={onChangeDefense}
     className="
-      flex-1 h-12
+      flex-1
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
       bg-orange-500 hover:bg-orange-600
       text-white font-bold
-      rounded-xl shadow-lg
+      text-base
+      md:text-[clamp(17px,2.4dvh,25px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
     "
@@ -1861,11 +2052,17 @@ className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
     type="button"
     onClick={() => changeRun(-1)}
     className="
-      flex-[0.6] h-12 min-w-0
+      flex-[0.6]
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
+      min-w-0
       bg-red-600 hover:bg-red-700
       text-white font-extrabold
       text-[clamp(12px,3.5vw,16px)]
-      rounded-xl shadow-lg
+      md:text-[clamp(15px,2.2dvh,23px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
       whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
@@ -1876,17 +2073,23 @@ className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
     得点−1
   </button>
 
-
   {/* 得点 +1 */}
   <button
     type="button"
     onClick={() => changeRun(+1)}
     className="
-      flex-1 h-12
+      flex-1
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
       bg-blue-600 hover:bg-blue-700
-      text-white font-extrabold text-lg
-      rounded-xl shadow-lg
+      text-white font-extrabold
+      text-lg
+      md:text-[clamp(17px,2.4dvh,25px)]
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center
+      whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
       ring-4 ring-blue-400/40
@@ -1910,13 +2113,20 @@ className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
       setShowModal(true);
     }}
     className="
-      flex-[1.4] h-12 min-w-0
+      flex-[1.4]
+      h-12
+      md:h-[clamp(50px,6.2dvh,70px)]
+      min-w-0
       bg-black hover:bg-gray-900
       text-white font-extrabold
       text-[clamp(13px,3.6vw,18px)]
+      md:text-[clamp(16px,2.3dvh,24px)]
       tracking-wider
-      rounded-xl shadow-lg
+      rounded-xl
+      md:rounded-[clamp(12px,1.8dvh,20px)]
+      shadow-lg
       flex items-center justify-center gap-2
+      md:gap-[clamp(6px,1dvh,12px)]
       whitespace-nowrap leading-none
       transform hover:scale-[1.02] active:scale-[0.97]
       transition-all duration-150
@@ -1925,7 +2135,6 @@ className="w-full h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white
   >
     ⚾イニング終了
   </button>
-
 </div>
 
 
@@ -2732,7 +2941,7 @@ if (typeof reEntryTarget?.index === "number") {
                 await restoreDefenseInningStartSnapshot();
               }}
             >
-              回の最初に戻す
+              この回の最初に戻す
             </button>
 
             <button

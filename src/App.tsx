@@ -192,8 +192,8 @@ const BottomTab: React.FC<{
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
     // ✅ アプリ終了用
-  const [appClosed, setAppClosed] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
+  const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -602,12 +602,22 @@ const confirmCloseApp = async () => {
     disableIOSAwake();
   } catch {}
 
-  // PWA / ブラウザで閉じられる場合は閉じる
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  // iPhone / iPad は自動終了できないので案内モーダルを出す
+  if (isIOS) {
+    setShowIOSCloseGuide(true);
+    return;
+  }
+
+  // Android / PC は閉じられる場合は閉じる
   try {
     window.close();
   } catch {}
 
-  // window.close が効かない端末用
+  // 閉じられない端末では終了画面へ
   window.setTimeout(() => {
     if (!document.hidden) {
       setAppClosed(true);
@@ -767,7 +777,7 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {screen === "menu" && !appClosed && (
+    {screen === "menu" && (
       <button
         type="button"
         onClick={handleCloseApp}
@@ -837,25 +847,53 @@ return (
       </div>
     )}
 
-    {appClosed && (
-      <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center text-center px-6">
-        <div className="text-2xl font-bold text-gray-800 mb-4">
-          アプリを終了しました
+{showIOSCloseGuide && (
+  <div className="fixed inset-0 z-[9999]">
+    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+    <div className="absolute inset-0 flex items-center justify-center p-4">
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ios-close-guide-title"
+      >
+        <div className="px-5 py-4 border-b bg-blue-50">
+          <h2
+            id="ios-close-guide-title"
+            className="text-lg font-bold text-blue-700 text-center"
+          >
+            閉じる準備ができました
+          </h2>
         </div>
 
-        <div className="text-gray-600 text-sm leading-relaxed mb-6">
-          画面を閉じる場合は、端末の戻るボタンやホームボタンで終了してください。
+        <div className="px-5 py-5 text-center">
+          <p className="text-sm text-gray-700 leading-relaxed">
+            読み上げを停止し、画面常時点灯も解除しました。
+          </p>
+
+          <p className="mt-3 text-sm font-bold text-gray-800 leading-relaxed">
+            iPhoneでは自動でアプリを終了できません。
+          </p>
+
+          <p className="mt-2 text-sm text-gray-700 leading-relaxed">
+            画面下のホームバーを上にスワイプして終了してください。
+          </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setAppClosed(false)}
-          className="px-6 py-3 rounded-full bg-blue-600 text-white font-bold shadow hover:bg-blue-700"
-        >
-          アプリに戻る
-        </button>
+        <div className="border-t">
+          <button
+            type="button"
+            onClick={() => setShowIOSCloseGuide(false)}
+            className="w-full py-4 text-base font-bold text-white bg-blue-600 active:bg-blue-700"
+          >
+            アプリに戻る
+          </button>
+        </div>
       </div>
-    )}
+    </div>
+  </div>
+)}
 
     {screen === "menu" && (
       <Menu
@@ -1905,7 +1943,15 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[92vw]
+          max-w-3xl
+          max-h-[80vh]
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -2136,7 +2182,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -2237,7 +2290,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー（スマホ風グラデ&ハンドル） */}
@@ -2283,7 +2343,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -2836,7 +2903,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -3338,7 +3412,14 @@ return (
     {/* 中央カード */}
     <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
       <div
-        className="bg-white shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+        className="
+          bg-white shadow-2xl rounded-2xl
+          w-[calc(100vw-24px)]
+          sm:w-[calc(100vw-32px)]
+          md:w-[82vw]
+          max-w-2xl
+          overflow-hidden flex flex-col
+        "
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {/* ヘッダー */}
@@ -3571,22 +3652,27 @@ const Menu = ({
 
 
     {/* ✅ 野球アナウンスの心得（横長ボタン） */}
-      <button
-        onClick={() => onNavigate("announceMindset")}
-        className="
-          inline-flex items-center gap-3
-          mb-4
-          rounded-2xl
-          bg-gray-200 text-gray-900
-          py-3 px-6
-          shadow-lg
-          hover:bg-gray-100
-          transition
-        "
-      >
-      <span className="text-xl">📖</span>
+    <button
+      onClick={() => onNavigate("announceMindset")}
+      className="
+        inline-flex items-center gap-3
+        md:gap-[clamp(12px,1.8dvh,20px)]
+        mb-4
+        md:mb-[clamp(16px,2.4dvh,28px)]
+        rounded-2xl
+        md:rounded-[clamp(16px,2.4dvh,26px)]
+        bg-gray-200 text-gray-900
+        py-3 px-6
+        md:py-[clamp(14px,2.2dvh,24px)]
+        md:px-[clamp(26px,4dvh,44px)]
+        shadow-lg
+        hover:bg-gray-100
+        transition
+      "
+    >
+      <span className="text-xl md:text-[clamp(24px,3.2dvh,36px)]">📖</span>
       <span
-        className="text-lg font-bold tracking-wide"
+        className="text-lg md:text-[clamp(20px,2.8dvh,30px)] font-bold tracking-wide"
         style={{ fontFamily: "'M PLUS Rounded 1c', sans-serif" }}
       >
         野球アナウンスの心得
@@ -3594,41 +3680,105 @@ const Menu = ({
     </button>
 
     {/* ✅ 4つだけのグリッド（2×2） */}
-    <div className="w-full grid grid-cols-2 gap-4">
+    <div className="w-full grid grid-cols-2 gap-4 md:gap-[clamp(16px,2.6dvh,30px)]">
       <button
         onClick={() => onNavigate("teamRegister")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🧢</div>
-        <div className="mt-2 font-bold">チーム・選手登録</div>
-        <div className="text-xs opacity-80 mt-1">ふりがな,背番号登録等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🧢</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          チーム・選手登録
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          ふりがな,背番号登録等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("matchCreate")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🗓️</div>
-        <div className="mt-2 font-bold">試合作成</div>
-        <div className="text-xs opacity-80 mt-1">対戦相手,スタメン設定等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🗓️</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          試合作成
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          対戦相手,スタメン設定等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("startGame")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">🏁</div>
-        <div className="mt-2 font-bold">試合開始</div>
-        <div className="text-xs opacity-80 mt-1">試合前アナウンス等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">🏁</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          試合開始
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          試合前アナウンス等
+        </div>
       </button>
 
       <button
         onClick={() => onNavigate("operationSettings")}
-        className="rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 p-4 text-left shadow-lg active:scale-95 transition"
+        className="
+          rounded-2xl
+          md:rounded-[clamp(16px,2.4dvh,26px)]
+          bg-white/10 hover:bg-white/15
+          border border-white/10
+          p-4
+          md:p-[clamp(18px,2.8dvh,32px)]
+          md:min-h-[clamp(118px,16dvh,170px)]
+          text-left
+          shadow-lg
+          active:scale-95
+          transition
+        "
       >
-        <div className="text-2xl">⚙️</div>
-        <div className="mt-2 font-bold">運用設定</div>
-        <div className="text-xs opacity-80 mt-1">投球数,タイブレーク等</div>
+        <div className="text-2xl md:text-[clamp(30px,4.4dvh,46px)]">⚙️</div>
+        <div className="mt-2 md:mt-[clamp(8px,1.3dvh,14px)] font-bold md:text-[clamp(18px,2.6dvh,28px)]">
+          運用設定
+        </div>
+        <div className="text-xs md:text-[clamp(13px,1.8dvh,18px)] opacity-80 mt-1 md:mt-[clamp(4px,0.8dvh,8px)]">
+          投球数,タイブレーク等
+        </div>
       </button>
     </div>
 
@@ -3636,7 +3786,22 @@ const Menu = ({
       {canContinue && lastScreen && (
         <button
           onClick={() => onContinueGame(lastScreen)}
-          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl shadow-xl font-semibold transition active:scale-95"
+          className="
+            mt-6
+            md:mt-[clamp(22px,3.2dvh,36px)]
+            w-full
+            bg-blue-600 hover:bg-blue-700
+            text-white
+            py-4
+            md:py-[clamp(16px,2.8dvh,30px)]
+            rounded-2xl
+            md:rounded-[clamp(16px,2.4dvh,26px)]
+            shadow-xl
+            font-semibold
+            md:text-[clamp(18px,2.6dvh,28px)]
+            transition
+            active:scale-95
+          "
         >
           ▶ 試合を継続する
         </button>
