@@ -99,8 +99,11 @@ body {
 }
 
 /* =========================================================
-   攻撃画面：横幅はそのまま、縦方向だけ拡大
-   スマホは今まで通り
+   攻撃画面：
+   ・Androidの文字フォント設定に追従しやすくする
+   ・横幅はそのまま
+   ・縦方向だけ拡大して下側の空白を減らす
+   ・スマホは今まで通り
    ========================================================= */
 
 .app-screen-fit {
@@ -109,6 +112,11 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   background: #f8fafc;
+
+  /* Android / ブラウザの文字サイズ設定を反映しやすくする */
+  font-size: 1rem;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .app-scale-area {
@@ -118,14 +126,38 @@ body {
   transform-origin: top center;
 }
 
+/* 攻撃画面の中身に文字サイズの基準を作る */
+.offense-fit-content {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
 /* スマホは今まで通り */
 @media (max-width: 767px) {
   .app-scale-area {
     transform: none;
   }
+
+  .offense-fit-content {
+    font-size: 1rem;
+  }
 }
 
-/* タブレット縦：縦方向だけ少し拡大 */
+/* タブレット以上：文字・ボタンを少し見やすく */
+@media (min-width: 768px) {
+  .offense-fit-content {
+    font-size: 1.08rem;
+  }
+}
+
+/* 大きめタブレット：さらに少し拡大 */
+@media (min-width: 900px) and (min-height: 1000px) {
+  .offense-fit-content {
+    font-size: 1.14rem;
+  }
+}
+
+/* タブレット縦：横幅はそのまま、縦方向だけ少し拡大 */
 @media (min-width: 768px) and (min-height: 850px) {
   .app-scale-area {
     transform: scaleY(1.08);
