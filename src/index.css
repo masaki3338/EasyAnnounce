@@ -99,11 +99,10 @@ body {
 }
 
 /* =========================================================
-   攻撃画面：タブレットで下側が余る端末向けの全体拡大
+   攻撃画面：横幅はそのまま、縦方向だけ拡大
    スマホは今まで通り
    ========================================================= */
 
-/* 攻撃画面の外枠 */
 .app-screen-fit {
   min-height: 100svh;
   width: 100%;
@@ -112,7 +111,6 @@ body {
   background: #f8fafc;
 }
 
-/* 通常は拡大しない */
 .app-scale-area {
   width: 100%;
   max-width: 100%;
@@ -127,29 +125,23 @@ body {
   }
 }
 
-/* タブレット縦：少し拡大 */
+/* タブレット縦：縦方向だけ少し拡大 */
 @media (min-width: 768px) and (min-height: 850px) {
   .app-scale-area {
-    --offense-scale: 1.08;
-    transform: scale(var(--offense-scale));
-    width: calc(100% / var(--offense-scale));
+    transform: scaleY(1.08);
   }
 }
 
-/* 縦がかなり余るタブレット：さらに拡大 */
+/* 縦がかなり余るタブレット */
 @media (min-width: 768px) and (min-height: 1000px) {
   .app-scale-area {
-    --offense-scale: 1.14;
-    transform: scale(var(--offense-scale));
-    width: calc(100% / var(--offense-scale));
+    transform: scaleY(1.14);
   }
 }
 
-/* 大きめタブレット：最大拡大 */
+/* 大きめタブレット */
 @media (min-width: 900px) and (min-height: 1100px) {
   .app-scale-area {
-    --offense-scale: 1.2;
-    transform: scale(var(--offense-scale));
-    width: calc(100% / var(--offense-scale));
+    transform: scaleY(1.2);
   }
 }
