@@ -8283,98 +8283,99 @@ const canDropHere =
           </div>
         )}
 
-{/* 控え選手（スマホっぽい見出しとタグ） */}
-<div className="mb-4">
-  <div className="flex items-center mb-2">
-    <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold text-slate-900">
-      控え選手
-    </h2>
-    <span className="ml-2 text-amber-600 text-sm md:text-base lg:text-lg font-semibold md:font-bold inline-flex items-center whitespace-nowrap">
-      ⚠️ 交代する選手にドロップ
-    </span>
-  </div>
-
-  <div
-    className="flex flex-col gap-2 md:gap-3 mb-6"
-    onDragOver={(e) => e.preventDefault()}
-    onDrop={(e) => handleDrop(BENCH, e)}
-  >
-    {/* 未出場の控え */}
-    {benchNeverPlayed.length === 0 ? (
-      <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold mb-1">
-        （なし）
-      </div>
-    ) : (
-      <div className="flex flex-wrap gap-2 md:gap-3 mb-2 md:mb-3">
-        {benchNeverPlayed.map((p) => (
-          <div
-            key={`bench-${p.id}`}
-            style={{ touchAction: "none" }}
-            draggable
-            onDragStart={(e) => handleBenchDragStart(e, p.id)}
-            className="
-              px-3 py-1.5 md:px-4 md:py-2
-              text-sm md:text-base lg:text-lg
-              font-semibold md:font-extrabold
-              text-slate-900
-              bg-slate-100 hover:bg-slate-200
-              border border-slate-200 md:border-2
-              rounded-xl md:rounded-2xl
-              shadow-sm
-              cursor-move select-none
-              transition active:scale-[0.98]
-            "
-          >
-            {formatPlayerLabel(p)}
+        {/* 控え選手（スマホっぽい見出しとタグ） */}
+        <div className="mb-4">
+          <div className="flex items-center mb-2">
+            <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold text-slate-900">
+              控え選手
+            </h2>
+            <span className="ml-2 text-amber-600 text-sm md:text-base lg:text-lg font-semibold md:font-bold inline-flex items-center whitespace-nowrap">
+              ⚠️ 交代する選手にドロップ
+            </span>
           </div>
-        ))}
-      </div>
-    )}
 
-    {/* 出場済み（いまはベンチ） */}
-    <div className="text-xs md:text-base lg:text-lg font-semibold md:font-extrabold text-slate-600 md:text-slate-700 mt-1 md:mt-2">
-      出場済み選手
-    </div>
-
-    {benchPlayedOut.length === 0 ? (
-      <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold">
-        （なし）
-      </div>
-    ) : (
-      <div className="flex flex-wrap gap-2 md:gap-3">
-        {benchPlayedOut.map((p) => (
           <div
-            key={`played-${p.id}`}
-            style={{ touchAction: "none" }}
-            draggable
-            onDragStart={(e) => handleBenchDragStart(e, p.id)}
-            className="
-              px-3 py-1.5 md:px-4 md:py-2
-              text-sm md:text-base lg:text-lg
-              font-semibold md:font-extrabold
-              text-slate-700 md:text-slate-800
-              bg-slate-50
-              border border-slate-200 md:border-2 md:border-slate-300
-              rounded-xl md:rounded-2xl
-              shadow-sm
-              cursor-move select-none
-              transition active:scale-[0.98]
-            "
-            title="一度出場済みの選手"
+            className="flex flex-col gap-2 md:gap-3 mb-6"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleDrop(BENCH, e)}
           >
-            {formatPlayerLabel(p)}
+            {/* 未出場の控え */}
+            {benchNeverPlayed.length === 0 ? (
+              <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold mb-1">
+                （なし）
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 md:gap-3 mb-2 md:mb-3">
+                {benchNeverPlayed.map((p) => (
+                  <div
+                    key={`bench-${p.id}`}
+                    style={{ touchAction: "none" }}
+                    draggable
+                    onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    className="
+                      px-3 py-1.5 md:px-4 md:py-2
+                      text-sm md:text-base lg:text-lg
+                      font-semibold md:font-extrabold
+                      text-slate-900
+                      bg-slate-100 hover:bg-slate-200
+                      border border-slate-200 md:border-2
+                      rounded-xl md:rounded-2xl
+                      shadow-sm
+                      cursor-move select-none
+                      transition active:scale-[0.98]
+                    "
+                  >
+                    {formatPlayerLabel(p)}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 出場済み（いまはベンチ） */}
+            <div className="text-xs md:text-base lg:text-lg font-semibold md:font-extrabold text-slate-600 md:text-slate-700 mt-1 md:mt-2">
+              出場済み選手
+            </div>
+
+            {benchPlayedOut.length === 0 ? (
+              <div className="text-xs md:text-base lg:text-lg text-gray-400 md:text-gray-500 font-medium md:font-bold">
+                （なし）
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 md:gap-3">
+                {benchPlayedOut.map((p) => (
+                  <div
+                    key={`played-${p.id}`}
+                    style={{ touchAction: "none" }}
+                    draggable
+                    onDragStart={(e) => handleBenchDragStart(e, p.id)}
+                    className="
+                      px-3 py-1.5 md:px-4 md:py-2
+                      text-sm md:text-base lg:text-lg
+                      font-semibold md:font-extrabold
+                      text-slate-700 md:text-slate-800
+                      bg-slate-50
+                      border border-slate-200 md:border-2 md:border-slate-300
+                      rounded-xl md:rounded-2xl
+                      shadow-sm
+                      cursor-move select-none
+                      transition active:scale-[0.98]
+                    "
+                    title="一度出場済みの選手"
+                  >
+                    {formatPlayerLabel(p)}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        ))}
-      </div>
-    )}
-  </div>
-</div>
+        </div>
 
         {/* 2カラム（スマホでは縦積み） */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
         {/* 打順一覧 */}
         <div className="flex-1">
-          <h2 className="text-lg font-bold mb-2 text-slate-900">
+          <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold mb-2 md:mb-3 text-slate-900 leading-tight">
             打順（1番〜{Math.max(9, battingOrder.length)}番）
           </h2>
 
@@ -8385,7 +8386,7 @@ const canDropHere =
               isDirty && battingOrderDraft?.length === 9 ? battingOrderDraft : battingOrder;
 
             return (
-              <ul className="space-y-1 text-sm border border-slate-200 rounded-xl bg-white p-2">
+              <ul className="space-y-1 md:space-y-2 text-sm md:text-base lg:text-lg border border-slate-200 md:border-2 rounded-xl md:rounded-2xl bg-white p-2 md:p-3 shadow-sm">
                 {orderViewOrder.map((slot, index) => {
                   const dhStarterId = initialAssignments?.["指"];
                   const dhSlotIndex =
@@ -8395,103 +8396,114 @@ const canDropHere =
 
                   const dhActive = !!assignments["指"];
 
-        const displayId = slot.id;
+                  const displayId = slot.id;
 
-        // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
-        const beforeEntry = battingOrder[index];
-        const beforeId = beforeEntry?.id ?? slot.id;
+                  // 取消線用の「交代前選手」は、この画面を開いた時点の battingOrder を基準にする
+                  const beforeEntry = battingOrder[index];
+                  const beforeId = beforeEntry?.id ?? slot.id;
 
-        const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
-        const player =
-          (orderViewReplacements as any)[index]
-            ? (orderViewReplacements as any)[index]
-            : teamPlayers.find((p) => p.id === displayId); // 新表示用
-        if (!starter || !player) return null;
+                  const starter = teamPlayers.find((p) => p.id === beforeId); // 旧表示用
+                  const player =
+                    (orderViewReplacements as any)[index]
+                      ? (orderViewReplacements as any)[index]
+                      : teamPlayers.find((p) => p.id === displayId); // 新表示用
 
-        // ★ 実際に表示している選手IDを使う
-        const currentDisplayId =
-          typeof player?.id === "number" ? Number(player.id) : Number(displayId);
+                  if (!starter || !player) return null;
 
-        let currentPos = getOrderDisplayPos(assignments, currentDisplayId);
-        let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
+                  // ★ 実際に表示している選手IDを使う
+                  const currentDisplayId =
+                    typeof player?.id === "number" ? Number(player.id) : Number(displayId);
 
-        // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
-        if (!currentPos || currentPos === "-" || currentPos === "－") {
-          const pinchInfo = Object.values(usedPlayerInfo || {}).find(
-            (info: any) =>
-              Number(info?.subId) === Number(currentDisplayId) &&
-              ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
-          );
+                  let currentPos = getOrderDisplayPos(assignments, currentDisplayId);
+                  let initialPos = getOrderDisplayPos(orderViewBaseAssignments, beforeId);
 
-          if (pinchInfo?.fromPos) {
-            currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
-          }
-        }
+                  // ① 代打/代走でまだ守備位置解決できないときは fromPos を使う
+                  if (!currentPos || currentPos === "-" || currentPos === "－") {
+                    const pinchInfo = Object.values(usedPlayerInfo || {}).find(
+                      (info: any) =>
+                        Number(info?.subId) === Number(currentDisplayId) &&
+                        ["代打", "代走", "臨時代走"].includes(String(info?.reason ?? ""))
+                    );
 
-        // ② リエントリー済みの元スタメンなら、元の守備位置を表示
-        if (!currentPos || currentPos === "-" || currentPos === "－") {
-          const usedEntry = (usedPlayerInfo as any)?.[currentDisplayId];
+                    if (pinchInfo?.fromPos) {
+                      currentPos = posNameToSymbol[pinchInfo.fromPos] ?? pinchInfo.fromPos;
+                    }
+                  }
 
-          if (usedEntry?.hasReentered) {
-            const reentryPos = getOrderDisplayPos(initialAssignments, currentDisplayId);
-            if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
-              currentPos = reentryPos;
-            }
-          }
-        }
+                  // ② リエントリー済みの元スタメンなら、元の守備位置を表示
+                  if (!currentPos || currentPos === "-" || currentPos === "－") {
+                    const usedEntry = (usedPlayerInfo as any)?.[currentDisplayId];
 
-        // ③ 10人以上の打順では、
-        //    「打順にはいるが9守備に配置されていない選手」をDH扱いにする
-        //    ※ ここを初期守備位置へのフォールバックより先に行う
-        const isBlankPos = (pos?: string | null) =>
-          !pos || pos === "-" || pos === "－";
+                    if (usedEntry?.hasReentered) {
+                      const reentryPos = getOrderDisplayPos(initialAssignments, currentDisplayId);
+                      if (reentryPos && reentryPos !== "-" && reentryPos !== "－") {
+                        currentPos = reentryPos;
+                      }
+                    }
+                  }
 
-        const FIELD9_POS_KEYS_FOR_ORDER = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右"];
+                  // ③ 10人以上の打順では、
+                  //    「打順にはいるが9守備に配置されていない選手」をDH扱いにする
+                  //    ※ ここを初期守備位置へのフォールバックより先に行う
+                  const isBlankPos = (pos?: string | null) =>
+                    !pos || pos === "-" || pos === "－";
 
-        const isInField9Now = (pid: number | null) => {
-          if (typeof pid !== "number") return false;
-          return FIELD9_POS_KEYS_FOR_ORDER.some(
-            (pos) => Number((assignments as any)?.[pos]) === Number(pid)
-          );
-        };
+                  const FIELD9_POS_KEYS_FOR_ORDER = [
+                    "投",
+                    "捕",
+                    "一",
+                    "二",
+                    "三",
+                    "遊",
+                    "左",
+                    "中",
+                    "右",
+                  ];
 
-        const isInField9Base = (pid: number | null) => {
-          if (typeof pid !== "number") return false;
-          return FIELD9_POS_KEYS_FOR_ORDER.some(
-            (pos) => Number((orderViewBaseAssignments as any)?.[pos]) === Number(pid)
-          );
-        };
+                  const isInField9Now = (pid: number | null) => {
+                    if (typeof pid !== "number") return false;
+                    return FIELD9_POS_KEYS_FOR_ORDER.some(
+                      (pos) => Number((assignments as any)?.[pos]) === Number(pid)
+                    );
+                  };
 
-        const isTenOrMoreBattingOrder = orderViewOrder.length >= 10;
+                  const isInField9Base = (pid: number | null) => {
+                    if (typeof pid !== "number") return false;
+                    return FIELD9_POS_KEYS_FOR_ORDER.some(
+                      (pos) => Number((orderViewBaseAssignments as any)?.[pos]) === Number(pid)
+                    );
+                  };
 
-        // 現在の選手が、打順にはいるが9守備にいない場合はDH
-        if (isTenOrMoreBattingOrder && !isInField9Now(currentDisplayId)) {
-          currentPos = "指";
-        }
+                  const isTenOrMoreBattingOrder = orderViewOrder.length >= 10;
 
-        // 初期状態でも、打順にはいるが9守備にいない選手はDH
-        if (isTenOrMoreBattingOrder && !isInField9Base(beforeId)) {
-          initialPos = "指";
-        }
+                  // 現在の選手が、打順にはいるが9守備にいない場合はDH
+                  if (isTenOrMoreBattingOrder && !isInField9Now(currentDisplayId)) {
+                    currentPos = "指";
+                  }
 
-        // ④ それでも現在守備位置が取れない場合だけ、最後の保険として初期守備位置を使う
-        //    ※ ただし、すでにDH判定された選手は上書きしない
-        if (isBlankPos(currentPos)) {
-          if (!isBlankPos(initialPos)) {
-            currentPos = initialPos;
-          }
-        }
+                  // 初期状態でも、打順にはいるが9守備にいない選手はDH
+                  if (isTenOrMoreBattingOrder && !isInField9Base(beforeId)) {
+                    initialPos = "指";
+                  }
 
-        // ⑤ 従来どおり、通常DHスロットは「指」を優先
-        if (dhActive && dhSlotIndex === index) {
-          currentPos = "指";
-          if (isBlankPos(initialPos)) {
-            initialPos = "指";
-          }
-        }
+                  // ④ それでも現在守備位置が取れない場合だけ、最後の保険として初期守備位置を使う
+                  //    ※ ただし、すでにDH判定された選手は上書きしない
+                  if (isBlankPos(currentPos)) {
+                    if (!isBlankPos(initialPos)) {
+                      currentPos = initialPos;
+                    }
+                  }
 
-        const playerChanged = currentDisplayId !== beforeId;
-        const positionChanged = currentPos !== initialPos;
+                  // ⑤ 従来どおり、通常DHスロットは「指」を優先
+                  if (dhActive && dhSlotIndex === index) {
+                    currentPos = "指";
+                    if (isBlankPos(initialPos)) {
+                      initialPos = "指";
+                    }
+                  }
+
+                  const playerChanged = currentDisplayId !== beforeId;
+                  const positionChanged = currentPos !== initialPos;
 
                   const isPinchHitter = slot.reason === "代打";
                   const isPinchRunner = slot.reason === "代走";
@@ -8508,14 +8520,25 @@ const canDropHere =
                   const shouldShowPinchBadge = isPinch;
                   const shouldHighlightPlayer = isDirty && (playerChanged || isPinch);
 
+                  const pinchBadge = shouldShowPinchBadge ? (
+                    <span className="text-[11px] md:text-sm lg:text-base px-1.5 md:px-2 py-0.5 md:py-1 rounded md:rounded-lg bg-red-50 text-red-600 md:text-red-700 border border-red-200 font-semibold md:font-extrabold">
+                      {pinchLabel}
+                    </span>
+                  ) : null;
+
                   return (
-                    <li key={index} className="py-1 px-2 border-b last:border-b-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-slate-500 w-8">{index + 1}番</span>
+                    <li
+                      key={index}
+                      className="py-1 md:py-2 px-2 md:px-3 border-b last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 md:gap-3 flex-wrap leading-relaxed">
+                        <span className="text-slate-500 md:text-slate-700 w-8 md:w-12 shrink-0 font-normal md:font-extrabold">
+                          {index + 1}番
+                        </span>
 
                         {playerChanged ? (
                           <>
-                            <span className="line-through text-gray-400">
+                            <span className="line-through text-gray-400 font-normal md:font-semibold">
                               {withMark(initialPos)}{" "}
                               <ruby>
                                 {starter.lastName}
@@ -8528,9 +8551,9 @@ const canDropHere =
                               {starter.number ? ` #${starter.number}` : ""}
                             </span>
 
-                            <span className="text-gray-400">➡</span>
+                            <span className="text-gray-400 font-bold">➡</span>
 
-                            <span className="text-red-600 font-bold">
+                            <span className="text-red-600 md:text-red-700 font-bold md:font-extrabold">
                               {withMark(currentPos)}{" "}
                               <ruby>
                                 {player.lastName}
@@ -8543,19 +8566,23 @@ const canDropHere =
                               {player.number ? ` #${player.number}` : ""}
                             </span>
 
-                            {shouldShowPinchBadge && (
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                                {pinchLabel}
-                              </span>
-                            )}
+                            {pinchBadge}
                           </>
                         ) : positionChanged ? (
                           <>
-                            <span className="text-slate-800">
+                            <span className="text-slate-800 font-normal md:font-bold">
                               <span className="text-gray-400">{withMark(initialPos)}</span>
-                              <span className="text-gray-400 mx-1">➡</span>
-                              <span className="text-red-600 font-bold">{withMark(currentPos)}</span>{" "}
-                              <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : ""}>
+                              <span className="text-gray-400 mx-1 md:mx-2 font-bold">➡</span>
+                              <span className="text-red-600 md:text-red-700 font-bold md:font-extrabold">
+                                {withMark(currentPos)}
+                              </span>{" "}
+                              <span
+                                className={
+                                  shouldHighlightPlayer
+                                    ? "text-red-600 md:text-red-700 font-bold md:font-extrabold"
+                                    : "text-slate-800 md:font-bold"
+                                }
+                              >
                                 <ruby>
                                   {player.lastName}
                                   {player.firstName}
@@ -8568,15 +8595,17 @@ const canDropHere =
                               </span>
                             </span>
 
-                            {shouldShowPinchBadge && (
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                                {pinchLabel}
-                              </span>
-                            )}
+                            {pinchBadge}
                           </>
                         ) : (
                           <>
-                            <span className={shouldHighlightPlayer ? "text-red-600 font-bold" : "text-slate-800"}>
+                            <span
+                              className={
+                                shouldHighlightPlayer
+                                  ? "text-red-600 md:text-red-700 font-bold md:font-extrabold"
+                                  : "text-slate-800 md:font-bold"
+                              }
+                            >
                               {withMark(currentPos)}{" "}
                               <ruby>
                                 {player.lastName}
@@ -8589,11 +8618,7 @@ const canDropHere =
                               {player.number ? ` #${player.number}` : ""}
                             </span>
 
-                            {shouldShowPinchBadge && (
-                              <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">
-                                {pinchLabel}
-                              </span>
-                            )}
+                            {pinchBadge}
                           </>
                         )}
                       </div>
