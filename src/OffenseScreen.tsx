@@ -2115,6 +2115,11 @@ const getPreviousDefenseInningLabel = () => {
   return `${inning}回表に戻す`;
 };
 
+const scoreModalTitle =
+  editInning !== null && editTopBottom !== null
+    ? `${editInning}回${editTopBottom === "top" ? "表" : "裏"}の得点を入力してください`
+    : `${inning}回${isTop ? "表" : "裏"}の得点を入力してください`;
+
 const confirmScore = async () => {
   // ★ モーダル確定時に「終わった回」を確定
   lastEndedHalfRef.current = { inning, isTop };
@@ -3823,7 +3828,9 @@ useEffect(() => {
                 {/* 固定ヘッダー（他モーダルと統一） */}
                 <div className="sticky top-0 z-10 px-4 py-3 flex items-center justify-between
                                 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
-                  <h2 className="text-lg font-extrabold tracking-wide">この回の得点を入力してください</h2>
+                  <h2 className="text-lg font-extrabold tracking-wide">
+                    {scoreModalTitle}
+                  </h2>
                   <div className="w-9 h-9" />
                 </div>
 
