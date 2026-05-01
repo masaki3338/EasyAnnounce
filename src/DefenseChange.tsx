@@ -8372,7 +8372,7 @@ const canDropHere =
 
         {/* 2カラム（スマホでは縦積み） */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+
         {/* 打順一覧 */}
         <div className="flex-1">
           <h2 className="text-lg md:text-xl lg:text-2xl font-bold md:font-extrabold mb-2 md:mb-3 text-slate-900 leading-tight">
@@ -9372,7 +9372,7 @@ const canDropHere =
     onClick={() => setShowPosNumberHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -9396,7 +9396,7 @@ const canDropHere =
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
@@ -9695,7 +9695,7 @@ const canDropHere =
     onClick={() => setShowHelpModal(false)}
   >
     <div
-      className="w-full max-w-[460px] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="w-full max-w-[min(96vw,900px)] overflow-hidden rounded-[22px] bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -9719,7 +9719,7 @@ const canDropHere =
       </div>
 
       {/* 本文 */}
-      <div className="max-h-[72svh] overflow-y-auto bg-white px-3 py-3">
+      <div className="max-h-[78svh] overflow-y-auto bg-white px-4 py-4">
         <div className="space-y-3">
           {/* 上部説明 */}
           <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
