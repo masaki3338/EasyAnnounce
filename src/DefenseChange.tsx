@@ -9033,6 +9033,15 @@ const canDropHere =
           <p className="mt-2 text-sm text-slate-600 text-center px-2">
             「1 が 9」「1 に代わり ○○」のように入力できます
           </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「が」＝同じ選手が別の守備へ移動
+          </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「と」＝出場中の2人が守備を入れ替え
+          </p>
+          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
+            「に代わり」＝控え選手との交代
+          </p>
         </div>
 
         {/* error */}
