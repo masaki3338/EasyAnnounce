@@ -119,6 +119,16 @@ const StartGame = ({
     );
   };
 
+  const getTeamDisplayName = (folder: any) => {
+    return (
+      folder?.team?.name ||
+      folder?.name ||
+      folder?.teamName ||
+      folder?.listName ||
+      ""
+    );
+  };
+
   const toDisplayPlayers = (players: any[] = []) =>
     players.map((p: any) => ({
       id: Number(p.id),
@@ -141,8 +151,8 @@ useEffect(() => {
       const thirdFolder = thirdTeamId ? await loadTeamFolder(thirdTeamId) : null;
       const firstFolder = firstTeamId ? await loadTeamFolder(firstTeamId) : null;
 
-      setThirdTeamName(thirdFolder?.listName || thirdFolder?.team?.name || "");
-      setFirstTeamName(firstFolder?.listName || firstFolder?.team?.name || "");
+      setThirdTeamName(getTeamDisplayName(thirdFolder));
+      setFirstTeamName(getTeamDisplayName(firstFolder));
 
       setThirdPlayers(toDisplayPlayers(thirdFolder?.team?.players || []));
       setFirstPlayers(toDisplayPlayers(firstFolder?.team?.players || []));
@@ -430,13 +440,13 @@ const proceedStart = async () => {
     // ✅ 1人モード専用キーに保存
     await localForage.setItem("onePerson.third.team", {
       id: thirdTeamId,
-      name: thirdFolder?.listName || thirdFolder?.team?.name || "",
+      name: getTeamDisplayName(thirdFolder),
       players: thirdPlayers,
     });
 
     await localForage.setItem("onePerson.first.team", {
       id: firstTeamId,
-      name: firstFolder?.listName || firstFolder?.team?.name || "",
+      name: getTeamDisplayName(firstFolder),
       players: firstPlayers,
     });
 
