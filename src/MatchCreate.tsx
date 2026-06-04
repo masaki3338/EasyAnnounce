@@ -109,6 +109,21 @@ const MatchCreate: React.FC<MatchCreateProps> = ({ onBack, onGoToLineup }) => {
   // 追加：初期ロード完了フラグ
 const [loaded, setLoaded] = useState(false);
 
+const getRegisteredTeamName = (folder: any) => {
+  return (
+    folder?.team?.name ||
+    folder?.name ||
+    folder?.teamName ||
+    folder?.listName ||
+    "チーム名未設定"
+  );
+};
+
+const getSelectedTeamName = (id: string) => {
+  const folder = registeredTeams.find((t: any) => String(t.id) === String(id));
+  return folder ? getRegisteredTeamName(folder) : "";
+};
+
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
     { role: "1塁審", name: "", furigana: "" },
@@ -593,11 +608,11 @@ return (
               className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
             >
             <option value="">選択してください</option>
-            {registeredTeams.map((folder: any) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.listName || folder.team?.name}
-              </option>
-            ))}
+              {registeredTeams.map((folder: any) => (
+                <option key={folder.id} value={folder.id}>
+                  {getRegisteredTeamName(folder)}
+                </option>
+              ))}
             </select>
         </div>
 
@@ -611,11 +626,11 @@ return (
               className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
             >
             <option value="">選択してください</option>
-            {registeredTeams.map((folder: any) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.listName || folder.team?.name}
-              </option>
-            ))}
+              {registeredTeams.map((folder: any) => (
+                <option key={folder.id} value={folder.id}>
+                  {getRegisteredTeamName(folder)}
+                </option>
+              ))}
             </select>
         </div>
 
@@ -630,8 +645,12 @@ return (
               }
               className="w-full px-3 py-2 rounded-xl bg-white text-gray-900"
             >
-              <option value="third">3塁側チーム</option>
-              <option value="first">1塁側チーム</option>
+              <option value="third">
+                3塁側：{getSelectedTeamName(thirdBaseTeamId) || "チーム未選択"}
+              </option>
+              <option value="first">
+                1塁側：{getSelectedTeamName(firstBaseTeamId) || "チーム未選択"}
+              </option>
             </select>
         </div>
       </div>
