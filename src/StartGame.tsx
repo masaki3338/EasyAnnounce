@@ -749,7 +749,7 @@ return (
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
                     <span className="font-medium truncate max-w-[12rem]">
-                      3塁側：{thirdTeamName || "未設定"}
+                      {thirdTeamName || "未設定"}
                     </span>
                   </span>
 
@@ -757,7 +757,7 @@ return (
 
                   <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10">
                     <span className="font-medium truncate max-w-[12rem]">
-                      1塁側：{firstTeamName || "未設定"}
+                      {firstTeamName || "未設定"}
                     </span>
                   </span>
                 </div>
@@ -814,7 +814,7 @@ return (
         <>
           <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
             <div className="font-semibold mb-2">
-              3塁側　{thirdTeamName || "未設定"}　スターティングメンバー
+              {thirdTeamName || "未設定"}　スターティングメンバー
             </div>
 
             <div className="text-sm leading-tight space-y-1">
@@ -836,7 +836,7 @@ return (
 
           <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
             <div className="font-semibold mb-2">
-              1塁側　{firstTeamName || "未設定"}　スターティングメンバー
+              {firstTeamName || "未設定"}　スターティングメンバー
             </div>
 
             <div className="text-sm leading-tight space-y-1">
@@ -891,7 +891,7 @@ return (
             <div className="flex items-center gap-2 mb-2">
               <IconUsers />
               <div className="font-semibold">
-                3塁側　{thirdTeamName || "未設定"}　控え選手
+                {thirdTeamName || "未設定"}　控え選手
               </div>
             </div>
 
@@ -921,7 +921,7 @@ return (
             <div className="flex items-center gap-2 mb-2">
               <IconUsers />
               <div className="font-semibold">
-                1塁側　{firstTeamName || "未設定"}　控え選手
+                {firstTeamName || "未設定"}　控え選手
               </div>
             </div>
 
