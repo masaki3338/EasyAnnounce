@@ -221,8 +221,21 @@ const PreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
             (t: any) => String(t.id) === String(mi.firstBaseTeamId)
           );
 
-          const thirdName = thirdFolder?.listName || thirdFolder?.team?.name || "";
-          const firstName = firstFolder?.listName || firstFolder?.team?.name || "";
+        const thirdName =
+          mi.thirdBaseTeamName ||
+          thirdFolder?.team?.name ||
+          thirdFolder?.name ||
+          thirdFolder?.teamName ||
+          thirdFolder?.listName ||
+          "";
+
+        const firstName =
+          mi.firstBaseTeamName ||
+          firstFolder?.team?.name ||
+          firstFolder?.name ||
+          firstFolder?.teamName ||
+          firstFolder?.listName ||
+          "";
 
           setThirdTeamName(thirdName);
           setFirstTeamName(firstName);
@@ -346,8 +359,95 @@ const goToStep = async (s: {
 }) => {
   if (s.key === "seatIntroduction") {
     await localForage.setItem("lastScreen", "announcement");
-  }
 
+    // ✅ 1人アナウンスモードの試合前アナウンスからは
+    // 必ず「後攻チーム」のシート紹介にする
+    if (announcementMode === "single") {
+      const matchInfo = await localForage.getItem<any>("matchInfo");
+      const mi = matchInfo || {};
+
+      const store = await localForage.getItem<any>("teamRegisterStore");
+
+      // battingFirstSide が third なら、3塁側が先攻 → 1塁側が後攻
+      // battingFirstSide が first なら、1塁側が先攻 → 3塁側が後攻
+      const homeSide = mi.battingFirstSide === "third" ? "first" : "third";
+      const homeTeamId =
+        homeSide === "third" ? mi.thirdBaseTeamId : mi.firstBaseTeamId;
+
+      const homeFolder = store?.teams?.find(
+        (t: any) => String(t.id) === String(homeTeamId)
+      );
+
+      const savedHomeTeamName =
+        homeSide === "third" ? mi.thirdBaseTeamName : mi.firstBaseTeamName;
+
+      const homeTeamName =
+        savedHomeTeamName ||
+        homeFolder?.team?.name ||
+        homeFolder?.name ||
+        homeFolder?.teamName ||
+        homeFolder?.listName ||
+        "";
+
+      const homeTeamFurigana =
+        homeFolder?.team?.furigana ||
+        homeFolder?.team?.nameKana ||
+        homeFolder?.team?.kana ||
+        homeFolder?.furigana ||
+        homeFolder?.kana ||
+        homeFolder?.reading ||
+        homeTeamName;
+
+      const homePlayers =
+        homeFolder?.team?.players ||
+        homeFolder?.players ||
+        [];
+
+      const homeAssignments =
+        (await localForage.getItem<Record<string, number | null>>(
+          `startingassignments_${homeTeamId}`
+        )) ??
+        (await localForage.getItem<Record<string, number | null>>(
+          homeSide === "third"
+            ? "onePerson.third.lineupAssignments"
+            : "onePerson.first.lineupAssignments"
+        )) ??
+        {};
+
+      // ✅ SeatIntroduction.tsx が読む共通キーに、後攻チームをセット
+      await localForage.setItem("team", {
+        ...(homeFolder?.team || {}),
+        id: homeTeamId,
+        name: homeTeamName,
+        furigana: homeTeamFurigana,
+        players: homePlayers,
+      });
+
+      await localForage.setItem("startingassignments", homeAssignments);
+      await localForage.setItem("lineupAssignments", homeAssignments);
+
+      // ✅ 画面表示も「後攻チーム」に固定
+      await localForage.setItem("matchInfo", {
+        ...mi,
+        isHome: true,
+        seatIntroductionSide: "home",
+      });
+
+      // ✅ 同姓チェックも後攻チーム基準に更新
+      const counter = new Map<string, number>();
+      for (const p of homePlayers) {
+        const ln = String(p?.lastName ?? "").trim();
+        if (!ln) continue;
+        counter.set(ln, (counter.get(ln) ?? 0) + 1);
+      }
+
+      const duplicateLastNames = [...counter.entries()]
+        .filter(([, count]) => count >= 2)
+        .map(([ln]) => ln);
+
+      await localForage.setItem("duplicateLastNames", duplicateLastNames);
+    }
+  }
   if (s.key === "sheetKnock" && announcementMode === "single") {
     const matchInfo = await localForage.getItem<any>("matchInfo");
 

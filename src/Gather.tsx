@@ -73,8 +73,23 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
             (t: any) => String(t.id) === String(matchInfo.thirdBaseTeamId)
           );
 
-          setFirstBaseTeamName(firstFolder?.listName || firstFolder?.team?.name || "");
-          setThirdBaseTeamName(thirdFolder?.listName || thirdFolder?.team?.name || "");
+          setFirstBaseTeamName(
+            matchInfo.firstBaseTeamName ||
+              firstFolder?.team?.name ||
+              firstFolder?.name ||
+              firstFolder?.teamName ||
+              firstFolder?.listName ||
+              ""
+          );
+
+          setThirdBaseTeamName(
+            matchInfo.thirdBaseTeamName ||
+              thirdFolder?.team?.name ||
+              thirdFolder?.name ||
+              thirdFolder?.teamName ||
+              thirdFolder?.listName ||
+              ""
+          );
         }
         setTournamentName(matchInfo.tournamentName || "");
         setMatchNumber(matchInfo.matchNumber || "〇");

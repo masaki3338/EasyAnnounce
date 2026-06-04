@@ -175,8 +175,23 @@ if (mi?.announcementMode === "single") {
       (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
     );
 
-    setFirstBaseTeamName(firstFolder?.listName || firstFolder?.team?.name || "");
-    setThirdBaseTeamName(thirdFolder?.listName || thirdFolder?.team?.name || "");
+    setFirstBaseTeamName(
+      mi.firstBaseTeamName ||
+        firstFolder?.team?.name ||
+        firstFolder?.name ||
+        firstFolder?.teamName ||
+        firstFolder?.listName ||
+        ""
+    );
+
+    setThirdBaseTeamName(
+      mi.thirdBaseTeamName ||
+        thirdFolder?.team?.name ||
+        thirdFolder?.name ||
+        thirdFolder?.teamName ||
+        thirdFolder?.listName ||
+        ""
+    );
 
   const teamId =
     mi.startingLineupSide === "visitor"

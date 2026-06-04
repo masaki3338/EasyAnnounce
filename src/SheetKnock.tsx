@@ -275,13 +275,19 @@ const playBeeps = async (
           );
 
           const thirdName =
-            thirdFolder?.listName ||
+            info.thirdBaseTeamName ||
             thirdFolder?.team?.name ||
+            thirdFolder?.name ||
+            thirdFolder?.teamName ||
+            thirdFolder?.listName ||
             "";
 
           const firstName =
-            firstFolder?.listName ||
+            info.firstBaseTeamName ||
             firstFolder?.team?.name ||
+            firstFolder?.name ||
+            firstFolder?.teamName ||
+            firstFolder?.listName ||
             "";
 
           setThirdTeamName(thirdName);

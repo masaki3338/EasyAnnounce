@@ -124,6 +124,40 @@ const getSelectedTeamName = (id: string) => {
   return folder ? getRegisteredTeamName(folder) : "";
 };
 
+const getRegisteredTeamFurigana = (folder: any) => {
+  return (
+    folder?.team?.furigana ||
+    folder?.team?.nameKana ||
+    folder?.team?.kana ||
+    folder?.furigana ||
+    folder?.kana ||
+    folder?.reading ||
+    getRegisteredTeamName(folder)
+  );
+};
+
+const getOwnTeamFolder = () => {
+  // 通常モードでは、自チームのベンチ側で判定する
+  // 1人アナウンスモードでは "team" は主に通常モード用なので、
+  // ここでは同じく benchSide に合わせて保存する
+  return benchSide === "3塁側"
+    ? registeredTeams.find((t: any) => String(t.id) === String(thirdBaseTeamId))
+    : registeredTeams.find((t: any) => String(t.id) === String(firstBaseTeamId));
+};
+
+const saveOwnTeamToLocalForage = async () => {
+  const ownTeamFolder = getOwnTeamFolder();
+  if (!ownTeamFolder) return;
+
+  await localForage.setItem("team", {
+    ...(ownTeamFolder.team || {}),
+    id: ownTeamFolder.id,
+    name: getRegisteredTeamName(ownTeamFolder),
+    furigana: getRegisteredTeamFurigana(ownTeamFolder),
+    players: ownTeamFolder.team?.players || ownTeamFolder.players || [],
+  });
+};
+
   const [umpires, setUmpires] = useState([
     { role: "球審", name: "", furigana: "" },
     { role: "1塁審", name: "", furigana: "" },
@@ -354,6 +388,16 @@ const handleSave = async () => {
     return;
   }
 }
+
+await saveOwnTeamToLocalForage();
+
+const thirdTeamFolder = registeredTeams.find(
+  (t: any) => String(t.id) === String(thirdBaseTeamId)
+);
+
+const firstTeamFolder = registeredTeams.find(
+  (t: any) => String(t.id) === String(firstBaseTeamId)
+);
 
  const matchInfo = {
    ...base,
@@ -850,6 +894,16 @@ return (
           }
         }
 
+        await saveOwnTeamToLocalForage();
+
+        const thirdTeamFolder = registeredTeams.find(
+          (t: any) => String(t.id) === String(thirdBaseTeamId)
+        );
+
+        const firstTeamFolder = registeredTeams.find(
+          (t: any) => String(t.id) === String(firstBaseTeamId)
+        );
+
         const matchInfo = {
           ...base,
           tournamentName,
@@ -860,11 +914,15 @@ return (
           benchSide,
           umpires,
           twoUmpires: isBoys ? false : isTwoUmp,         // ✅ 2審制を記憶
-          teamName: (base as any)?.teamName ?? team?.name ?? "",    
-          noNextGame,// ✅ 追加：次の試合なし
+          teamName: getRegisteredTeamName(getOwnTeamFolder()) || (base as any)?.teamName || team?.name || "",
+          noNextGame,
           announcementMode,
           thirdBaseTeamId,
           firstBaseTeamId,
+          thirdBaseTeamName: getRegisteredTeamName(thirdTeamFolder),
+          firstBaseTeamName: getRegisteredTeamName(firstTeamFolder),
+          thirdBaseTeamFurigana: getRegisteredTeamFurigana(thirdTeamFolder),
+          firstBaseTeamFurigana: getRegisteredTeamFurigana(firstTeamFolder),
           battingFirstSide,
         };
         console.log("保存するmatchInfo", matchInfo);
