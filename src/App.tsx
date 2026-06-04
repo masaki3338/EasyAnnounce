@@ -28,6 +28,7 @@ import SheetKnock from "./SheetKnock";
 import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
 import DefenseScreen from "./DefenseScreen";
+import OnePersonAnnounceScreen from "./OnePersonAnnounceScreen";
 import DefenseChange from "./DefenseChange";
 import OperationSettings from "./screens/OperationSettings";
 import PitchLimit from "./screens/PitchLimit";
@@ -42,6 +43,7 @@ import LeagueSettings from "./screens/LeagueSettings";
 import BoysPreGameAnnouncement from "./boys-pre-game-announcement";
 import BoysSheetKnock from "./BoysSheetKnock";
 import StartTimeAnnouncement from "./StartTimeAnnouncement";
+import AnnouncementModeScreen from "./screens/AnnouncementMode";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 // バージョン番号を定数で管理
@@ -78,6 +80,7 @@ export type ScreenType =
   | "announceStartingLineup"
   | "offense"
   | "defense"
+  | "onePersonAnnounce"
   | "defenseChange"
   | "gather"
   | "startGreeting"
@@ -90,6 +93,7 @@ export type ScreenType =
   | "tiebreakRule"
   | "league-settings"
   | "contact"
+  | "announcement-mode"
   | "tts-settings"
   | "qa"
   | "tutorial"
@@ -366,7 +370,11 @@ const handleSeatIntroductionBack = () => {
 useEffect(() => {
   const saveLastGameScreen = async () => {
     // 「試合を継続する」で戻したい画面だけ保存
-    if (screen === "offense" || screen === "defense") {
+    if (
+      screen === "offense" ||
+      screen === "defense" ||
+      screen === "onePersonAnnounce"
+    ) {
       await localForage.setItem("lastGameScreen", screen);
     }
   };
@@ -750,7 +758,12 @@ const handleSpeak = async () => {
 
     if (!saved || typeof saved !== "string") return null;
 
-    const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+    const ok: ScreenType[] = [
+      "offense",
+      "defense",
+      "defenseChange",
+      "onePersonAnnounce",
+    ];
     const nextScreen = ok.includes(saved as ScreenType)
       ? (saved as ScreenType)
       : null;
@@ -998,13 +1011,22 @@ return (
                   const isTop = true;
                   const isOffense = isHome === false;
 
+                  const announcementMode = (match as any)?.announcementMode;
+
                   await localForage.setItem("matchInfo", {
                     ...(match as any),
                     inning: 1,
                     isTop: true,
-                    isDefense: !isOffense,
+                    isDefense: announcementMode === "single" ? false : !isOffense,
                   });
 
+                  // ✅ 1人アナウンスモードだけ新画面へ
+                  if (announcementMode === "single") {
+                    setScreen("onePersonAnnounce");
+                    return;
+                  }
+
+                  // ✅ ここから下は既存処理のまま
                   if (isOffense) {
                     setScreen("offense");
                   } else {
@@ -1192,6 +1214,251 @@ return (
         </>
       )}
 
+
+      {screen === "onePersonAnnounce" && (
+        <>
+          <div className="m-4 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-1 min-w-0">
+              <button
+                className="px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition whitespace-nowrap"
+                onClick={() => setScreen("menu")}
+              >
+                メニュー
+              </button>
+
+              <button
+                className="px-4 py-2 bg-purple-600 text-white rounded-full shadow-sm hover:bg-purple-700 transition whitespace-nowrap"
+                onClick={() => {
+                  window.dispatchEvent(new Event("restore-offense-previous-defense"));
+                }}
+              >
+                戻す
+              </button>
+            </div>
+
+            {/* 右側：その他 */}
+            <select
+              className="px-2 py-2 rounded-full bg-gray-100 text-gray-800 shadow-sm border border-gray-300 text-sm"
+              value={otherOption}
+              onChange={async (e) => {
+                const value = e.target.value;
+
+                if (value === "end") {
+                  console.group("[END] その他→試合終了");
+
+                  const now = new Date();
+                  const formatted = `${now.getHours()}時${now.getMinutes()}分`;
+
+                  const match = (await localForage.getItem("matchInfo")) as any;
+                  const noNextGame = Boolean(match?.noNextGame);
+
+                  type Scores = {
+                    [inning: string]: {
+                      top?: number;
+                      bottom?: number;
+                    };
+                  };
+
+                  const scores = ((await localForage.getItem("scores")) as Scores) || {};
+
+                  // ✅ 1人アナウンスモード用：両チーム情報
+                  const firstTeam =
+                    (await localForage.getItem<any>("onePerson.first.team")) || null;
+                  const thirdTeam =
+                    (await localForage.getItem<any>("onePerson.third.team")) || null;
+
+                  const firstAttackSide =
+                    match?.onePersonFirstAttackSide ||
+                    (await localForage.getItem<"first" | "third">("onePerson.firstAttackSide")) ||
+                    "third";
+
+                  const topTeam =
+                    firstAttackSide === "first" ? firstTeam : thirdTeam;
+                  const bottomTeam =
+                    firstAttackSide === "first" ? thirdTeam : firstTeam;
+
+                  const topTeamName = topTeam?.name || "先攻チーム";
+                  const bottomTeamName = bottomTeam?.name || "後攻チーム";
+
+                  const totalTop = Object.values(scores).reduce(
+                    (sum, s: any) => sum + Number(s?.top || 0),
+                    0
+                  );
+
+                  const totalBottom = Object.values(scores).reduce(
+                    (sum, s: any) => sum + Number(s?.bottom || 0),
+                    0
+                  );
+
+                  let winnerName = "";
+                  let displayAnnouncement = "";
+                  let speakAnnouncement = "";
+
+                  if (totalTop > totalBottom) {
+                    winnerName = topTeamName;
+                  } else if (totalBottom > totalTop) {
+                    winnerName = bottomTeamName;
+                  }
+
+                  if (winnerName) {
+                    displayAnnouncement =
+                      `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
+                      `審判員の皆様、ありがとうございました。\n` +
+                      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                      `尚、この試合の終了時刻は ${formatted}です。\n` +
+                      `これより、ピッチングレコードの確認を行います。\n` +
+                      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+
+                    speakAnnouncement = displayAnnouncement;
+
+                    if (!noNextGame) {
+                      const currentGame = Number(match?.matchNumber || 1);
+                      const nextGame = currentGame + 1;
+
+                      displayAnnouncement +=
+                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+
+                      speakAnnouncement +=
+                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                    }
+
+                    setEndGameAnnouncement(displayAnnouncement);
+                    setEndGameAnnouncementSpeak(speakAnnouncement);
+                    setShowEndGamePopup(true);
+                  } else {
+                    setShowEndGameSimpleModal(true);
+                  }
+
+                  console.groupEnd();
+                } else if (value === "tiebreak") {
+                  const cfg = (await localForage.getItem("tiebreakConfig")) as
+                    | { outs?: string; bases?: string }
+                    | null;
+
+                  const outs = cfg?.outs ?? "ワンナウト";
+                  const bases = cfg?.bases ?? "2,3塁";
+
+                  type Scores = {
+                    [inning: string]: {
+                      top?: number;
+                      bottom?: number;
+                    };
+                  };
+
+                  const match = (await localForage.getItem("matchInfo")) as any;
+                  const scores = ((await localForage.getItem("scores")) as Scores) || {};
+
+                  let inning = Number(match?.inning);
+                  if (!Number.isFinite(inning) || inning < 1) {
+                    const keys = Object.keys(scores)
+                      .map((k) => Number(k))
+                      .filter((n) => Number.isFinite(n) && n >= 1);
+
+                    inning = keys.length > 0 ? Math.max(...keys) : 1;
+                  }
+
+                  const prevInning = Math.max(1, inning - 1);
+
+                  const msg =
+                    leagueMode === "boys"
+                      ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
+                      : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
+
+                  setTiebreakMessage(msg);
+                  setShowTiebreakPopup(true);
+                } else if (value === "continue") {
+                  setShowContinuationModal(true);
+                } else if (value === "heat") {
+                  setShowHeatPopup(true);
+                } else if (value === "manual") {
+                  setShowManualPopup(true);
+                } else if (value === "pitchlist") {
+                  const firstTeam =
+                    (await localForage.getItem<any>("onePerson.first.team")) || null;
+                  const thirdTeam =
+                    (await localForage.getItem<any>("onePerson.third.team")) || null;
+
+                  const firstTotals =
+                    ((await localForage.getItem<Record<number, number>>(
+                      "onePerson.first.pitcherTotals"
+                    )) as Record<number, number>) || {};
+
+                  const thirdTotals =
+                    ((await localForage.getItem<Record<number, number>>(
+                      "onePerson.third.pitcherTotals"
+                    )) as Record<number, number>) || {};
+
+                  const rows: { name: string; number?: string; total: number }[] = [];
+
+                  const addRows = (
+                    teamLabel: string,
+                    players: any[],
+                    totals: Record<number, number>
+                  ) => {
+                    Object.entries(totals).forEach(([idStr, total]) => {
+                      const id = Number(idStr);
+                      const tot = Number(total) || 0;
+                      if (!Number.isFinite(id) || tot <= 0) return;
+
+                      const p = players.find((x: any) => Number(x?.id) === id);
+                      const name = p
+                        ? `${teamLabel}：${p.lastName ?? ""}${p.firstName ?? ""}`
+                        : `${teamLabel}：ID:${id}`;
+
+                      rows.push({
+                        name,
+                        number: p?.number ? `#${p.number}` : undefined,
+                        total: tot,
+                      });
+                    });
+                  };
+
+                  addRows(
+                    firstTeam?.name || "1塁側",
+                    Array.isArray(firstTeam?.players) ? firstTeam.players : [],
+                    firstTotals
+                  );
+
+                  addRows(
+                    thirdTeam?.name || "3塁側",
+                    Array.isArray(thirdTeam?.players) ? thirdTeam.players : [],
+                    thirdTotals
+                  );
+
+                  setPitchList(rows);
+                  setShowPitchListPopup(true);
+                }
+
+                setOtherOption("");
+              }}
+            >
+              <option value="" disabled hidden>
+                その他
+              </option>
+              <option value="end">試合終了</option>
+              <option value="tiebreak">タイブレーク</option>
+              <option value="continue">継続試合</option>
+              <option value="heat">熱中症</option>
+              <option value="manual">連盟🎤マニュアル</option>
+              <option value="pitchlist">投球数⚾</option>
+            </select>
+          </div>
+
+          <OnePersonAnnounceScreen
+            onGoToSeatIntroduction={() => {
+              fromGameRef.current = true;
+              lastOffenseRef.current = true;
+              setScreen("seatIntroduction");
+            }}
+            onOpenDefenseChange={() => setScreen("onePersonDefenseChange")}
+            openIntentionalWalkTrigger={intentionalWalkTrigger}
+            isContinueGame={isContinueGame}
+          />
+        </>
+      )}
 
       {screen === "offense" && (
         <>
@@ -1881,6 +2148,138 @@ return (
   />
 )}
 
+{screen === "onePersonDefenseChange" && (
+  <DefenseChange
+    onConfirmed={async () => {
+      const ctx =
+        (await localForage.getItem<{
+          enabled?: boolean;
+          defenseSide?: "first" | "third";
+          returnAction?: "switchHalf";
+          nextIsTop?: boolean;
+          nextInning?: number;
+          currentDefenseSide?: "first" | "third";
+          currentDefenseTotal?: number;
+        }>("onePersonDefenseChangeContext")) || {};
+
+      const defenseSide = ctx.defenseSide;
+
+      if (ctx.enabled && defenseSide) {
+        const nextLineup =
+          (await localForage.getItem<Record<string, number | null>>(
+            "lineupAssignments"
+          )) || {};
+
+        const nextBattingOrder =
+          (await localForage.getItem<{ id: number; reason?: string }[]>(
+            "battingOrder"
+          )) || [];
+
+        const nextUsedPlayerInfo =
+          (await localForage.getItem<Record<string, any>>("usedPlayerInfo")) ||
+          {};
+
+        const nextPitchCounts =
+          (await localForage.getItem<{
+            current: number;
+            total: number;
+            pitcherId?: number | null;
+          }>("pitchCounts")) || {
+            current: 0,
+            total: 0,
+            pitcherId: nextLineup["投"] ?? null,
+          };
+
+        const nextPitcherTotals =
+          (await localForage.getItem<Record<number, number>>(
+            "pitcherTotals"
+          )) || {};
+
+        // ✅ DefenseChange で変更された結果を、対象チームへ戻す
+        await localForage.setItem(
+          `onePerson.${defenseSide}.lineupAssignments`,
+          nextLineup
+        );
+
+        await localForage.setItem(
+          `onePerson.${defenseSide}.battingOrder`,
+          nextBattingOrder
+        );
+
+        await localForage.setItem(
+          `onePerson.${defenseSide}.usedPlayerInfo`,
+          nextUsedPlayerInfo
+        );
+
+        await localForage.setItem(
+          `onePerson.${defenseSide}.pitchCounts`,
+          {
+            ...nextPitchCounts,
+            pitcherId: nextLineup["投"] ?? nextPitchCounts.pitcherId ?? null,
+          }
+        );
+
+        await localForage.setItem(
+          `onePerson.${defenseSide}.pitcherTotals`,
+          nextPitcherTotals
+        );
+
+        // ✅ 代打・代走後に来た場合は、ここで次の半イニングへ進める
+        if (
+          ctx.returnAction === "switchHalf" &&
+          typeof ctx.nextIsTop === "boolean" &&
+          typeof ctx.nextInning === "number"
+        ) {
+          // 今守っていたチームの「この回の球数」を0に戻す
+          if (ctx.currentDefenseSide) {
+            const currentDefenseLineup =
+              (await localForage.getItem<Record<string, number | null>>(
+                `onePerson.${ctx.currentDefenseSide}.lineupAssignments`
+              )) || {};
+
+            await localForage.setItem(
+              `onePerson.${ctx.currentDefenseSide}.pitchCounts`,
+              {
+                current: 0,
+                total: Number(ctx.currentDefenseTotal || 0),
+                pitcherId: currentDefenseLineup["投"] ?? null,
+              }
+            );
+          }
+
+          const mi = (await localForage.getItem<any>("matchInfo")) || {};
+          await localForage.setItem("matchInfo", {
+            ...mi,
+            announcementMode: "single",
+            inning: ctx.nextInning,
+            isTop: ctx.nextIsTop,
+            isDefense: false,
+          });
+        } else {
+          const mi = (await localForage.getItem<any>("matchInfo")) || {};
+          await localForage.setItem("matchInfo", {
+            ...mi,
+            announcementMode: "single",
+            isDefense: false,
+          });
+        }
+
+        await localForage.removeItem("onePersonDefenseChangeContext");
+      }
+
+      const savedScores =
+        (await localForage.getItem("onePerson.savedScoresBeforeDefenseChange")) || null;
+
+      if (savedScores) {
+        await localForage.setItem("scores", savedScores);
+        await localForage.removeItem("onePerson.savedScoresBeforeDefenseChange");
+      }
+
+      setScreen("onePersonAnnounce");
+    }}
+  />
+)}
+
 {screen === "operationSettings" && (
   <>
     <button
@@ -1915,6 +2314,12 @@ return (
       setLeagueMode(getLeagueMode());
       setScreen(next);
     }}
+  />
+)}
+
+{screen === "announcement-mode" && (
+  <AnnouncementModeScreen
+    onBack={() => setScreen("operationSettings")}
   />
 )}
 
@@ -3586,7 +3991,12 @@ const Menu = ({
     (async () => {
       const saved = await localForage.getItem("lastGameScreen");
       if (saved && typeof saved === "string") {
-        const ok: ScreenType[] = ["offense", "defense", "defenseChange"];
+        const ok: ScreenType[] = [
+          "offense",
+          "defense",
+          "defenseChange",
+          "onePersonAnnounce",
+        ];
         const preferred = ok.includes(saved as ScreenType)
           ? (saved as ScreenType)
           : "defense";

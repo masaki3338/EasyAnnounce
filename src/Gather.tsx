@@ -43,6 +43,11 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
   const [teamFurigana, setTeamFurigana] = useState("");
   const [opponentFurigana, setOpponentFurigana] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+    useState<"normal" | "single">("normal");
+
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -55,6 +60,22 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
       }
 
       if (matchInfo) {
+        if (matchInfo.announcementMode === "single") {
+          setAnnouncementMode("single");
+
+          const store = await localForage.getItem<any>("teamRegisterStore");
+
+          const firstFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(matchInfo.firstBaseTeamId)
+          );
+
+          const thirdFolder = store?.teams?.find(
+            (t: any) => String(t.id) === String(matchInfo.thirdBaseTeamId)
+          );
+
+          setFirstBaseTeamName(firstFolder?.listName || firstFolder?.team?.name || "");
+          setThirdBaseTeamName(thirdFolder?.listName || thirdFolder?.team?.name || "");
+        }
         setTournamentName(matchInfo.tournamentName || "");
         setMatchNumber(matchInfo.matchNumber || "〇");
         setOpponentName(matchInfo.opponentTeam || "");
@@ -77,13 +98,33 @@ const Gather: React.FC<Props> = ({ onNavigate, onBack, leagueMode }) => {
     };
   }, []);
 
-  const team1st = benchSide === "1塁側" ? teamName : opponentName;
-  const team3rd = benchSide === "3塁側" ? teamName : opponentName;
+  const team1st =
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? teamName
+        : opponentName;
+
+  const team3rd =
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? teamName
+        : opponentName;
 
   const team1stRead =
-    benchSide === "1塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? (teamFurigana || teamName)
+        : (opponentFurigana || opponentName);
+
   const team3rdRead =
-    benchSide === "3塁側" ? (teamFurigana || teamName) : (opponentFurigana || opponentName);
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? (teamFurigana || teamName)
+        : (opponentFurigana || opponentName);
 
   const isBoys = leagueMode === "boys";
 

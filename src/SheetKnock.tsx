@@ -177,6 +177,16 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   const [teamName, setTeamName] = useState("");       // 表示用
   const [teamReading, setTeamReading] = useState(""); // 読み上げ用
   const [opponentTeamName, setOpponentTeamName] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+    useState<"normal" | "single">("normal");
+
+  const [firstTeamName, setFirstTeamName] = useState("");
+  const [thirdTeamName, setThirdTeamName] = useState("");
+  const [visitorTeamName, setVisitorTeamName] = useState("");
+  const [homeTeamName, setHomeTeamName] = useState("");
+  const [sheetKnockSide, setSheetKnockSide] =
+    useState<"home" | "visitor">("home");
+
   const [isHome, setIsHome] = useState<"先攻" | "後攻">("先攻");
   const [timeLeft, setTimeLeft] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
@@ -243,8 +253,54 @@ const playBeeps = async (
 
       if (matchInfo && typeof matchInfo === "object") {
         const info = matchInfo as any;
-        setIsHome(info.isHome === true ? "後攻" : "先攻");
-        setOpponentTeamName(info.opponentTeam || "");
+
+        if (info.announcementMode === "single") {
+          const side = info.sheetKnockSide ?? "home";
+
+          setSheetKnockSide(side);
+          setIsHome(side === "home" ? "後攻" : "先攻");
+          setAnnouncementMode("single");
+
+          const store =
+            await localForage.getItem<any>("teamRegisterStore");
+
+          const thirdFolder = store?.teams?.find(
+            (t: any) =>
+              String(t.id) === String(info.thirdBaseTeamId)
+          );
+
+          const firstFolder = store?.teams?.find(
+            (t: any) =>
+              String(t.id) === String(info.firstBaseTeamId)
+          );
+
+          const thirdName =
+            thirdFolder?.listName ||
+            thirdFolder?.team?.name ||
+            "";
+
+          const firstName =
+            firstFolder?.listName ||
+            firstFolder?.team?.name ||
+            "";
+
+          setThirdTeamName(thirdName);
+          setFirstTeamName(firstName);
+
+          if (info.battingFirstSide === "third") {
+            // 3塁側が先攻
+            setVisitorTeamName(thirdName);
+            setHomeTeamName(firstName);
+          } else {
+            // 1塁側が先攻
+            setVisitorTeamName(firstName);
+            setHomeTeamName(thirdName);
+          }
+
+        } else {
+          setIsHome(info.isHome === true ? "後攻" : "先攻");
+          setOpponentTeamName(info.opponentTeam || "");
+        }
       }
     };
     load();
@@ -323,21 +379,33 @@ const handleStop = () => {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+const activeTeamName =
+  announcementMode === "single"
+    ? sheetKnockSide === "home"
+      ? homeTeamName
+      : visitorTeamName
+    : teamName;
+
+const activeTeamReading =
+  announcementMode === "single"
+    ? activeTeamName
+    : teamReading;
+
 const prepDisplayMessage =
-  isHome === "後攻" ? ` ${teamName}はシートノックの準備に入って下さい。` : null;
+  isHome === "後攻" ? ` ${activeTeamName}はシートノックの準備に入って下さい。` : null;
 
 const prepSpeakMessage =
-  isHome === "後攻" ? ` ${teamReading}はシートノックの準備に入って下さい。` : null;
+  isHome === "後攻" ? ` ${activeTeamReading}はシートノックの準備に入って下さい。` : null;
 
 const mainDisplayMessage =
   isHome === "後攻"
-    ? ` ${teamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
-    : ` ${teamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
+    : ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
 
 const mainSpeakMessage =
   isHome === "後攻"
-    ? ` ${teamReading}はシートノックに入って下さい。\nノック時間は7分以内です。`
-    : ` ${teamReading}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間は7分以内です。`
+    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
 
 
   const hasTimingHint = isHome === "先攻";

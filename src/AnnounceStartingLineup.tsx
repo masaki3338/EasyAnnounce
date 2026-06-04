@@ -79,6 +79,13 @@ const AnnounceStartingLineup: React.FC<{
   const [homeTeamName, setHomeTeamName] = useState<string>("");
   const [homeTeamFurigana, setHomeTeamFurigana] = useState<string>("");
   const [awayTeamName, setAwayTeamName] = useState<string>("");
+  const [firstBaseTeamName, setFirstBaseTeamName] = useState("");
+  const [thirdBaseTeamName, setThirdBaseTeamName] = useState("");
+  const [announcementMode, setAnnouncementMode] =
+  useState<"normal" | "single">("normal");
+  const [startingLineupSide, setStartingLineupSide] =
+    useState<"home" | "visitor">("visitor");
+
   const [opponentTeamFurigana, setOpponentTeamFurigana] = useState<string>("");
   const [isHomeTeamFirstAttack, setIsHomeTeamFirstAttack] = useState<boolean>(true);
   const [benchSide, setBenchSide] = useState<"1塁側" | "3塁側">("1塁側");
@@ -144,16 +151,111 @@ const AnnounceStartingLineup: React.FC<{
         localForage.getItem<boolean>("ohtaniRule"),
       ]);
 
+      const mi = matchInfo as any;
+
+      if (mi?.announcementMode === "single") {
+        setAnnouncementMode("single");
+        setStartingLineupSide(mi?.startingLineupSide ?? "visitor");
+      }
 
       setOhtaniRule(!!ohtani);
 
 
-      const assignRaw =
-        (await localForage.getItem<Record<string, number | null>>("startingassignments")) ??
-        (await localForage.getItem<Record<string, number | null>>("lineupAssignments")) ?? {};
-      const orderRaw =
-        (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("startingBattingOrder")) ??
-        (await localForage.getItem<Array<{ id?: number; playerId?: number; reason?: string }>>("battingOrder")) ?? [];
+let assignRaw: Record<string, number | null> = {};
+let orderRaw: Array<{ id?: number; playerId?: number; reason?: string }> = [];
+
+if (mi?.announcementMode === "single") {
+  const store =
+    await localForage.getItem<any>("teamRegisterStore");
+    const firstFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.firstBaseTeamId)
+    );
+
+    const thirdFolder = store?.teams?.find(
+      (t: any) => String(t.id) === String(mi.thirdBaseTeamId)
+    );
+
+    setFirstBaseTeamName(firstFolder?.listName || firstFolder?.team?.name || "");
+    setThirdBaseTeamName(thirdFolder?.listName || thirdFolder?.team?.name || "");
+
+  const teamId =
+    mi.startingLineupSide === "visitor"
+      ? (
+          mi.battingFirstSide === "third"
+            ? mi.thirdBaseTeamId
+            : mi.firstBaseTeamId
+        )
+      : (
+          mi.battingFirstSide === "third"
+            ? mi.firstBaseTeamId
+            : mi.thirdBaseTeamId
+        );
+
+  assignRaw =
+    (await localForage.getItem(
+      `startingassignments_${teamId}`
+    )) ?? {};
+
+  orderRaw =
+    (await localForage.getItem(
+      `startingBattingOrder_${teamId}`
+    )) ?? [];
+
+  const folder = store?.teams?.find(
+    (t: any) => String(t.id) === String(teamId)
+  );
+
+  const selectedTeamName =
+    folder?.listName || folder?.team?.name || "";
+
+  setTeamPlayers(folder?.team?.players ?? []);
+  setHomeTeamName(selectedTeamName);
+  setHomeTeamFurigana(
+    folder?.team?.furigana ??
+    folder?.team?.nameKana ??
+    selectedTeamName
+  );
+
+  // visitorなら先攻、homeなら後攻として表示
+  setIsHomeTeamFirstAttack(mi.startingLineupSide === "visitor");
+
+} else {
+  assignRaw =
+    (await localForage.getItem("startingassignments")) ??
+    (await localForage.getItem("lineupAssignments")) ??
+    {};
+
+  orderRaw =
+    (await localForage.getItem("startingBattingOrder")) ??
+    (await localForage.getItem("battingOrder")) ??
+  [];
+}
+
+if (mi?.announcementMode !== "single") {
+  if (team) {
+    setTeamPlayers((team as any).players || []);
+    setHomeTeamName((team as any).name || "");
+    setHomeTeamFurigana(
+      (team as any).furigana ??
+      (team as any).nameKana ??
+      ""
+    );
+  }
+
+  setAwayTeamName(mi.opponentTeam || "");
+  setIsHomeTeamFirstAttack(!mi.isHome);
+  setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
+  setBenchSide(mi.benchSide || "1塁側");
+}
+
+if (Array.isArray(mi.umpires)) {
+  setUmpires(mi.umpires);
+}
+
+setIsTwoUmpires(Boolean(mi.twoUmpires));
+setTournamentName(mi.tournamentName || "");
+setGameNumber(String(mi.matchNumber || ""));
+
       const extraPosRaw =
         (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap")) ??
         (await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft")) ??
@@ -180,23 +282,7 @@ const AnnounceStartingLineup: React.FC<{
       });
       setExtraPositionMap(normalizedExtraPos);
 
-      if (team) {
-        setTeamPlayers((team as any).players || []);
-        setHomeTeamName((team as any).name || "");
-        setHomeTeamFurigana((team as any).furigana ?? (team as any).nameKana ?? "");
-      }
-      if (matchInfo && typeof matchInfo === "object") {
-        const mi = matchInfo as any;
-        setAwayTeamName(mi.opponentTeam || "");
-        setIsHomeTeamFirstAttack(!mi.isHome);
-        if (Array.isArray(mi.umpires)) setUmpires(mi.umpires);
-        setOpponentTeamFurigana(mi.opponentTeamFurigana || "");
-        setIsTwoUmpires(Boolean(mi.twoUmpires));
-        setBenchSide(mi.benchSide || "1塁側");
 
-        setTournamentName(mi.tournamentName || "");
-        setGameNumber(String(mi.matchNumber || ""));
-      }
     };
     
     loadB();
@@ -235,8 +321,19 @@ const AnnounceStartingLineup: React.FC<{
     return `${last}${getHonorific(p)}`;
   };
 
-  const team1stBaseName = benchSide === "1塁側" ? homeTeamName : awayTeamName;
-  const team3rdBaseName = benchSide === "3塁側" ? homeTeamName : awayTeamName;
+  const team1stBaseName =
+    announcementMode === "single"
+      ? firstBaseTeamName
+      : benchSide === "1塁側"
+        ? homeTeamName
+        : awayTeamName;
+
+  const team3rdBaseName =
+    announcementMode === "single"
+      ? thirdBaseTeamName
+      : benchSide === "3塁側"
+        ? homeTeamName
+        : awayTeamName;
 
   const team1stBaseFurigana = benchSide === "1塁側" ? homeTeamFurigana : opponentTeamFurigana;
   const team3rdBaseFurigana = benchSide === "3塁側" ? homeTeamFurigana : opponentTeamFurigana;
