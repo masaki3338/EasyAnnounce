@@ -439,6 +439,7 @@ useEffect(() => {
   const [isHome, setIsHome] = useState(false); // 自チームが後攻かどうか
   const [offenseStartSnapshotReady, setOffenseStartSnapshotReady] = useState(false);
   const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
+  const [showRestoreDoneModal, setShowRestoreDoneModal] = useState(false);
   useEffect(() => {
   const handler = () => {
     setShowRestoreConfirmModal(true);
@@ -2033,13 +2034,23 @@ const restoredScores: Scores = structuredClone(currentScores || {});
 const targetIndex = snapshot.inning - 1;
 
 if (!restoredScores[targetIndex]) {
-  restoredScores[targetIndex] = { top: 0, bottom: 0 };
+  restoredScores[targetIndex] = {
+    top: undefined as any,
+    bottom: undefined as any,
+  };
 }
 
 if (snapshot.isTop) {
-  restoredScores[targetIndex].top = undefined as any;
+  restoredScores[targetIndex] = {
+    ...restoredScores[targetIndex],
+    top: undefined as any,
+    bottom: undefined as any,
+  };
 } else {
-  restoredScores[targetIndex].bottom = undefined as any;
+  restoredScores[targetIndex] = {
+    ...restoredScores[targetIndex],
+    bottom: undefined as any,
+  };
 }
 
 setScores(restoredScores);
@@ -2088,6 +2099,7 @@ setScores(restoredScores);
 
   stop();
   setShowRestoreConfirmModal(false);
+  setShowRestoreDoneModal(true);
 
   console.log("[OFFENSE INNING START SNAPSHOT] restored", {
     storageKey,
@@ -3901,6 +3913,56 @@ useEffect(() => {
                     onClick={() => setShowRestoreConfirmModal(false)}
                   >
                     キャンセル
+                  </button>
+                </div>
+
+                <div className="h-[max(env(safe-area-inset-bottom),8px)]" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ この回の最初に戻す：完了モーダル */}
+        {showRestoreDoneModal && (
+          <div className="fixed inset-0 z-50">
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setShowRestoreDoneModal(false)}
+            />
+
+            <div className="absolute inset-0 flex items-center justify-center p-4 overflow-hidden">
+              <div
+                className="
+                  bg-white shadow-2xl
+                  rounded-2xl
+                  w-full max-w-sm
+                  overflow-hidden
+                  flex flex-col
+                "
+                onClick={(e) => e.stopPropagation()}
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="復元完了"
+              >
+                <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
+                  <h2 className="text-lg font-extrabold tracking-wide text-center">
+                    完了
+                  </h2>
+                </div>
+
+                <div className="px-6 py-6 text-center">
+                  <p className="text-[15px] font-bold text-gray-800 leading-relaxed whitespace-pre-line">
+                    この回の最初に戻しました。
+                  </p>
+                </div>
+
+                <div className="px-5 pb-5">
+                  <button
+                    className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 active:bg-emerald-800"
+                    onClick={() => setShowRestoreDoneModal(false)}
+                  >
+                    OK
                   </button>
                 </div>
 

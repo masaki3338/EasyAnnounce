@@ -2624,13 +2624,27 @@ const restoredScores: Scores = structuredClone(currentScores || {});
 const targetIndex = snapshot.inning - 1;
 
 if (!restoredScores[targetIndex]) {
-  restoredScores[targetIndex] = { top: 0, bottom: 0 };
+  // ✅ 未実施の裏の回に 0 が表示されないよう、初期値は 0 ではなく未入力にする
+  restoredScores[targetIndex] = {
+    top: undefined as any,
+    bottom: undefined as any,
+  };
 }
 
 if (snapshot.isTop) {
-  restoredScores[targetIndex].top = undefined as any;
+  // ✅ 表の回を最初に戻す場合は、表の得点だけでなく未来の裏も未入力に戻す
+  // ここで bottom: 0 を残すと、得点板の裏の回に 0 が表示されてしまう
+  restoredScores[targetIndex] = {
+    ...restoredScores[targetIndex],
+    top: undefined as any,
+    bottom: undefined as any,
+  };
 } else {
-  restoredScores[targetIndex].bottom = undefined as any;
+  // ✅ 裏の回を最初に戻す場合は、表の得点は残して裏だけ未入力に戻す
+  restoredScores[targetIndex] = {
+    ...restoredScores[targetIndex],
+    bottom: undefined as any,
+  };
 }
 
 setScores(restoredScores);
@@ -2852,7 +2866,8 @@ if (missingOrderEntries.length > 0) {
     players: safePlayers,
   };
 
-  await localForage.setItem("team", restoredTeamObject);
+  // ❌ 通常モード用の team を上書きしない
+  // await localForage.setItem("team", restoredTeamObject);
 
   // ✅ 既存互換キーに、この回開始時の状態を戻す
   //await localForage.setItem("battingOrder", restoredOrder);
