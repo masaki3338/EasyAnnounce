@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import localForage from "localforage";
 import {
   getAnnouncementMode,
   setAnnouncementMode,
@@ -18,7 +19,23 @@ export default function AnnouncementModeScreen({ onBack }: Props) {
   }, []);
 
   const handleSave = async () => {
+    // ✅ アナウンスモード設定として保存
     await setAnnouncementMode(mode);
+
+    // ✅ 既存の matchInfo 側にも反映して、古い single が残らないようにする
+    const matchInfo = await localForage.getItem<any>("matchInfo");
+
+    if (matchInfo && typeof matchInfo === "object") {
+      await localForage.setItem("matchInfo", {
+        ...matchInfo,
+        announcementMode: mode,
+      });
+    } else {
+      await localForage.setItem("matchInfo", {
+        announcementMode: mode,
+      });
+    }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
