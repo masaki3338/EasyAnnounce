@@ -2033,23 +2033,13 @@ const restoredScores: Scores = structuredClone(currentScores || {});
 const targetIndex = snapshot.inning - 1;
 
 if (!restoredScores[targetIndex]) {
-  restoredScores[targetIndex] = {
-    top: undefined as any,
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex] = { top: 0, bottom: 0 };
 }
 
 if (snapshot.isTop) {
-  restoredScores[targetIndex] = {
-    ...restoredScores[targetIndex],
-    top: undefined as any,
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex].top = undefined as any;
 } else {
-  restoredScores[targetIndex] = {
-    ...restoredScores[targetIndex],
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex].bottom = undefined as any;
 }
 
 setScores(restoredScores);
