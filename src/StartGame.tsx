@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
 import localForage from "localforage";
+import {
+  getAnnouncementMode,
+  type AnnouncementMode,
+} from "./lib/announcementMode";
 
 type BattingEntry = {
   id: number;
@@ -86,7 +90,9 @@ const StartGame = ({
 
   const [thirdTeamName, setThirdTeamName] = useState("");
   const [firstTeamName, setFirstTeamName] = useState("");
-
+  const [onePersonFirstAttackSide, setOnePersonFirstAttackSide] =
+    useState<"first" | "third">("first");
+  
   const [thirdPlayers, setThirdPlayers] = useState<any[]>([]);
   const [firstPlayers, setFirstPlayers] = useState<any[]>([]);
 
@@ -103,6 +109,8 @@ const StartGame = ({
     useState<BattingEntry[]>([]);
     
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]); // 🆕
+  const [thirdBenchOutIds, setThirdBenchOutIds] = useState<number[]>([]);
+  const [firstBenchOutIds, setFirstBenchOutIds] = useState<number[]>([]);
 
   // 「試合開始」押下時に出す案内モーダルの表示フラグ
   const [showStartHint, setShowStartHint] = useState(false);
@@ -111,6 +119,22 @@ const StartGame = ({
 
   const teamKey = (teamId: string, name: string) =>
     `${name}_${teamId}`;
+
+  const loadTeamBenchOutIds = async (teamId: any) => {
+    if (!teamId) return [];
+
+    const raw =
+      (await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)) ??
+      [];
+
+    return Array.from(
+      new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((v) => Number(v))
+          .filter(Number.isFinite)
+      )
+    );
+  };
 
   const loadTeamFolder = async (teamId: string) => {
     const store = await localForage.getItem<any>("teamRegisterStore");
@@ -129,6 +153,38 @@ const StartGame = ({
     );
   };
 
+  const normalizeOnePersonSide = (value: any): "first" | "third" | null => {
+  const s = String(value ?? "").trim().toLowerCase();
+
+  if (
+    s === "first" ||
+    s === "1" ||
+    s === "1塁側" ||
+    s.includes("1塁") ||
+    s.includes("一塁")
+  ) {
+    return "first";
+  }
+
+  if (
+    s === "third" ||
+    s === "3" ||
+    s === "3塁側" ||
+    s.includes("3塁") ||
+    s.includes("三塁")
+  ) {
+    return "third";
+  }
+
+  return null;
+};
+
+  const oppositeOnePersonSide = (side: "first" | "third"): "first" | "third" =>
+    side === "first" ? "third" : "first";
+
+  const sideText = (side: "first" | "third") =>
+    side === "first" ? "1塁側" : "3塁側";
+
   const toDisplayPlayers = (players: any[] = []) =>
     players.map((p: any) => ({
       id: Number(p.id),
@@ -138,15 +194,49 @@ const StartGame = ({
 
 useEffect(() => {
   const loadData = async () => {
-    const matchInfo = await localForage.getItem("matchInfo");
+  const matchInfo = await localForage.getItem("matchInfo");
+  const mi = matchInfo as any;
 
-    const mi = matchInfo as any;
-    const mode = mi?.announcementMode === "single" ? "single" : "normal";
-    setAnnouncementMode(mode);
+  // ✅ アナウンスモード画面で保存した設定を優先する
+  const savedMode = await getAnnouncementMode();
 
-    if (mode === "single") {
+  const mode: AnnouncementMode =
+    savedMode === "single" ? "single" : "normal";
+
+  setAnnouncementMode(mode);
+
+  // ✅ matchInfo 側にも現在のモードを同期して、古い single が残らないようにする
+  await localForage.setItem("matchInfo", {
+    ...(mi || {}),
+    announcementMode: mode,
+  });
+
+  if (mode === "single") {
       const thirdTeamId = mi?.thirdBaseTeamId;
       const firstTeamId = mi?.firstBaseTeamId;
+
+const benchSide: "first" | "third" =
+  mi?.benchSide === "3塁側" ? "third" : "first";
+
+const explicitFirstAttackSide =
+  normalizeOnePersonSide(mi?.onePersonFirstAttackSide) ??
+  normalizeOnePersonSide(mi?.firstAttackSide) ??
+  normalizeOnePersonSide(mi?.firstBattingSide) ??
+  normalizeOnePersonSide(mi?.topSide) ??
+  normalizeOnePersonSide(mi?.offenseFirstSide) ??
+  normalizeOnePersonSide(mi?.firstAttackBaseSide) ??
+  normalizeOnePersonSide(mi?.battingFirstSide);
+
+const derivedFirstAttackSide: "first" | "third" =
+  typeof mi?.isHome === "boolean"
+    ? mi.isHome
+      ? oppositeOnePersonSide(benchSide)
+      : benchSide
+    : benchSide;
+
+setOnePersonFirstAttackSide(
+  explicitFirstAttackSide ?? derivedFirstAttackSide
+);
 
       const thirdFolder = thirdTeamId ? await loadTeamFolder(thirdTeamId) : null;
       const firstFolder = firstTeamId ? await loadTeamFolder(firstTeamId) : null;
@@ -156,6 +246,8 @@ useEffect(() => {
 
       setThirdPlayers(toDisplayPlayers(thirdFolder?.team?.players || []));
       setFirstPlayers(toDisplayPlayers(firstFolder?.team?.players || []));
+      setThirdBenchOutIds(await loadTeamBenchOutIds(thirdTeamId));
+      setFirstBenchOutIds(await loadTeamBenchOutIds(firstTeamId));
 
       const thirdA =
         (await localForage.getItem<Record<string, number | null>>(
@@ -300,16 +392,31 @@ useEffect(() => {
   const getBenchPlayersFrom = (
     playerList: any[],
     order: BattingEntry[],
-    assign: Record<string, number | null>
+    assign: Record<string, number | null>,
+    benchOut: number[] = []
   ) => {
-    const orderIds = order.map((e) => Number(e.id));
+    const orderIds = order
+      .map((e) => Number(e.id))
+      .filter(Number.isFinite);
+
     const assignIds = Object.values(assign || {})
-      .filter((v) => v !== null)
-      .map(Number);
+      .filter((v) => v !== null && v !== undefined)
+      .map(Number)
+      .filter(Number.isFinite);
+
+    const benchOutIds = (Array.isArray(benchOut) ? benchOut : [])
+      .map(Number)
+      .filter(Number.isFinite);
 
     return playerList.filter((p) => {
       const id = Number(p.id);
-      return !orderIds.includes(id) && !assignIds.includes(id);
+      if (!Number.isFinite(id)) return false;
+
+      return (
+        !orderIds.includes(id) &&
+        !assignIds.includes(id) &&
+        !benchOutIds.includes(id)
+      );
     });
   };
 
@@ -691,6 +798,25 @@ await localForage.removeItem("startingBenchOutIds_draft");
     return "—";
   };
 
+const normalOwnSide = firstBaseSide;
+const normalOpponentSide = firstBaseSide === "1塁側" ? "3塁側" : "1塁側";
+
+const normalFirstAttackName = isFirstAttack ? teamName : opponentName;
+const normalSecondAttackName = isFirstAttack ? opponentName : teamName;
+
+const normalFirstAttackSide = isFirstAttack ? normalOwnSide : normalOpponentSide;
+const normalSecondAttackSide = isFirstAttack ? normalOpponentSide : normalOwnSide;
+
+const singleFirstAttackName =
+  onePersonFirstAttackSide === "first" ? firstTeamName : thirdTeamName;
+
+const singleSecondAttackName =
+  onePersonFirstAttackSide === "first" ? thirdTeamName : firstTeamName;
+
+const singleSecondAttackSide =
+  oppositeOnePersonSide(onePersonFirstAttackSide);
+
+
 return (
     <div
       className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-6"
@@ -705,6 +831,7 @@ return (
 {/* ヘッダー：中央大タイトル＋細ライン */}
 <header className="w-full max-w-md text-center select-none mt-1">
   <div className="inline-flex items-center gap-2">
+
     <h1 className="inline-flex items-center gap-2 text-3xl md:text-4xl font-extrabold tracking-wide leading-tight">
       <span className="text-2xl md:text-3xl">🏁</span>
       <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-400 drop-shadow">
@@ -734,11 +861,17 @@ return (
             <IconInfo />
             <div className="font-semibold">試合情報</div>
           </div>
-          {announcementMode !== "single" && (
-            <div className="text-sm md:text-base font-semibold text-white px-2 py-0.5 bg-blue-800/30 rounded">
-              {isFirstAttack ? "先攻" : "後攻"} / ベンチ：{firstBaseSide}
-            </div>
-          )}
+<div className="text-sm md:text-base font-semibold text-white px-2 py-0.5 bg-blue-800/30 rounded">
+  {announcementMode === "single" ? (
+    <>
+      先攻：{singleFirstAttackName || "未設定"}（{sideText(onePersonFirstAttackSide)}）
+    </>
+  ) : (
+    <>
+      先攻：{normalFirstAttackName || "未設定"}（{normalFirstAttackSide}）
+    </>
+  )}
+</div>
 
         </div>
 
@@ -896,11 +1029,12 @@ return (
             </div>
 
             <div className="text-sm leading-tight grid grid-cols-1 gap-1">
-              {getBenchPlayersFrom(
-                thirdPlayers,
-                thirdBattingOrder,
-                thirdAssignments
-              ).map((p) => (
+                {getBenchPlayersFrom(
+                  thirdPlayers,
+                  thirdBattingOrder,
+                  thirdAssignments,
+                  thirdBenchOutIds
+                ).map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
                   <span className="flex-1 truncate">{p.name}</span>
                   <span className="opacity-90">#{p.number}</span>
@@ -910,7 +1044,8 @@ return (
               {getBenchPlayersFrom(
                 thirdPlayers,
                 thirdBattingOrder,
-                thirdAssignments
+                thirdAssignments,
+                thirdBenchOutIds
               ).length === 0 && (
                 <div className="text-white/70">（該当なし）</div>
               )}
@@ -929,7 +1064,8 @@ return (
               {getBenchPlayersFrom(
                 firstPlayers,
                 firstBattingOrder,
-                firstAssignments
+                firstAssignments,
+                firstBenchOutIds
               ).map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
                   <span className="flex-1 truncate">{p.name}</span>
@@ -940,7 +1076,8 @@ return (
               {getBenchPlayersFrom(
                 firstPlayers,
                 firstBattingOrder,
-                firstAssignments
+                firstAssignments,
+                firstBenchOutIds
               ).length === 0 && (
                 <div className="text-white/70">（該当なし）</div>
               )}

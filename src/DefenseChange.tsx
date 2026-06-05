@@ -4264,6 +4264,37 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
   }
 };
 
+const getCurrentDefenseTeamId = async () => {
+  const team = await localForage.getItem<any>("team");
+
+  return (
+    team?.id ||
+    team?.teamId ||
+    team?.team?.id ||
+    team?.originalTeamId ||
+    null
+  );
+};
+
+const loadCurrentDefenseBenchOutIds = async () => {
+  const teamId = await getCurrentDefenseTeamId();
+
+  if (!teamId) return [];
+
+  const raw =
+    (await localForage.getItem<number[]>(
+      `startingBenchOutIds_${teamId}`
+    )) ?? [];
+
+  return Array.from(
+    new Set(
+      (Array.isArray(raw) ? raw : [])
+        .map((v) => Number(v))
+        .filter(Number.isFinite)
+    )
+  );
+};
+
 // 新しい操作の前に履歴へ積む（永続化対応）
 const pushHistory = async () => {
   const snap = snapshotNow();
@@ -5214,22 +5245,21 @@ useEffect(() => {
   if (!teamPlayers || teamPlayers.length === 0) return;
 
   const assignedIdsNow = Object.values(assignments)
-    .filter((id): id is number => typeof id === "number");
+    .map((id) => Number(id))
+    .filter(Number.isFinite);
 
   (async () => {
-    // スタメン設定画面で指定したベンチ外のみを唯一の情報源にする
-    const startingBenchOut =
-      (await localForage.getItem<number[]>("startingBenchOutIds")) ?? [];
+    // ✅ スタメン設定画面でチーム別に保存した「出場しない選手」を読む
+    const benchOutIds = await loadCurrentDefenseBenchOutIds();
 
-    const benchOutIds = Array.from(
-      new Set(startingBenchOut.map(Number).filter(Number.isFinite))
-    );
-
-    // 控え候補＝「未割当の選手」−「ベンチ外（スタメン指定）」
+    // 控え候補＝全選手 − 守備中の選手 − 出場しない選手
     setBenchPlayers(
-      teamPlayers.filter(
-        (p) => !assignedIdsNow.includes(p.id) && !benchOutIds.includes(p.id)
-      )
+      teamPlayers.filter((p) => {
+        const id = Number(p.id);
+        if (!Number.isFinite(id)) return false;
+
+        return !assignedIdsNow.includes(id) && !benchOutIds.includes(id);
+      })
     );
   })();
 }, [assignments, teamPlayers]);

@@ -262,13 +262,18 @@ const StartingLineup = () => {
     `${name}_${teamId}`;
 
   const getTeamNameById = (store: any, teamId: string) => {
-  const folder = store?.teams?.find(
-    (t: any) => String(t.id) === String(teamId)
-  );
-  console.log("folder", folder);
+    const folder = store?.teams?.find(
+      (t: any) => String(t.id) === String(teamId)
+    );
 
-  return folder?.listName || folder?.team?.name || "";
-};
+    return (
+      folder?.team?.name ||
+      folder?.teamName ||
+      folder?.name ||
+      folder?.listName ||
+      ""
+    );
+  };
 
 const loadSingleTeamSide = async (side: "third" | "first") => {
   const matchInfo = await localForage.getItem<any>("matchInfo");

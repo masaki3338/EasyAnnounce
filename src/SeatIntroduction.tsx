@@ -43,21 +43,42 @@ const IconMic = () => (
 );
 
 // 追加：戻り先をストレージから都度解決
+// 追加：戻り先をストレージから都度解決
 const resolveBackTarget = async (): Promise<ScreenType> => {
   const [last, matchInfo] = await Promise.all([
     localForage.getItem<string>("lastScreen"),
     localForage.getItem<any>("matchInfo"),
   ]);
+
   const s = (last || "").toLowerCase();
+
+  // ✅ 1人アナウンスモードは "announce" を含むため、
+  // 試合前アナウンス判定より先に処理する
+  const isFromOnePerson =
+    s === "onepersonannounce" ||
+    s.includes("oneperson");
+
+  if (isFromOnePerson) {
+    return "onePersonAnnounce" as ScreenType;
+  }
+
   const isFromPreAnnounce =
-    s.includes("announce") || s.includes("warmup") || s.includes("greet") ||
-    s.includes("knock") || s.includes("gather") || s.includes("seat");
+    s.includes("announce") ||
+    s.includes("warmup") ||
+    s.includes("greet") ||
+    s.includes("knock") ||
+    s.includes("gather") ||
+    s.includes("seat");
+
   const isFromOffense =
-    s.includes("offen") || s.includes("attack") || s.includes("bat");
+    s.includes("offen") ||
+    s.includes("attack") ||
+    s.includes("bat");
 
   if (isFromPreAnnounce) return "announcement" as ScreenType;
   if (isFromOffense) return "defense" as ScreenType;
-  if (matchInfo && matchInfo.isDefense === false) return "defense" as ScreenType; // 保険
+  if (matchInfo && matchInfo.isDefense === false) return "defense" as ScreenType;
+
   return "startGame" as ScreenType;
 };
 
@@ -109,7 +130,13 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         setTeamName(team.name || "");
         setTeamReading(team.furigana || team.kana || team.reading || team.name || "");
       }
-      if (matchInfo) setIsHome(matchInfo.isHome ?? true);
+      if (matchInfo) {
+        setIsHome(
+          typeof matchInfo.seatIntroIsHome === "boolean"
+            ? matchInfo.seatIntroIsHome
+            : matchInfo.isHome ?? true
+        );
+      }
 
       // 戻り先の判定（大小無視の部分一致＋保険）
       const s = (last || "").toLowerCase();
@@ -297,6 +324,29 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           <button
             onClick={async () => {
               const tgt = await resolveBackTarget();
+
+              // ✅ 1人アナウンスモードの「1回表終了後シート紹介」から戻る場合、
+              // 1回裏の攻撃画面を表示するために matchInfo を進める
+              const returnState =
+                (await localForage.getItem<any>("seatIntroReturnState")) || null;
+
+              if (
+                tgt === ("onePersonAnnounce" as ScreenType) &&
+                returnState?.mode === "onePersonNextHalf"
+              ) {
+                const mi = (await localForage.getItem<any>("matchInfo")) || {};
+
+                await localForage.setItem("matchInfo", {
+                  ...mi,
+                  inning: Number(returnState.inning ?? 1),
+                  isTop: Boolean(returnState.isTop ?? false),
+                  isDefense: false,
+                  announcementMode: "single",
+                });
+
+                await localForage.removeItem("seatIntroReturnState");
+              }
+
               console.log("SeatIntro back ->", tgt);
               onNavigate(tgt);
             }}
