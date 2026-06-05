@@ -1005,62 +1005,11 @@ const findReentryCandidateForRunner = async () => {
 };
 
 
-// ✅ 半イニング終了時：いま守っていたチームの「この回の投球数」だけを0に戻す
-// 合計投球数は残す。
-const resetCurrentHalfPitchCountForOnePerson = async (
-  targetIsTop: boolean,
-  totalCount: number,
-  firstAttackSide?: "first" | "third"
-) => {
-  const savedFirstAttackSide =
-    firstAttackSide || (await getSavedOnePersonFirstAttackSide());
-
-  const defenseSide = getOnePersonDefenseSideByTopBottom(
-    targetIsTop,
-    savedFirstAttackSide
-  );
-
-  const defenseLineup =
-    (await localForage.getItem<Record<string, number | null>>(
-      `onePerson.${defenseSide}.lineupAssignments`
-    )) || {};
-
-  const savedPitchCounts =
-    (await localForage.getItem<{
-      current: number;
-      total: number;
-      pitcherId?: number | null;
-    }>(`onePerson.${defenseSide}.pitchCounts`)) || {
-      current: 0,
-      total: totalCount,
-      pitcherId: defenseLineup["投"] ?? null,
-    };
-
-  await localForage.setItem(`onePerson.${defenseSide}.pitchCounts`, {
-    ...savedPitchCounts,
-    current: 0,
-    // ✅ 合計は現在画面の合計を優先して残す
-    total: Number(totalCount || savedPitchCounts.total || 0),
-    pitcherId: defenseLineup["投"] ?? savedPitchCounts.pitcherId ?? null,
-  });
-
-  // 画面に残っている「この回」も即時クリア
-  setCurrentPitchCount(0);
-};
-
 // Offense → SeatIntroduction へ行くときの共通ナビ（保存してから遷移）
 const goSeatIntroFromOffense = async () => {
   const mi = (await localForage.getItem<any>("matchInfo")) || {};
 
   const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
-
-  // ✅ 1回表終了 → シート紹介へ行く経路では switchHalfInOnePersonMode を通らないため、
-  // ここで「いま守っていたチーム」のこの回の投球数を必ず0に戻す
-  await resetCurrentHalfPitchCountForOnePerson(
-    isTop,
-    totalPitchCount,
-    savedFirstAttackSide
-  );
 
   // ✅ 1回表を攻撃していたチーム = 次の1回裏で守るチーム
   const defenseSideForSeatIntro = getOnePersonSideByTopBottom(
@@ -2675,27 +2624,13 @@ const restoredScores: Scores = structuredClone(currentScores || {});
 const targetIndex = snapshot.inning - 1;
 
 if (!restoredScores[targetIndex]) {
-  // ✅ 未実施の裏の回に 0 が表示されないよう、初期値は 0 ではなく未入力にする
-  restoredScores[targetIndex] = {
-    top: undefined as any,
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex] = { top: 0, bottom: 0 };
 }
 
 if (snapshot.isTop) {
-  // ✅ 表の回を最初に戻す場合は、表の得点だけでなく未来の裏も未入力に戻す
-  // ここで bottom: 0 を残すと、得点板の裏の回に 0 が表示されてしまう
-  restoredScores[targetIndex] = {
-    ...restoredScores[targetIndex],
-    top: undefined as any,
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex].top = undefined as any;
 } else {
-  // ✅ 裏の回を最初に戻す場合は、表の得点は残して裏だけ未入力に戻す
-  restoredScores[targetIndex] = {
-    ...restoredScores[targetIndex],
-    bottom: undefined as any,
-  };
+  restoredScores[targetIndex].bottom = undefined as any;
 }
 
 setScores(restoredScores);
@@ -3447,10 +3382,6 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
   const nextIsTop = !isTop;
   const nextInning = isTop ? inning : inning + 1;
 
-  // ✅ 守備交代画面を経由する場合も、現在守っていたチームの
-  // 「この回の投球数」は半イニング終了時点で0に戻しておく
-  await resetCurrentHalfPitchCountForOnePerson(isTop, totalPitchCount);
-
   // ✅ 代打・代走後の攻撃側データを onePerson 側にも保存
   await localForage.setItem(
     `onePerson.${offenseSide}.battingOrder`,
@@ -3905,12 +3836,24 @@ const switchHalfInOnePersonMode = async () => {
 
 const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
 
-  // ✅ 切り替える前に、いま守備していたチームの「この回の投球数」を0に戻す
-  await resetCurrentHalfPitchCountForOnePerson(
-    isTop,
-    totalPitchCount,
-    savedFirstAttackSide
-  );
+  // 切り替える前に、いま守備していたチームの「この回の球数」を0に戻す
+  {
+    const defenseSide = getOnePersonDefenseSideByTopBottom(
+      isTop,
+      savedFirstAttackSide
+    );
+
+    const defenseLineup =
+      (await localForage.getItem<Record<string, number | null>>(
+        `onePerson.${defenseSide}.lineupAssignments`
+      )) || {};
+
+    await localForage.setItem(`onePerson.${defenseSide}.pitchCounts`, {
+      current: 0,
+      total: totalPitchCount,
+      pitcherId: defenseLineup["投"] ?? null,
+    });
+  }
 
   const nextIsTop = !isTop;
   const nextInning = isTop ? inning : inning + 1;
