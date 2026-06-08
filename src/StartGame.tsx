@@ -502,10 +502,18 @@ const proceedStart = async () => {
   await localForage.removeItem("onePerson.third.lastBatterIndex");
   await localForage.removeItem("onePerson.first.lastBatterIndex");
 
-  // 打順チェックボックスをクリア
+  // 打順チェックボックスをクリア（通常モード用）
   await localForage.removeItem("checkedIds");
-  // アナウンス済みチェックをクリア
+  // アナウンス済みチェックをクリア（通常モード用）
   await localForage.removeItem("announcedIds");
+
+  // 1人アナウンス画面用のチェック・アナウンス済み・黄色の選択行も必ず初期化
+  await localForage.removeItem("onePerson.first.checkedIds");
+  await localForage.removeItem("onePerson.first.announcedIds");
+  await localForage.removeItem("onePerson.third.checkedIds");
+  await localForage.removeItem("onePerson.third.announcedIds");
+  await localForage.removeItem("onePerson.first.batterUiState.v2");
+  await localForage.removeItem("onePerson.third.batterUiState.v2");
   // 出場済み（リエントリー判定などに使う）をクリア
   await localForage.removeItem("usedPlayerInfo");
    // 🧹 守備交代の取消／やり直し履歴も完全クリア（前試合の残骸を消す）
@@ -565,6 +573,18 @@ const proceedStart = async () => {
     // ✅ 試合開始時は必ず両チームとも1番から
     await localForage.setItem("onePerson.third.lastBatterIndex", 0);
     await localForage.setItem("onePerson.first.lastBatterIndex", 0);
+
+    // ✅ 1人アナウンス画面専用：チェック・アナウンス済み・黄色の選択行を初期化
+    await localForage.setItem("onePerson.third.batterUiState.v2", {
+      checkedIds: [],
+      announcedIds: [],
+      currentBatterIndex: 0,
+    });
+    await localForage.setItem("onePerson.first.batterUiState.v2", {
+      checkedIds: [],
+      announcedIds: [],
+      currentBatterIndex: 0,
+    });
 
     await localForage.setItem("onePerson.third.pitchCounts", {
       current: 0,
