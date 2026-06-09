@@ -82,6 +82,7 @@ export type ScreenType =
   | "offense"
   | "defense"
   | "onePersonAnnounce"
+  | "onePersonDefenseChange"
   | "defenseChange"
   | "gather"
   | "startGreeting"
@@ -335,13 +336,21 @@ useEffect(() => {
     setScreen("defense");
   };
 
-  const handleSeatIntroductionNavigate = (next: ScreenType) => {
+  const handleSeatIntroductionNavigate = async (next: ScreenType) => {
+  const singleMode = await isSingleAnnouncementMode();
+
+  // 1人アナウンスモードでは OffenseScreen / DefenseScreen に戻さない
+  if (singleMode && (next === "offense" || next === "defense")) {
+    setScreen("onePersonAnnounce");
+    return;
+  }
+
   if (next === "defense") {
     // 先攻で「攻撃 → シート紹介 → 初回守備」に入るときだけ保存付きで開く
     if (fromGameRef.current && lastOffenseRef.current) {
       openDefenseScreenWithSnapshot();
     } else {
-      openDefenseScreenWithoutSnapshot();
+      await openDefenseScreenWithoutSnapshot();
     }
     return;
   }
@@ -349,9 +358,15 @@ useEffect(() => {
   setScreen(next);
 };
 
-const handleSeatIntroductionBack = () => {
+const handleSeatIntroductionBack = async () => {
   if (!fromGameRef.current) {
     setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement");
+    return;
+  }
+
+  // 1人アナウンスモードでは OffenseScreen / DefenseScreen に戻さない
+  if (await isSingleAnnouncementMode()) {
+    setScreen("onePersonAnnounce");
     return;
   }
 
@@ -362,11 +377,80 @@ const handleSeatIntroductionBack = () => {
   }
 
   // 守備画面から来たなら通常の守備へ戻す
-  openDefenseScreenWithoutSnapshot();
+  await openDefenseScreenWithoutSnapshot();
 };
 
-  const openDefenseScreenWithoutSnapshot = () => {
+  const openDefenseScreenWithoutSnapshot = async () => {
+    const mi = (await localForage.getItem<any>("matchInfo")) || {};
+    if (mi?.announcementMode === "single") {
+      setScreen("onePersonAnnounce");
+      return;
+    }
     setScreen("defense");
+  };
+
+  const isSingleAnnouncementMode = async () => {
+    const mi = (await localForage.getItem<any>("matchInfo")) || {};
+    const mode = mi?.announcementMode || (await getAnnouncementMode());
+    return mode === "single";
+  };
+
+  const getOnePersonTeamsFromMatchInfo = async () => {
+    const mi = (await localForage.getItem<any>("matchInfo")) || {};
+    const store = (await localForage.getItem<any>("teamRegisterStore")) || {};
+    const registeredTeams = Array.isArray(store?.teams) ? store.teams : [];
+
+    const findFolder = (id: any) =>
+      registeredTeams.find((t: any) => String(t?.id) === String(id));
+
+    const normalizeFolder = (folder: any, fallbackName: string) => {
+      const team = folder?.team || {};
+      return {
+        ...(team || {}),
+        id: folder?.id,
+        name:
+          team?.name || folder?.name || folder?.teamName || folder?.listName || fallbackName,
+        furigana:
+          team?.furigana ||
+          team?.nameKana ||
+          team?.kana ||
+          folder?.furigana ||
+          folder?.kana ||
+          folder?.reading ||
+          team?.name ||
+          fallbackName,
+        players: Array.isArray(team?.players)
+          ? team.players
+          : Array.isArray(folder?.players)
+          ? folder.players
+          : [],
+      };
+    };
+
+    const thirdFolder = findFolder(mi?.thirdBaseTeamId);
+    const firstFolder = findFolder(mi?.firstBaseTeamId);
+
+    return {
+      matchInfo: mi,
+      firstTeam: normalizeFolder(firstFolder, mi?.firstBaseTeamName || "1塁側"),
+      thirdTeam: normalizeFolder(thirdFolder, mi?.thirdBaseTeamName || "3塁側"),
+    };
+  };
+
+  const buildOnePersonMatchKeyForApp = (mi?: any) =>
+    [
+      mi?.tournamentName ?? "",
+      mi?.matchNumber ?? "",
+      mi?.thirdBaseTeamId ?? "",
+      mi?.firstBaseTeamId ?? "",
+      mi?.battingFirstSide ?? "third",
+    ].join("::");
+
+  const getOnePersonPitchTotalsForSide = async (mi: any, side: "first" | "third") => {
+    const matchKey = buildOnePersonMatchKeyForApp(mi);
+    const saved =
+      (await localForage.getItem<any>(`onePersonPitchState::${matchKey}::${side}`)) || {};
+    return (saved?.pitcherTotals || {}) as Record<number, number>;
   };
 
 useEffect(() => {
@@ -382,6 +466,18 @@ useEffect(() => {
   };
 
   void saveLastGameScreen();
+}, [screen]);
+
+// 1人アナウンスモードでは通常の攻撃・守備画面を使用しない
+useEffect(() => {
+  if (!["offense", "defense", "defenseChange"].includes(screen)) return;
+
+  void (async () => {
+    const mi = (await localForage.getItem<any>("matchInfo")) || {};
+    if (mi?.announcementMode === "single") {
+      setScreen("onePersonAnnounce");
+    }
+  })();
 }, [screen]);
 
 const showCoolingNoticePopup = (message: string) => {
@@ -647,7 +743,7 @@ useEffect(() => {
 
 // 🔽 守備画面へ遷移する関数をグローバル公開（DefenseChangeから呼ぶ）
 useEffect(() => {
-  (window as any).__app_go_defense = () => openDefenseScreenWithoutSnapshot();
+  (window as any).__app_go_defense = () => { void openDefenseScreenWithoutSnapshot(); };
   return () => { delete (window as any).__app_go_defense; };
 }, []);
 
@@ -756,6 +852,11 @@ const handleSpeak = async () => {
   useKeepScreenAwake();
 
   const canResumeGame = async (): Promise<ScreenType | null> => {
+    const mi = (await localForage.getItem<any>("matchInfo")) || {};
+    if (mi?.announcementMode === "single") {
+      return "onePersonAnnounce";
+    }
+
     const saved = await localForage.getItem<string>("lastGameScreen");
 
     if (!saved || typeof saved !== "string") return null;
@@ -1263,16 +1364,11 @@ return (
 
                   const scores = ((await localForage.getItem("scores")) as Scores) || {};
 
-                  // ✅ 1人アナウンスモード用：両チーム情報
-                  const firstTeam =
-                    (await localForage.getItem<any>("onePerson.first.team")) || null;
-                  const thirdTeam =
-                    (await localForage.getItem<any>("onePerson.third.team")) || null;
+                  // ✅ 1人アナウンスモード用：MatchCreate の1塁側・3塁側・先攻情報を正とする
+                  const { firstTeam, thirdTeam } = await getOnePersonTeamsFromMatchInfo();
 
                   const firstAttackSide =
-                    match?.onePersonFirstAttackSide ||
-                    (await localForage.getItem<"first" | "third">("onePerson.firstAttackSide")) ||
-                    "third";
+                    match?.battingFirstSide === "first" ? "first" : "third";
 
                   const topTeam =
                     firstAttackSide === "first" ? firstTeam : thirdTeam;
@@ -1407,20 +1503,18 @@ return (
                 } else if (value === "manual") {
                   setShowManualPopup(true);
                 } else if (value === "pitchlist") {
-                  const firstTeam =
-                    (await localForage.getItem<any>("onePerson.first.team")) || null;
-                  const thirdTeam =
-                    (await localForage.getItem<any>("onePerson.third.team")) || null;
+                  const { matchInfo: onePersonMatch, firstTeam, thirdTeam } =
+                    await getOnePersonTeamsFromMatchInfo();
 
-                  const firstTotals =
-                    ((await localForage.getItem<Record<number, number>>(
-                      "onePerson.first.pitcherTotals"
-                    )) as Record<number, number>) || {};
+                  const firstTotals = await getOnePersonPitchTotalsForSide(
+                    onePersonMatch,
+                    "first"
+                  );
 
-                  const thirdTotals =
-                    ((await localForage.getItem<Record<number, number>>(
-                      "onePerson.third.pitcherTotals"
-                    )) as Record<number, number>) || {};
+                  const thirdTotals = await getOnePersonPitchTotalsForSide(
+                    onePersonMatch,
+                    "third"
+                  );
 
                   const rows: { name: string; number?: string; total: number }[] = [];
 
@@ -1485,6 +1579,7 @@ return (
               setScreen("seatIntroduction");
             }}
             onOpenDefenseChange={() => setScreen("onePersonDefenseChange")}
+            onChangeDefense={() => setScreen("onePersonDefenseChange")}
             openIntentionalWalkTrigger={intentionalWalkTrigger}
             isContinueGame={isContinueGame}
           />

@@ -187,6 +187,9 @@ const saveOwnTeamToLocalForage = async () => {
       umpires,
       isTwoUmp,
       noNextGame,
+      thirdBaseTeamId,
+      firstBaseTeamId,
+      battingFirstSide,
     });
 
   const [announcementMode, setAnnouncementMode] =
@@ -283,6 +286,9 @@ useEffect(() => {
   umpires,
   isTwoUmp,
   noNextGame,
+  thirdBaseTeamId,
+  firstBaseTeamId,
+  battingFirstSide,
 ]);
 
 
@@ -409,11 +415,20 @@ const firstTeamFolder = registeredTeams.find(
    benchSide,
    umpires,
    twoUmpires: isBoys ? false : isTwoUmp,
-   teamName: (base as any)?.teamName ?? team?.name ?? "",
+   teamName:
+     announcementMode === "single"
+       ? (battingFirstSide === "third"
+           ? getRegisteredTeamName(thirdTeamFolder)
+           : getRegisteredTeamName(firstTeamFolder))
+       : ((base as any)?.teamName ?? team?.name ?? ""),
    noNextGame, 
    announcementMode,
    thirdBaseTeamId,
    firstBaseTeamId,
+   thirdBaseTeamName: getRegisteredTeamName(thirdTeamFolder),
+   firstBaseTeamName: getRegisteredTeamName(firstTeamFolder),
+   thirdBaseTeamFurigana: getRegisteredTeamFurigana(thirdTeamFolder),
+   firstBaseTeamFurigana: getRegisteredTeamFurigana(firstTeamFolder),
    battingFirstSide,
  };
 
