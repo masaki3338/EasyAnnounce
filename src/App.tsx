@@ -1578,7 +1578,6 @@ return (
               lastOffenseRef.current = true;
               setScreen("seatIntroduction");
             }}
-            onOpenDefenseChange={() => setScreen("onePersonDefenseChange")}
             onChangeDefense={() => setScreen("onePersonDefenseChange")}
             openIntentionalWalkTrigger={intentionalWalkTrigger}
             isContinueGame={isContinueGame}
@@ -2363,7 +2362,7 @@ return (
         (await localForage.getItem<{
           enabled?: boolean;
           defenseSide?: "first" | "third";
-          returnAction?: "switchHalf";
+          returnAction?: "switchHalf" | "seatIntroAfterDefense";
           nextIsTop?: boolean;
           nextInning?: number;
           currentDefenseSide?: "first" | "third";
@@ -2432,30 +2431,53 @@ return (
           nextPitcherTotals
         );
 
-        // ✅ 代打・代走後に来た場合は、ここで次の半イニングへ進める
+        // 今守っていたチームの「この回の球数」を0に戻す
+        if (ctx.currentDefenseSide) {
+          const currentDefenseLineup =
+            (await localForage.getItem<Record<string, number | null>>(
+              `onePerson.${ctx.currentDefenseSide}.lineupAssignments`
+            )) || {};
+
+          await localForage.setItem(
+            `onePerson.${ctx.currentDefenseSide}.pitchCounts`,
+            {
+              current: 0,
+              total: Number(ctx.currentDefenseTotal || 0),
+              pitcherId: currentDefenseLineup["投"] ?? null,
+            }
+          );
+        }
+
+        // ✅ 守備交代が完了したので、対象チームの pending フラグは消す
+        await localForage.removeItem(`onePerson.${defenseSide}.pendingDefenseSetup`);
+
+        const mi = (await localForage.getItem<any>("matchInfo")) || {};
+
         if (
+          ctx.returnAction === "seatIntroAfterDefense" &&
+          typeof ctx.nextIsTop === "boolean" &&
+          typeof ctx.nextInning === "number"
+        ) {
+          // ✅ 1回表で代打・代走 → 守備交代確定後はシート紹介へ進む
+          await localForage.setItem("matchInfo", {
+            ...mi,
+            announcementMode: "single",
+            inning: ctx.nextInning,
+            isTop: ctx.nextIsTop,
+            isDefense: false,
+          });
+          await localForage.setItem("lastScreen", "onePersonAnnounce");
+          await localForage.setItem("seatIntroReturnState", {
+            mode: "onePersonNextHalf",
+            inning: ctx.nextInning,
+            isTop: ctx.nextIsTop,
+          });
+        } else if (
           ctx.returnAction === "switchHalf" &&
           typeof ctx.nextIsTop === "boolean" &&
           typeof ctx.nextInning === "number"
         ) {
-          // 今守っていたチームの「この回の球数」を0に戻す
-          if (ctx.currentDefenseSide) {
-            const currentDefenseLineup =
-              (await localForage.getItem<Record<string, number | null>>(
-                `onePerson.${ctx.currentDefenseSide}.lineupAssignments`
-              )) || {};
-
-            await localForage.setItem(
-              `onePerson.${ctx.currentDefenseSide}.pitchCounts`,
-              {
-                current: 0,
-                total: Number(ctx.currentDefenseTotal || 0),
-                pitcherId: currentDefenseLineup["投"] ?? null,
-              }
-            );
-          }
-
-          const mi = (await localForage.getItem<any>("matchInfo")) || {};
+          // ✅ 代打・代走後に来た場合は、ここで次の半イニングへ進める
           await localForage.setItem("matchInfo", {
             ...mi,
             announcementMode: "single",
@@ -2464,7 +2486,6 @@ return (
             isDefense: false,
           });
         } else {
-          const mi = (await localForage.getItem<any>("matchInfo")) || {};
           await localForage.setItem("matchInfo", {
             ...mi,
             announcementMode: "single",
@@ -2483,7 +2504,14 @@ return (
         await localForage.removeItem("onePerson.savedScoresBeforeDefenseChange");
       }
 
-      setScreen("onePersonAnnounce");
+      // ✅ 1回表の守備交代後だけシート紹介へ、それ以外は1人アナウンス画面へ戻る
+      if (ctx.returnAction === "seatIntroAfterDefense") {
+        fromGameRef.current = true;
+        lastOffenseRef.current = false;
+        setScreen("seatIntroduction");
+      } else {
+        setScreen("onePersonAnnounce");
+      }
     }}
   />
 )}
