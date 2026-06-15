@@ -9,18 +9,33 @@ type Props = {
 const BOYS_SHEET_KNOCK_SETTINGS_KEY = "boysSheetKnockTimeSettings";
 const DEFAULT_KNOCK_MINUTES = 5;
 const DEFAULT_NOTICE_MINUTES = 1;
+const MIN_KNOCK_MINUTES = 1;
+const MAX_KNOCK_MINUTES = 30;
 
 type SheetKnockTimeSettings = {
   knockMinutes: number;
   noticeMinutes: number;
 };
 
-const toValidMinutes = (value: unknown, fallback: number) => {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  const rounded = Math.floor(n);
-  if (rounded < 1) return fallback;
-  return rounded;
+const clampMinutes = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const normalizeSettings = (settings: Partial<SheetKnockTimeSettings> | null | undefined) => {
+  const rawKnockMinutes = Number(settings?.knockMinutes);
+  const rawNoticeMinutes = Number(settings?.noticeMinutes);
+
+  const knockMinutes = clampMinutes(
+    Math.floor(Number.isFinite(rawKnockMinutes) ? rawKnockMinutes : DEFAULT_KNOCK_MINUTES),
+    MIN_KNOCK_MINUTES,
+    MAX_KNOCK_MINUTES
+  );
+  const noticeMinutes = clampMinutes(
+    Math.floor(Number.isFinite(rawNoticeMinutes) ? rawNoticeMinutes : DEFAULT_NOTICE_MINUTES),
+    0,
+    knockMinutes
+  );
+
+  return { knockMinutes, noticeMinutes };
 };
 
 /* ====== ミニSVGアイコン ====== */
@@ -82,8 +97,7 @@ const StepCard: React.FC<{
 }> = ({ step, icon, title, children, accent = "blue" }) => {
   const accents: Record<string, string> = {
     blue: "from-sky-400/25 via-sky-400/10 to-sky-300/5 border-sky-300/60 ring-sky-300/30",
-    amber:
-      "from-amber-400/25 via-amber-400/10 to-amber-300/5 border-amber-300/60 ring-amber-300/30",
+    amber: "from-amber-400/25 via-amber-400/10 to-amber-300/5 border-amber-300/60 ring-amber-300/30",
     red: "from-rose-400/25 via-rose-400/10 to-rose-300/5 border-rose-300/60 ring-rose-300/30",
     gray: "from-white/10 via-white/5 to-transparent border-white/10 ring-white/10",
   };
@@ -130,9 +144,7 @@ const MessageBlock: React.FC<{
   >
     <div className="flex items-start gap-2 mb-2">
       <div className="flex-1">
-        {label && (
-          <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>
-        )}
+        {label && <div className="text-[11px] text-rose-50/90 mb-1">{label}</div>}
         <p className="text-white whitespace-pre-wrap font-semibold leading-relaxed drop-shadow">
           {text}
         </p>
@@ -165,16 +177,12 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const [teamName, setTeamName] = useState("");
   const [opponentTeamName, setOpponentTeamName] = useState("");
   const [isHome, setIsHome] = useState<"先攻" | "後攻">("先攻");
-  const [timeLeft, setTimeLeft] = useState(DEFAULT_KNOCK_MINUTES * 60);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const [knockMinutes, setKnockMinutes] = useState(DEFAULT_KNOCK_MINUTES);
   const [noticeMinutes, setNoticeMinutes] = useState(DEFAULT_NOTICE_MINUTES);
-  const [draftKnockMinutes, setDraftKnockMinutes] = useState(
-    DEFAULT_KNOCK_MINUTES,
-  );
-  const [draftNoticeMinutes, setDraftNoticeMinutes] = useState(
-    DEFAULT_NOTICE_MINUTES,
-  );
+  const [draftKnockMinutes, setDraftKnockMinutes] = useState(DEFAULT_KNOCK_MINUTES);
+  const [draftNoticeMinutes, setDraftNoticeMinutes] = useState(DEFAULT_NOTICE_MINUTES);
   const [readingKey, setReadingKey] = useState<string | null>(null);
   const [showOneMinModal, setShowOneMinModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
@@ -196,11 +204,10 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
     freq = 1100,
     durationSec = 0.12,
     gapSec = 0.1,
-    volume = 0.18,
+    volume = 0.18
   ) => {
     try {
-      const AudioCtx =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
 
       const ctx = new AudioCtx();
@@ -227,14 +234,11 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         osc.stop(t0 + durationSec + 0.02);
       }
 
-      setTimeout(
-        () => {
-          try {
-            ctx.close();
-          } catch {}
-        },
-        (count * (durationSec + gapSec) + 0.3) * 1000,
-      );
+      setTimeout(() => {
+        try {
+          ctx.close();
+        } catch {}
+      }, (count * (durationSec + gapSec) + 0.3) * 1000);
     } catch {}
   };
 
@@ -242,25 +246,6 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
     const load = async () => {
       const team = await localForage.getItem("team");
       const matchInfo = await localForage.getItem("matchInfo");
-      const savedTimeSettings =
-        await localForage.getItem<SheetKnockTimeSettings>(
-          BOYS_SHEET_KNOCK_SETTINGS_KEY,
-        );
-
-      const savedKnockMinutes = toValidMinutes(
-        savedTimeSettings?.knockMinutes,
-        DEFAULT_KNOCK_MINUTES,
-      );
-      const savedNoticeMinutes = toValidMinutes(
-        savedTimeSettings?.noticeMinutes,
-        DEFAULT_NOTICE_MINUTES,
-      );
-
-      setKnockMinutes(savedKnockMinutes);
-      setNoticeMinutes(savedNoticeMinutes);
-      setDraftKnockMinutes(savedKnockMinutes);
-      setDraftNoticeMinutes(savedNoticeMinutes);
-      setTimeLeft(savedKnockMinutes * 60);
 
       if (team && typeof team === "object") {
         setTeamName((team as any).name || "");
@@ -270,12 +255,20 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         const info = matchInfo as any;
         setIsHome(info.isHome === true ? "後攻" : "先攻");
         setOpponentTeamName(
-          info.opponentTeamName ||
-            info.opponentTeam ||
-            info.visitorTeam ||
-            info.homeTeam ||
-            "",
+          info.opponentTeamName || info.opponentTeam || info.visitorTeam || info.homeTeam || ""
         );
+      }
+
+      const savedSettings = await localForage.getItem<SheetKnockTimeSettings>(
+        BOYS_SHEET_KNOCK_SETTINGS_KEY
+      );
+      const normalizedSettings = normalizeSettings(savedSettings || null);
+      setKnockMinutes(normalizedSettings.knockMinutes);
+      setNoticeMinutes(normalizedSettings.noticeMinutes);
+      setDraftKnockMinutes(normalizedSettings.knockMinutes);
+      setDraftNoticeMinutes(normalizedSettings.noticeMinutes);
+      if (!timerActive && timeLeft === 0) {
+        warned1Min.current = false;
       }
     };
     load();
@@ -298,7 +291,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const startTimer = () => {
     if (timeLeft === 0) setTimeLeft(knockMinutes * 60);
     setTimerActive(true);
-    warned1Min.current = timeLeft <= noticeMinutes * 60 && timeLeft !== 0;
+    warned1Min.current = false;
   };
 
   const stopTimer = () => {
@@ -309,33 +302,40 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const resetTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setTimerActive(false);
-    setTimeLeft(knockMinutes * 60);
+    setTimeLeft(0);
     warned1Min.current = false;
+  };
+
+  const changeDraftKnockMinutes = (delta: number) => {
+    if (timerActive) return;
+    setDraftKnockMinutes((prev) => {
+      const next = clampMinutes(prev + delta, MIN_KNOCK_MINUTES, MAX_KNOCK_MINUTES);
+      setDraftNoticeMinutes((notice) => clampMinutes(notice, 0, next));
+      return next;
+    });
+  };
+
+  const changeDraftNoticeMinutes = (delta: number) => {
+    if (timerActive) return;
+    setDraftNoticeMinutes((prev) => clampMinutes(prev + delta, 0, draftKnockMinutes));
   };
 
   const applyTimeSettings = async () => {
     if (timerActive) return;
 
-    const nextKnockMinutes = toValidMinutes(
-      draftKnockMinutes,
-      DEFAULT_KNOCK_MINUTES,
-    );
-    const nextNoticeMinutes = Math.min(
-      toValidMinutes(draftNoticeMinutes, DEFAULT_NOTICE_MINUTES),
-      nextKnockMinutes,
-    );
+    const normalizedSettings = normalizeSettings({
+      knockMinutes: draftKnockMinutes,
+      noticeMinutes: draftNoticeMinutes,
+    });
 
-    setKnockMinutes(nextKnockMinutes);
-    setNoticeMinutes(nextNoticeMinutes);
-    setDraftKnockMinutes(nextKnockMinutes);
-    setDraftNoticeMinutes(nextNoticeMinutes);
-    setTimeLeft(nextKnockMinutes * 60);
+    setKnockMinutes(normalizedSettings.knockMinutes);
+    setNoticeMinutes(normalizedSettings.noticeMinutes);
+    setDraftKnockMinutes(normalizedSettings.knockMinutes);
+    setDraftNoticeMinutes(normalizedSettings.noticeMinutes);
+    setTimeLeft(normalizedSettings.knockMinutes * 60);
     warned1Min.current = false;
 
-    await localForage.setItem(BOYS_SHEET_KNOCK_SETTINGS_KEY, {
-      knockMinutes: nextKnockMinutes,
-      noticeMinutes: nextNoticeMinutes,
-    });
+    await localForage.setItem(BOYS_SHEET_KNOCK_SETTINGS_KEY, normalizedSettings);
   };
 
   useEffect(() => {
@@ -344,7 +344,13 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         setTimeLeft((prev) => {
           const next = prev - 1;
 
-          if (next === noticeMinutes * 60 && !warned1Min.current) {
+          const noticeSeconds = noticeMinutes * 60;
+          if (
+            noticeSeconds > 0 &&
+            next <= noticeSeconds &&
+            prev > noticeSeconds &&
+            !warned1Min.current
+          ) {
             warned1Min.current = true;
             setShowOneMinModal(true);
           }
@@ -385,15 +391,20 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   };
 
   const guideMessage =
-    isHome === "後攻" ? `${selfTeamLabel}、ノックの準備をしてください。` : null;
+    isHome === "後攻"
+      ? `${selfTeamLabel}、ノックの準備をしてください。`
+      : null;
 
   const startMessage =
     isHome === "後攻"
       ? `${selfTeamLabel}、ノックを始めてください。\nノック時間は${knockMinutes}分間です。`
       : `${selfTeamLabel}、ノックを始めてください。\nノック時間は同じく${knockMinutes}分間です。`;
 
-  const noticeLabel = `残り${noticeMinutes}分`;
-  const oneMinuteMessage = `${selfTeamLabel}、ノック時間、あと${noticeMinutes}分です。`;
+  const noticeLabel = noticeMinutes > 0 ? `${noticeMinutes}分` : "なし";
+  const oneMinuteMessage =
+    noticeMinutes > 0
+      ? `${selfTeamLabel}、ノック時間、あと${noticeMinutes}分です。`
+      : `${selfTeamLabel}、ノック時間のお知らせはありません。`;
 
   const endMessage = `${selfTeamLabel}、ノックを終了してください。`;
 
@@ -432,81 +443,89 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
       <main className="w-full max-w-md md:max-w-none mt-6 space-y-5">
         {/* シートノック時間設定：①の上に表示 */}
         <section className="relative rounded-2xl p-3 shadow-lg text-left bg-slate-800/95 border border-white/15 ring-1 ring-inset ring-white/10">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white/90">
-              <span className="text-xl" aria-hidden>⏱️</span>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white text-xl">
+              ⏱
             </div>
             <h2 className="font-semibold text-white">シートノック時間設定</h2>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <label className="flex items-center justify-center gap-1 rounded-xl bg-black/20 border border-white/10 px-2 py-2 min-w-0">
-              <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">
-                シートノック時間
-              </span>
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                value={draftKnockMinutes}
-                disabled={timerActive}
-                onChange={(e) =>
-                  setDraftKnockMinutes(
-                    toValidMinutes(e.target.value, DEFAULT_KNOCK_MINUTES),
-                  )
-                }
-                className="w-10 h-7 rounded bg-white px-1 text-gray-900 font-black text-center disabled:opacity-60"
-              />
-              <span className="text-sm text-white font-semibold whitespace-nowrap">分</span>
-            </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-slate-900/70 px-2 py-2">
+              <div className="text-[11px] text-white/70 mb-1">シートノック時間</div>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeDraftKnockMinutes(-1)}
+                  disabled={timerActive || draftKnockMinutes <= MIN_KNOCK_MINUTES}
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black disabled:opacity-40 active:scale-95"
+                  aria-label="シートノック時間を1分減らす"
+                >
+                  −
+                </button>
+                <div className="min-w-8 text-center text-xl font-black tabular-nums text-white">
+                  {draftKnockMinutes}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeDraftKnockMinutes(1)}
+                  disabled={timerActive || draftKnockMinutes >= MAX_KNOCK_MINUTES}
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black disabled:opacity-40 active:scale-95"
+                  aria-label="シートノック時間を1分増やす"
+                >
+                  ＋
+                </button>
+                <span className="text-white/90 font-bold">分</span>
+              </div>
+            </div>
 
-            <label className="flex items-center justify-center gap-1 rounded-xl bg-black/20 border border-white/10 px-2 py-2 min-w-0">
-              <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">
-                お知らせ残り時間
-              </span>
-              <input
-                type="number"
-                min={1}
-                inputMode="numeric"
-                value={draftNoticeMinutes}
-                disabled={timerActive}
-                onChange={(e) =>
-                  setDraftNoticeMinutes(
-                    toValidMinutes(e.target.value, DEFAULT_NOTICE_MINUTES),
-                  )
-                }
-                className="w-10 h-7 rounded bg-white px-1 text-gray-900 font-black text-center disabled:opacity-60"
-              />
-              <span className="text-sm text-white font-semibold whitespace-nowrap">分</span>
-            </label>
+            <div className="rounded-xl bg-slate-900/70 px-2 py-2">
+              <div className="text-[11px] text-white/70 mb-1">お知らせ残り時間</div>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeDraftNoticeMinutes(-1)}
+                  disabled={timerActive || draftNoticeMinutes <= 0}
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black disabled:opacity-40 active:scale-95"
+                  aria-label="お知らせ残り時間を1分減らす"
+                >
+                  −
+                </button>
+                <div className="min-w-8 text-center text-xl font-black tabular-nums text-white">
+                  {draftNoticeMinutes}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeDraftNoticeMinutes(1)}
+                  disabled={timerActive || draftNoticeMinutes >= draftKnockMinutes}
+                  className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black disabled:opacity-40 active:scale-95"
+                  aria-label="お知らせ残り時間を1分増やす"
+                >
+                  ＋
+                </button>
+                <span className="text-white/90 font-bold">分</span>
+              </div>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={applyTimeSettings}
             disabled={timerActive}
-            className="w-full py-2 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+            className="w-full mt-3 py-2 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow active:scale-95 disabled:opacity-50 disabled:active:scale-100"
           >
             反映
           </button>
 
-          <p className="text-xs text-white/60 mt-2 text-center">
-            現在反映中：シートノック{knockMinutes}分 ／ お知らせ{noticeLabel}
-          </p>
           {timerActive && (
-            <p className="text-xs text-amber-200 mt-2 text-center">
+            <p className="text-xs text-amber-200 mt-1">
               タイマー動作中は変更できません。
             </p>
           )}
         </section>
 
         {hasTimingHint && (
-          <StepCard
-            step={1}
-            icon={<IconAlert />}
-            title="読み上げタイミング"
-            accent="amber"
-          >
+          <StepCard step={1} icon={<IconAlert />} title="読み上げタイミング" accent="amber">
             <div className="text-amber-50/90 text-sm leading-relaxed">
               後攻チームのノック終了後に🎤
             </div>
@@ -514,12 +533,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         )}
 
         {guideMessage && (
-          <StepCard
-            step={stepNum(1)}
-            icon={<IconGym />}
-            title="準備の案内"
-            accent="blue"
-          >
+          <StepCard step={stepNum(1)} icon={<IconGym />} title="準備の案内" accent="blue">
             <MessageBlock
               text={guideMessage}
               keyName="guide"
@@ -560,15 +574,12 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="text-4xl font-black tracking-widest tabular-nums">
-              ⌛{formatTime(timeLeft)}
+              ⌛{timeLeft === 0 && !timerActive ? formatTime(knockMinutes * 60) : formatTime(timeLeft)}
             </div>
             <div className="flex items-center gap-2">
-              {timeLeft === knockMinutes * 60 && !timerActive ? (
-                <button
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95"
-                  onClick={startTimer}
-                >
-                  開始
+              {timeLeft === 0 && !timerActive ? (
+                <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-semibold active:scale-95">
+                  <span onClick={startTimer}>開始</span>
                 </button>
               ) : (
                 <>
@@ -602,7 +613,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
         <StepCard
           step={stepNum(guideMessage ? 4 : 3)}
           icon={<IconMic2 />}
-          title={`${noticeLabel}の案内`}
+          title={`残り${noticeLabel}の案内`}
           accent="blue"
         >
           <MessageBlock
@@ -657,7 +668,7 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
             "
           >
             <p id="one-min-title" className="text-2xl font-bold mb-6">
-              {noticeLabel}です
+              残り1分です
             </p>
             <button
               className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"

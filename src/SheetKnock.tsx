@@ -608,33 +608,65 @@ const mainSpeakMessage =
     </div>
 
     <div className="grid grid-cols-2 gap-2">
-      <label className="flex items-center justify-center gap-1 rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
-        <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">シートノック時間</span>
-        <input
-          type="number"
-          min={1}
-          max={30}
-          value={draftKnockMinutes}
-          disabled={timerActive}
-          onChange={(e) => handleChangeDraftKnockMinutes(Number(e.target.value))}
-          className="w-8 rounded bg-white text-gray-900 px-1 py-0.5 text-center text-base font-bold disabled:opacity-60"
-        />
-        <span className="text-sm font-bold whitespace-nowrap">分</span>
-      </label>
+      <div className="rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
+        <div className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap text-center mb-1">
+          シートノック時間
+        </div>
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            disabled={timerActive || draftKnockMinutes <= 1}
+            onClick={() => handleChangeDraftKnockMinutes(draftKnockMinutes - 1)}
+            className="w-8 h-8 rounded-lg bg-white/15 border border-white/20 text-white text-lg font-black leading-none active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+            aria-label="シートノック時間を1分減らす"
+          >
+            −
+          </button>
+          <div className="w-10 h-8 rounded-lg bg-white text-gray-900 flex items-center justify-center text-lg font-black tabular-nums">
+            {draftKnockMinutes}
+          </div>
+          <button
+            type="button"
+            disabled={timerActive || draftKnockMinutes >= 30}
+            onClick={() => handleChangeDraftKnockMinutes(draftKnockMinutes + 1)}
+            className="w-8 h-8 rounded-lg bg-white/15 border border-white/20 text-white text-lg font-black leading-none active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+            aria-label="シートノック時間を1分増やす"
+          >
+            ＋
+          </button>
+          <span className="text-sm font-bold whitespace-nowrap ml-0.5">分</span>
+        </div>
+      </div>
 
-      <label className="flex items-center justify-center gap-1 rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
-        <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">お知らせ残り時間</span>
-        <input
-          type="number"
-          min={0}
-          max={draftKnockMinutes}
-          value={draftNoticeMinutes}
-          disabled={timerActive}
-          onChange={(e) => handleChangeDraftNoticeMinutes(Number(e.target.value))}
-          className="w-8 rounded bg-white text-gray-900 px-1 py-0.5 text-center text-base font-bold disabled:opacity-60"
-        />
-        <span className="text-sm font-bold whitespace-nowrap">分</span>
-      </label>
+      <div className="rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
+        <div className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap text-center mb-1">
+          お知らせ残り時間
+        </div>
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            disabled={timerActive || draftNoticeMinutes <= 0}
+            onClick={() => handleChangeDraftNoticeMinutes(draftNoticeMinutes - 1)}
+            className="w-8 h-8 rounded-lg bg-white/15 border border-white/20 text-white text-lg font-black leading-none active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+            aria-label="お知らせ残り時間を1分減らす"
+          >
+            −
+          </button>
+          <div className="w-10 h-8 rounded-lg bg-white text-gray-900 flex items-center justify-center text-lg font-black tabular-nums">
+            {draftNoticeMinutes}
+          </div>
+          <button
+            type="button"
+            disabled={timerActive || draftNoticeMinutes >= draftKnockMinutes}
+            onClick={() => handleChangeDraftNoticeMinutes(draftNoticeMinutes + 1)}
+            className="w-8 h-8 rounded-lg bg-white/15 border border-white/20 text-white text-lg font-black leading-none active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+            aria-label="お知らせ残り時間を1分増やす"
+          >
+            ＋
+          </button>
+          <span className="text-sm font-bold whitespace-nowrap ml-0.5">分</span>
+        </div>
+      </div>
     </div>
 
     <button
