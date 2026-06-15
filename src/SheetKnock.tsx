@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS  } from "./lib/tts";
+import { getLeagueMode } from "./lib/leagueSettings";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
 declare global {
@@ -14,6 +15,50 @@ declare global {
 type Props = {
   onBack: () => void; // 戻るボタン用
 };
+
+
+const SHEET_KNOCK_TIMER_SETTINGS_KEY = "sheetKnockTimerSettings";
+
+type LeagueModeKey = "pony" | "boys";
+
+type SheetKnockTimerSettings = {
+  knockMinutes: number;
+  noticeMinutes: number;
+};
+
+const getLeagueModeKey = (leagueMode: unknown): LeagueModeKey => {
+  const mode = String(leagueMode ?? "").toLowerCase();
+  return mode.includes("boys") || mode.includes("boy") || mode.includes("ボーイズ")
+    ? "boys"
+    : "pony";
+};
+
+const getDefaultTimerSettings = (leagueMode: unknown): SheetKnockTimerSettings => {
+  const modeKey = getLeagueModeKey(leagueMode);
+
+  return modeKey === "boys"
+    ? { knockMinutes: 5, noticeMinutes: 1 }
+    : { knockMinutes: 7, noticeMinutes: 2 };
+};
+
+const getTimerSettingsStorageKey = (leagueMode: unknown) =>
+  `${SHEET_KNOCK_TIMER_SETTINGS_KEY}:${getLeagueModeKey(leagueMode)}`;
+
+const normalizeTimerSettings = (
+  settings: Partial<SheetKnockTimerSettings> | null | undefined,
+  defaults: SheetKnockTimerSettings = { knockMinutes: 7, noticeMinutes: 2 }
+): SheetKnockTimerSettings => {
+  const rawKnockMinutes =
+    settings?.knockMinutes === undefined ? defaults.knockMinutes : Number(settings.knockMinutes);
+  const knockMinutes = Math.max(1, Math.min(30, Number(rawKnockMinutes) || defaults.knockMinutes));
+
+  const rawNoticeMinutes =
+    settings?.noticeMinutes === undefined ? defaults.noticeMinutes : Number(settings.noticeMinutes);
+  const noticeMinutes = Math.max(0, Math.min(knockMinutes, Number(rawNoticeMinutes) || 0));
+
+  return { knockMinutes, noticeMinutes };
+};
+
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
 const IconBack = () => (
@@ -194,6 +239,19 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   const [showTwoMinModal, setShowTwoMinModal] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
 
+  // knockMinutes / noticeMinutes は「反映済み」の値として、画面表示・読み上げ・タイマーに使う
+  const [knockMinutes, setKnockMinutes] = useState(7);
+  const [noticeMinutes, setNoticeMinutes] = useState(2);
+
+  // 入力欄の編集中値。反映ボタンを押すまで、現在画面のタイマーには反映しない
+  const [draftKnockMinutes, setDraftKnockMinutes] = useState(7);
+  const [draftNoticeMinutes, setDraftNoticeMinutes] = useState(2);
+
+  const [leagueModeKey, setLeagueModeKey] = useState<LeagueModeKey>("pony");
+  const [timerSettingsStorageKey, setTimerSettingsStorageKey] = useState(
+    getTimerSettingsStorageKey("pony")
+  );
+
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const warned2Min = useRef(false);
@@ -239,6 +297,89 @@ const playBeeps = async (
     }, (count * (durationSec + gapSec) + 0.3) * 1000);
   } catch {}
 };
+
+  useEffect(() => {
+    const loadTimerSettings = async () => {
+      try {
+        const leagueMode = await Promise.resolve(getLeagueMode());
+        const modeKey = getLeagueModeKey(leagueMode);
+        const storageKey = getTimerSettingsStorageKey(modeKey);
+        const defaults = getDefaultTimerSettings(modeKey);
+        const saved = await localForage.getItem<Partial<SheetKnockTimerSettings>>(storageKey);
+        const settings = normalizeTimerSettings(saved, defaults);
+
+        setLeagueModeKey(modeKey);
+        setTimerSettingsStorageKey(storageKey);
+        setKnockMinutes(settings.knockMinutes);
+        setNoticeMinutes(settings.noticeMinutes);
+        setDraftKnockMinutes(settings.knockMinutes);
+        setDraftNoticeMinutes(settings.noticeMinutes);
+        setTimeLeft((current) => (current > 0 ? current : settings.knockMinutes * 60));
+      } catch {
+        const defaults = getDefaultTimerSettings("pony");
+
+        setLeagueModeKey("pony");
+        setKnockMinutes(defaults.knockMinutes);
+        setNoticeMinutes(defaults.noticeMinutes);
+        setDraftKnockMinutes(defaults.knockMinutes);
+        setDraftNoticeMinutes(defaults.noticeMinutes);
+        setTimeLeft((current) => (current > 0 ? current : defaults.knockMinutes * 60));
+      }
+    };
+
+    loadTimerSettings();
+  }, []);
+
+  const saveTimerSettings = async (settings: SheetKnockTimerSettings) => {
+    await localForage.setItem(timerSettingsStorageKey, settings);
+  };
+
+  const handleChangeDraftKnockMinutes = (value: number) => {
+    const next = normalizeTimerSettings(
+      {
+        knockMinutes: value,
+        noticeMinutes: Math.min(draftNoticeMinutes, value),
+      },
+      getDefaultTimerSettings(leagueModeKey)
+    );
+
+    setDraftKnockMinutes(next.knockMinutes);
+    setDraftNoticeMinutes(next.noticeMinutes);
+  };
+
+  const handleChangeDraftNoticeMinutes = (value: number) => {
+    const next = normalizeTimerSettings(
+      {
+        knockMinutes: draftKnockMinutes,
+        noticeMinutes: value,
+      },
+      getDefaultTimerSettings(leagueModeKey)
+    );
+
+    setDraftKnockMinutes(next.knockMinutes);
+    setDraftNoticeMinutes(next.noticeMinutes);
+  };
+
+  const handleApplyTimerSettings = async () => {
+    if (timerActive) return;
+
+    const next = normalizeTimerSettings(
+      {
+        knockMinutes: draftKnockMinutes,
+        noticeMinutes: draftNoticeMinutes,
+      },
+      getDefaultTimerSettings(leagueModeKey)
+    );
+
+    setKnockMinutes(next.knockMinutes);
+    setNoticeMinutes(next.noticeMinutes);
+    setDraftKnockMinutes(next.knockMinutes);
+    setDraftNoticeMinutes(next.noticeMinutes);
+    setTimeLeft(next.knockMinutes * 60);
+    warned2Min.current = false;
+
+    await saveTimerSettings(next);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -327,7 +468,7 @@ const handleStop = () => {
 
 
   const startTimer = () => {
-    if (timeLeft === 0) setTimeLeft(420); // 7分
+    if (timeLeft === 0) setTimeLeft(knockMinutes * 60);
     setTimerActive(true);
     warned2Min.current = false;
   };
@@ -338,7 +479,7 @@ const handleStop = () => {
   const resetTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setTimerActive(false);
-    setTimeLeft(0);
+    setTimeLeft(knockMinutes * 60);
     warned2Min.current = false;
   };
 
@@ -348,7 +489,7 @@ const handleStop = () => {
         setTimeLeft((prev) => {
           const next = prev - 1;
 
-          if (next === 120 && !warned2Min.current) {
+          if (next === noticeMinutes * 60 && noticeMinutes > 0 && !warned2Min.current) {
             warned2Min.current = true;
             setShowTwoMinModal(true);
           }
@@ -363,7 +504,7 @@ const handleStop = () => {
       }, 1000);
     }
     return () => clearInterval(timerRef.current!);
-  }, [timerActive, timeLeft]);
+  }, [timerActive, timeLeft, knockMinutes, noticeMinutes]);
 
   // 「残り2分」モーダルを開いたらビープ（高め×3回）
   useEffect(() => {
@@ -405,13 +546,13 @@ const prepSpeakMessage =
 
 const mainDisplayMessage =
   isHome === "後攻"
-    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は7分以内です。`
-    : ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+    ? ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は${knockMinutes}分以内です。`
+    : ` ${activeTeamName}はシートノックに入って下さい。\nノック時間は同じく${knockMinutes}分以内です。`;
 
 const mainSpeakMessage =
   isHome === "後攻"
-    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間は7分以内です。`
-    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間は同じく7分以内です。`;
+    ? `${activeTeamReading}はシートノックに入って下さい。\nノック時間は${knockMinutes}分以内です。`
+    : `${activeTeamReading}はシートノックに入って下さい。\nノック時間は同じく${knockMinutes}分以内です。`;
 
 
   const hasTimingHint = isHome === "先攻";
@@ -455,6 +596,58 @@ const mainSpeakMessage =
 {/* 本体：カード群（縦にステップ表示） */}
 
 <main className="w-full max-w-md md:max-w-none mt-4 space-y-3">
+  {/* シートノック時間設定：①の上に常時表示 */}
+  <section className="relative rounded-2xl p-3 shadow-lg text-left bg-slate-700/70 border border-white/15 ring-1 ring-inset ring-white/10">
+    <div className="flex items-center gap-2 mb-3">
+      <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0">
+        <IconTimer />
+      </div>
+      <h2 className="flex-1 min-w-0 font-semibold text-white text-[15px] leading-tight">
+        シートノック時間設定
+      </h2>
+    </div>
+
+    <div className="grid grid-cols-2 gap-2">
+      <label className="flex items-center justify-center gap-1 rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
+        <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">シートノック時間</span>
+        <input
+          type="number"
+          min={1}
+          max={30}
+          value={draftKnockMinutes}
+          disabled={timerActive}
+          onChange={(e) => handleChangeDraftKnockMinutes(Number(e.target.value))}
+          className="w-8 rounded bg-white text-gray-900 px-1 py-0.5 text-center text-base font-bold disabled:opacity-60"
+        />
+        <span className="text-sm font-bold whitespace-nowrap">分</span>
+      </label>
+
+      <label className="flex items-center justify-center gap-1 rounded-xl bg-slate-900/45 border border-white/10 px-2 py-2 min-w-0">
+        <span className="text-[11px] sm:text-xs text-white/80 whitespace-nowrap">お知らせ残り時間</span>
+        <input
+          type="number"
+          min={0}
+          max={draftKnockMinutes}
+          value={draftNoticeMinutes}
+          disabled={timerActive}
+          onChange={(e) => handleChangeDraftNoticeMinutes(Number(e.target.value))}
+          className="w-8 rounded bg-white text-gray-900 px-1 py-0.5 text-center text-base font-bold disabled:opacity-60"
+        />
+        <span className="text-sm font-bold whitespace-nowrap">分</span>
+      </label>
+    </div>
+
+    <button
+      type="button"
+      disabled={timerActive}
+      onClick={handleApplyTimerSettings}
+      className="mt-3 w-full py-2 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+    >
+      反映
+    </button>
+
+  </section>
+
   {/* ★ 先攻時だけ：一番最初に読み上げタイミングを表示 */}
   {hasTimingHint && (
     <StepCard step={1} icon={<IconAlert />} title="読み上げタイミング" accent="amber">
@@ -500,7 +693,7 @@ const mainSpeakMessage =
 <StepCard
   step={stepNum(prepDisplayMessage ? 3 : 2)}
   icon={<IconAlert />}
-  title="スタートの注意 と 7分タイマー"
+  title={`スタートの注意 と ${knockMinutes}分タイマー`}
   accent="amber"
 >
   <div className="space-y-2">
@@ -512,7 +705,7 @@ const mainSpeakMessage =
 
     <div className="flex items-center gap-2 flex-wrap">
       <div className="text-3xl font-black tracking-widest tabular-nums whitespace-nowrap">
-        ⌛{timeLeft === 0 && !timerActive ? "7:00" : formatTime(timeLeft)}
+        ⌛{formatTime(timeLeft)}
       </div>
 
       <div className="flex items-center gap-2">
@@ -554,16 +747,16 @@ const mainSpeakMessage =
 </StepCard>
 
 
-  {/* 4 残り2分アナウンス */}
+  {/* 4 残り時間アナウンス */}
   <StepCard
     step={stepNum(prepDisplayMessage  ? 4 : 3)}
     icon={<IconMic2 />}
-    title="残り2分の案内"
+    title={`残り${noticeMinutes}分の案内`}
     accent="blue"
   >
   <MessageBlock
-    displayText={"ノック時間、残り２分です"}
-    speakText={"ノック時間、残り２分です"}
+    displayText={`ノック時間、残り${noticeMinutes}分です`}
+    speakText={`ノック時間、残り${noticeMinutes}分です`}
     keyName="2min"
     readingKey={readingKey}
     onSpeak={handleSpeak}
@@ -614,7 +807,7 @@ const mainSpeakMessage =
       bg-white p-8 rounded-3xl shadow-2xl text-center text-gray-900
       w-[min(92vw,560px)] sm:w-[560px]
     ">
-      <p id="two-min-title" className="text-2xl font-bold mb-6">残り2分です</p>
+      <p id="two-min-title" className="text-2xl font-bold mb-6">残り{noticeMinutes}分です</p>
       <button
         className="min-w-28 text-lg bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 active:scale-95 shadow"
         onClick={() => setShowTwoMinModal(false)}
