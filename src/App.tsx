@@ -446,11 +446,66 @@ const handleSeatIntroductionBack = async () => {
       mi?.battingFirstSide ?? "third",
     ].join("::");
 
-  const getOnePersonPitchTotalsForSide = async (mi: any, side: "first" | "third") => {
+  const getOnePersonPitchDataForSide = async (mi: any, side: "first" | "third") => {
     const matchKey = buildOnePersonMatchKeyForApp(mi);
-    const saved =
-      (await localForage.getItem<any>(`onePersonPitchState::${matchKey}::${side}`)) || {};
-    return (saved?.pitcherTotals || {}) as Record<number, number>;
+
+    // ✅ OnePersonAnnounceScreen.tsx が実際に保存しているキーを優先して読む
+    const directTotals =
+      ((await localForage.getItem<Record<number, number>>(
+        `onePerson.${side}.pitcherTotals`
+      )) || {}) as Record<number, number>;
+
+    const directPitchCounts =
+      ((await localForage.getItem<{
+        current?: number;
+        total?: number;
+        pitcherId?: number | null;
+      }>(`onePerson.${side}.pitchCounts`)) || {}) as {
+        current?: number;
+        total?: number;
+        pitcherId?: number | null;
+      };
+
+    const directLineup =
+      ((await localForage.getItem<Record<string, number | null>>(
+        `onePerson.${side}.lineupAssignments`
+      )) || {}) as Record<string, number | null>;
+
+    // 旧実装・途中版の保存形式が残っている場合の保険
+    const legacy =
+      ((await localForage.getItem<any>(
+        `onePersonPitchState::${matchKey}::${side}`
+      )) || {}) as any;
+
+    const totals: Record<number, number> = {
+      ...(legacy?.pitcherTotals || {}),
+      ...directTotals,
+    };
+
+    const pitcherId =
+      directPitchCounts?.pitcherId ??
+      directLineup?.["投"] ??
+      legacy?.pitchCounts?.pitcherId ??
+      null;
+
+    // ✅ まだ1球も投げていない現在投手も「0球」で表示できるようにする
+    if (pitcherId !== null && pitcherId !== undefined) {
+      const id = Number(pitcherId);
+      if (Number.isFinite(id)) {
+        const directTotal = Number(directPitchCounts?.total ?? 0) || 0;
+        const legacyTotal = Number(legacy?.pitchCounts?.total ?? 0) || 0;
+        const currentTotal = Math.max(directTotal, legacyTotal);
+        totals[id] = Math.max(Number(totals[id] ?? 0) || 0, currentTotal);
+      }
+    }
+
+    return {
+      totals,
+      currentPitcherId:
+        pitcherId !== null && pitcherId !== undefined && Number.isFinite(Number(pitcherId))
+          ? Number(pitcherId)
+          : null,
+    };
   };
 
 useEffect(() => {
@@ -1506,12 +1561,12 @@ return (
                   const { matchInfo: onePersonMatch, firstTeam, thirdTeam } =
                     await getOnePersonTeamsFromMatchInfo();
 
-                  const firstTotals = await getOnePersonPitchTotalsForSide(
+                  const firstPitchData = await getOnePersonPitchDataForSide(
                     onePersonMatch,
                     "first"
                   );
 
-                  const thirdTotals = await getOnePersonPitchTotalsForSide(
+                  const thirdPitchData = await getOnePersonPitchDataForSide(
                     onePersonMatch,
                     "third"
                   );
@@ -1521,16 +1576,25 @@ return (
                   const addRows = (
                     teamLabel: string,
                     players: any[],
-                    totals: Record<number, number>
+                    pitchData: { totals: Record<number, number>; currentPitcherId: number | null }
                   ) => {
-                    Object.entries(totals).forEach(([idStr, total]) => {
+                    Object.entries(pitchData.totals).forEach(([idStr, total]) => {
                       const id = Number(idStr);
                       const tot = Number(total) || 0;
-                      if (!Number.isFinite(id) || tot <= 0) return;
+                      if (!Number.isFinite(id)) return;
+
+                      // ✅ 通常は1球以上投げた投手を表示。
+                      // ✅ ただし現在投手は、試合開始直後など0球でも表示する。
+                      if (tot <= 0 && id !== pitchData.currentPitcherId) return;
 
                       const p = players.find((x: any) => Number(x?.id) === id);
-                      const name = p
-                        ? `${teamLabel}：${p.lastName ?? ""}${p.firstName ?? ""}`
+                      const fullName = p
+                        ? `${p.lastName ?? ""}${p.firstName ?? ""}`.trim() ||
+                          String(p.name ?? "").trim()
+                        : "";
+
+                      const name = fullName
+                        ? `${teamLabel}：${fullName}`
                         : `${teamLabel}：ID:${id}`;
 
                       rows.push({
@@ -1544,13 +1608,13 @@ return (
                   addRows(
                     firstTeam?.name || "1塁側",
                     Array.isArray(firstTeam?.players) ? firstTeam.players : [],
-                    firstTotals
+                    firstPitchData
                   );
 
                   addRows(
                     thirdTeam?.name || "3塁側",
                     Array.isArray(thirdTeam?.players) ? thirdTeam.players : [],
-                    thirdTotals
+                    thirdPitchData
                   );
 
                   setPitchList(rows);

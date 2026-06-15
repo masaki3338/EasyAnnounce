@@ -65,6 +65,50 @@ async function clearUndoRedoHistory() {
     }
   });
 }
+async function clearOnePersonGameStartState() {
+  const removeKeys = [
+    // 共通チェック状態
+    "checkedIds",
+    "announcedIds",
+
+    // 1人アナウンスモード：チーム別チェック状態
+    "onePerson.third.checkedIds",
+    "onePerson.third.announcedIds",
+    "onePerson.first.checkedIds",
+    "onePerson.first.announcedIds",
+
+    // 1人アナウンスモード：前試合の打順位置
+    "onePerson.third.lastBatterIndex",
+    "onePerson.first.lastBatterIndex",
+
+    // 代走・ランナー・交代系の前試合残りを消す
+    "runnerAssignments",
+    "replacedRunners",
+    "tempRunnerFlags",
+    "selectedRunnerByBase",
+    "tempRunnerByOrder",
+    "substitutionLogs",
+    "pairLocks",
+    "battingReplacements",
+    "benchPlayers",
+  ];
+
+  await Promise.all(removeKeys.map((key) => localForage.removeItem(key)));
+
+  // 試合キー付きの初期化済みフラグ・イニング開始snapshotも前試合分を全削除
+  await localForage.iterate((_value, key) => {
+    const k = String(key);
+    if (
+      k.startsWith("onePersonFirstInningCheckInitialized::") ||
+      k.startsWith("offenseInningStartSnapshot::") ||
+      k.startsWith("previousInningEndSnapshot::") ||
+      k.startsWith("previousDefenseInningEndSnapshot::")
+    ) {
+      localForage.removeItem(k);
+    }
+  });
+}
+
 
 
 const StartGame = ({
@@ -498,22 +542,9 @@ const proceedStart = async () => {
   await localForage.removeItem("benchReactivatedIds");
   await localForage.removeItem("startTime");
   await localForage.removeItem("gameStartTime");
-  // ✅ 1人アナウンスモード用：前試合の打順位置をリセット
-  await localForage.removeItem("onePerson.third.lastBatterIndex");
-  await localForage.removeItem("onePerson.first.lastBatterIndex");
-
-  // 打順チェックボックスをクリア（通常モード用）
-  await localForage.removeItem("checkedIds");
-  // アナウンス済みチェックをクリア（通常モード用）
-  await localForage.removeItem("announcedIds");
-
-  // 1人アナウンス画面用のチェック・アナウンス済み・黄色の選択行も必ず初期化
-  await localForage.removeItem("onePerson.first.checkedIds");
-  await localForage.removeItem("onePerson.first.announcedIds");
-  await localForage.removeItem("onePerson.third.checkedIds");
-  await localForage.removeItem("onePerson.third.announcedIds");
-  await localForage.removeItem("onePerson.first.batterUiState.v2");
-  await localForage.removeItem("onePerson.third.batterUiState.v2");
+  // ✅ 試合開始時に1人アナウンスモードの前試合状態も完全クリア
+  // ここで消しておかないと、1回表・1回裏で前試合のチェック状態やsnapshotが残ることがある
+  await clearOnePersonGameStartState();
   // 出場済み（リエントリー判定などに使う）をクリア
   await localForage.removeItem("usedPlayerInfo");
    // 🧹 守備交代の取消／やり直し履歴も完全クリア（前試合の残骸を消す）
@@ -570,21 +601,18 @@ const proceedStart = async () => {
 
     await localForage.setItem("onePerson.third.battingOrder", thirdO);
     await localForage.setItem("onePerson.first.battingOrder", firstO);
+
+    // ✅ 試合開始直後は1回表・1回裏とも必ず未チェックから始める
+    await localForage.setItem("onePerson.third.checkedIds", []);
+    await localForage.setItem("onePerson.third.announcedIds", []);
+    await localForage.setItem("onePerson.first.checkedIds", []);
+    await localForage.setItem("onePerson.first.announcedIds", []);
+    await localForage.setItem("checkedIds", []);
+    await localForage.setItem("announcedIds", []);
+
     // ✅ 試合開始時は必ず両チームとも1番から
     await localForage.setItem("onePerson.third.lastBatterIndex", 0);
     await localForage.setItem("onePerson.first.lastBatterIndex", 0);
-
-    // ✅ 1人アナウンス画面専用：チェック・アナウンス済み・黄色の選択行を初期化
-    await localForage.setItem("onePerson.third.batterUiState.v2", {
-      checkedIds: [],
-      announcedIds: [],
-      currentBatterIndex: 0,
-    });
-    await localForage.setItem("onePerson.first.batterUiState.v2", {
-      checkedIds: [],
-      announcedIds: [],
-      currentBatterIndex: 0,
-    });
 
     await localForage.setItem("onePerson.third.pitchCounts", {
       current: 0,
