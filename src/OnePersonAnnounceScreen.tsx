@@ -203,10 +203,33 @@ type Scores = {
 
 type PreviousInningEndSnapshot = {
   savedAt: number;
+  // true の snapshot は「イニング切替直後に保存したB」として固定し、次のイニング切替まで上書きしない
+  lockedFromHalfSwitch?: boolean;
   matchKey: string;
 
   inning: number;
   isTop: boolean;
+
+  // ✅ 「〇回表/裏の最後に戻す」で、打順チェックも元に戻すために保存
+  currentBatterIndex?: number;
+  checkedIds?: number[];
+  announcedIds?: number[];
+  onePersonOffenseSide?: "first" | "third";
+
+  // ✅ 「〇回の表/裏に戻す」で、投球数の「この回」も終了直前に戻すため保存
+  onePersonDefenseSide?: "first" | "third";
+  onePersonDefensePitchCounts?: {
+    current: number;
+    total: number;
+    pitcherId?: number | null;
+  };
+  onePersonDefensePitcherTotals?: Record<number, number>;
+
+  // ✅ 1人モード用：前の半回の最後へ戻す時も、守備側の守備交代状態を同時に戻す
+  onePersonDefenseLineupAssignments?: Record<string, number | null>;
+  onePersonDefenseBattingOrder?: Array<{ id: number; reason?: string }>;
+  onePersonDefenseUsedPlayerInfo?: Record<string, any>;
+  onePersonDefenseBenchPlayers?: any[];
 
   lineupAssignments: Record<string, number | null>;
   battingOrder: Array<{ id: number; reason?: string }>;
@@ -260,8 +283,9 @@ type OffenseInningStartSnapshot = {
   checkedIds: number[];
   announcedIds: number[];
 
-  // ✅ 1人アナウンスモード用：このスナップショットがどちらの攻撃側かを保存する
-  // 表裏切替直後に前チームの状態で誤保存されるのを防ぐために使う
+  // 1人アナウンスモード用：
+  // 「この回の最初に戻す」でチームが逆側へ切り替わらないよう、
+  // 回開始時に画面へ読み込まれていた攻撃側 side を保存する
   onePersonOffenseSide?: "first" | "third";
 
   onePersonDefenseSide?: "first" | "third";
@@ -272,18 +296,13 @@ type OffenseInningStartSnapshot = {
   };
   onePersonDefensePitcherTotals?: Record<number, number>;
 
-  // ✅ 1人アナウンスモード用：この回開始時の守備側状態も保存する
-  // 守備交代後に「この回の最初に戻す」を押した時、守備位置も元に戻すために使う
+  // 1人アナウンスモード用：
+  // 「この回の最初に戻す」で、守備交代前の守備側状態へ戻すために保存する
   onePersonDefenseLineupAssignments?: Record<string, number | null>;
   onePersonDefenseBattingOrder?: Array<{ id: number; reason?: string }>;
   onePersonDefenseUsedPlayerInfo?: Record<string, any>;
   onePersonDefenseBenchPlayers?: any[];
 
-  // ✅ 既存の守備交代画面が使う履歴系も、この回開始時に戻せるよう保存する
-  substitutionLogs?: any[];
-  pairLocks?: Record<string, any>;
-  battingReplacements?: Record<string, any>;
-  
   matchInfo: MatchInfo;
 };
 
@@ -311,16 +330,6 @@ const getOffenseInningStartSnapshotKey = (
   inning: number,
   isTop: boolean
 ) => `offenseInningStartSnapshot::${matchKey}::${inning}::${isTop ? "top" : "bottom"}`;
-
-// ✅ 1人アナウンスモード：1回表・1回裏の初回読み込み時だけ、
-// 前回試合などで残ったチェック/読み上げ済みを必ず消す。
-// ただし、同じ試合・同じ半回でリロードした場合は、操作済みのチェックを消さない。
-const getOnePersonFirstInningCheckInitKey = (
-  matchKey: string,
-  side: "first" | "third",
-  isTop: boolean
-) =>
-  `onePersonFirstInningCheckInitialized::${matchKey}::${side}::${isTop ? "top" : "bottom"}`;
 
 const saveMatchInfo = async (patch: Partial<MatchInfo>) => {
   const prev = (await localForage.getItem<MatchInfo>("matchInfo")) || {};
@@ -461,6 +470,10 @@ const OnePersonAnnounceScreen: React.FC<OnePersonAnnounceScreenProps> = ({
   const [extraPositionMap, setExtraPositionMap] = useState<Record<number, string | null>>({});
   const [currentBatterIndex, setCurrentBatterIndex] = useState(0);
   const hasRestoredCurrentBatterRef = useRef(false);
+  // ✅ 「〇回の表/裏の最後に戻す」後に次の半回へ進む場合、
+  // 次の攻撃側チームの黄色行が戻した半回の currentBatterIndex に汚染されないよう、
+  // 次回の半回切替時だけ次チームの lastBatterIndex を 0 に戻す。
+  const resetNextOnePersonBatterIndexOnceRef = useRef(false);
 
   // 1人アナウンス用：
   // 黄色行（currentBatterIndex）は先攻/後攻チーム別に保存する。
@@ -1152,6 +1165,14 @@ const goSeatIntroFromOffense = async () => {
   );
   await localForage.setItem("lastBatterIndex", currentBatterIndex);
 
+  // ✅ 「〇回の表/裏の最後に戻す」後にシート紹介経由で次の半回へ進む場合、
+  // 次の攻撃側の lastBatterIndex を 0 で上書きしない。
+  // ここで 0 を保存すると、次の半回で本来の次打者ではなく1番が黄色になるため、
+  // フラグだけ解除して、次チームに保存済みの黄色行をそのまま使う。
+  if (resetNextOnePersonBatterIndexOnceRef.current) {
+    resetNextOnePersonBatterIndexOnceRef.current = false;
+  }
+
   // ✅ 1回表終了 → シート紹介へ行く経路では switchHalfInOnePersonMode を通らないため、
   // ここで「いま守っていたチーム」のこの回の投球数を必ず0に戻す
   await resetCurrentHalfPitchCountForOnePerson(
@@ -1481,12 +1502,6 @@ useEffect(() => {
       await localForage.removeItem("checkedIds");
       await localForage.removeItem("announcedIds");
       await localForage.removeItem("usedPlayerInfo");
-      // ✅ 1人アナウンスモードではチェック状態をチーム別キーにも保存しているため、
-      // 新規試合開始時にこちらも必ずクリアする。
-      await localForage.setItem("onePerson.first.checkedIds", []);
-      await localForage.setItem("onePerson.first.announcedIds", []);
-      await localForage.setItem("onePerson.third.checkedIds", []);
-      await localForage.setItem("onePerson.third.announcedIds", []);
       batterAnnounceCountsRef.current = {};
       await localForage.removeItem("batterAnnounceCounts");
       // リセット済みの合図を消す（次回の再読込でまた動くように）
@@ -2135,6 +2150,8 @@ const savePreviousInningEndSnapshot = async () => {
     savedBattingReplacements,
     savedOhtaniRule,
     savedDhEnabledAtStart,
+    savedCheckedIds,
+    savedAnnouncedIds,
   ] = await Promise.all([
     localForage.getItem<MatchInfo>("matchInfo"),
     localForage.getItem<Record<string, number | null>>("lineupAssignments"),
@@ -2151,6 +2168,8 @@ const savePreviousInningEndSnapshot = async () => {
     localForage.getItem<Record<string, any>>("battingReplacements"),
     localForage.getItem<boolean>("ohtaniRule"),
     localForage.getItem<boolean>("dhEnabledAtStart"),
+    localForage.getItem<number[]>("checkedIds"),
+    localForage.getItem<number[]>("announcedIds"),
   ]);
 
   const mi = matchInfo || {};
@@ -2165,6 +2184,128 @@ const savePreviousInningEndSnapshot = async () => {
     ...(savedScores || scores || {}),
   };
 
+  // ✅ 1人アナウンスモードでは、チェック状態はチーム別キーが正。
+  // 「1回裏」から「1回表の最後に戻す」時にチェックが消えないよう、
+  // 現在攻撃中の side とチェック状態も一緒に保存する。
+  const singleMode = (mi as any)?.announcementMode === "single";
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const onePersonOffenseSide = singleMode
+    ? getOnePersonSideByTopBottom(currentIsTop, savedFirstAttackSide)
+    : undefined;
+
+  const onePersonCheckedIds = onePersonOffenseSide
+    ? await localForage.getItem<number[]>(
+        `onePerson.${onePersonOffenseSide}.checkedIds`
+      )
+    : null;
+
+  const onePersonAnnouncedIds = onePersonOffenseSide
+    ? await localForage.getItem<number[]>(
+        `onePerson.${onePersonOffenseSide}.announcedIds`
+      )
+    : null;
+
+  // ✅ 「〇回の表/裏に戻す」では、戻す先の半回で守っていたチームの
+  // 投球数を「半回終了直前」の値に戻したい。
+  // イニング終了後に onePerson.xxx.pitchCounts.current は 0 にリセットされるため、
+  // リセット前のここで保存しておく。
+  const onePersonDefenseSide = singleMode
+    ? getOnePersonDefenseSideByTopBottom(currentIsTop, savedFirstAttackSide)
+    : undefined;
+
+  const onePersonDefenseLineup = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<string, number | null>>(
+        `onePerson.${onePersonDefenseSide}.lineupAssignments`
+      )) || {})
+    : {};
+
+  const onePersonDefensePitchCounts = onePersonDefenseSide
+    ? ((await localForage.getItem<{
+        current: number;
+        total: number;
+        pitcherId?: number | null;
+      }>(`onePerson.${onePersonDefenseSide}.pitchCounts`)) || {
+        current: Number(savedPitchCounts?.current ?? currentPitchCount ?? 0),
+        total: Number(savedPitchCounts?.total ?? totalPitchCount ?? 0),
+        pitcherId:
+          onePersonDefenseLineup["投"] ??
+          savedPitchCounts?.pitcherId ??
+          null,
+      })
+    : undefined;
+
+  const onePersonDefensePitcherTotals = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<number, number>>(
+        `onePerson.${onePersonDefenseSide}.pitcherTotals`
+      )) || savedPitcherTotals || {})
+    : undefined;
+
+  const onePersonDefenseLineupAssignments = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<string, number | null>>(
+        `onePerson.${onePersonDefenseSide}.lineupAssignments`
+      )) || {})
+    : undefined;
+
+  const onePersonDefenseBattingOrder = onePersonDefenseSide
+    ? ((await localForage.getItem<Array<{ id: number; reason?: string }>>(
+        `onePerson.${onePersonDefenseSide}.battingOrder`
+      )) || [])
+    : undefined;
+
+  const onePersonDefenseUsedPlayerInfo = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<string, any>>(
+        `onePerson.${onePersonDefenseSide}.usedPlayerInfo`
+      )) || {})
+    : undefined;
+
+  const onePersonDefenseBenchPlayers = onePersonDefenseSide
+    ? ((await localForage.getItem<any[]>(
+        `onePerson.${onePersonDefenseSide}.benchPlayers`
+      )) || [])
+    : undefined;
+
+  // ✅ 「前の半回の最後へ戻す」は、localForage の通常キーより画面 state を優先する。
+  // 代打・代走後や守備交代画面への一時コピーで通常キーが別チームに書き換わっても、
+  // 直前に攻撃していたチームの打順・チェックを正しく保存する。
+  const latestOffenseBattingOrder = singleMode
+    ? structuredClone(battingOrder || [])
+    : structuredClone(savedBattingOrder || battingOrder || []);
+
+  const latestOffenseAssignments = singleMode
+    ? structuredClone(assignments || {})
+    : structuredClone(savedAssignments || assignments || {});
+
+  const latestOffenseUsedPlayerInfo = singleMode
+    ? structuredClone(usedPlayerInfo || {})
+    : structuredClone(savedUsedPlayerInfo || {});
+
+  if (singleMode && onePersonOffenseSide) {
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.battingOrder`,
+      latestOffenseBattingOrder
+    );
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.lineupAssignments`,
+      latestOffenseAssignments
+    );
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.usedPlayerInfo`,
+      latestOffenseUsedPlayerInfo
+    );
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.checkedIds`,
+      checkedIds || []
+    );
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.announcedIds`,
+      announcedIdsRef.current || []
+    );
+    await localForage.setItem(
+      `onePerson.${onePersonOffenseSide}.lastBatterIndex`,
+      currentBatterIndex
+    );
+  }
+
   const snapshot: PreviousInningEndSnapshot = {
     savedAt: Date.now(),
     matchKey,
@@ -2175,11 +2316,74 @@ const savePreviousInningEndSnapshot = async () => {
     inning: currentInning,
     isTop: currentIsTop,
 
-    lineupAssignments: structuredClone(savedAssignments || assignments || {}),
-    battingOrder: structuredClone(savedBattingOrder || battingOrder || []),
+    currentBatterIndex,
+    // ✅ 1人モードの「前の半回に戻す」は、今画面で表示中の state が一番正しい。
+    // onePerson.xxx.checkedIds が古い空配列のままだと、1回裏から「1回表の最後に戻す」で
+    // 1回表のチェックが消えるため、state → チーム別保存 → 通常保存 の順で採用する。
+    checkedIds: structuredClone(
+      singleMode
+        ? (Array.isArray(checkedIds) && checkedIds.length > 0
+            ? checkedIds
+            : Array.isArray(onePersonCheckedIds)
+              ? onePersonCheckedIds
+              : Array.isArray(savedCheckedIds)
+                ? savedCheckedIds
+                : [])
+        : (Array.isArray(checkedIds) && checkedIds.length > 0
+            ? checkedIds
+            : Array.isArray(savedCheckedIds)
+              ? savedCheckedIds
+              : [])
+    ),
+    announcedIds: structuredClone(
+      singleMode
+        ? (Array.isArray(announcedIdsRef.current) && announcedIdsRef.current.length > 0
+            ? announcedIdsRef.current
+            : Array.isArray(onePersonAnnouncedIds)
+              ? onePersonAnnouncedIds
+              : Array.isArray(savedAnnouncedIds)
+                ? savedAnnouncedIds
+                : [])
+        : (Array.isArray(announcedIdsRef.current) && announcedIdsRef.current.length > 0
+            ? announcedIdsRef.current
+            : Array.isArray(savedAnnouncedIds)
+              ? savedAnnouncedIds
+              : [])
+    ),
+    onePersonOffenseSide,
+
+    onePersonDefenseSide,
+    onePersonDefensePitchCounts: structuredClone(
+      onePersonDefensePitchCounts || {
+        current: Number(savedPitchCounts?.current ?? currentPitchCount ?? 0),
+        total: Number(savedPitchCounts?.total ?? totalPitchCount ?? 0),
+        pitcherId:
+          onePersonDefenseLineup["投"] ??
+          savedPitchCounts?.pitcherId ??
+          null,
+      }
+    ),
+    onePersonDefensePitcherTotals: structuredClone(
+      onePersonDefensePitcherTotals || savedPitcherTotals || {}
+    ),
+    onePersonDefenseLineupAssignments: structuredClone(
+      onePersonDefenseLineupAssignments || {}
+    ),
+    onePersonDefenseBattingOrder: structuredClone(
+      onePersonDefenseBattingOrder || []
+    ),
+    onePersonDefenseUsedPlayerInfo: structuredClone(
+      onePersonDefenseUsedPlayerInfo || {}
+    ),
+    onePersonDefenseBenchPlayers: structuredClone(
+      onePersonDefenseBenchPlayers || []
+    ),
+
+    lineupAssignments: structuredClone(latestOffenseAssignments || {}),
+    battingOrder: structuredClone(latestOffenseBattingOrder || []),
     startingBattingOrder: structuredClone(savedStartingBattingOrder || []),
     tempRunnerByOrder: structuredClone(savedTempRunnerByOrder || {}),
-    usedPlayerInfo: structuredClone(savedUsedPlayerInfo || {}),
+    usedPlayerInfo: structuredClone(latestOffenseUsedPlayerInfo || {}),
 
     scores: structuredClone(latestScores),
 
@@ -2222,11 +2426,7 @@ const savePreviousInningEndSnapshot = async () => {
   });
 };
 
-const saveOffenseInningStartSnapshotIfNeeded = async (
-  targetInning: number = inning,
-  targetIsTop: boolean = isTop,
-  forcedOnePersonOffenseSide?: "first" | "third"
-) => {
+const saveOffenseInningStartSnapshotIfNeeded = async () => {
   const matchInfo =
     (await localForage.getItem<MatchInfo>("matchInfo")) || {};
 
@@ -2234,239 +2434,152 @@ const saveOffenseInningStartSnapshotIfNeeded = async (
   if (matchInfo.isDefense === true) return;
 
   const matchKey = buildDefenseMatchKey(matchInfo);
-  const storageKey = getOffenseInningStartSnapshotKey(
-    matchKey,
-    targetInning,
-    targetIsTop
-  );
+  const storageKey = getOffenseInningStartSnapshotKey(matchKey, inning, isTop);
 
-  const singleMode = matchInfo?.announcementMode === "single";
-  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
-
-  const onePersonOffenseSide = singleMode
-    ? forcedOnePersonOffenseSide ||
-      getOnePersonSideByTopBottom(targetIsTop, savedFirstAttackSide)
-    : undefined;
-
-  // ✅ 1人アナウンスモードでは、表裏切替直後に前チームの state が一瞬残る。
-  // その状態で snapshot を保存すると「別チームに戻る」「選手名が空白」の原因になる。
-  // 明示的に side 指定された場合以外は、現在読み込み済みの攻撃側と一致した時だけ保存する。
-  if (
-    singleMode &&
-    !forcedOnePersonOffenseSide &&
-    currentOnePersonOffenseSideRef.current !== onePersonOffenseSide
-  ) {
-    console.log("[OFFENSE INNING START SNAPSHOT] skipped: side is not ready", {
-      targetInning,
-      targetIsTop,
-      expected: onePersonOffenseSide,
-      current: currentOnePersonOffenseSideRef.current,
-    });
-    return;
-  }
-
-  // すでに保存済みなら上書きしない。
-  // ただし、古い snapshot（攻撃側side未保存）や別sideで誤保存されたものは作り直す。
+  // すでに保存済みなら上書きしない
+  // これが重要：代打・代走などをした後に「回の最初」が上書きされるのを防ぐ
   const existing =
     await localForage.getItem<OffenseInningStartSnapshot>(storageKey);
 
+  // ✅ 1人アナウンスモードで、古いsnapshotに投球数情報が無い場合は作り直す
+  const singleMode = matchInfo?.announcementMode === "single";
+
   if (existing) {
-    const hasPitchSnapshot =
-      !singleMode ||
-      (existing.onePersonDefenseSide &&
-        existing.onePersonDefensePitchCounts &&
-        existing.onePersonDefensePitcherTotals);
-
-    const hasDefenseRestoreSnapshot =
-      !singleMode ||
-      (existing.onePersonDefenseSide &&
-        existing.onePersonDefenseLineupAssignments);
-
-    const hasCorrectSide =
-      !singleMode || existing.onePersonOffenseSide === onePersonOffenseSide;
-
-    if (hasPitchSnapshot && hasDefenseRestoreSnapshot && hasCorrectSide) {
-      return;
-    }
-
-    await localForage.removeItem(storageKey);
-  }
-
-  const onePersonDefenseSide = singleMode
-    ? getOnePersonDefenseSideByTopBottom(targetIsTop, savedFirstAttackSide)
-    : undefined;
-
-  const [
-    savedSideLineup,
-    savedSideOrder,
-    savedSideUsedPlayerInfo,
-    savedSideBenchPlayers,
-    savedSideLastBatterIndex,
-    savedSideCheckedIds,
-    savedSideAnnouncedIds,
-    savedScores,
-    savedRunnerAssignments,
-    savedReplacedRunners,
-    savedTempRunnerFlags,
-    savedSelectedRunnerByBase,
-    onePersonDefenseLineupAssignments,
-    onePersonDefenseBattingOrder,
-    onePersonDefenseUsedPlayerInfo,
-    onePersonDefenseBenchPlayers,
-    onePersonDefensePitchCounts,
-    onePersonDefensePitcherTotals,
-    savedSubstitutionLogs,
-    savedPairLocks,
-    savedBattingReplacements,
-  ] = await Promise.all([
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<Record<string, number | null>>(
-          `onePerson.${onePersonOffenseSide}.lineupAssignments`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<Array<{ id: number; reason?: string }>>(
-          `onePerson.${onePersonOffenseSide}.battingOrder`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<Record<string, any>>(
-          `onePerson.${onePersonOffenseSide}.usedPlayerInfo`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<any[]>(
-          `onePerson.${onePersonOffenseSide}.benchPlayers`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<number>(
-          `onePerson.${onePersonOffenseSide}.lastBatterIndex`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<number[]>(
-          `onePerson.${onePersonOffenseSide}.checkedIds`
-        )
-      : Promise.resolve(null),
-    singleMode && onePersonOffenseSide
-      ? localForage.getItem<number[]>(
-          `onePerson.${onePersonOffenseSide}.announcedIds`
-        )
-      : Promise.resolve(null),
-    localForage.getItem<Scores>("scores"),
-    localForage.getItem<{ [base: string]: any | null }>("runnerAssignments"),
-    localForage.getItem<{ [base: string]: any | null }>("replacedRunners"),
-    localForage.getItem<Record<string, boolean>>("tempRunnerFlags"),
-    localForage.getItem<Record<string, any | null>>("selectedRunnerByBase"),
-    onePersonDefenseSide
-      ? localForage.getItem<Record<string, number | null>>(
-          `onePerson.${onePersonDefenseSide}.lineupAssignments`
-        )
-      : Promise.resolve(null),
-    onePersonDefenseSide
-      ? localForage.getItem<Array<{ id: number; reason?: string }>>(
-          `onePerson.${onePersonDefenseSide}.battingOrder`
-        )
-      : Promise.resolve(null),
-    onePersonDefenseSide
-      ? localForage.getItem<Record<string, any>>(
-          `onePerson.${onePersonDefenseSide}.usedPlayerInfo`
-        )
-      : Promise.resolve(null),
-    onePersonDefenseSide
-      ? localForage.getItem<any[]>(
-          `onePerson.${onePersonDefenseSide}.benchPlayers`
-        )
-      : Promise.resolve(null),
-    onePersonDefenseSide
-      ? localForage.getItem<{
-          current: number;
-          total: number;
-          pitcherId?: number | null;
-        }>(`onePerson.${onePersonDefenseSide}.pitchCounts`)
-      : Promise.resolve(null),
-    onePersonDefenseSide
-      ? localForage.getItem<Record<number, number>>(
-          `onePerson.${onePersonDefenseSide}.pitcherTotals`
-        )
-      : Promise.resolve(null),
-    localForage.getItem<any[]>("substitutionLogs"),
-    localForage.getItem<Record<string, any>>("pairLocks"),
-    localForage.getItem<Record<string, any>>("battingReplacements"),
-  ]);
-
-  const snapshotLineupAssignments =
-    singleMode && savedSideLineup
-      ? savedSideLineup
-      : assignments || {};
-
-  const snapshotBattingOrder =
-    singleMode && Array.isArray(savedSideOrder)
-      ? savedSideOrder
-      : battingOrder || [];
-
-  if (
-    !snapshotBattingOrder.length ||
-    Object.keys(snapshotLineupAssignments || {}).length === 0
-  ) {
+    // ✅ Bスナップショットは「その半回の開始時点」が正本。
+    // 代打・代走・守備交代など、この半回の途中操作では絶対に上書きしない。
+    // 特に2回以降で代打後にここを作り直すと、
+    // 「この回の最初に戻す」でも代打後の打順が残ってしまう。
     return;
   }
 
-  const snapshotCurrentBatterIndex =
-    typeof savedSideLastBatterIndex === "number"
-      ? savedSideLastBatterIndex
-      : currentBatterIndex;
+  if (!battingOrder.length || Object.keys(assignments || {}).length === 0) {
+    return;
+  }
+
+  const savedFirstAttackSideForSnapshot =
+    singleMode ? await getSavedOnePersonFirstAttackSide() : undefined;
+
+  const onePersonOffenseSide = singleMode
+    ? currentOnePersonOffenseSideRef.current ||
+      getOnePersonSideByTopBottom(
+        isTop,
+        savedFirstAttackSideForSnapshot || "third"
+      )
+    : undefined;
+
+  const onePersonDefenseSide = onePersonOffenseSide
+    ? onePersonOffenseSide === "first"
+      ? "third"
+      : "first"
+    : undefined;
+
+  const onePersonDefensePitchCounts = onePersonDefenseSide
+    ? ((await localForage.getItem<{
+        current: number;
+        total: number;
+        pitcherId?: number | null;
+      }>(`onePerson.${onePersonDefenseSide}.pitchCounts`)) || {
+        current: currentPitchCount,
+        total: totalPitchCount,
+        pitcherId: assignments?.["投"] ?? null,
+      })
+    : undefined;
+
+  const onePersonDefensePitcherTotals = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<number, number>>(
+        `onePerson.${onePersonDefenseSide}.pitcherTotals`
+      )) || pitcherTotals || {})
+    : undefined;
+
+  const onePersonDefenseLineupAssignments = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<string, number | null>>(
+        `onePerson.${onePersonDefenseSide}.lineupAssignments`
+      )) || {})
+    : undefined;
+
+  const onePersonDefenseBattingOrder = onePersonDefenseSide
+    ? ((await localForage.getItem<Array<{ id: number; reason?: string }>>(
+        `onePerson.${onePersonDefenseSide}.battingOrder`
+      )) || [])
+    : undefined;
+
+  const onePersonDefenseUsedPlayerInfo = onePersonDefenseSide
+    ? ((await localForage.getItem<Record<string, any>>(
+        `onePerson.${onePersonDefenseSide}.usedPlayerInfo`
+      )) || {})
+    : undefined;
+
+  const onePersonDefenseBenchPlayers = onePersonDefenseSide
+    ? ((await localForage.getItem<any[]>(
+        `onePerson.${onePersonDefenseSide}.benchPlayers`
+      )) || [])
+    : undefined;
+
+  // ✅ この回開始時点のチェック状態は、画面stateがまだ復元途中で空の場合がある。
+  // その状態でsnapshotを作ると「この回の最初に戻す」で一部のチェックが外れるため、
+  // チーム別キー → 通常キー → state の順で保険をかけて保存する。
+  const sideCheckedIdsForSnapshot = onePersonOffenseSide
+    ? await localForage.getItem<number[]>(
+        `onePerson.${onePersonOffenseSide}.checkedIds`
+      )
+    : null;
+
+  const sideAnnouncedIdsForSnapshot = onePersonOffenseSide
+    ? await localForage.getItem<number[]>(
+        `onePerson.${onePersonOffenseSide}.announcedIds`
+      )
+    : null;
+
+  const commonCheckedIdsForSnapshot =
+    await localForage.getItem<number[]>("checkedIds");
+
+  const commonAnnouncedIdsForSnapshot =
+    await localForage.getItem<number[]>("announcedIds");
+
+  const checkedIdsForSnapshot =
+    Array.isArray(sideCheckedIdsForSnapshot) && sideCheckedIdsForSnapshot.length > 0
+      ? sideCheckedIdsForSnapshot
+      : Array.isArray(commonCheckedIdsForSnapshot) && commonCheckedIdsForSnapshot.length > 0
+        ? commonCheckedIdsForSnapshot
+        : Array.isArray(checkedIds)
+          ? checkedIds
+          : [];
+
+  const announcedIdsForSnapshot =
+    Array.isArray(sideAnnouncedIdsForSnapshot) && sideAnnouncedIdsForSnapshot.length > 0
+      ? sideAnnouncedIdsForSnapshot
+      : Array.isArray(commonAnnouncedIdsForSnapshot) && commonAnnouncedIdsForSnapshot.length > 0
+        ? commonAnnouncedIdsForSnapshot
+        : Array.isArray(announcedIdsRef.current)
+          ? announcedIdsRef.current
+          : Array.isArray(announcedIds)
+            ? announcedIds
+            : [];
 
   const snapshot: OffenseInningStartSnapshot = {
     savedAt: Date.now(),
     matchKey,
 
-    inning: targetInning,
-    isTop: targetIsTop,
+    inning,
+    isTop,
     isHome,
 
-    lineupAssignments: structuredClone(snapshotLineupAssignments || {}),
-    battingOrder: structuredClone(snapshotBattingOrder || []),
-    usedPlayerInfo: structuredClone(
-      (singleMode && savedSideUsedPlayerInfo
-        ? savedSideUsedPlayerInfo
-        : usedPlayerInfo) || {}
-    ),
-    benchPlayers: structuredClone(
-      (singleMode && Array.isArray(savedSideBenchPlayers)
-        ? savedSideBenchPlayers
-        : benchPlayers) || []
-    ),
+    lineupAssignments: structuredClone(assignments || {}),
+    battingOrder: structuredClone(battingOrder || []),
+    usedPlayerInfo: structuredClone(usedPlayerInfo || {}),
+    benchPlayers: structuredClone(benchPlayers || []),
 
-    scores: structuredClone(savedScores || scores || {}),
+    scores: structuredClone(scores || {}),
 
-    runnerAssignments: structuredClone(
-      savedRunnerAssignments ||
-        runnerAssignments || {
-          "1塁": null,
-          "2塁": null,
-          "3塁": null,
-        }
-    ),
-    replacedRunners: structuredClone(savedReplacedRunners || replacedRunners || {}),
-    tempRunnerFlags: structuredClone(savedTempRunnerFlags || tempRunnerFlags || {}),
-    selectedRunnerByBase: structuredClone(
-      savedSelectedRunnerByBase || selectedRunnerByBase || {}
-    ),
+    runnerAssignments: structuredClone(runnerAssignments || {}),
+    replacedRunners: structuredClone(replacedRunners || {}),
+    tempRunnerFlags: structuredClone(tempRunnerFlags || {}),
+    selectedRunnerByBase: structuredClone(selectedRunnerByBase || {}),
 
-    currentBatterIndex: snapshotCurrentBatterIndex,
+    currentBatterIndex,
 
-    checkedIds: structuredClone(
-      (singleMode && Array.isArray(savedSideCheckedIds)
-        ? savedSideCheckedIds
-        : checkedIds) || []
-    ),
-    announcedIds: structuredClone(
-      (singleMode && Array.isArray(savedSideAnnouncedIds)
-        ? savedSideAnnouncedIds
-        : announcedIds) || []
-    ),
+    checkedIds: structuredClone(checkedIdsForSnapshot || []),
+    announcedIds: structuredClone(announcedIdsForSnapshot || []),
 
     onePersonOffenseSide,
     onePersonDefenseSide,
@@ -2480,6 +2593,7 @@ const saveOffenseInningStartSnapshotIfNeeded = async (
     onePersonDefensePitcherTotals: structuredClone(
       onePersonDefensePitcherTotals || {}
     ),
+
     onePersonDefenseLineupAssignments: structuredClone(
       onePersonDefenseLineupAssignments || {}
     ),
@@ -2492,14 +2606,11 @@ const saveOffenseInningStartSnapshotIfNeeded = async (
     onePersonDefenseBenchPlayers: structuredClone(
       onePersonDefenseBenchPlayers || []
     ),
-    substitutionLogs: structuredClone(savedSubstitutionLogs || []),
-    pairLocks: structuredClone(savedPairLocks || {}),
-    battingReplacements: structuredClone(savedBattingReplacements || {}),
 
     matchInfo: {
       ...matchInfo,
-      inning: targetInning,
-      isTop: targetIsTop,
+      inning,
+      isTop,
       isDefense: false,
       isHome,
     },
@@ -2509,9 +2620,8 @@ const saveOffenseInningStartSnapshotIfNeeded = async (
 
   console.log("[OFFENSE INNING START SNAPSHOT] saved", {
     storageKey,
-    inning: targetInning,
-    isTop: targetIsTop,
-    onePersonOffenseSide,
+    inning,
+    isTop,
   });
 };
 
@@ -2562,8 +2672,19 @@ const snapshot =
     reason: entry.reason ?? "",
   }));
 
+  const restoredCheckedIds = structuredClone(snapshot.checkedIds || []);
+  const restoredAnnouncedIds = structuredClone(snapshot.announcedIds || []);
+  const restoredCurrentBatterIndex =
+    typeof snapshot.currentBatterIndex === "number"
+      ? snapshot.currentBatterIndex
+      : currentBatterIndex;
+
   setAssignments(safeAssignments);
   setBattingOrder(restoredBattingOrder);
+  setCurrentBatterIndex(restoredCurrentBatterIndex);
+  setCheckedIds(restoredCheckedIds);
+  setAnnouncedIds(restoredAnnouncedIds);
+  announcedIdsRef.current = restoredAnnouncedIds;
   // 得点は全体をスナップショットに戻さない。
   // 現在の得点ボードを維持して、この半回だけ 0 に戻す。
   const currentScores =
@@ -2595,16 +2716,104 @@ const snapshot =
 
   await localForage.setItem("startingBattingOrder", snapshot.startingBattingOrder || []);
   await localForage.setItem("tempRunnerByOrder", snapshot.tempRunnerByOrder || {});
-  await localForage.setItem("scores", snapshot.scores || {});
+  await localForage.setItem("scores", restoredScores);
 
   await localForage.setItem("pitcherTotals", snapshot.pitcherTotals || {});
   await localForage.setItem("pitchCounts", snapshot.pitchCounts || { current: 0, total: 0 });
   await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
   
-  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  // benchPlayers は下で現在チームから再計算して保存する
   await localForage.setItem("substitutionLogs", snapshot.substitutionLogs || []);
   await localForage.setItem("pairLocks", snapshot.pairLocks || {});
   await localForage.setItem("battingReplacements", snapshot.battingReplacements || {});
+  await localForage.setItem("checkedIds", restoredCheckedIds);
+  await localForage.setItem("announcedIds", restoredAnnouncedIds);
+  await localForage.setItem("lastBatterIndex", restoredCurrentBatterIndex);
+
+  // ✅ 1人モードでは、復元先 side のチーム別チェック状態も先に戻す。
+  // この後の loadOnePersonTeamForHalf() がこのキーを読むため、
+  // ここを入れないと「1回表の最後に戻す」でチェックが消える。
+  const savedFirstAttackSideForRestore = await getSavedOnePersonFirstAttackSide();
+  const restoreOffenseSide =
+    snapshot.onePersonOffenseSide ||
+    getOnePersonSideByTopBottom(snapshot.isTop, savedFirstAttackSideForRestore);
+
+  await localForage.setItem(
+    `onePerson.${restoreOffenseSide}.checkedIds`,
+    restoredCheckedIds
+  );
+  await localForage.setItem(
+    `onePerson.${restoreOffenseSide}.announcedIds`,
+    restoredAnnouncedIds
+  );
+  await localForage.setItem(
+    `onePerson.${restoreOffenseSide}.lastBatterIndex`,
+    restoredCurrentBatterIndex
+  );
+
+  // ✅ 代打・代走後の打順もチーム別キーへ戻す。
+  // この後 loadOnePersonTeamForHalf() が onePerson 側を読むため、
+  // 通常キーだけ戻しても古いスタメン打順で上書きされることがある。
+  await repairOnePersonSideState(restoreOffenseSide, {
+    battingOrder: restoredBattingOrder,
+    fallbackBattingOrder: snapshot.startingBattingOrder || [],
+    lineupAssignments: safeAssignments,
+    usedPlayerInfo: snapshot.usedPlayerInfo || {},
+  });
+
+  // ✅ 守備側も「前の半回終了直前」の状態へ戻してから正規化する。
+  // ここで snapshot を渡さず repair だけにすると、守備交代前/後や別チームの通常キーが混ざり、
+  // 次回の守備交代画面の控えに自チーム以外が出る原因になる。
+  const restoreDefenseSideForRepair =
+    snapshot.onePersonDefenseSide ||
+    getOnePersonDefenseSideByTopBottom(
+      snapshot.isTop,
+      savedFirstAttackSideForRestore
+    );
+
+  await repairOnePersonSideState(restoreDefenseSideForRepair, {
+    battingOrder: snapshot.onePersonDefenseBattingOrder || undefined,
+    lineupAssignments: snapshot.onePersonDefenseLineupAssignments || undefined,
+    usedPlayerInfo: snapshot.onePersonDefenseUsedPlayerInfo || undefined,
+  });
+
+  // ✅ 「〇回の表/裏に戻す」時の投球数復元
+  // この後の loadOnePersonTeamForHalf() が onePerson.xxx.pitchCounts を読むため、
+  // 先にチーム別キーへ終了直前の投球数を戻しておく。
+  {
+    const restoreDefenseSide =
+      snapshot.onePersonDefenseSide ||
+      getOnePersonDefenseSideByTopBottom(
+        snapshot.isTop,
+        savedFirstAttackSideForRestore
+      );
+
+    const restoredPitchCountsForPrevious = snapshot.onePersonDefensePitchCounts || {
+      current: Number(snapshot.pitchCounts?.current ?? 0),
+      total: Number(snapshot.pitchCounts?.total ?? 0),
+      pitcherId: snapshot.pitchCounts?.pitcherId ?? null,
+    };
+
+    const restoredPitcherTotalsForPrevious =
+      snapshot.onePersonDefensePitcherTotals || snapshot.pitcherTotals || {};
+
+    await localForage.setItem(
+      `onePerson.${restoreDefenseSide}.pitchCounts`,
+      restoredPitchCountsForPrevious
+    );
+    await localForage.setItem(
+      `onePerson.${restoreDefenseSide}.pitcherTotals`,
+      restoredPitcherTotalsForPrevious
+    );
+
+    await localForage.setItem("pitchCounts", restoredPitchCountsForPrevious);
+    await localForage.setItem("pitcherTotals", restoredPitcherTotalsForPrevious);
+
+    setCurrentPitchCount(Number(restoredPitchCountsForPrevious.current || 0));
+    setTotalPitchCount(Number(restoredPitchCountsForPrevious.total || 0));
+    setPitcherTotals(restoredPitcherTotalsForPrevious);
+  }
+
   await localForage.setItem("ohtaniRule", !!snapshot.ohtaniRule);
   await localForage.setItem("dhEnabledAtStart", !!snapshot.dhEnabledAtStart);
 
@@ -2621,8 +2830,11 @@ const snapshot =
   setShowRestoreConfirmModal(false);
 
   // ✅ 復元後に次の半回へ進めない
-  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
-  await loadOnePersonTeamForHalf(snapshot.isTop, savedFirstAttackSide);
+  await loadOnePersonTeamForHalf(snapshot.isTop, savedFirstAttackSideForRestore);
+
+  // ✅ このあとユーザーが再度「イニング終了」して次の半回へ進む場合、
+  // 次チームの黄色行がこの復元した半回の選択行にならないようにする。
+  resetNextOnePersonBatterIndexOnceRef.current = true;
 };
 
 const restoreOffenseInningStartSnapshot = async () => {
@@ -2644,10 +2856,13 @@ const restoreOffenseInningStartSnapshot = async () => {
 // 表なら先攻、裏なら後攻。ここで normalTeam / oppositeTeam のような再判定はしない。
 const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
 
-const currentOffenseSide = getOnePersonSideByTopBottom(
-  snapshot.isTop,
-  savedFirstAttackSide
-);
+const currentOffenseSide =
+  snapshot.onePersonOffenseSide ||
+  currentOnePersonOffenseSideRef.current ||
+  getOnePersonSideByTopBottom(
+    snapshot.isTop,
+    savedFirstAttackSide
+  );
 
 // ✅ 復元後に再度「この回の最初に戻す」を押しても、
 // 現在表示中の攻撃側を別チームへずらさない。
@@ -2718,25 +2933,29 @@ const currentScreenTeam =
   normalizeTeamForOnePerson(rawCurrentTeam) ||
   null;
 
-const currentScreenPlayersRaw = [
-  // ✅ 元チーム登録データを最優先
-  ...(Array.isArray(rawFolderTeam?.team?.players) ? rawFolderTeam.team.players : []),
-  ...(Array.isArray(rawFolderTeam?.players) ? rawFolderTeam.players : []),
+const hasRegisteredTeamPlayers =
+  Array.isArray(rawFolderTeam?.team?.players) ||
+  Array.isArray(rawFolderTeam?.players);
 
-  // 次に currentScreenTeam
-  ...(Array.isArray(currentScreenTeam?.players) ? currentScreenTeam.players : []),
-
-  // onePerson.xxx.team は上書き済みの可能性があるので後ろ
-  ...(Array.isArray(rawSideTeam?.team?.players) ? rawSideTeam.team.players : []),
-  ...(Array.isArray(rawSideTeam?.players) ? rawSideTeam.players : []),
-
-  ...(Array.isArray(rawCurrentTeam?.team?.players) ? rawCurrentTeam.team.players : []),
-  ...(Array.isArray(rawCurrentTeam?.players) ? rawCurrentTeam.players : []),
-
-  ...(Array.isArray(allPlayers) ? allPlayers : []),
-  ...(Array.isArray(players) ? players : []),
-  ...(Array.isArray(snapshot.benchPlayers) ? snapshot.benchPlayers : []),
-];
+const currentScreenPlayersRaw = hasRegisteredTeamPlayers
+  ? [
+      // ✅ チーム登録データがある場合は、そのチームの選手だけを正とする。
+      // allPlayers / players / snapshot.benchPlayers は守備交代画面経由で別チームへ
+      // 汚染されることがあるため混ぜない。
+      ...(Array.isArray(rawFolderTeam?.team?.players) ? rawFolderTeam.team.players : []),
+      ...(Array.isArray(rawFolderTeam?.players) ? rawFolderTeam.players : []),
+      ...(Array.isArray(currentScreenTeam?.players) ? currentScreenTeam.players : []),
+    ]
+  : [
+      ...(Array.isArray(currentScreenTeam?.players) ? currentScreenTeam.players : []),
+      ...(Array.isArray(rawSideTeam?.team?.players) ? rawSideTeam.team.players : []),
+      ...(Array.isArray(rawSideTeam?.players) ? rawSideTeam.players : []),
+      ...(Array.isArray(rawCurrentTeam?.team?.players) ? rawCurrentTeam.team.players : []),
+      ...(Array.isArray(rawCurrentTeam?.players) ? rawCurrentTeam.players : []),
+      ...(Array.isArray(allPlayers) ? allPlayers : []),
+      ...(Array.isArray(players) ? players : []),
+      ...(Array.isArray(snapshot.benchPlayers) ? snapshot.benchPlayers : []),
+    ];
 
 // ✅ 同じIDの重複を除去。
 // 名前が入っている選手データを優先する。
@@ -2883,41 +3102,11 @@ const sideOrderByIndex = Array.isArray(sideBattingOrder)
   ? sideBattingOrder
   : [];
 
-const restoredBattingOrder = structuredClone(
-  restoreBaseBattingOrder || []
-).map((entry, idx) => {
-  const id = Number(entry?.id);
-  const sideEntry = sideOrderByIndex[idx];
-  const sideId = Number(sideEntry?.id);
-
-  // ✅ 復元元のIDが現在チーム選手に存在しない場合、
-  // 同じ打順位置の onePerson 側IDで補正する
-  if (
-    (!Number.isFinite(id) || !playerIdSet.has(id)) &&
-    Number.isFinite(sideId) &&
-    playerIdSet.has(sideId)
-  ) {
-    return {
-      id: sideId,
-      reason: sideEntry?.reason ?? entry?.reason ?? "",
-    };
-  }
-
-  if (!Number.isFinite(id) || !playerIdSet.has(id)) {
-    console.warn("[RESTORE] battingOrder id not found in current players", {
-      order: idx + 1,
-      id,
-      entry,
-      sideEntry,
-      currentOffenseSide,
-    });
-  }
-
-  return {
-    id,
-    reason: entry?.reason ?? "",
-  };
-});
+const restoredBattingOrder = sanitizeOnePersonBattingOrder(
+  restoreBaseBattingOrder || [],
+  sideBattingOrder || [],
+  currentScreenPlayers
+);
 
 console.table(
   restoredBattingOrder.map((entry, idx) => {
@@ -3021,7 +3210,7 @@ setScores(restoredScores);
   localStorage.setItem("battingOrderVersion", String(Date.now()));
 
   await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
-  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  // benchPlayers は下で現在チームから再計算して保存する
   await localForage.setItem("scores", restoredScores);
   await localForage.setItem("runnerAssignments", snapshot.runnerAssignments || {
     "1塁": null,
@@ -3034,14 +3223,17 @@ setScores(restoredScores);
   await localForage.setItem("selectedRunnerByBase", snapshot.selectedRunnerByBase || {});
   await localForage.setItem("lastBatterIndex", snapshot.currentBatterIndex ?? 0);
 
-  // ✅ 守備交代画面が使う履歴系も、この回開始時点へ戻す
-  await localForage.setItem("substitutionLogs", snapshot.substitutionLogs || []);
-  await localForage.setItem("pairLocks", snapshot.pairLocks || {});
-  await localForage.setItem("battingReplacements", snapshot.battingReplacements || {});
-
   await localForage.setItem(
     `onePerson.${currentOffenseSide}.lastBatterIndex`,
     snapshot.currentBatterIndex ?? 0
+  );
+  await localForage.setItem(
+    `onePerson.${currentOffenseSide}.checkedIds`,
+    restoredCheckedIds
+  );
+  await localForage.setItem(
+    `onePerson.${currentOffenseSide}.announcedIds`,
+    restoredAnnouncedIds
   );
 
   // ✅ 1人アナウンスモード：守備側投球数もこの回開始時に戻す
@@ -3051,54 +3243,61 @@ setScores(restoredScores);
 
     const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
 
-    // ✅ snapshot.onePersonDefenseSide は古い可能性があるので使わない
-    // ✅ 復元する回の表裏 + 試合開始時の先攻塁側から、守備側を必ず再計算する
+    // ✅ 「この回の最初に戻す」では snapshot に保存した守備側 side を優先する。
+    // ここを表裏から再計算すると、2回以降に先攻塁側情報がずれた時、
+    // 打順・守備エリアの投手が逆チームへ切り替わることがある。
     const side = singleMode
-      ? getOnePersonDefenseSideByTopBottom(
-          snapshot.isTop,
-          savedFirstAttackSide
-        )
+      ? snapshot.onePersonDefenseSide ||
+        (currentOffenseSide === "first" ? "third" : "first")
       : undefined;
 
     if (side) {
+      // ✅ 「この回の最初に戻す」では、守備交代後の状態ではなく
+      // この回開始時点の守備側状態に戻す。
+      const restoredDefenseLineup =
+        snapshot.onePersonDefenseLineupAssignments || null;
+      const restoredDefenseBattingOrder =
+        snapshot.onePersonDefenseBattingOrder || null;
+      const restoredDefenseUsedPlayerInfo =
+        snapshot.onePersonDefenseUsedPlayerInfo || null;
+      const restoredDefenseBenchPlayers =
+        snapshot.onePersonDefenseBenchPlayers || null;
 
-const savedDefenseLineup =
-  (await localForage.getItem<Record<string, number | null>>(
-    `onePerson.${side}.lineupAssignments`
-  )) || {};
+      if (restoredDefenseLineup) {
+        await localForage.setItem(
+          `onePerson.${side}.lineupAssignments`,
+          restoredDefenseLineup
+        );
+      }
 
-const defenseLineup =
-  snapshot.onePersonDefenseLineupAssignments || savedDefenseLineup || {};
+      if (restoredDefenseBattingOrder) {
+        await localForage.setItem(
+          `onePerson.${side}.battingOrder`,
+          restoredDefenseBattingOrder
+        );
+      }
 
-// ✅ 守備交代も、この回開始時点の守備位置へ戻す
-await localForage.setItem(
-  `onePerson.${side}.lineupAssignments`,
-  structuredClone(defenseLineup)
-);
+      if (restoredDefenseUsedPlayerInfo) {
+        await localForage.setItem(
+          `onePerson.${side}.usedPlayerInfo`,
+          restoredDefenseUsedPlayerInfo
+        );
+      }
 
-if (snapshot.onePersonDefenseBattingOrder) {
-  await localForage.setItem(
-    `onePerson.${side}.battingOrder`,
-    structuredClone(snapshot.onePersonDefenseBattingOrder)
-  );
-}
+      if (restoredDefenseBenchPlayers) {
+        await localForage.setItem(
+          `onePerson.${side}.benchPlayers`,
+          restoredDefenseBenchPlayers
+        );
+      }
 
-if (snapshot.onePersonDefenseUsedPlayerInfo) {
-  await localForage.setItem(
-    `onePerson.${side}.usedPlayerInfo`,
-    structuredClone(snapshot.onePersonDefenseUsedPlayerInfo)
-  );
-}
+      const repairedDefenseState = await repairOnePersonSideState(side, {
+        battingOrder: restoredDefenseBattingOrder || undefined,
+        lineupAssignments: restoredDefenseLineup || undefined,
+        usedPlayerInfo: restoredDefenseUsedPlayerInfo || undefined,
+      });
 
-if (snapshot.onePersonDefenseBenchPlayers) {
-  await localForage.setItem(
-    `onePerson.${side}.benchPlayers`,
-    structuredClone(snapshot.onePersonDefenseBenchPlayers)
-  );
-}
-
-localStorage.setItem("assignmentsVersion", String(Date.now()));
-localStorage.setItem("battingOrderVersion", String(Date.now()));
+const defenseLineup = repairedDefenseState.lineupAssignments || {};
 
 const currentSavedPitchCounts =
   (await localForage.getItem<{
@@ -3273,6 +3472,16 @@ await localForage.setItem(
 );
 
 await localForage.setItem(
+  `onePerson.${currentOffenseSide}.checkedIds`,
+  restoredCheckedIds
+);
+
+await localForage.setItem(
+  `onePerson.${currentOffenseSide}.announcedIds`,
+  restoredAnnouncedIds
+);
+
+await localForage.setItem(
   `onePerson.${currentOffenseSide}.team`,
   restoredTeamObject
 );
@@ -3337,6 +3546,7 @@ const restoredBenchPlayers = safePlayers.filter((p: any) => {
 });
 
 setBenchPlayers(restoredBenchPlayers);
+await localForage.setItem("benchPlayers", restoredBenchPlayers);
 await localForage.setItem(
   `onePerson.${currentOffenseSide}.benchPlayers`,
   restoredBenchPlayers
@@ -3466,7 +3676,11 @@ const saveOnePersonPitchCounts = async (
   nextTotal: number,
   nextPitcherTotals: Record<number, number>
 ) => {
-  const defenseSide = getOnePersonDefenseSide(targetIsTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    targetIsTop,
+    savedFirstAttackSide
+  );
 
   const defenseLineup =
     (await localForage.getItem<Record<string, number | null>>(
@@ -3488,7 +3702,11 @@ const saveOnePersonPitchCounts = async (
 };
 
 const buildOnePersonPitchAnnounceText = async () => {
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseTeam =
     (await localForage.getItem<any>(`onePerson.${defenseSide}.team`)) || null;
@@ -3520,7 +3738,11 @@ const buildOnePersonPitchAnnounceText = async () => {
 };
 
 const addPitch = async () => {
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseLineup =
     (await localForage.getItem<Record<string, number | null>>(
@@ -3554,7 +3776,11 @@ const addPitch = async () => {
 const subtractPitch = async () => {
   if (currentPitchCount <= 0 && totalPitchCount <= 0) return;
 
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseLineup =
     (await localForage.getItem<Record<string, number | null>>(
@@ -3600,7 +3826,11 @@ const confirmEditTotalPitch = async () => {
     return;
   }
 
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseLineup =
     (await localForage.getItem<Record<string, number | null>>(
@@ -3673,6 +3903,394 @@ const loadBestOnePersonLineupAssignments = async (
   }
 
   return best || {};
+};
+
+
+// ✅ 1人アナウンスモードのチーム別データを必ず「その塁側に登録したチーム」だけで正規化する。
+// 戻す・守備交代後に通常キー(team / battingOrder / benchPlayers)が別チームへ一時コピーされても、
+// ここを通すことで打順・控え・守備候補に自チーム以外の選手が混ざるのを防ぐ。
+const normalizeOnePersonTeamData = (raw: any) => {
+  if (!raw || typeof raw !== "object") return null;
+
+  const nested = raw.team && typeof raw.team === "object" ? raw.team : null;
+  const base = nested || raw;
+
+  const players = Array.isArray(base.players)
+    ? base.players
+    : Array.isArray(raw.players)
+      ? raw.players
+      : [];
+
+  return {
+    ...base,
+    name: base.name || raw.teamName || raw.name || "",
+    furigana:
+      base.furigana ||
+      base.nameKana ||
+      base.nameFurigana ||
+      raw.furigana ||
+      raw.kana ||
+      raw.reading ||
+      "",
+    players,
+  };
+};
+
+const hasOnePersonPlayerName = (p: any) =>
+  Boolean(
+    String(p?.lastName ?? "").trim() ||
+      String(p?.firstName ?? "").trim()
+  );
+
+const hasOnePersonPlayerNumber = (p: any) =>
+  Boolean(String(p?.number ?? "").trim());
+
+const mergeOnePersonPlayers = (...lists: any[][]) => {
+  const map = new Map<number, any>();
+
+  for (const list of lists) {
+    for (const p of Array.isArray(list) ? list : []) {
+      const id = Number(p?.id);
+      if (!Number.isFinite(id)) continue;
+
+      const prev = map.get(id);
+      if (!prev) {
+        map.set(id, p);
+        continue;
+      }
+
+      const prevScore = (hasOnePersonPlayerName(prev) ? 2 : 0) +
+        (hasOnePersonPlayerNumber(prev) ? 1 : 0);
+      const nextScore = (hasOnePersonPlayerName(p) ? 2 : 0) +
+        (hasOnePersonPlayerNumber(p) ? 1 : 0);
+
+      if (nextScore > prevScore) {
+        map.set(id, { ...prev, ...p });
+      } else {
+        map.set(id, {
+          ...p,
+          ...prev,
+          lastName: prev.lastName || p.lastName,
+          firstName: prev.firstName || p.firstName,
+          lastNameKana: prev.lastNameKana || p.lastNameKana,
+          firstNameKana: prev.firstNameKana || p.firstNameKana,
+          number: prev.number || p.number,
+        });
+      }
+    }
+  }
+
+  return Array.from(map.values());
+};
+
+const getOnePersonTeamIdBySide = async (side: "first" | "third") => {
+  const mi = (await localForage.getItem<any>("matchInfo")) || {};
+  return side === "first" ? mi?.firstBaseTeamId : mi?.thirdBaseTeamId;
+};
+
+const loadCanonicalOnePersonTeam = async (side: "first" | "third") => {
+  const teamId = await getOnePersonTeamIdBySide(side);
+  const teamRegisterStore = await localForage.getItem<any>("teamRegisterStore");
+  const rawFolderTeam =
+    teamId && Array.isArray(teamRegisterStore?.teams)
+      ? teamRegisterStore.teams.find((t: any) => String(t.id) === String(teamId))
+      : null;
+
+  const rawSideTeam = await localForage.getItem<any>(`onePerson.${side}.team`);
+
+  // 登録チームを最優先。登録チームが取れない時だけ onePerson 側を使う。
+  const folderTeam = normalizeOnePersonTeamData(rawFolderTeam);
+  const sideTeam = normalizeOnePersonTeamData(rawSideTeam);
+  const selectedTeam = folderTeam || sideTeam || { name: "", furigana: "", players: [] };
+
+  const players = folderTeam
+    ? mergeOnePersonPlayers(folderTeam.players, sideTeam?.players || [])
+    : mergeOnePersonPlayers(sideTeam?.players || []);
+
+  return {
+    ...selectedTeam,
+    players,
+  };
+};
+
+const normalizeOnePersonBattingEntry = (entry: any) => {
+  const id = Number(typeof entry === "number" ? entry : entry?.id);
+  if (!Number.isFinite(id)) return null;
+  return {
+    id,
+    reason: typeof entry === "object" ? entry?.reason ?? "" : "",
+  };
+};
+
+const sanitizeOnePersonBattingOrder = (
+  primaryOrder: any[],
+  fallbackOrder: any[],
+  teamPlayers: any[]
+) => {
+  const playerIds = new Set(
+    (teamPlayers || [])
+      .map((p: any) => Number(p?.id))
+      .filter(Number.isFinite)
+  );
+  const used = new Set<number>();
+  const maxLen = Math.max(primaryOrder?.length || 0, fallbackOrder?.length || 0);
+  const result: { id: number; reason: string }[] = [];
+
+  for (let i = 0; i < maxLen; i++) {
+    const primary = normalizeOnePersonBattingEntry(primaryOrder?.[i]);
+    const fallback = normalizeOnePersonBattingEntry(fallbackOrder?.[i]);
+
+    const chosen =
+      primary && playerIds.has(primary.id) && !used.has(primary.id)
+        ? primary
+        : fallback && playerIds.has(fallback.id) && !used.has(fallback.id)
+          ? fallback
+          : null;
+
+    if (!chosen) continue;
+    used.add(chosen.id);
+    result.push(chosen);
+  }
+
+  return result;
+};
+
+const sanitizeOnePersonLineupAssignments = (
+  lineup: Record<string, number | null> | undefined,
+  teamPlayers: any[]
+) => {
+  const playerIds = new Set(
+    (teamPlayers || [])
+      .map((p: any) => Number(p?.id))
+      .filter(Number.isFinite)
+  );
+
+  const cleaned: Record<string, number | null> = {};
+  Object.entries(lineup || {}).forEach(([pos, rawId]) => {
+    const id = Number(rawId);
+    cleaned[pos] = Number.isFinite(id) && playerIds.has(id) ? id : null;
+  });
+  return cleaned;
+};
+
+const buildOnePersonBenchPlayers = async (
+  side: "first" | "third",
+  teamPlayers: any[],
+  order: any[],
+  lineup: Record<string, number | null>
+) => {
+  const orderIds = new Set(
+    (order || [])
+      .map((e: any) => Number(e?.id))
+      .filter(Number.isFinite)
+  );
+
+  const assignmentIds = new Set(
+    Object.values(lineup || {})
+      .map((v) => Number(v))
+      .filter(Number.isFinite)
+  );
+
+  const teamId = await getOnePersonTeamIdBySide(side);
+  const teamStartingBenchOut = teamId
+    ? await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)
+    : null;
+
+  const benchOutIds = new Set(
+    (Array.isArray(teamStartingBenchOut) ? teamStartingBenchOut : [])
+      .map((v) => Number(v))
+      .filter(Number.isFinite)
+  );
+
+  return (teamPlayers || []).filter((p: any) => {
+    const id = Number(p?.id);
+    if (!Number.isFinite(id)) return false;
+    return !orderIds.has(id) && !assignmentIds.has(id) && !benchOutIds.has(id);
+  });
+};
+
+const repairOnePersonSideState = async (
+  side: "first" | "third",
+  overrides?: {
+    battingOrder?: any[];
+    fallbackBattingOrder?: any[];
+    lineupAssignments?: Record<string, number | null>;
+    usedPlayerInfo?: Record<string, any>;
+  }
+) => {
+  const team = await loadCanonicalOnePersonTeam(side);
+  const players = Array.isArray(team?.players) ? team.players : [];
+
+  const savedOrder =
+    overrides?.battingOrder ??
+    ((await localForage.getItem<any[]>(`onePerson.${side}.battingOrder`)) || []);
+
+  const fallbackOrder =
+    overrides?.fallbackBattingOrder ??
+    ((await localForage.getItem<any[]>(`onePerson.${side}.startingBattingOrder`)) ||
+      (await localForage.getItem<any[]>("startingBattingOrder")) ||
+      []);
+
+  const rawLineup =
+    overrides?.lineupAssignments ??
+    (await loadBestOnePersonLineupAssignments(side));
+
+  const order = sanitizeOnePersonBattingOrder(savedOrder, fallbackOrder, players);
+  const lineup = sanitizeOnePersonLineupAssignments(rawLineup, players);
+  const bench = await buildOnePersonBenchPlayers(side, players, order, lineup);
+
+  await localForage.setItem(`onePerson.${side}.team`, team);
+  await localForage.setItem(`onePerson.${side}.battingOrder`, order);
+  await localForage.setItem(`onePerson.${side}.lineupAssignments`, lineup);
+  await localForage.setItem(`onePerson.${side}.benchPlayers`, bench);
+
+  if (overrides?.usedPlayerInfo) {
+    await localForage.setItem(`onePerson.${side}.usedPlayerInfo`, overrides.usedPlayerInfo);
+  }
+
+  return { team, players, battingOrder: order, lineupAssignments: lineup, benchPlayers: bench };
+};
+
+const saveLockedOffenseInningStartSnapshotAfterHalfSwitch = async (
+  targetInning: number,
+  targetIsTop: boolean,
+  firstAttackSide: "first" | "third"
+) => {
+  const matchInfo =
+    (await localForage.getItem<MatchInfo>("matchInfo")) || {};
+
+  if ((matchInfo as any)?.announcementMode !== "single") return;
+
+  const matchKey = buildDefenseMatchKey(matchInfo);
+  const storageKey = getOffenseInningStartSnapshotKey(
+    matchKey,
+    targetInning,
+    targetIsTop
+  );
+
+  const existing =
+    await localForage.getItem<OffenseInningStartSnapshot>(storageKey);
+
+  // ✅ イニング切替直後に作ったBは、この半回中は絶対に更新しない。
+  if (existing?.lockedFromHalfSwitch === true) {
+    return;
+  }
+
+  const offenseSide = getOnePersonSideByTopBottom(
+    targetIsTop,
+    firstAttackSide
+  );
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    targetIsTop,
+    firstAttackSide
+  );
+
+  const offenseState = await repairOnePersonSideState(offenseSide);
+  const defenseState = await repairOnePersonSideState(defenseSide);
+
+  const defensePitchCounts =
+    (await localForage.getItem<{
+      current: number;
+      total: number;
+      pitcherId?: number | null;
+    }>(`onePerson.${defenseSide}.pitchCounts`)) || {
+      current: 0,
+      total: 0,
+      pitcherId: defenseState.lineupAssignments?.["投"] ?? null,
+    };
+
+  const defensePitcherTotals =
+    (await localForage.getItem<Record<number, number>>(
+      `onePerson.${defenseSide}.pitcherTotals`
+    )) || {};
+
+  const savedScores =
+    ((await localForage.getItem<Scores>("scores")) || scores || {}) as Scores;
+
+  const checkedAtStart =
+    (await localForage.getItem<number[]>(
+      `onePerson.${offenseSide}.checkedIds`
+    )) || [];
+
+  const announcedAtStart =
+    (await localForage.getItem<number[]>(
+      `onePerson.${offenseSide}.announcedIds`
+    )) || [];
+
+  const startIndex =
+    (await localForage.getItem<number>(
+      `onePerson.${offenseSide}.lastBatterIndex`
+    )) ?? 0;
+
+  const snapshot: OffenseInningStartSnapshot = {
+    savedAt: Date.now(),
+    lockedFromHalfSwitch: true,
+    matchKey,
+
+    inning: targetInning,
+    isTop: targetIsTop,
+    isHome: false,
+
+    lineupAssignments: structuredClone(offenseState.lineupAssignments || {}),
+    battingOrder: structuredClone(offenseState.battingOrder || []),
+    usedPlayerInfo: structuredClone(
+      ((await localForage.getItem<Record<string, any>>(
+        `onePerson.${offenseSide}.usedPlayerInfo`
+      )) || {})
+    ),
+    benchPlayers: structuredClone(offenseState.benchPlayers || []),
+
+    scores: structuredClone(savedScores || {}),
+
+    runnerAssignments: { "1塁": null, "2塁": null, "3塁": null },
+    replacedRunners: {},
+    tempRunnerFlags: {},
+    selectedRunnerByBase: {},
+
+    currentBatterIndex: Number(startIndex || 0),
+
+    checkedIds: structuredClone(checkedAtStart || []),
+    announcedIds: structuredClone(announcedAtStart || []),
+
+    onePersonOffenseSide: offenseSide,
+    onePersonDefenseSide: defenseSide,
+    onePersonDefensePitchCounts: structuredClone(defensePitchCounts),
+    onePersonDefensePitcherTotals: structuredClone(defensePitcherTotals),
+
+    onePersonDefenseLineupAssignments: structuredClone(
+      defenseState.lineupAssignments || {}
+    ),
+    onePersonDefenseBattingOrder: structuredClone(
+      defenseState.battingOrder || []
+    ),
+    onePersonDefenseUsedPlayerInfo: structuredClone(
+      ((await localForage.getItem<Record<string, any>>(
+        `onePerson.${defenseSide}.usedPlayerInfo`
+      )) || {})
+    ),
+    onePersonDefenseBenchPlayers: structuredClone(
+      defenseState.benchPlayers || []
+    ),
+
+    matchInfo: {
+      ...matchInfo,
+      inning: targetInning,
+      isTop: targetIsTop,
+      isDefense: false,
+      isHome: false,
+    },
+  };
+
+  await localForage.setItem(storageKey, snapshot);
+
+  console.log("[OFFENSE INNING START SNAPSHOT B LOCKED] saved", {
+    storageKey,
+    inning: targetInning,
+    isTop: targetIsTop,
+    offenseSide,
+    defenseSide,
+    battingOrder: snapshot.battingOrder,
+  });
 };
 
 const openExistingDefenseChangeForOnePerson = async () => {
@@ -3842,8 +4460,9 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
     savedFirstAttackSide
   );
 
-  const offenseTeam =
-    (await localForage.getItem<any>(`onePerson.${offenseSide}.team`)) || null;
+  // ✅ 守備交代画面へ渡すチームは、必ず終了した攻撃側の登録チームに正規化する。
+  // onePerson.xxx.team や通常キー team が一時コピーで汚れていても、自チーム以外を混ぜない。
+  const offenseTeam = await loadCanonicalOnePersonTeam(offenseSide);
 
   // 代打・代走後の最新打順は、現在攻撃していたチーム専用キーを最優先にする。
   // 1回表終了時はシート紹介用に通常キーが書き換わる経路があるため、
@@ -3859,11 +4478,13 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
     )) || [];
 
   const latestBattingOrder =
-    sideBattingOrder.length > 0
-      ? sideBattingOrder
-      : commonBattingOrder.length > 0
-      ? commonBattingOrder
-      : battingOrder || [];
+    currentOnePersonOffenseSideRef.current === offenseSide && battingOrder.length > 0
+      ? battingOrder
+      : sideBattingOrder.length > 0
+        ? sideBattingOrder
+        : commonBattingOrder.length > 0
+          ? commonBattingOrder
+          : [];
 
   const sideLineupAssignments =
     await loadBestOnePersonLineupAssignments(offenseSide);
@@ -3878,12 +4499,27 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
   // そのため、現在攻撃していたチーム専用の守備位置を最優先にする。
   // 専用データが空の時だけ通常キーを保険として使う。
   const latestAssignments =
-    countAssignedPositionsForOnePerson(sideLineupAssignments) > 0
-      ? sideLineupAssignments
-      : commonLineupAssignments;
+    currentOnePersonOffenseSideRef.current === offenseSide &&
+    countAssignedPositionsForOnePerson(assignments || {}) > 0
+      ? assignments
+      : countAssignedPositionsForOnePerson(sideLineupAssignments) > 0
+        ? sideLineupAssignments
+        : commonLineupAssignments;
+
+  const sideUsedPlayerInfo =
+    (await localForage.getItem<Record<string, any>>(
+      `onePerson.${offenseSide}.usedPlayerInfo`
+    )) || {};
+
+  const commonUsedPlayerInfo =
+    (await localForage.getItem<Record<string, any>>("usedPlayerInfo")) || {};
 
   const latestUsedPlayerInfo =
-    (await localForage.getItem<Record<string, any>>("usedPlayerInfo")) || {};
+    currentOnePersonOffenseSideRef.current === offenseSide
+      ? { ...commonUsedPlayerInfo, ...(usedPlayerInfo || {}) }
+      : Object.keys(sideUsedPlayerInfo || {}).length > 0
+        ? sideUsedPlayerInfo
+        : commonUsedPlayerInfo;
 
   const offensePitchCounts =
     (await localForage.getItem<{
@@ -3908,21 +4544,17 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
   // 「この回の投球数」は半イニング終了時点で0に戻しておく
   await resetCurrentHalfPitchCountForOnePerson(endedIsTop, totalPitchCount);
 
-  // ✅ 代打・代走後の攻撃側データを onePerson 側にも保存
-  await localForage.setItem(
-    `onePerson.${offenseSide}.battingOrder`,
-    latestBattingOrder
-  );
+  // ✅ 代打・代走後の攻撃側データを onePerson 側にも保存。
+  // 保存前にその塁側の登録選手だけでサニタイズして、守備交代画面の控え混入を防ぐ。
+  const repairedLatestOffense = await repairOnePersonSideState(offenseSide, {
+    battingOrder: latestBattingOrder,
+    lineupAssignments: latestAssignments,
+    usedPlayerInfo: latestUsedPlayerInfo,
+  });
 
-  await localForage.setItem(
-    `onePerson.${offenseSide}.lineupAssignments`,
-    latestAssignments
-  );
-
-  await localForage.setItem(
-    `onePerson.${offenseSide}.usedPlayerInfo`,
-    latestUsedPlayerInfo
-  );
+  const safeLatestBattingOrder = repairedLatestOffense.battingOrder;
+  const safeLatestAssignments = repairedLatestOffense.lineupAssignments;
+  const safeLatestBenchPlayers = repairedLatestOffense.benchPlayers;
 
   // ✅ 守備交代画面で scores が消えても戻せるように退避
   const savedScoresBeforeDefenseChange =
@@ -3954,10 +4586,11 @@ const openExistingDefenseChangeForEndedOffenseTeam = async () => {
 
   // ✅ 既存 DefenseChange が読む通常キーへ、今攻撃していたチームをコピー
   await localForage.setItem("team", offenseTeam);
-  await localForage.setItem("lineupAssignments", latestAssignments);
-  await localForage.setItem("startingassignments", latestAssignments);
-  await localForage.setItem("battingOrder", latestBattingOrder);
-  await localForage.setItem("startingBattingOrder", latestBattingOrder);
+  await localForage.setItem("lineupAssignments", safeLatestAssignments);
+  await localForage.setItem("startingassignments", safeLatestAssignments);
+  await localForage.setItem("battingOrder", safeLatestBattingOrder);
+  await localForage.setItem("startingBattingOrder", safeLatestBattingOrder);
+  await localForage.setItem("benchPlayers", safeLatestBenchPlayers);
   await localForage.setItem("usedPlayerInfo", latestUsedPlayerInfo);
   await localForage.setItem("pitchCounts", offensePitchCounts);
   await localForage.setItem("pitcherTotals", offensePitcherTotals);
@@ -3981,7 +4614,11 @@ const handleSelectDefenseChangePos = async (pos: string) => {
   setDefenseChangePos(pos);
   setDefenseChangePlayerId("");
 
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseTeam =
     (await localForage.getItem<any>(`onePerson.${defenseSide}.team`)) || null;
@@ -4013,7 +4650,11 @@ const confirmOnePersonDefenseChange = async () => {
     return;
   }
 
-  const defenseSide = getOnePersonDefenseSide(isTop);
+  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    isTop,
+    savedFirstAttackSide
+  );
 
   const defenseTeam =
     (await localForage.getItem<any>(`onePerson.${defenseSide}.team`)) || null;
@@ -4109,7 +4750,6 @@ const confirmOnePersonDefenseChange = async () => {
   setDefenseChangeCurrentPlayerName("");
 
   // 念のため球数表示も最新化
-  const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
   await loadOnePersonPitchCountForHalf(isTop, savedFirstAttackSide);
 };
 
@@ -4171,163 +4811,49 @@ const loadOnePersonTeamForHalf = async (
   const side = getOnePersonSideByTopBottom(targetIsTop, savedFirstAttackSide);
   currentOnePersonOffenseSideRef.current = side;
 
-  const opponentSide =
-    side === "first" ? "third" : "first";
+  const opponentSide = side === "first" ? "third" : "first";
 
-  const teamData =
-    (await localForage.getItem<any>(`onePerson.${side}.team`)) || null;
+  // ✅ ここで必ず登録済みの自チーム選手だけに正規化する。
+  // 通常キーが守備交代画面用に別チームへ一時コピーされていても、
+  // 打順・代打代走候補・控えに別チーム選手が混ざらない。
+  const repaired = await repairOnePersonSideState(side);
+  const teamData = repaired.team;
+  const players = repaired.players;
+  const order = repaired.battingOrder;
+  const lineup = repaired.lineupAssignments;
+  const bench = repaired.benchPlayers;
 
-  const opponentData =
-    (await localForage.getItem<any>(`onePerson.${opponentSide}.team`)) || null;
+  const opponentRepaired = await repairOnePersonSideState(opponentSide);
+  const opponentData = opponentRepaired.team;
 
-  const firstTeam =
-    (await localForage.getItem<any>("onePerson.first.team")) || null;
-  const thirdTeam =
-    (await localForage.getItem<any>("onePerson.third.team")) || null;
+  const firstTeam = await loadCanonicalOnePersonTeam("first");
+  const thirdTeam = await loadCanonicalOnePersonTeam("third");
 
   setOnePersonFirstTeamName(firstTeam?.name || "1塁側");
   setOnePersonThirdTeamName(thirdTeam?.name || "3塁側");
 
-  const order =
-    (await localForage.getItem<{ id: number; reason?: string }[]>(
-      `onePerson.${side}.battingOrder`
-    )) || [];
-
-  const lineup =
-    (await localForage.getItem<Record<string, number | null>>(
-      `onePerson.${side}.lineupAssignments`
-    )) || {};
-
-  const players = Array.isArray(teamData?.players) ? teamData.players : [];
-
   setPlayers(players);
   setAllPlayers(players);
   setBattingOrder(order as { id: number; reason: string }[]);
+
   const sideUsedPlayerInfo =
     (await localForage.getItem<Record<string, any>>(
       `onePerson.${side}.usedPlayerInfo`
     )) || {};
 
   setUsedPlayerInfo(sideUsedPlayerInfo);
-
-  // ✅ 1人アナウンスモードでは、チェック状態もチームごとに読み直す。
-  // ここを同期しないと、表裏切替後に前チームのチェック状態で snapshot が作られることがある。
-  const miForChecks = (await localForage.getItem<any>("matchInfo")) || {};
-  const matchKeyForChecks = buildDefenseMatchKey(miForChecks);
-  const targetInningForChecks = Number(miForChecks?.inning) || inning || 1;
-
-  let sideCheckedIds =
-    (await localForage.getItem<number[]>(`onePerson.${side}.checkedIds`)) || [];
-
-  let sideAnnouncedIds =
-    (await localForage.getItem<number[]>(`onePerson.${side}.announcedIds`)) || [];
-
-  // ✅ 1回表・1回裏は、半回の初回読み込み時だけ必ず未チェックから開始する。
-  // 前回試合のチーム別 checkedIds が残っていても、ここで消す。
-  if (targetInningForChecks === 1) {
-    const initKey = getOnePersonFirstInningCheckInitKey(
-      matchKeyForChecks,
-      side,
-      targetIsTop
-    );
-    const alreadyInitialized = await localForage.getItem<boolean>(initKey);
-
-    if (!alreadyInitialized) {
-      sideCheckedIds = [];
-      sideAnnouncedIds = [];
-
-      await localForage.setItem(`onePerson.${side}.checkedIds`, []);
-      await localForage.setItem(`onePerson.${side}.announcedIds`, []);
-      await localForage.setItem(initKey, true);
-    }
-  }
-
-  setCheckedIds(sideCheckedIds);
-  setAnnouncedIds(sideAnnouncedIds);
-  announcedIdsRef.current = sideAnnouncedIds;
-
-  // 既存互換キーにも現在表示中チームの状態を反映する
-  await localForage.setItem("checkedIds", sideCheckedIds);
-  await localForage.setItem("announcedIds", sideAnnouncedIds);
-
-
-  // ❌ 通常モード用キーを上書きしない
-  // await localForage.setItem("usedPlayerInfo", sideUsedPlayerInfo);
-
-  // ✅ 1人アナウンス専用キーにだけ保存
-  await localForage.setItem(
-    `onePerson.${side}.usedPlayerInfo`,
-    sideUsedPlayerInfo
-  );
+  await localForage.setItem(`onePerson.${side}.usedPlayerInfo`, sideUsedPlayerInfo);
 
   setAssignments(lineup);
+  setBenchPlayers(bench);
 
-  // ✅ 1人アナウンスモード用：攻撃側チームの控え選手を作る
+  // ✅ 同姓判定も現在の攻撃側チームだけで作り直す
   {
     const starterIds = new Set<number>(
       (order || [])
         .map((e: any) => Number(e?.id))
         .filter(Number.isFinite)
     );
-
-    // DHありの場合、投手が打順に入っていないことがあるので、投手も出場中扱いにする
-    const dhActive = Boolean((lineup as any)?.["指"]);
-    const pitcherId = (lineup as any)?.["投"];
-
-    if (dhActive && typeof pitcherId === "number") {
-      starterIds.add(pitcherId);
-    }
-
-    // ✅ 1人アナウンスモードでは、スタメン設定画面で
-    // チームごとに保存した「出場しない選手」を読む
-    const matchInfoForBench =
-      (await localForage.getItem<any>("matchInfo")) || {};
-
-    const currentTeamId =
-      side === "first"
-        ? matchInfoForBench?.firstBaseTeamId
-        : matchInfoForBench?.thirdBaseTeamId;
-
-    const teamStartingBenchOut =
-      currentTeamId
-        ? await localForage.getItem<number[]>(
-            `startingBenchOutIds_${currentTeamId}`
-          )
-        : null;
-
-    const benchOutIds = Array.from(
-      new Set(
-        (Array.isArray(teamStartingBenchOut) ? teamStartingBenchOut : [])
-          .map((v) => Number(v))
-          .filter(Number.isFinite)
-      )
-    );
-
-    // 控え選手 ＝ 全選手 − 打順に入っている選手 − 守備についている選手 − 出場しない選手
-    const assignmentIds = Object.values(lineup || {})
-      .map((v) => Number(v))
-      .filter(Number.isFinite);
-
-    const bench = players.filter((p: any) => {
-      const id = Number(p.id);
-      if (!Number.isFinite(id)) return false;
-
-      const isInBattingOrder = starterIds.has(id);
-      const isInDefense = assignmentIds.includes(id);
-      const isBenchOut = benchOutIds.includes(id);
-
-      return !isInBattingOrder && !isInDefense && !isBenchOut;
-    });
-
-    setBenchPlayers(bench);
-
-    // ❌ 通常モード用キーを上書きしない
-    // await localForage.setItem("benchPlayers", bench);
-
-    // ✅ 1人アナウンス専用キーにだけ保存
-    await localForage.setItem(`onePerson.${side}.benchPlayers`, bench);
-
-    // ✅ 同姓判定も現在の攻撃側チームで作り直す
     const starterList = players.filter((p: any) => starterIds.has(Number(p.id)));
     const pool = [...starterList, ...bench];
 
@@ -4357,8 +4883,6 @@ const loadOnePersonTeamForHalf = async (
 
   setOpponentTeam(opponentData?.name || "");
 
-  // ✅ 1人モードでは、表裏から算出した攻撃側 side のキーを直接読む。
-  // getOnePersonLastBatterKey(targetIsTop) は state 更新タイミングにより古い先攻側を参照することがある。
   const savedIndex =
     (await localForage.getItem<number>(`onePerson.${side}.lastBatterIndex`)) ?? 0;
 
@@ -4371,17 +4895,28 @@ const loadOnePersonTeamForHalf = async (
   setIsLeadingBatter(true);
   hasRestoredCurrentBatterRef.current = true;
 
-// ❌ 通常モード用キーを上書きしない
-// await localForage.setItem("team", teamData);
-// await localForage.setItem("battingOrder", order);
-// await localForage.setItem("lineupAssignments", lineup);
-// await localForage.setItem("lastBatterIndex", safeIndex);
+  const sideCheckedIds =
+    (await localForage.getItem<number[]>(`onePerson.${side}.checkedIds`)) || [];
+  const sideAnnouncedIds =
+    (await localForage.getItem<number[]>(`onePerson.${side}.announcedIds`)) || [];
 
-// ✅ 1人アナウンス専用キーにだけ保存
-await localForage.setItem(`onePerson.${side}.team`, teamData);
-await localForage.setItem(`onePerson.${side}.battingOrder`, order);
-await localForage.setItem(`onePerson.${side}.lineupAssignments`, lineup);
-await localForage.setItem(`onePerson.${side}.lastBatterIndex`, safeIndex);
+  setCheckedIds(sideCheckedIds);
+  setAnnouncedIds(sideAnnouncedIds);
+  announcedIdsRef.current = sideAnnouncedIds;
+  await localForage.setItem("checkedIds", sideCheckedIds);
+  await localForage.setItem("announcedIds", sideAnnouncedIds);
+
+  await localForage.setItem(`onePerson.${side}.lastBatterIndex`, safeIndex);
+
+  // ✅ 代打・代走モーダルなど既存処理が通常キーを見るため、
+  // 画面に表示中の攻撃側チームだけを通常キーにも同期する。
+  await localForage.setItem("team", teamData);
+  await localForage.setItem("battingOrder", order);
+  await localForage.setItem("lineupAssignments", lineup);
+  await localForage.setItem("benchPlayers", bench);
+  await localForage.setItem("lastBatterIndex", safeIndex);
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
 
   // ✅ 守備側投手の球数を読み込む
   await loadOnePersonPitchCountForHalf(targetIsTop, savedFirstAttackSide);
@@ -4403,24 +4938,24 @@ await localForage.setItem(`onePerson.${side}.lastBatterIndex`, safeIndex);
     setAnnouncementHTML(batterHtml);
   }
 
-  // ✅ チーム読み込みが完全に終わった後で、この半回の開始状態を保存する。
-  // state の反映待ちに依存せず、onePerson.${side} の保存済みデータから作る。
-  await saveOffenseInningStartSnapshotIfNeeded(
-    targetInning,
-    targetIsTop,
-    side
-  );
-
 };
 
 const switchHalfInOnePersonMode = async () => {
   const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
 
+  // ✅ 先攻側は試合開始時に決めた固定値を使う。
+  // 戻す後に現在表示中チームから再計算して保存し直すと、
+  // 表裏・打順・守備投手が逆チームへずれる原因になる。
+  const currentOffenseSide =
+    currentOnePersonOffenseSideRef.current ||
+    getOnePersonSideByTopBottom(isTop, savedFirstAttackSide);
+
+  setOnePersonFirstAttackSide(savedFirstAttackSide);
+
   // 切り替える前に、現在攻撃中チームの打順位置を保存
   // ※ getOnePersonLastBatterKey() は state の onePersonFirstAttackSide に依存するため、
   //   1回表→シート紹介→1回裏→2回表 のような経路で stale になることがある。
-  //   ここでは保存済みの先攻側から現在の攻撃側を直接計算して保存する。
-  const currentOffenseSide = getOnePersonSideByTopBottom(isTop, savedFirstAttackSide);
+  //   ここでは現在表示中の攻撃側を直接使って保存する。
   await localForage.setItem(
     `onePerson.${currentOffenseSide}.lastBatterIndex`,
     currentBatterIndex
@@ -4442,6 +4977,14 @@ const switchHalfInOnePersonMode = async () => {
   const nextIsTop = !isTop;
   const nextInning = isTop ? inning : inning + 1;
 
+  // ✅ 「〇回の表/裏の最後に戻す」後に次の半回へ進む場合でも、
+  // 次の攻撃側チームの lastBatterIndex を 0 で上書きしない。
+  // 0 を保存すると、保存済みの次打者情報が消えて黄色行が1番へ戻るため、
+  // フラグだけ解除し、loadOnePersonTeamForHalf 側で次チームの保存済み値を読む。
+  if (resetNextOnePersonBatterIndexOnceRef.current) {
+    resetNextOnePersonBatterIndexOnceRef.current = false;
+  }
+
   setIsTop(nextIsTop);
   setInning(nextInning);
 
@@ -4459,6 +5002,15 @@ const switchHalfInOnePersonMode = async () => {
 
   // ✅ ここが重要：次の攻撃チームに切り替える
   await loadOnePersonTeamForHalf(nextIsTop, savedFirstAttackSide);
+
+  // ✅ Bスナップショット：
+  // イニング切替直後の状態をここで固定保存する。
+  // この半回中は代打・代走・守備交代があっても上書きしない。
+  await saveLockedOffenseInningStartSnapshotAfterHalfSwitch(
+    nextInning,
+    nextIsTop,
+    savedFirstAttackSide
+  );
 
   // ✅ 念のため、次の守備側投手名・投球数を強制更新
   await loadOnePersonPitchCountForHalf(nextIsTop, savedFirstAttackSide);
@@ -4591,14 +5143,14 @@ const snapshot =
     "tempRunnerByOrder",
     snapshot.tempRunnerByOrder || {}
   );
-  await localForage.setItem("scores", snapshot.scores || {});
+  await localForage.setItem("scores", restoredScores);
   await localForage.setItem("pitcherTotals", snapshot.pitcherTotals || {});
   await localForage.setItem(
     "pitchCounts",
     snapshot.pitchCounts || { current: 0, total: 0 }
   );
   await localForage.setItem("usedPlayerInfo", snapshot.usedPlayerInfo || {});
-  await localForage.setItem("benchPlayers", snapshot.benchPlayers || []);
+  // benchPlayers は下で現在チームから再計算して保存する
   await localForage.setItem("substitutionLogs", snapshot.substitutionLogs || []);
   await localForage.setItem("pairLocks", snapshot.pairLocks || {});
   await localForage.setItem(
