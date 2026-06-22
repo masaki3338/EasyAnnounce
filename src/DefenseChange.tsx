@@ -4056,6 +4056,10 @@ const hoverPosRef = React.useRef<string | null>(null);
 const [isDirty, setIsDirty] = useState(false);
 const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
+// ✅ 代打・代走後に強制表示された守備交代画面では、未確定のまま戻さない
+const [isForcedDefenseChangeByPinch, setIsForcedDefenseChangeByPinch] = useState(false);
+const [showForcedCommitMessage, setShowForcedCommitMessage] = useState(false);
+
 // ✅ 追加：アナウンス表示を押さずに交代確定した時の確認
 const [showUnannouncedConfirm, setShowUnannouncedConfirm] = useState(false);
 const [hasShownAnnouncement, setHasShownAnnouncement] = useState(false);
@@ -4264,35 +4268,61 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
   }
 };
 
+const normalizeIdList = (raw: unknown): number[] => {
+  if (!Array.isArray(raw)) return [];
+
+  return Array.from(
+    new Set(
+      raw
+        .map((v) => Number(v))
+        .filter(Number.isFinite)
+    )
+  );
+};
+
 const getCurrentDefenseTeamId = async () => {
   const team = await localForage.getItem<any>("team");
+  const matchInfo = await localForage.getItem<any>("matchInfo");
+  const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
 
-  return (
+  const normalTeamId =
     team?.id ||
     team?.teamId ||
     team?.team?.id ||
     team?.originalTeamId ||
-    null
-  );
+    null;
+
+  // 1人用モードでは localForage の "team" が自チーム固定になることがあるため、
+  // 守備交代対象のベンチ側からチームIDを補完して、ベンチ外選手を正しく除外する。
+  const defenseSide =
+    onePersonCtx?.defenseSide ||
+    onePersonCtx?.side ||
+    onePersonCtx?.benchSide ||
+    null;
+
+  const onePersonTeamId =
+    defenseSide === "first" || defenseSide === "1塁側"
+      ? matchInfo?.firstBaseTeamId
+      : defenseSide === "third" || defenseSide === "3塁側"
+        ? matchInfo?.thirdBaseTeamId
+        : null;
+
+  return onePersonTeamId || normalTeamId;
 };
 
 const loadCurrentDefenseBenchOutIds = async () => {
   const teamId = await getCurrentDefenseTeamId();
 
-  if (!teamId) return [];
+  const rawByTeam = teamId
+    ? await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)
+    : null;
 
-  const raw =
-    (await localForage.getItem<number[]>(
-      `startingBenchOutIds_${teamId}`
-    )) ?? [];
+  // OnePersonAnnounceScreen 側から守備交代画面を開く直前に保存する保険キー。
+  // チームID解決に失敗しても、対象チームのベンチ外選手を除外できるようにする。
+  const rawFallback = await localForage.getItem<number[]>("defenseChangeBenchOutIds");
 
-  return Array.from(
-    new Set(
-      (Array.isArray(raw) ? raw : [])
-        .map((v) => Number(v))
-        .filter(Number.isFinite)
-    )
-  );
+  const byTeam = normalizeIdList(rawByTeam);
+  return byTeam.length > 0 ? byTeam : normalizeIdList(rawFallback);
 };
 
 // 新しい操作の前に履歴へ積む（永続化対応）
@@ -4622,6 +4652,8 @@ const hasPinchAtLoad = Object.values(usedInfo || {}).some((info: any) => {
     reason === "臨時代走"
   );
 });
+
+setIsForcedDefenseChangeByPinch(hasPinchAtLoad);
 
 setShouldGoSeatIntroductionAfterConfirm(
   isVisitor && inning === 1 && hasPinchAtLoad
@@ -6853,8 +6885,52 @@ const handleBackClick = () => {
   }
 };
 
+// ✅ 1人用モードで守備交代画面から「確定せず戻る」場合、
+// DefenseChange を開くために通常キーへ一時コピーしたチーム/打順の影響で
+// 攻撃画面の打順チェックが消えないよう、開く直前の攻撃側状態を復元する。
+const restoreOnePersonBackSnapshotIfNeeded = async () => {
+  const ctx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  if (!ctx?.enabled) return;
+
+  const snap = await localForage.getItem<any>("onePersonDefenseChangeBackSnapshot");
+  if (!snap?.offenseSide) return;
+
+  const side = snap.offenseSide as "first" | "third";
+  const checkedIds = normalizeIdList(snap.checkedIds);
+  const announcedIds = normalizeIdList(snap.announcedIds);
+  const currentBatterIndex = Number.isFinite(Number(snap.currentBatterIndex))
+    ? Number(snap.currentBatterIndex)
+    : 0;
+
+  if (snap.team) {
+    await localForage.setItem("team", snap.team);
+    await localForage.setItem(`onePerson.${side}.team`, snap.team);
+  }
+  if (Array.isArray(snap.battingOrder)) {
+    await localForage.setItem("battingOrder", snap.battingOrder);
+    await localForage.setItem(`onePerson.${side}.battingOrder`, snap.battingOrder);
+    localStorage.setItem("battingOrderVersion", String(Date.now()));
+  }
+  if (snap.lineupAssignments && typeof snap.lineupAssignments === "object") {
+    await localForage.setItem("lineupAssignments", snap.lineupAssignments);
+    await localForage.setItem(`onePerson.${side}.lineupAssignments`, snap.lineupAssignments);
+    localStorage.setItem("assignmentsVersion", String(Date.now()));
+  }
+  if (Array.isArray(snap.benchPlayers)) {
+    await localForage.setItem("benchPlayers", snap.benchPlayers);
+    await localForage.setItem(`onePerson.${side}.benchPlayers`, snap.benchPlayers);
+  }
+
+  await localForage.setItem("checkedIds", checkedIds);
+  await localForage.setItem(`onePerson.${side}.checkedIds`, checkedIds);
+  await localForage.setItem("announcedIds", announcedIds);
+  await localForage.setItem(`onePerson.${side}.announcedIds`, announcedIds);
+  await localForage.setItem("lastBatterIndex", currentBatterIndex);
+  await localForage.setItem(`onePerson.${side}.lastBatterIndex`, currentBatterIndex);
+};
+
 // DefenseChange.tsx 内
-const handleBackToDefense = () => {
+const handleBackToDefense = async () => {
   console.log("[DefenseChange] back to defense (no commit)");
 
   // 「確定せずに戻る」場合は、画面オープン時点の大谷ルールへ戻す（storage も復元）
@@ -6865,8 +6941,10 @@ const handleBackToDefense = () => {
       .catch((e) => console.warn("failed to restore ohtaniRule on back", e));
   }
 
+  await restoreOnePersonBackSnapshotIfNeeded();
+
   // ✅ 守備画面へ戻すのは App.tsx 側の画面遷移（setScreen）で行う
-  onConfirmed();
+  await onConfirmed();
 };
 
 const checkReentryForBenchToField = ({
@@ -6938,12 +7016,34 @@ const checkReentryForBenchToField = ({
         )
       : -1;
 
+  // ✅ 元スタメンに紐づく最新の代打・代走選手IDを取得
+  // 代打・代走直後は currentOrderSource 側の index が元打順と一致しないことがあるため、
+  // 「戻す元スタメン」と「外される代打/代走選手」の紐づきも直接判定する。
+  const latestSubIdForOriginal =
+    wasStarter && origIdForTo != null
+      ? resolveLatestSubId(Number(origIdForTo), usedPlayerInfo as any)
+      : null;
+
+  const replacingOwnLatestSub =
+    typeof latestSubIdForOriginal === "number" &&
+    typeof fromId === "number" &&
+    Number(latestSubIdForOriginal) !== Number(origIdForTo) &&
+    Number(fromId) === Number(latestSubIdForOriginal);
+
   const isReentryNow =
     wasStarter &&
     isOffField &&
-    originalOrderIndex >= 0 &&
-    currentOrderIndexOfFrom >= 0 &&
-    originalOrderIndex === currentOrderIndexOfFrom;
+    (
+      (
+        originalOrderIndex >= 0 &&
+        currentOrderIndexOfFrom >= 0 &&
+        originalOrderIndex === currentOrderIndexOfFrom
+      ) ||
+      // ログ上、originalOrderIndex が -1 でも usedPlayerInfo から
+      // 「戻す元スタメン ↔ 外される最新代打/代走」が特定できるケースがある。
+      // この場合は打順indexに依存せずリエントリーとして許可する。
+      replacingOwnLatestSub
+    );
 
   console.log("[REENTRY CHECK same-order][modal/common]", {
     toId,
@@ -6955,6 +7055,8 @@ const checkReentryForBenchToField = ({
     isOffField,
     originalOrderIndex,
     currentOrderIndexOfFrom,
+    latestSubIdForOriginal,
+    replacingOwnLatestSub,
     originalOrderSource,
     currentOrderSource,
     isReentryNow,
@@ -9667,6 +9769,14 @@ const canDropHere =
             className="col-span-1 py-3 font-semibold bg-green-600 text-white rounded-br-2xl hover:bg-green-700"
             onClick={() => {
               setShowLeaveConfirm(false);
+
+              // 代打・代走後に強制表示された守備交代画面では、
+              // YESでも画面遷移させず「交代確定」を促す。
+              if (isForcedDefenseChangeByPinch) {
+                setShowForcedCommitMessage(true);
+                return;
+              }
+
               handleBackToDefense();
             }}
 
@@ -9675,6 +9785,43 @@ const canDropHere =
           </button>
 
         </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 強制守備交代 未確定メッセージ */}
+{showForcedCommitMessage && (
+  <div
+    className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 px-6"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="forced-commit-message-title"
+    onClick={() => setShowForcedCommitMessage(false)}
+  >
+    <div
+      className="w-full max-w-sm rounded-2xl bg-white text-gray-900 shadow-2xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-green-600 text-white text-center font-bold py-3">
+        <h3 id="forced-commit-message-title" className="text-base">確認</h3>
+      </div>
+
+      <div className="px-6 py-5 text-center">
+        <p className="whitespace-pre-line text-[15px] font-bold leading-relaxed">
+          代打・代走後の守備交代が未確定です。{"\n"}
+          「交代確定」をしてください。
+        </p>
+      </div>
+
+      <div className="px-5 pb-5">
+        <button
+          className="w-full py-3 rounded-full bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800"
+          onClick={() => setShowForcedCommitMessage(false)}
+        >
+          OK
+        </button>
       </div>
     </div>
   </div>

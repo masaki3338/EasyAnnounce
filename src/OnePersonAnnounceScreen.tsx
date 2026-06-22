@@ -2665,6 +2665,20 @@ const snapshot =
 
   const safeAssignments = { ...(snapshot.lineupAssignments || {}) };
 
+  // ✅ 復元先の攻撃側 side を state 更新より先に確定する。
+  // ここが遅いと、復元直前に攻撃していた相手チームの side のまま
+  // setCurrentBatterIndex() の自動保存 useEffect が走り、
+  // 「戻した半回の打順」が次の攻撃側チームの lastBatterIndex に混入する。
+  // 例：1回表最後へ戻す前に Bチーム攻撃中だった場合、Aチーム4番復元時に
+  // onePerson.B.lastBatterIndex = 4 と保存され、次のB攻撃が4番から始まってしまう。
+  const savedFirstAttackSideForRestore = await getSavedOnePersonFirstAttackSide();
+  const restoreOffenseSide =
+    snapshot.onePersonOffenseSide ||
+    getOnePersonSideByTopBottom(snapshot.isTop, savedFirstAttackSideForRestore);
+
+  currentOnePersonOffenseSideRef.current = restoreOffenseSide;
+  setOnePersonFirstAttackSide(savedFirstAttackSideForRestore);
+
   const restoredBattingOrder = structuredClone(
     snapshot.battingOrder || []
   ).map((entry) => ({
@@ -2733,11 +2747,6 @@ const snapshot =
   // ✅ 1人モードでは、復元先 side のチーム別チェック状態も先に戻す。
   // この後の loadOnePersonTeamForHalf() がこのキーを読むため、
   // ここを入れないと「1回表の最後に戻す」でチェックが消える。
-  const savedFirstAttackSideForRestore = await getSavedOnePersonFirstAttackSide();
-  const restoreOffenseSide =
-    snapshot.onePersonOffenseSide ||
-    getOnePersonSideByTopBottom(snapshot.isTop, savedFirstAttackSideForRestore);
-
   await localForage.setItem(
     `onePerson.${restoreOffenseSide}.checkedIds`,
     restoredCheckedIds
