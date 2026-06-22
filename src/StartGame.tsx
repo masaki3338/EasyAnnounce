@@ -65,6 +65,29 @@ async function clearUndoRedoHistory() {
     }
   });
 }
+async function clearBackSnapshotStateOnGameStart() {
+  const snapshotKeysToRemove: string[] = [];
+
+  await localForage.iterate((_value, key) => {
+    const k = String(key);
+    const lower = k.toLowerCase();
+
+    // 「戻る」「〇回の表/裏に戻す」「〇回の表/裏の最後に戻す」で使う保存領域は、
+    // matchKey 付きで複数残るため、試合開始時に全試合分を削除する。
+    if (
+      k.startsWith("onePersonFirstInningCheckInitialized::") ||
+      k.startsWith("offenseInningStartSnapshot::") ||
+      k.startsWith("previousInningEndSnapshot::") ||
+      k.startsWith("previousDefenseInningEndSnapshot::") ||
+      lower.includes("snapshot")
+    ) {
+      snapshotKeysToRemove.push(k);
+    }
+  });
+
+  await Promise.all(snapshotKeysToRemove.map((key) => localForage.removeItem(key)));
+}
+
 async function clearOnePersonGameStartState() {
   const removeKeys = [
     // 共通チェック状態
@@ -95,18 +118,81 @@ async function clearOnePersonGameStartState() {
 
   await Promise.all(removeKeys.map((key) => localForage.removeItem(key)));
 
-  // 試合キー付きの初期化済みフラグ・イニング開始snapshotも前試合分を全削除
+  // 試合キー付きの「戻る」用 snapshot は、専用関数で全削除する
+  await clearBackSnapshotStateOnGameStart();
+}
+
+
+async function clearUsedSubstitutionStateOnGameStart() {
+  const removeKeys = [
+    // 出場済み・リエントリー判定
+    "usedPlayerInfo",
+    "usedPlayerIds",
+    "usedPlayers",
+    "appearedPlayerIds",
+    "playedPlayerIds",
+    "substitutedPlayerIds",
+
+    // 代打・代走
+    "usedBatterIds",
+    "pinchHitterUsedIds",
+    "pinchRunnerUsedIds",
+    "battingReplacements",
+    "runnerAssignments",
+    "replacedRunners",
+    "tempRunnerFlags",
+    "selectedRunnerByBase",
+    "tempRunnerByOrder",
+
+    // 守備交代・交代ログ
+    "substitutionLogs",
+    "pairLocks",
+    "benchReactivatedIds",
+
+    // 1人アナウンスモード用に残る可能性があるもの
+    "onePerson.third.usedPlayerInfo",
+    "onePerson.first.usedPlayerInfo",
+    "onePerson.third.usedPlayerIds",
+    "onePerson.first.usedPlayerIds",
+    "onePerson.third.pinchHitterUsedIds",
+    "onePerson.first.pinchHitterUsedIds",
+    "onePerson.third.pinchRunnerUsedIds",
+    "onePerson.first.pinchRunnerUsedIds",
+    "onePerson.third.substitutionLogs",
+    "onePerson.first.substitutionLogs",
+    "onePerson.third.battingReplacements",
+    "onePerson.first.battingReplacements",
+    "onePerson.third.runnerAssignments",
+    "onePerson.first.runnerAssignments",
+  ];
+
+  await Promise.all(removeKeys.map((key) => localForage.removeItem(key)));
+
+  // 試合ID付き・チーム付きで保存されている出場済み系も削除
+  const dynamicKeysToRemove: string[] = [];
+
   await localForage.iterate((_value, key) => {
     const k = String(key);
+
     if (
-      k.startsWith("onePersonFirstInningCheckInitialized::") ||
-      k.startsWith("offenseInningStartSnapshot::") ||
-      k.startsWith("previousInningEndSnapshot::") ||
-      k.startsWith("previousDefenseInningEndSnapshot::")
+      k.includes("usedPlayerInfo") ||
+      k.includes("usedPlayerIds") ||
+      k.includes("usedPlayers") ||
+      k.includes("appearedPlayerIds") ||
+      k.includes("playedPlayerIds") ||
+      k.includes("substitutedPlayerIds") ||
+      k.includes("pinchHitterUsedIds") ||
+      k.includes("pinchRunnerUsedIds") ||
+      k.includes("substitutionLogs") ||
+      k.includes("battingReplacements") ||
+      k.includes("runnerAssignments") ||
+      k.includes("replacedRunners")
     ) {
-      localForage.removeItem(k);
+      dynamicKeysToRemove.push(k);
     }
   });
+
+  await Promise.all(dynamicKeysToRemove.map((key) => localForage.removeItem(key)));
 }
 
 
@@ -542,11 +628,15 @@ const proceedStart = async () => {
   await localForage.removeItem("benchReactivatedIds");
   await localForage.removeItem("startTime");
   await localForage.removeItem("gameStartTime");
+
   // ✅ 試合開始時に1人アナウンスモードの前試合状態も完全クリア
   // ここで消しておかないと、1回表・1回裏で前試合のチェック状態やsnapshotが残ることがある
   await clearOnePersonGameStartState();
-  // 出場済み（リエントリー判定などに使う）をクリア
-  await localForage.removeItem("usedPlayerInfo");
+
+  // ✅ 試合開始時に代打・代走・出場済み選手の前試合状態を完全クリア
+  // usedPlayerInfo だけでは、代打・代走画面に残る出場済み判定を消し切れないためまとめて削除する
+  await clearUsedSubstitutionStateOnGameStart();
+
    // 🧹 守備交代の取消／やり直し履歴も完全クリア（前試合の残骸を消す）
   await clearUndoRedoHistory();
 

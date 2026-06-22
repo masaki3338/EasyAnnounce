@@ -451,6 +451,35 @@ const OnePersonAnnounceScreen: React.FC<OnePersonAnnounceScreenProps> = ({
   isContinueGame = false,
 }) => {
   const openDefenseChangeScreen = async () => {
+    // ✅ 守備交代画面へ移動する直前に、現在表示中の攻撃側のチェック状態だけを
+    // onePerson 側へ退避する。
+    // DefenseChange は通常キー（battingOrder/team 等）を守備交代対象チームへ
+    // 一時コピーするため、戻った時に checkedIds だけが噛み合わず
+    // チェックマークが消えることがある。
+    // 打順・守備位置・戻すスナップショットには触れない最小修正。
+    try {
+      const mi = (await localForage.getItem<any>("matchInfo")) || {};
+      if (mi?.announcementMode === "single") {
+        const firstAttackSide = await getSavedOnePersonFirstAttackSide();
+        const side =
+          currentOnePersonOffenseSideRef.current ||
+          getOnePersonSideByTopBottom(Boolean(mi?.isTop ?? isTop), firstAttackSide);
+
+        await localForage.setItem(`onePerson.${side}.checkedIds`, checkedIds || []);
+        await localForage.setItem(
+          `onePerson.${side}.announcedIds`,
+          announcedIdsRef.current || announcedIds || []
+        );
+        await localForage.setItem("checkedIds", checkedIds || []);
+        await localForage.setItem(
+          "announcedIds",
+          announcedIdsRef.current || announcedIds || []
+        );
+      }
+    } catch (e) {
+      console.warn("[OnePerson] failed to preserve check state before defense change", e);
+    }
+
     const opener = onOpenDefenseChange ?? onChangeDefense ?? onSwitchToDefense;
 
     if (typeof opener === "function") {
