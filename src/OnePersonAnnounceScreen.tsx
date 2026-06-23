@@ -829,6 +829,26 @@ useEffect(() => {
   // 🔸 リエントリー用 state
   const [showReEntryModal, setShowReEntryModal] = useState(false);
   const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+
+  useEffect(() => {
+    const loadPitchLimit = async () => {
+      const savedSelected = await localForage.getItem<number>("rule.pitchLimit.selected");
+      const legacy = await localForage.getItem<number>("rule.pitchLimit");
+
+      const next =
+        typeof savedSelected === "number"
+          ? savedSelected
+          : typeof legacy === "number"
+          ? legacy
+          : 75;
+
+      setPitchLimitSelected(next);
+    };
+
+    void loadPitchLimit();
+  }, []);
+
   const getRunnerLabel = (base: string) => {
     if (leagueMode === "boys") {
       if (base === "1塁") return "ファーストランナー";
@@ -1842,6 +1862,7 @@ const [popupMessage, setPopupMessage] = useState("");             // 表示用
 const [popupSpeakMessage, setPopupSpeakMessage] = useState("");  // 読み上げ用
 const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
 const [pitchAnnounceText, setPitchAnnounceText] = useState("");
+const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
 const [inputScore, setInputScore] = useState("");
 const [editInning, setEditInning] = useState<number | null>(null);
 const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
@@ -3751,6 +3772,28 @@ const saveOnePersonPitchCounts = async (
   );
 };
 
+const getOnePersonPitchLimitMessage = (pitcher: any, total: number): string => {
+  // ボーイズリーグは既存の守備画面と同様、規定投球数メッセージを出さない
+  if (leagueMode === "boys") return "";
+
+  const warn1 = Math.max(0, pitchLimitSelected - 10);
+  const warn2 = pitchLimitSelected;
+
+  if (total !== warn1 && total !== warn2) return "";
+
+  const honorific = pitcher?.isFemale ? "さん" : "くん";
+  const pitcherName = pitcher
+    ? `${pitcher.lastName ?? ""}${honorific}`
+    : "ピッチャー";
+  const specialHead = pitcher
+    ? `ピッチャー${pitcherName}`
+    : "ピッチャー";
+
+  return total === warn2
+    ? `${specialHead}、ただいまの投球で${total}球に到達しました。`
+    : `${specialHead}、ただいまの投球で${total}球です。`;
+};
+
 const buildOnePersonPitchAnnounceText = async () => {
   const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
   const defenseChangeContext =
@@ -3774,7 +3817,18 @@ const buildOnePersonPitchAnnounceText = async () => {
       `onePerson.${defenseSide}.lineupAssignments`
     )) || {};
 
-  const pitcherId = defenseLineup["投"] ?? null;
+  const pitchCounts =
+    (await localForage.getItem<{
+      current: number;
+      total: number;
+      pitcherId?: number | null;
+    }>(`onePerson.${defenseSide}.pitchCounts`)) || {
+      current: currentPitchCount,
+      total: totalPitchCount,
+      pitcherId: defenseLineup["投"] ?? null,
+    };
+
+  const pitcherId = defenseLineup["投"] ?? pitchCounts.pitcherId ?? null;
 
   const players = Array.isArray(defenseTeam?.players)
     ? defenseTeam.players
@@ -3784,15 +3838,22 @@ const buildOnePersonPitchAnnounceText = async () => {
     (p: any) => Number(p.id) === Number(pitcherId)
   );
 
+  const displayCurrent = Number(pitchCounts.current ?? currentPitchCount ?? 0);
+  const displayTotal = Number(pitchCounts.total ?? totalPitchCount ?? 0);
   const honorific = pitcher?.isFemale ? "さん" : "くん";
   const name = pitcher
     ? `${pitcher.lastName ?? ""}${honorific}`
     : "ピッチャー";
 
-  return (
-    `${name}、この回の投球数は${currentPitchCount}球です。\n` +
-    `トータル${totalPitchCount}球です。`
-  );
+  const lines = [
+    `${name}、この回の投球数は${displayCurrent}球です。`,
+    `トータル${displayTotal}球です。`,
+  ];
+
+  const limitMessage = getOnePersonPitchLimitMessage(pitcher, displayTotal);
+  if (limitMessage) lines.push(limitMessage);
+
+  return lines.join("\n");
 };
 
 const addPitch = async () => {
@@ -3829,6 +3890,31 @@ const addPitch = async () => {
     nextTotal,
     nextPitcherTotals
   );
+
+  // ✅ 既存の守備画面(DefenseScreen.tsx)と同様に、
+  // ポニーのみ「規定投球数10球前」「規定投球数到達」のメッセージを出す
+  if (pitcherId != null) {
+    const defenseTeam =
+      (await localForage.getItem<any>(`onePerson.${defenseSide}.team`)) || null;
+    const players = Array.isArray(defenseTeam?.players)
+      ? defenseTeam.players
+      : [];
+    const pitcher = players.find(
+      (p: any) => Number(p.id) === Number(pitcherId)
+    );
+
+    const limitMessage = getOnePersonPitchLimitMessage(pitcher, nextTotal);
+    if (limitMessage) {
+      setPitchAnnounceAction("notice");
+      setPitchAnnounceText(limitMessage);
+      setShowPitchAnnounceModal(true);
+      console.log("[one-person pitch-limit-open-requested]", {
+        pitcherId,
+        nextTotal,
+        pitchLimitSelected,
+      });
+    }
+  }
 };
 
 const subtractPitch = async () => {
@@ -5526,6 +5612,7 @@ const snapshot =
       setShowGroundPopup(true);
     } else {
       const pitchText = await buildOnePersonPitchAnnounceText();
+      setPitchAnnounceAction("inningEnd");
       setPitchAnnounceText(pitchText);
       setShowPitchAnnounceModal(true);
     }
@@ -9425,6 +9512,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
             await goSeatIntroFromOffense();
           } else {
             const pitchText = await buildOnePersonPitchAnnounceText();
+            setPitchAnnounceAction("inningEnd");
             setPitchAnnounceText(pitchText);
             setShowPitchAnnounceModal(true);
           }
@@ -9487,6 +9575,13 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                   stop();
                   setShowPitchAnnounceModal(false);
                   setPitchAnnounceText("");
+
+                  // ✅ 球数+1で出す「10球前/規定投球数到達」の通知は、
+                  // OKしても半回を進めない。ただ閉じるだけ。
+                  if (pitchAnnounceAction === "notice") {
+                    setPitchAnnounceAction("inningEnd");
+                    return;
+                  }
 
                   const endedHalf = lastEndedHalfRef.current;
 
