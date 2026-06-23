@@ -3814,6 +3814,11 @@ const isForcedNormalSubId = (id: number) => forcedNormalSubIds.has(Number(id));
 const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
 
   const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
+  // 出場済み選手をフィールドへ戻したときに、
+  // その位置から外れた選手を「出場済み選手」欄へ残すための補正ID。
+  // 代打/代走で入った選手は startingBenchOutIds 側に含まれることがあり、
+  // assignments 変更後の benchPlayers 再計算で消えるため、このIDだけ再追加対象にする。
+  const [forcedReturnedUsedBenchIds, setForcedReturnedUsedBenchIds] = useState<Set<number>>(new Set());
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<string | null>(null);
 
@@ -4793,8 +4798,22 @@ useEffect(() => {
 }, []);
 
 const benchPlayedOut = React.useMemo(
-  () => benchPlayers.filter((p) => playedIds.has(p.id) && !onFieldIds.has(p.id) && !dhListIds.has(p.id)),
-  [benchPlayers, playedIds, onFieldIds, dhListIds]
+  () =>
+    benchPlayers.filter((p) => {
+      const id = Number(p.id);
+
+      // 出場済み選手をフィールド図へ戻した時に、その位置から外れた選手。
+      // usedPlayerInfo の代打/代走チェーンが残っている間は deriveCurrentGameState 側で
+      // まだ「フィールド上」と判定されることがあるため、このIDだけは表示を優先する。
+      const forceShowAsPlayedOut = forcedReturnedUsedBenchIds.has(id);
+
+      return (
+        (playedIds.has(id) || forceShowAsPlayedOut) &&
+        (!onFieldIds.has(id) || forceShowAsPlayedOut) &&
+        !dhListIds.has(id)
+      );
+    }),
+  [benchPlayers, playedIds, onFieldIds, dhListIds, forcedReturnedUsedBenchIds]
 );
 
 const benchCandidates = React.useMemo(() => {
@@ -5285,16 +5304,19 @@ useEffect(() => {
     const benchOutIds = await loadCurrentDefenseBenchOutIds();
 
     // 控え候補＝全選手 − 守備中の選手 − 出場しない選手
+    // ただし、出場済み選手をフィールド図へ戻して外れた選手は、
+    // startingBenchOutIds に含まれていても「出場済み選手」欄へ表示させる。
     setBenchPlayers(
       teamPlayers.filter((p) => {
         const id = Number(p.id);
         if (!Number.isFinite(id)) return false;
+        if (assignedIdsNow.includes(id)) return false;
 
-        return !assignedIdsNow.includes(id) && !benchOutIds.includes(id);
+        return !benchOutIds.includes(id) || forcedReturnedUsedBenchIds.has(id);
       })
     );
   })();
-}, [assignments, teamPlayers]);
+}, [assignments, teamPlayers, forcedReturnedUsedBenchIds]);
 
 
 
@@ -5579,6 +5601,28 @@ newAssignments = normalizeFieldAssignments(newAssignments, {
       if (rep && !next.some((p) => p.id === rep.id)) {
         next = [...next, rep];
       }
+    }
+
+    return next;
+  });
+
+  // 出場済み選手(A)をフィールド図へ戻した場合、
+  // そこにいた選手(B)を出場済み選手欄へ表示できるようにする。
+  // Bは元控え選手のため benchOutIds で再計算時に消えることがあるので、
+  // このケースだけ明示的に bench 候補へ残す。
+  const incomingIsPlayedOut =
+    playedIds.has(Number(playerId)) && !onFieldIds.has(Number(playerId));
+
+  setForcedReturnedUsedBenchIds((prev) => {
+    const next = new Set(prev);
+    next.delete(Number(playerId));
+
+    if (
+      incomingIsPlayedOut &&
+      typeof replacedId === "number" &&
+      Number(replacedId) !== Number(playerId)
+    ) {
+      next.add(Number(replacedId));
     }
 
     return next;
@@ -7839,7 +7883,7 @@ normalReplaceRows.forEach(({ benchPlayerId }) => {
 });
 
 // replace の from 側で退く選手だけベンチへ戻す
-normalReplaceRows.forEach(({ from }) => {
+normalReplaceRows.forEach(({ from, benchPlayerId }) => {
   const outgoingId = currentByNum.get(Number(from));
   if (typeof outgoingId !== "number") return;
 
@@ -7855,6 +7899,24 @@ normalReplaceRows.forEach(({ from }) => {
     !nextBenchPlayers.some((p) => Number(p.id) === Number(outgoingPlayer.id))
   ) {
     nextBenchPlayers = [...nextBenchPlayers, outgoingPlayer];
+  }
+
+  // 「守備番号で交代」から出場済み選手を起用した場合も、
+  // フィールド図から外れた選手を出場済み選手欄へ表示させる。
+  // 代打/代走チェーンが残っていると onFieldIds 側でまだフィールド上扱いになり、
+  // 表示条件から弾かれることがあるため、このケースだけ表示補正IDに追加する。
+  const incomingId = Number(benchPlayerId);
+  const incomingIsPlayedOut =
+    Number.isFinite(incomingId) &&
+    (playedIds.has(incomingId) || forcedReturnedUsedBenchIds.has(incomingId));
+
+  if (incomingIsPlayedOut && !stillOnField) {
+    setForcedReturnedUsedBenchIds((prev) => {
+      const next = new Set(prev);
+      next.delete(incomingId);
+      next.add(Number(outgoingId));
+      return next;
+    });
   }
 });
 
