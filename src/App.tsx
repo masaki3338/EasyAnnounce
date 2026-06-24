@@ -560,7 +560,7 @@ const boysOtherOptions: OtherOptionItem[] = [
   { value: "tiebreak", label: "タイブレーク" },
   { value: "end", label: "試合終了" },
   { value: "suspend", label: "中断" },
-  { value: "suspendedGame", label: "サスペンデット" },
+  { value: "suspendedGame", label: "サスペンデッド" },
   { value: "boysmanual", label: "連盟🎤マニュアル" },
 ];
 
@@ -585,6 +585,15 @@ const warmedOnceRef = useRef(false);
 useEffect(() => {
   setLeagueMode(getLeagueMode());
 }, []);
+
+const resolveCurrentLeagueMode = (match?: any): LeagueMode => {
+  // 1人アナウンスモードでは画面遷移中に state / localStorage のどちらかが古い場合があるため、
+  // matchInfo → App state → leagueSettings の順で確認し、どこかが boys なら Boys として扱う。
+  if (match?.leagueMode === "boys" || match?.league === "boys") return "boys";
+  if (leagueMode === "boys") return "boys";
+  if (getLeagueMode() === "boys") return "boys";
+  return "pony";
+};
 
 const formatWaterBreakTime = (sec: number) => {
   const m = Math.floor(sec / 60);
@@ -837,7 +846,7 @@ const handleBoysOnlyMenu = async (value: string) => {
     return true;
   }
   if (value === "suspendedGame") {
-    alert("サスペンデットはこれから実装します");
+    alert("サスペンデッドはこれから実装します");
     return true;
   }
   if (value === "boysmanual") {
@@ -1454,57 +1463,87 @@ return (
                   }
 
                   const isDraw = totalTop === totalBottom;
+                  const currentLeagueMode = resolveCurrentLeagueMode(match);
+
                   if (isDraw) {
-                    displayAnnouncement =
-                      `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}でした。\n` +
-                      `審判員の皆様、ありがとうございました。\n` +
-                      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-                      `尚、この試合の終了時刻は ${formatted}です。\n` +
-                      `これより、ピッチングレコードの確認を行います。\n` +
-                      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-                      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+                    if (currentLeagueMode === "boys") {
+                      displayAnnouncement =
+                        `ご覧のように${totalTop}対${totalBottom}でした。\n` +
+                        `なおこの試合の終了時刻は${formatted}です。`;
 
-                    speakAnnouncement = displayAnnouncement;
+                      speakAnnouncement = displayAnnouncement;
+                    } else {
+                      displayAnnouncement =
+                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}でした。\n` +
+                        `審判員の皆様、ありがとうございました。\n` +
+                        `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                        `尚、この試合の終了時刻は ${formatted}です。\n` +
+                        `これより、ピッチングレコードの確認を行います。\n` +
+                        `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                        `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-                    if (!noNextGame) {
-                      const currentGame = Number(match?.matchNumber || 1);
-                      const nextGame = currentGame + 1;
+                      speakAnnouncement = displayAnnouncement;
 
-                      displayAnnouncement +=
-                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                      if (!noNextGame) {
+                        const currentGame = Number(match?.matchNumber || 1);
+                        const nextGame = currentGame + 1;
 
-                      speakAnnouncement +=
-                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                        displayAnnouncement +=
+                          `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                          `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+
+                        speakAnnouncement +=
+                          `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                          `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                      }
                     }
 
                     setEndGameAnnouncement(displayAnnouncement);
                     setEndGameAnnouncementSpeak(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else if (winnerName) {
-                    displayAnnouncement =
-                      `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
-                      `審判員の皆様、ありがとうございました。\n` +
-                      `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
-                      `尚、この試合の終了時刻は ${formatted}です。\n` +
-                      `これより、ピッチングレコードの確認を行います。\n` +
-                      `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
-                      `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
+                    if (currentLeagueMode === "boys") {
+                      const endGamePitcherInfo = (await localForage.getItem("endGamePitcherInfo")) as
+                        | { pitcherId?: number; pitcherName?: string; totalPitchCount?: number }
+                        | null;
 
-                    speakAnnouncement = displayAnnouncement;
+                      const pitcherName = endGamePitcherInfo?.pitcherName || "";
+                      const pitcherTotal = Number(endGamePitcherInfo?.totalPitchCount ?? 0);
+                      const pitcherLine =
+                        pitcherName
+                          ? `${pitcherName}投手の合計投球数は${pitcherTotal}球です。\n`
+                          : "";
 
-                    if (!noNextGame) {
-                      const currentGame = Number(match?.matchNumber || 1);
-                      const nextGame = currentGame + 1;
+                      displayAnnouncement =
+                        `ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
+                        pitcherLine +
+                        `なおこの試合の終了時刻は${formatted}です。`;
 
-                      displayAnnouncement +=
-                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                      speakAnnouncement = displayAnnouncement;
+                    } else {
+                      displayAnnouncement =
+                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
+                        `審判員の皆様、ありがとうございました。\n` +
+                        `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
+                        `尚、この試合の終了時刻は ${formatted}です。\n` +
+                        `これより、ピッチングレコードの確認を行います。\n` +
+                        `両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください。\n` +
+                        `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
-                      speakAnnouncement +=
-                        `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
-                        `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                      speakAnnouncement = displayAnnouncement;
+
+                      if (!noNextGame) {
+                        const currentGame = Number(match?.matchNumber || 1);
+                        const nextGame = currentGame + 1;
+
+                        displayAnnouncement +=
+                          `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                          `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+
+                        speakAnnouncement +=
+                          `第${nextGame}試合のグランド整備は、第${nextGame}試合のシートノック終了後に行います。\n` +
+                          `第${currentGame}試合の選手は、グランド整備ご協力をよろしくお願いいたします。`;
+                      }
                     }
 
                     setEndGameAnnouncement(displayAnnouncement);
@@ -1545,7 +1584,7 @@ return (
                   const prevInning = Math.max(1, inning - 1);
 
                   const msg =
-                    leagueMode === "boys"
+                    resolveCurrentLeagueMode(match) === "boys"
                       ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
                       : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
 
@@ -1619,6 +1658,23 @@ return (
 
                   setPitchList(rows);
                   setShowPitchListPopup(true);
+
+                } else if (value === "intentionalWalk") {
+                  setIntentionalWalkTrigger((n) => n + 1);
+
+                } else if (value === "waterBreak") {
+                  setWaterBreakRunning(false);
+                  setWaterBreakRemaining(waterBreakMinutes * 60);
+                  setShowWaterBreakPopup(true);
+
+                } else if (value === "suspend") {
+                  setShowSuspendPopup(true);
+
+                } else if (value === "suspendedGame") {
+                  setShowSuspendedGamePopup(true);
+
+                } else if (value === "boysmanual") {
+                  setShowBoysManualPopup(true);
                 }
 
                 setOtherOption("");
@@ -1627,12 +1683,26 @@ return (
               <option value="" disabled hidden>
                 その他
               </option>
-              <option value="end">試合終了</option>
-              <option value="tiebreak">タイブレーク</option>
-              <option value="continue">継続試合</option>
-              <option value="heat">熱中症</option>
-              <option value="manual">連盟🎤マニュアル</option>
-              <option value="pitchlist">投球数⚾</option>
+              {isBoys ? (
+                <>
+                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="waterBreak">給水タイム</option>
+                  <option value="tiebreak">タイブレーク</option>
+                  <option value="end">試合終了</option>
+                  <option value="suspend">中断</option>
+                  <option value="suspendedGame">サスペンデッド</option>
+                  <option value="boysmanual">連盟🎤マニュアル</option>
+                </>
+              ) : (
+                <>
+                  <option value="end">試合終了</option>
+                  <option value="tiebreak">タイブレーク</option>
+                  <option value="continue">継続試合</option>
+                  <option value="heat">熱中症</option>
+                  <option value="manual">連盟🎤マニュアル</option>
+                  <option value="pitchlist">投球数⚾</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -1756,7 +1826,7 @@ return (
 
           const isDraw = totalMyScore === totalOpponentScore;
           if (isDraw) {
-            const currentLeagueMode = getLeagueMode();
+            const currentLeagueMode = resolveCurrentLeagueMode(match);
 
             let displayAnnouncement = "";
             let speakAnnouncement = "";
@@ -1796,7 +1866,7 @@ return (
             setEndGameAnnouncementSpeak(speakAnnouncement);
             setShowEndGamePopup(true);
           } else if (totalMyScore > totalOpponentScore) {
-            const currentLeagueMode = getLeagueMode();
+            const currentLeagueMode = resolveCurrentLeagueMode(match);
 
             let displayAnnouncement = "";
             let speakAnnouncement = "";
@@ -1879,7 +1949,7 @@ return (
           const prevInning = Math.max(1, inning - 1);
 
           const msg =
-            leagueMode === "boys"
+            resolveCurrentLeagueMode(match) === "boys"
               ? `ただいまより大会規定により、タイブレークをおこないます。\nタイブレークは${outs}${bases}の状態からおこないます。`
               : `この試合は、${prevInning}回終了して同点のため、大会規定により${outs}${bases}からのタイブレークに入ります。`;
 
@@ -1968,8 +2038,8 @@ return (
           <option value="waterBreak">給水タイム</option>
           <option value="tiebreak">タイブレーク</option>
           <option value="end">試合終了</option>
-          <option value="suspend">中断</option>
-          <option value="suspendedGame">サスペンデット</option>
+          <option value="suspend">試合中断</option>
+          <option value="suspendedGame">サスペンデッド</option>
           <option value="boysmanual">連盟🎤マニュアル</option>
         </>
       ) : (
@@ -2164,7 +2234,7 @@ return (
 
             const isDraw = totalMyScore === totalOpponentScore;
             if (isDraw) {
-              const currentLeagueMode = getLeagueMode();
+              const currentLeagueMode = resolveCurrentLeagueMode(match);
 
               let displayAnnouncement = "";
               let speakAnnouncement = "";
@@ -2204,7 +2274,7 @@ return (
               setEndGameAnnouncementSpeak(speakAnnouncement);
               setShowEndGamePopup(true);
             } else if (totalMyScore > totalOpponentScore) {
-              const currentLeagueMode = getLeagueMode();
+              const currentLeagueMode = resolveCurrentLeagueMode(match);
 
               let displayAnnouncement = "";
               let speakAnnouncement = "";
@@ -2372,7 +2442,7 @@ return (
             <option value="waterBreak">給水タイム</option>
             <option value="end">試合終了</option>
             <option value="suspend">中断</option>
-            <option value="suspendedGame">サスペンデット</option>
+            <option value="suspendedGame">サスペンデッド</option>
             <option value="boysmanual">連盟🎤マニュアル</option> 
           </>
         ) : (
@@ -3443,7 +3513,7 @@ return (
           <div className="px-4 py-3 flex items-center justify-between">
             <h2 className="text-lg font-extrabold tracking-wide flex items-center gap-2">
               <img src="/mic-red.png" alt="" className="w-6 h-6" aria-hidden="true" />
-              <span>中断</span>
+              <span>試合中断</span>
             </h2>
             <button
               onClick={() => setShowSuspendPopup(false)}

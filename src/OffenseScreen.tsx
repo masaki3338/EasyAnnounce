@@ -2604,44 +2604,39 @@ const num = String(number ?? "").trim();
 const isBoys = leagueMode === "boys";
 const currentPlayerId = Number(player.id);
 
-// ★ この打者が過去に何回紹介されたか
-const announcedCount = batterAnnounceCountsRef.current[currentPlayerId] ?? 0;
-
-// ★ ボーイズで2回目以降なら背番号なし
-const hideNumberForBoys = isBoys && announcedCount >= 1;
-
 if (!isChecked) {
-  const line =
-    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
-    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
-    (
-      hideNumberForBoys
-        ? "。"
-        : (num ? `、背番号 ${num}。` : "。")
-    );
-
-  displayLines.push(line);
-  speakLines.push(line);
-} else {
-  if (leagueMode === "boys") {
+  if (isBoys) {
+    // ボーイズリーグ：チェックなしは必ず「フルネーム → 苗字のみ + 背番号」
+    // 例）1番 ショート 山田 太郎くん、ショート 山田くん、背番号 6。
     const line =
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
-      (
-        hideNumberForBoys
-          ? "。"
-          : (num ? `` : "。")
-      );
+      `${currentBatterIndex + 1}番 ${posPrefix}${formatNameForAnnounce(player, false)}${honorific}、<br />` +
+      `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
+      (num ? `、背番号 ${num}。` : "。");
+
+    displayLines.push(line);
+    speakLines.push(line);
+  } else {
+    const line =
+      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
+      `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
+      (num ? `、背番号 ${num}。` : "。");
+
+    displayLines.push(line);
+    speakLines.push(line);
+  }
+} else {
+  if (isBoys) {
+    // ボーイズリーグ：チェックありは背番号なし。
+    // 苗字のみ。ただし同一苗字がいる場合は formatNameForAnnounce がフルネームにする。
+    const line =
+      `${currentBatterIndex + 1}番 ${posPrefix}${formatNameForAnnounce(player, true)}${honorific}。`;
 
     displayLines.push(line);
     speakLines.push(line);
   } else {
     const line =
       `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
-      (
-        hideNumberForBoys
-          ? "。"
-          : (num ? `、背番号 ${num}。` : "。")
-      );
+      (num ? `、背番号 ${num}。` : "。");
 
     displayLines.push(line);
     speakLines.push(line);

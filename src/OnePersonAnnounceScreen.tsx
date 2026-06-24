@@ -1258,6 +1258,75 @@ const resetCurrentHalfPitchCountForOnePerson = async (
   setCurrentPitchCount(0);
 };
 
+
+// ✅ 「〇回の表/裏の最後に戻す」で、いま表示していた次の半回を取り消す場合、
+// その半回で加算した投球数も取り消しておく。
+// 例：2回裏で5球 → 2回表の最後へ戻す → もう一度イニング終了した時、
+// 2回裏は新しい半回なので「この回」は0球、合計にも取り消した5球を残さない。
+const clearUndoneHalfPitchCountForOnePerson = async (
+  undoneIsTop: boolean,
+  firstAttackSide?: "first" | "third"
+) => {
+  const savedFirstAttackSide =
+    firstAttackSide || (await getSavedOnePersonFirstAttackSide());
+
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    undoneIsTop,
+    savedFirstAttackSide
+  );
+
+  const defenseLineup = await loadBestOnePersonLineupAssignments(defenseSide);
+
+  const savedPitchCounts =
+    (await localForage.getItem<{
+      current: number;
+      total: number;
+      pitcherId?: number | null;
+    }>(`onePerson.${defenseSide}.pitchCounts`)) || {
+      current: 0,
+      total: 0,
+      pitcherId: defenseLineup["投"] ?? null,
+    };
+
+  const undoneCurrent = Number(savedPitchCounts.current || 0);
+  const pitcherId =
+    defenseLineup["投"] ?? savedPitchCounts.pitcherId ?? null;
+
+  const nextTotal = Math.max(
+    0,
+    Number(savedPitchCounts.total || 0) - undoneCurrent
+  );
+
+  const savedPitcherTotals =
+    (await localForage.getItem<Record<number, number>>(
+      `onePerson.${defenseSide}.pitcherTotals`
+    )) || {};
+
+  const nextPitcherTotals = { ...savedPitcherTotals };
+  if (pitcherId != null && undoneCurrent > 0) {
+    nextPitcherTotals[Number(pitcherId)] = Math.max(
+      0,
+      Number(nextPitcherTotals[Number(pitcherId)] || 0) - undoneCurrent
+    );
+  }
+
+  const nextPitchCounts = {
+    ...savedPitchCounts,
+    current: 0,
+    total: nextTotal,
+    pitcherId,
+  };
+
+  await localForage.setItem(
+    `onePerson.${defenseSide}.pitchCounts`,
+    nextPitchCounts
+  );
+  await localForage.setItem(
+    `onePerson.${defenseSide}.pitcherTotals`,
+    nextPitcherTotals
+  );
+};
+
 // ✅ 1回表終了後の1回裏だけは、どんな操作履歴があっても
 // 打順は必ず1番、チェックは必ずなしで開始する。
 // ここ以外の半回には影響させないため、呼び出し側で inning === 1 && isTop の時だけ使う。
@@ -2854,6 +2923,14 @@ const snapshot =
   // 例：1回表最後へ戻す前に Bチーム攻撃中だった場合、Aチーム4番復元時に
   // onePerson.B.lastBatterIndex = 4 と保存され、次のB攻撃が4番から始まってしまう。
   const savedFirstAttackSideForRestore = await getSavedOnePersonFirstAttackSide();
+
+  // ✅ いま表示していた「戻す前の半回」は取り消すため、
+  // その半回で加算した投球数も先にクリアする。
+  await clearUndoneHalfPitchCountForOnePerson(
+    isTop,
+    savedFirstAttackSideForRestore
+  );
+
   const restoreOffenseSide =
     snapshot.onePersonOffenseSide ||
     getOnePersonSideByTopBottom(snapshot.isTop, savedFirstAttackSideForRestore);
@@ -5841,13 +5918,38 @@ const getPlayer = (id: number) => {
   const hasNumber = (p: any) =>
     Boolean(String(p?.number ?? "").trim());
 
-  // 名前が入っているデータを最優先
-  return (
+  // 名前と背番号がそろっているデータを最優先
+  // ※ 1人アナウンスでは players 側に名前だけ、allPlayers/benchPlayers 側に背番号ありの
+  //    同一選手データが残ることがあるため、最後に不足項目をマージする。
+  const base =
+    candidates.find((p: any) => hasName(p) && hasNumber(p)) ||
     candidates.find(hasName) ||
     candidates.find(hasNumber) ||
     candidates[0] ||
-    null
-  );
+    null;
+
+  if (!base) return null;
+
+  const withNumber = candidates.find(hasNumber);
+  const withName = candidates.find(hasName);
+
+  return {
+    ...(withNumber || {}),
+    ...(withName || {}),
+    ...base,
+    number:
+      String(base?.number ?? "").trim() !== ""
+        ? base.number
+        : withNumber?.number,
+    lastName:
+      String(base?.lastName ?? "").trim() !== ""
+        ? base.lastName
+        : withName?.lastName,
+    firstName:
+      String(base?.firstName ?? "").trim() !== ""
+        ? base.firstName
+        : withName?.firstName,
+  };
 };
 
 // 位置ラベル（守備・代打・(臨時)代走）を一元判定
@@ -6038,51 +6140,47 @@ const nameHTML = isChecked
   : formatNameForAnnounce(player, false);  // フルネーム
 
 const num = String(number ?? "").trim();
-const isBoys = leagueMode === "boys";
-const currentPlayerId = Number(player.id);
+const isBoys =
+  leagueMode === "boys" ||
+  getLeagueMode() === "boys";
 
-// ★ この打者が過去に何回紹介されたか
-const announcedCount = batterAnnounceCountsRef.current[currentPlayerId] ?? 0;
-
-// ★ ボーイズで2回目以降なら背番号なし
-const hideNumberForBoys = isBoys && announcedCount >= 1;
-
-if (!isChecked) {
-  const line =
-    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
-    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
-    (
-      hideNumberForBoys
-        ? "。"
-        : (num ? `、背番号 ${num}。` : "。")
-    );
-
-  displayLines.push(line);
-  speakLines.push(line);
-} else {
-  if (leagueMode === "boys") {
+if (isBoys) {
+  if (!isChecked) {
+    // ボーイズ：チェックなし
+    // 「〇番 守備位置 フルネームくん、守備位置 苗字くん、背番号〇」
+    const fullNameHTML = formatNameForAnnounce(player, false);
+    const lastNameHTML = formatNameForAnnounce(player, true);
     const line =
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
-      (
-        hideNumberForBoys
-          ? "。"
-          : (num ? `` : "。")
-      );
+      `${currentBatterIndex + 1}番 ${posPrefix}${fullNameHTML}${honorific}、<br />` +
+      `${posPrefix}${lastNameHTML}${honorific}` +
+      (num ? `、背番号 ${num}。` : "。");
 
     displayLines.push(line);
     speakLines.push(line);
   } else {
+    // ボーイズ：チェックあり
+    // 「〇番 守備位置 苗字くん」※同一苗字がいる場合は formatNameForAnnounce 側でフルネーム
     const line =
-      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
-      (
-        hideNumberForBoys
-          ? "。"
-          : (num ? `、背番号 ${num}。` : "。")
-      );
+      `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}。`;
 
     displayLines.push(line);
     speakLines.push(line);
   }
+} else if (!isChecked) {
+  const line =
+    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}、<br />` +
+    `${posPrefix}${formatNameForAnnounce(player, true)}${honorific}` +
+    (num ? `、背番号 ${num}。` : "。");
+
+  displayLines.push(line);
+  speakLines.push(line);
+} else {
+  const line =
+    `${currentBatterIndex + 1}番 ${posPrefix}${nameHTML}${honorific}` +
+    (num ? `、背番号 ${num}。` : "。");
+
+  displayLines.push(line);
+  speakLines.push(line);
 }
 
 
@@ -6139,10 +6237,9 @@ const handleRead = async () => {
       batterAnnounceCountsRef.current = nextCounts;
       await localForage.setItem("batterAnnounceCounts", nextCounts);
 
-      // ★ ボーイズなら文言をすぐ再生成
-      if (leagueMode === "boys") {
-        updateAnnouncement();
-      }
+      // 読み上げ直前に文言を再生成すると、state反映のタイミングによって
+      // 画面上はチェックなしなのに背番号なし文言で読まれることがあるため、
+      // 読み上げ後の通常の再描画に任せる。
     }
 
     await speakFromAnnouncementArea(
