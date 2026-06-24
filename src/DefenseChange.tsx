@@ -7030,7 +7030,16 @@ const checkReentryForBenchToField = ({
     return true;
   }
 
-  const isOffField = !Object.values(assignments || {}).includes(Number(toId));
+  // ✅ assignments だけでなく、フィールド図で実際に表示されている選手IDも見て
+  // 「戻そうとしている元スタメンが今フィールドにいるか」を判定する。
+  // 代打/代走直後は assignments に元スタメンIDが残り、表示上は代打/代走選手というケースがある。
+  const displayedFieldIds = Object.keys(assignments || {})
+    .map((pos) => getDisplayedPlayerIdForPos(pos))
+    .filter((id): id is number => typeof id === "number");
+
+  const isOffField =
+    !Object.values(assignments || {}).includes(Number(toId)) ||
+    !displayedFieldIds.includes(Number(toId));
 
   // ★ 元の打順：スタメン時点の打順を使う
   const originalOrderSource =
@@ -7044,13 +7053,61 @@ const checkReentryForBenchToField = ({
       ? battingOrderDraft
       : battingOrder;
 
+  const usedInfoForOriginal =
+    wasStarter && origIdForTo != null
+      ? ((usedPlayerInfo as any)?.[String(origIdForTo)] ?? (usedPlayerInfo as any)?.[Number(origIdForTo)])
+      : undefined;
+
+  const toNumberOrNull = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
   // ★ 戻そうとしている元スタメンの「当初の打順」
-  const originalOrderIndex =
+  // startingOrder に見つからない場合でも、usedPlayerInfo.order を正として使う。
+  const originalOrderIndexFromStarting =
     wasStarter && origIdForTo != null
       ? originalOrderSource.findIndex(
           (e) => Number(e.id) === Number(origIdForTo)
         )
       : -1;
+
+  const originalOrderNumberFromInfo = toNumberOrNull(usedInfoForOriginal?.order);
+
+  const originalOrderIndex =
+    originalOrderIndexFromStarting >= 0
+      ? originalOrderIndexFromStarting
+      : originalOrderNumberFromInfo != null && originalOrderNumberFromInfo > 0
+        ? originalOrderNumberFromInfo - 1
+        : -1;
+
+  const getCurrentOrderNumberForPlayer = (playerId: number | null | undefined): number | null => {
+    if (typeof playerId !== "number") return null;
+
+    const directIdx = currentOrderSource.findIndex(
+      (e) => Number(e.id) === Number(playerId)
+    );
+    if (directIdx >= 0) return directIdx + 1;
+
+    // usedPlayerInfo の「元スタメン → subId」から、今その打順にいる選手を補完する。
+    for (const [origIdStr, info] of Object.entries(usedPlayerInfo || {})) {
+      if (!info) continue;
+      const origId = Number(origIdStr);
+      const subId = typeof (info as any).subId === "number" ? Number((info as any).subId) : null;
+      const latestId = resolveLatestSubId(origId, usedPlayerInfo as any);
+      const orderNo = toNumberOrNull((info as any).order);
+
+      if (
+        orderNo != null &&
+        orderNo > 0 &&
+        (Number(playerId) === origId || Number(playerId) === subId || Number(playerId) === Number(latestId))
+      ) {
+        return orderNo;
+      }
+    }
+
+    return null;
+  };
 
   // ★ 今、交代される選手(fromId)が入っている「現在の打順」
   const currentOrderIndexOfFrom =
@@ -7059,6 +7116,12 @@ const checkReentryForBenchToField = ({
           (e) => Number(e.id) === Number(fromId)
         )
       : -1;
+
+  const fromOrderNumber = getCurrentOrderNumberForPlayer(fromId);
+  const sameOriginalOrderByUsedInfo =
+    originalOrderNumberFromInfo != null &&
+    fromOrderNumber != null &&
+    Number(originalOrderNumberFromInfo) === Number(fromOrderNumber);
 
   // ✅ 元スタメンに紐づく最新の代打・代走選手IDを取得
   // 代打・代走直後は currentOrderSource 側の index が元打順と一致しないことがあるため、
@@ -7083,6 +7146,9 @@ const checkReentryForBenchToField = ({
         currentOrderIndexOfFrom >= 0 &&
         originalOrderIndex === currentOrderIndexOfFrom
       ) ||
+      // ✅ 出場済みの元スタメンが、自分の元打順に現在入っている選手と交代する場合は
+      // フィールド図配置時もリエントリーとして許可する。
+      sameOriginalOrderByUsedInfo ||
       // ログ上、originalOrderIndex が -1 でも usedPlayerInfo から
       // 「戻す元スタメン ↔ 外される最新代打/代走」が特定できるケースがある。
       // この場合は打順indexに依存せずリエントリーとして許可する。
@@ -7098,9 +7164,14 @@ const checkReentryForBenchToField = ({
     isUsedAlready,
     isOffField,
     originalOrderIndex,
+    originalOrderIndexFromStarting,
+    originalOrderNumberFromInfo,
     currentOrderIndexOfFrom,
+    fromOrderNumber,
+    sameOriginalOrderByUsedInfo,
     latestSubIdForOriginal,
     replacingOwnLatestSub,
+    displayedFieldIds,
     originalOrderSource,
     currentOrderSource,
     isReentryNow,
