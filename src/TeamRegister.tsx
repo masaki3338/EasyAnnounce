@@ -693,9 +693,9 @@ const getLastNameKana = (value: string) => {
     ([, kanji]) => kanji === trimmed
   );
 
-  // 対応表にない漢字苗字でも空白にしない。
-  // ふりがな欄で手修正できるよう、認識された値をいったん表示する。
-  return found?.[0] ?? trimmed;
+  // ふりがな欄は「ひらがなのみ」にする。
+  // 対応表にない漢字は表示せず、手入力で修正してもらう。
+  return found?.[0] ?? "";
 };
 
 const toCommonLastNameKanji = (value: string) => {
@@ -708,8 +708,9 @@ const getFirstNameForVoice = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
   if (!trimmed) return "";
 
-  // 変換できる場合はひらがな、変換できない漢字名などは空白にせず認識結果を表示
-  return toHiraganaOnly(trimmed) || trimmed;
+  // 名前欄は「ひらがなのみ」にする。
+  // toHiraganaOnlyで変換できない漢字などは表示しない。
+  return toHiraganaOnly(trimmed);
 };
 
 const parseVoiceText = (raw: string) => {
