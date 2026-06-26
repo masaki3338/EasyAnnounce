@@ -93,6 +93,10 @@ const TeamRegister = () => {
     isFemale: false,
   });
   const recognitionRef = useRef<any>(null);
+  const kanaConverterRef = useRef<any>(null);
+  const [kanaConverterReady, setKanaConverterReady] = useState(false);
+  const [kanaConverterLoading, setKanaConverterLoading] = useState(false);
+  const [kanaConverterError, setKanaConverterError] = useState("");
 
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
@@ -623,32 +627,22 @@ const normalizeDigits = (value: string) =>
     String.fromCharCode(s.charCodeAt(0) - 0xfee0)
   );
 
-const toHiraganaOnly = (value: string) => {
-  const normalized = wanakana.toHiragana(value).replace(/\s+/g, "").trim();
-
-  const commonFirstNameMap: Record<string, string> = {
-    太郎: "たろう",
-    次郎: "じろう",
-    二郎: "じろう",
-    三郎: "さぶろう",
-    健: "けん",
-    翔: "しょう",
-    大翔: "ひろと",
-    蓮: "れん",
-    陸: "りく",
-    颯太: "そうた",
-    悠真: "ゆうま",
-    湊: "みなと",
-    陽翔: "はると",
-    大和: "やまと",
-    蒼: "あおい",
-  };
-
-  if (commonFirstNameMap[normalized]) {
-    return commonFirstNameMap[normalized];
-  }
-
-  return normalized.replace(/[^ぁ-ゖーゝゞ]/g, "");
+const commonFirstNameMap: Record<string, string> = {
+  太郎: "たろう",
+  次郎: "じろう",
+  二郎: "じろう",
+  三郎: "さぶろう",
+  健: "けん",
+  翔: "しょう",
+  大翔: "ひろと",
+  蓮: "れん",
+  陸: "りく",
+  颯太: "そうた",
+  悠真: "ゆうま",
+  湊: "みなと",
+  陽翔: "はると",
+  大和: "やまと",
+  蒼: "あおい",
 };
 
 const commonLastNameMap: Record<string, string> = {
@@ -680,7 +674,44 @@ const commonLastNameMap: Record<string, string> = {
   やました: "山下",
 };
 
-const getLastNameKana = (value: string) => {
+const hiraOnly = (value: string) =>
+  value.replace(/[^ぁ-ゖーゝゞ]/g, "");
+
+const toHiraganaOnly = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  if (commonFirstNameMap[trimmed]) {
+    return commonFirstNameMap[trimmed];
+  }
+
+  const normalized = wanakana.toHiragana(trimmed).replace(/\s+/g, "").trim();
+  return hiraOnly(normalized);
+};
+
+const convertKanjiToHiragana = async (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  const localConverted = toHiraganaOnly(trimmed);
+  if (localConverted) return localConverted;
+
+  if (!kanaConverterRef.current) return "";
+
+  try {
+    const converted = await kanaConverterRef.current.convert(trimmed, {
+      to: "hiragana",
+      mode: "normal",
+    });
+
+    return hiraOnly(String(converted).replace(/\s+/g, "").trim());
+  } catch (error) {
+    console.warn("kana convert failed:", error);
+    return "";
+  }
+};
+
+const getLastNameKana = async (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
   if (!trimmed) return "";
 
@@ -688,32 +719,33 @@ const getLastNameKana = (value: string) => {
   const kana = toHiraganaOnly(trimmed);
   if (kana) return kana;
 
-  // 音声認識が「山田」のように漢字で返した場合
+  // 音声認識が「山田」のように漢字で返した場合は、まず手元の苗字辞書から逆引き
   const found = Object.entries(commonLastNameMap).find(
     ([, kanji]) => kanji === trimmed
   );
 
-  // ふりがな欄は「ひらがなのみ」にする。
-  // 対応表にない漢字は表示せず、手入力で修正してもらう。
-  return found?.[0] ?? "";
+  if (found?.[0]) return found[0];
+
+  // 辞書にない漢字は Kuroshiro/Kuromoji でひらがな推定
+  return await convertKanjiToHiragana(trimmed);
 };
 
 const toCommonLastNameKanji = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
-  const kana = getLastNameKana(trimmed);
+  const kana = toHiraganaOnly(trimmed);
   return commonLastNameMap[kana] ?? trimmed;
 };
 
-const getFirstNameForVoice = (value: string) => {
+const getFirstNameForVoice = async (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
   if (!trimmed) return "";
 
   // 名前欄は「ひらがなのみ」にする。
-  // toHiraganaOnlyで変換できない漢字などは表示しない。
-  return toHiraganaOnly(trimmed);
+  // 漢字で認識された場合は Kuroshiro/Kuromoji でひらがな推定する。
+  return await convertKanjiToHiragana(trimmed);
 };
 
-const parseVoiceText = (raw: string) => {
+const parseVoiceText = async (raw: string) => {
   const original = raw.trim();
 
   const text = original
@@ -782,14 +814,15 @@ const parseVoiceText = (raw: string) => {
     }
   }
 
-  const nextLastNameKana = getLastNameKana(rawLastName);
+  const nextLastNameKana = await getLastNameKana(rawLastName);
   const nextLastName = toCommonLastNameKanji(rawLastName);
+  const nextFirstName = await getFirstNameForVoice(rawFirstName);
 
   setVoicePlayer((prev) => ({
     ...prev,
     lastName: nextLastName,
     lastNameKana: nextLastNameKana,
-    firstName: getFirstNameForVoice(rawFirstName),
+    firstName: nextFirstName,
     number,
   }));
 };
@@ -859,9 +892,24 @@ const handleVoiceFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
 
     if (name === "firstName") {
+      const hiragana = toHiraganaOnly(value);
+      if (hiragana) {
+        return {
+          ...prev,
+          firstName: hiragana,
+        };
+      }
+
+      convertKanjiToHiragana(value).then((converted) => {
+        setVoicePlayer((current) => ({
+          ...current,
+          firstName: converted,
+        }));
+      });
+
       return {
         ...prev,
-        firstName: getFirstNameForVoice(value),
+        firstName: "",
       };
     }
 
@@ -901,6 +949,46 @@ const clearVoiceInput = () => {
 };
 
 useEffect(() => {
+  let cancelled = false;
+
+  const initKanaConverter = async () => {
+    setKanaConverterLoading(true);
+    setKanaConverterError("");
+
+    try {
+      const [{ default: Kuroshiro }, { default: KuromojiAnalyzer }] = await Promise.all([
+        import("kuroshiro"),
+        import("kuroshiro-analyzer-kuromoji"),
+      ]);
+
+      const kuroshiro = new Kuroshiro();
+      await kuroshiro.init(new KuromojiAnalyzer());
+
+      if (cancelled) return;
+
+      kanaConverterRef.current = kuroshiro;
+      setKanaConverterReady(true);
+    } catch (error) {
+      console.warn("kana converter init failed:", error);
+      if (!cancelled) {
+        setKanaConverterError("漢字のひらがな変換を準備できませんでした");
+        setKanaConverterReady(false);
+      }
+    } finally {
+      if (!cancelled) {
+        setKanaConverterLoading(false);
+      }
+    }
+  };
+
+  initKanaConverter();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
   if (typeof window === "undefined") return;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -914,9 +1002,9 @@ useEffect(() => {
   recognition.continuous = false;
   recognition.maxAlternatives = 1;
 
-  recognition.onresult = (event: any) => {
+  recognition.onresult = async (event: any) => {
     const transcript = event?.results?.[0]?.[0]?.transcript ?? "";
-    parseVoiceText(transcript);
+    await parseVoiceText(transcript);
     setIsListening(false);
   };
 
@@ -1711,6 +1799,24 @@ const saveTeam = async () => {
         {!voiceSupported && (
           <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
             この端末・ブラウザでは音声入力が利用できません
+          </div>
+        )}
+
+        {kanaConverterLoading && (
+          <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm font-bold text-sky-700">
+            漢字のひらがな変換を準備中です
+          </div>
+        )}
+
+        {kanaConverterError && (
+          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-bold text-amber-700">
+            {kanaConverterError}
+          </div>
+        )}
+
+        {kanaConverterReady && (
+          <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-bold text-emerald-700">
+            漢字のひらがな変換が使えます
           </div>
         )}
 
