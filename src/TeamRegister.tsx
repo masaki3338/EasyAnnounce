@@ -93,10 +93,6 @@ const TeamRegister = () => {
     isFemale: false,
   });
   const recognitionRef = useRef<any>(null);
-  const kanaConverterRef = useRef<any>(null);
-  const [kanaConverterReady, setKanaConverterReady] = useState(false);
-  const [kanaConverterLoading, setKanaConverterLoading] = useState(false);
-  const [kanaConverterError, setKanaConverterError] = useState("");
 
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
@@ -627,22 +623,32 @@ const normalizeDigits = (value: string) =>
     String.fromCharCode(s.charCodeAt(0) - 0xfee0)
   );
 
-const commonFirstNameMap: Record<string, string> = {
-  太郎: "たろう",
-  次郎: "じろう",
-  二郎: "じろう",
-  三郎: "さぶろう",
-  健: "けん",
-  翔: "しょう",
-  大翔: "ひろと",
-  蓮: "れん",
-  陸: "りく",
-  颯太: "そうた",
-  悠真: "ゆうま",
-  湊: "みなと",
-  陽翔: "はると",
-  大和: "やまと",
-  蒼: "あおい",
+const toHiraganaOnly = (value: string) => {
+  const normalized = wanakana.toHiragana(value).replace(/\s+/g, "").trim();
+
+  const commonFirstNameMap: Record<string, string> = {
+    太郎: "たろう",
+    次郎: "じろう",
+    二郎: "じろう",
+    三郎: "さぶろう",
+    健: "けん",
+    翔: "しょう",
+    大翔: "ひろと",
+    蓮: "れん",
+    陸: "りく",
+    颯太: "そうた",
+    悠真: "ゆうま",
+    湊: "みなと",
+    陽翔: "はると",
+    大和: "やまと",
+    蒼: "あおい",
+  };
+
+  if (commonFirstNameMap[normalized]) {
+    return commonFirstNameMap[normalized];
+  }
+
+  return normalized.replace(/[^ぁ-ゖーゝゞ]/g, "");
 };
 
 const commonLastNameMap: Record<string, string> = {
@@ -674,78 +680,13 @@ const commonLastNameMap: Record<string, string> = {
   やました: "山下",
 };
 
-const hiraOnly = (value: string) =>
-  value.replace(/[^ぁ-ゖーゝゞ]/g, "");
-
-const toHiraganaOnly = (value: string) => {
-  const trimmed = value.replace(/\s+/g, "").trim();
-  if (!trimmed) return "";
-
-  if (commonFirstNameMap[trimmed]) {
-    return commonFirstNameMap[trimmed];
-  }
-
-  const normalized = wanakana.toHiragana(trimmed).replace(/\s+/g, "").trim();
-  return hiraOnly(normalized);
-};
-
-const convertKanjiToHiragana = async (value: string) => {
-  const trimmed = value.replace(/\s+/g, "").trim();
-  if (!trimmed) return "";
-
-  const localConverted = toHiraganaOnly(trimmed);
-  if (localConverted) return localConverted;
-
-  if (!kanaConverterRef.current) return "";
-
-  try {
-    const converted = await kanaConverterRef.current.convert(trimmed, {
-      to: "hiragana",
-      mode: "normal",
-    });
-
-    return hiraOnly(String(converted).replace(/\s+/g, "").trim());
-  } catch (error) {
-    console.warn("kana convert failed:", error);
-    return "";
-  }
-};
-
-const getLastNameKana = async (value: string) => {
-  const trimmed = value.replace(/\s+/g, "").trim();
-  if (!trimmed) return "";
-
-  // 音声認識が「やまだ」のようにかなで返した場合
-  const kana = toHiraganaOnly(trimmed);
-  if (kana) return kana;
-
-  // 音声認識が「山田」のように漢字で返した場合は、まず手元の苗字辞書から逆引き
-  const found = Object.entries(commonLastNameMap).find(
-    ([, kanji]) => kanji === trimmed
-  );
-
-  if (found?.[0]) return found[0];
-
-  // 辞書にない漢字は Kuroshiro/Kuromoji でひらがな推定
-  return await convertKanjiToHiragana(trimmed);
-};
-
 const toCommonLastNameKanji = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
   const kana = toHiraganaOnly(trimmed);
   return commonLastNameMap[kana] ?? trimmed;
 };
 
-const getFirstNameForVoice = async (value: string) => {
-  const trimmed = value.replace(/\s+/g, "").trim();
-  if (!trimmed) return "";
-
-  // 名前欄は「ひらがなのみ」にする。
-  // 漢字で認識された場合は Kuroshiro/Kuromoji でひらがな推定する。
-  return await convertKanjiToHiragana(trimmed);
-};
-
-const parseVoiceText = async (raw: string) => {
+const parseVoiceText = (raw: string) => {
   const original = raw.trim();
 
   const text = original
@@ -769,64 +710,47 @@ const parseVoiceText = async (raw: string) => {
   let rawFirstName = "";
 
   // 推奨パターン:
-  // 山田 ひらがな たろう
-  // 山田 平仮名 たろう
-  const hiraganaLabelMatch = withoutNumber.match(
-    /^(.+?)\s*(?:ひらがな|平仮名)\s*([^\s]+)$/
+  // やまだ 名前 たろう
+  const nameLabelMatch = withoutNumber.match(
+    /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
   );
 
-  if (hiraganaLabelMatch) {
-    rawLastName = hiraganaLabelMatch[1]?.replace(/\s+/g, "") ?? "";
-    rawFirstName = hiraganaLabelMatch[2] ?? "";
+  if (nameLabelMatch) {
+    rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+    rawFirstName = nameLabelMatch[2] ?? "";
   } else {
     // 予備パターン:
-    // やまだ 名前 たろう
-    const nameLabelMatch = withoutNumber.match(
-      /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
+    // 苗字 やまだ 名前 たろう
+    const labeledMatch = withoutNumber.match(
+      /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名)\s*([^\s]+)/
     );
 
-    if (nameLabelMatch) {
-      rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
-      rawFirstName = nameLabelMatch[2] ?? "";
+    if (labeledMatch) {
+      rawLastName = labeledMatch[1] ?? "";
+      rawFirstName = labeledMatch[2] ?? "";
     } else {
       // 予備パターン:
-      // 苗字 やまだ 名前 たろう
-      const labeledMatch = withoutNumber.match(
-        /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名|ひらがな|平仮名)\s*([^\s]+)/
-      );
+      // やまだ たろう
+      const parts = withoutNumber.split(" ").filter(Boolean);
 
-      if (labeledMatch) {
-        rawLastName = labeledMatch[1] ?? "";
-        rawFirstName = labeledMatch[2] ?? "";
+      if (parts.length >= 2) {
+        rawLastName = parts[0];
+        rawFirstName = parts[1];
       } else {
-        // 予備パターン:
-        // やまだ たろう
-        const parts = withoutNumber.split(" ").filter(Boolean);
-
-        if (parts.length >= 2) {
-          rawLastName = parts[0];
-          rawFirstName = parts[1];
-        } else {
-          rawLastName = withoutNumber;
-          rawFirstName = "";
-        }
+        rawLastName = withoutNumber;
+        rawFirstName = "";
       }
     }
   }
 
-  const nextLastNameKana = await getLastNameKana(rawLastName);
-  const nextLastName = toCommonLastNameKanji(rawLastName);
-  const nextFirstName = await getFirstNameForVoice(rawFirstName);
-
   setVoicePlayer((prev) => ({
     ...prev,
-    lastName: nextLastName,
-    lastNameKana: nextLastNameKana,
-    firstName: nextFirstName,
+    lastName: toCommonLastNameKanji(rawLastName),
+    lastNameKana: toHiraganaOnly(rawLastName),
+    firstName: toHiraganaOnly(rawFirstName),
     number,
   }));
 };
-
 
 const openVoiceModal = () => {
   setVoiceError("");
@@ -892,24 +816,9 @@ const handleVoiceFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
 
     if (name === "firstName") {
-      const hiragana = toHiraganaOnly(value);
-      if (hiragana) {
-        return {
-          ...prev,
-          firstName: hiragana,
-        };
-      }
-
-      convertKanjiToHiragana(value).then((converted) => {
-        setVoicePlayer((current) => ({
-          ...current,
-          firstName: converted,
-        }));
-      });
-
       return {
         ...prev,
-        firstName: "",
+        firstName: toHiraganaOnly(value),
       };
     }
 
@@ -934,60 +843,6 @@ const applyVoicePlayerToForm = () => {
   setShowVoiceModal(false);
 };
 
-const clearVoiceInput = () => {
-  if (isListening) stopListening();
-
-  setVoiceError("");
-  setVoiceTranscript("");
-  setVoicePlayer({
-    lastName: "",
-    lastNameKana: "",
-    firstName: "",
-    number: "",
-    isFemale: false,
-  });
-};
-
-useEffect(() => {
-  let cancelled = false;
-
-  const initKanaConverter = async () => {
-    setKanaConverterLoading(true);
-    setKanaConverterError("");
-
-    try {
-      const [{ default: Kuroshiro }, { default: KuromojiAnalyzer }] = await Promise.all([
-        import("kuroshiro"),
-        import("kuroshiro-analyzer-kuromoji"),
-      ]);
-
-      const kuroshiro = new Kuroshiro();
-      await kuroshiro.init(new KuromojiAnalyzer());
-
-      if (cancelled) return;
-
-      kanaConverterRef.current = kuroshiro;
-      setKanaConverterReady(true);
-    } catch (error) {
-      console.warn("kana converter init failed:", error);
-      if (!cancelled) {
-        setKanaConverterError("漢字のひらがな変換を準備できませんでした");
-        setKanaConverterReady(false);
-      }
-    } finally {
-      if (!cancelled) {
-        setKanaConverterLoading(false);
-      }
-    }
-  };
-
-  initKanaConverter();
-
-  return () => {
-    cancelled = true;
-  };
-}, []);
-
 useEffect(() => {
   if (typeof window === "undefined") return;
 
@@ -1002,9 +857,9 @@ useEffect(() => {
   recognition.continuous = false;
   recognition.maxAlternatives = 1;
 
-  recognition.onresult = async (event: any) => {
+  recognition.onresult = (event: any) => {
     const transcript = event?.results?.[0]?.[0]?.transcript ?? "";
-    await parseVoiceText(transcript);
+    parseVoiceText(transcript);
     setIsListening(false);
   };
 
@@ -1770,9 +1625,9 @@ const saveTeam = async () => {
               🎤 音声入力
             </p>
 <p className="mt-2 rounded-xl bg-white px-3 py-2 text-[15px] font-extrabold leading-6 text-red-600 shadow-sm sm:text-[17px]">
-  苗字のあとに「ひらがな」と言って、名前・背番号の順番で話してください
+  苗字のあとに”名前”と言って、名前・背番号の順番で話してください
   <div className="font-bold">＜話し方の例＞</div>
-  山田、ひらがな、たろう、背番号2
+  やまだ、名前 たろう、背番号 2
 </p>
   <div className="mt-1 text-[17px] font-extrabold leading-6 sm:text-[19px]">
     
@@ -1799,24 +1654,6 @@ const saveTeam = async () => {
         {!voiceSupported && (
           <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
             この端末・ブラウザでは音声入力が利用できません
-          </div>
-        )}
-
-        {kanaConverterLoading && (
-          <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm font-bold text-sky-700">
-            漢字のひらがな変換を準備中です
-          </div>
-        )}
-
-        {kanaConverterError && (
-          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-bold text-amber-700">
-            {kanaConverterError}
-          </div>
-        )}
-
-        {kanaConverterReady && (
-          <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-bold text-emerald-700">
-            漢字のひらがな変換が使えます
           </div>
         )}
 
@@ -1854,15 +1691,7 @@ const saveTeam = async () => {
               />
             </div>
 
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={clearVoiceInput}
-                className="h-9 rounded-xl border border-red-200 bg-white px-3 text-[12px] font-extrabold text-red-600 shadow-sm transition hover:bg-red-50 active:scale-95"
-              >
-                クリア
-              </button>
-            </div>
+            <div className="hidden sm:block" />
             <div className="hidden sm:block" />
           </div>
 
