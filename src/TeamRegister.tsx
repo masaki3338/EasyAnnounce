@@ -680,9 +680,25 @@ const commonLastNameMap: Record<string, string> = {
   やました: "山下",
 };
 
+const getLastNameKana = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  // 音声認識が「やまだ」のようにかなで返した場合
+  const kana = toHiraganaOnly(trimmed);
+  if (kana) return kana;
+
+  // 音声認識が「山田」のように漢字で返した場合
+  const found = Object.entries(commonLastNameMap).find(
+    ([, kanji]) => kanji === trimmed
+  );
+
+  return found?.[0] ?? "";
+};
+
 const toCommonLastNameKanji = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
-  const kana = toHiraganaOnly(trimmed);
+  const kana = getLastNameKana(trimmed);
   return commonLastNameMap[kana] ?? trimmed;
 };
 
@@ -743,10 +759,14 @@ const parseVoiceText = (raw: string) => {
     }
   }
 
+  const nextLastNameKana = getLastNameKana(rawLastName);
+  const nextLastName = toCommonLastNameKanji(rawLastName);
+
   setVoicePlayer((prev) => ({
     ...prev,
-    lastName: toCommonLastNameKanji(rawLastName),
-    lastNameKana: toHiraganaOnly(rawLastName),
+    lastName: nextLastName,
+    // 苗字が漢字で認識された場合でも、対応表からふりがなを入れる
+    lastNameKana: nextLastNameKana,
     firstName: toHiraganaOnly(rawFirstName),
     number,
   }));
