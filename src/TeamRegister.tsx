@@ -2,6 +2,13 @@ import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
 import * as wanakana from "wanakana";
 
+declare global {
+  interface Window {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
+
 
 
 type Player = {
@@ -71,6 +78,21 @@ const TeamRegister = () => {
   const [allowLeave, setAllowLeave] = useState(false);
   const snapshotRef = useRef<string | null>(null);
   const initDoneRef = useRef(false);
+
+  // 音声入力モーダル
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voicePlayer, setVoicePlayer] = useState({
+    lastName: "",
+    lastNameKana: "",
+    firstName: "",
+    number: "",
+    isFemale: false,
+  });
+  const recognitionRef = useRef<any>(null);
 
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
@@ -596,6 +618,237 @@ const handlePlayerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   }));
 };
 
+const normalizeDigits = (value: string) =>
+  value.replace(/[０-９]/g, (s) =>
+    String.fromCharCode(s.charCodeAt(0) - 0xfee0)
+  );
+
+const toHiraganaOnly = (value: string) => {
+  const normalized = wanakana.toHiragana(value).replace(/\s+/g, "").trim();
+
+  const commonFirstNameMap: Record<string, string> = {
+    太郎: "たろう",
+    次郎: "じろう",
+    二郎: "じろう",
+    三郎: "さぶろう",
+    健: "けん",
+    翔: "しょう",
+    大翔: "ひろと",
+    蓮: "れん",
+    陸: "りく",
+    颯太: "そうた",
+    悠真: "ゆうま",
+    湊: "みなと",
+    陽翔: "はると",
+    大和: "やまと",
+    蒼: "あおい",
+  };
+
+  if (commonFirstNameMap[normalized]) {
+    return commonFirstNameMap[normalized];
+  }
+
+  return normalized.replace(/[^ぁ-ゖーゝゞ]/g, "");
+};
+
+const commonLastNameMap: Record<string, string> = {
+  やまだ: "山田",
+  さとう: "佐藤",
+  すずき: "鈴木",
+  たかはし: "高橋",
+  たなか: "田中",
+  いとう: "伊藤",
+  わたなべ: "渡辺",
+  やまもと: "山本",
+  なかむら: "中村",
+  こばやし: "小林",
+  かとう: "加藤",
+  よしだ: "吉田",
+  やまぐち: "山口",
+  まつもと: "松本",
+  いのうえ: "井上",
+  きむら: "木村",
+  はやし: "林",
+  さいとう: "斎藤",
+  しみず: "清水",
+  やまざき: "山崎",
+  もり: "森",
+  いけだ: "池田",
+  はしもと: "橋本",
+  あべ: "阿部",
+  いしかわ: "石川",
+  やました: "山下",
+};
+
+const toCommonLastNameKanji = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  const kana = toHiraganaOnly(trimmed);
+  return commonLastNameMap[kana] ?? trimmed;
+};
+
+const parseVoiceText = (raw: string) => {
+  const text = raw
+    .replace(/　/g, " ")
+    .replace(/[、,]/g, " ")
+    .replace(/。/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const numberMatch = text.match(/(?:背番号|せばんごう)?\s*([0-9０-９]{1,3})\s*(?:番)?/);
+  const number = numberMatch ? normalizeDigits(numberMatch[1]) : "";
+
+  const namePart = numberMatch
+    ? text.replace(numberMatch[0], "").trim()
+    : text;
+
+  const parts = namePart.split(" ").filter(Boolean);
+
+  const rawLastName = parts[0] ?? "";
+  const rawFirstName = parts[1] ?? "";
+
+  setVoiceTranscript(raw);
+
+  setVoicePlayer((prev) => ({
+    ...prev,
+    lastName: toCommonLastNameKanji(rawLastName),
+    lastNameKana: toHiraganaOnly(rawLastName),
+    firstName: toHiraganaOnly(rawFirstName),
+    number,
+  }));
+};
+
+const openVoiceModal = () => {
+  setVoiceError("");
+  setVoiceTranscript("");
+  setVoicePlayer({
+    lastName: editingPlayer.lastName ?? "",
+    lastNameKana: editingPlayer.lastNameKana ?? "",
+    firstName: editingPlayer.firstName ?? "",
+    number: editingPlayer.number ?? "",
+    isFemale: editingPlayer.isFemale ?? false,
+  });
+  setShowVoiceModal(true);
+};
+
+const startListening = () => {
+  if (!recognitionRef.current) {
+    setVoiceError("この端末では音声入力が利用できません");
+    return;
+  }
+
+  setVoiceError("");
+  setVoiceTranscript("");
+
+  try {
+    recognitionRef.current.start();
+    setIsListening(true);
+  } catch (e) {
+    console.error(e);
+    setVoiceError("音声入力を開始できませんでした");
+    setIsListening(false);
+  }
+};
+
+const stopListening = () => {
+  try {
+    recognitionRef.current?.stop();
+  } catch (e) {
+    console.error(e);
+  }
+  setIsListening(false);
+};
+
+const handleVoiceFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value, type, checked } = e.target;
+
+  setVoicePlayer((prev) => {
+    if (type === "checkbox") {
+      return { ...prev, [name]: checked };
+    }
+
+    if (name === "number") {
+      return {
+        ...prev,
+        number: normalizeDigits(value).replace(/[^0-9]/g, ""),
+      };
+    }
+
+    if (name === "lastNameKana") {
+      return {
+        ...prev,
+        lastNameKana: toHiraganaOnly(value),
+      };
+    }
+
+    if (name === "firstName") {
+      return {
+        ...prev,
+        firstName: toHiraganaOnly(value),
+      };
+    }
+
+    return {
+      ...prev,
+      [name]: value,
+    };
+  });
+};
+
+const applyVoicePlayerToForm = () => {
+  setEditingPlayer((prev) => ({
+    ...prev,
+    lastName: voicePlayer.lastName,
+    lastNameKana: voicePlayer.lastNameKana,
+    firstName: voicePlayer.firstName,
+    firstNameKana: voicePlayer.firstName,
+    number: voicePlayer.number,
+    isFemale: voicePlayer.isFemale,
+  }));
+
+  setShowVoiceModal(false);
+};
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  setVoiceSupported(!!SR);
+
+  if (!SR) return;
+
+  const recognition = new SR();
+  recognition.lang = "ja-JP";
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event: any) => {
+    const transcript = event?.results?.[0]?.[0]?.transcript ?? "";
+    parseVoiceText(transcript);
+    setIsListening(false);
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error("speech error", event);
+    setVoiceError("音声認識に失敗しました。もう一度お試しください。");
+    setIsListening(false);
+  };
+
+  recognition.onend = () => {
+    setIsListening(false);
+  };
+
+  recognitionRef.current = recognition;
+
+  return () => {
+    try {
+      recognition.abort?.();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+}, []);
+
 
 
 const addOrUpdatePlayer = () => {
@@ -939,10 +1192,7 @@ const saveTeam = async () => {
             name="furigana"
             value={team.furigana}
             onChange={handleTeamChange}
-              className="w-full mt-1 px-3 py-2 rounded-xl
-+             bg-white/90 text-gray-900 placeholder-gray-600
-+             border border-white/70 shadow-sm
-+             focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/90 text-gray-900 placeholder-gray-600 border border-white/70 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
             placeholder="例：ひろしまかーぷ"
           />
         </div>
@@ -950,8 +1200,20 @@ const saveTeam = async () => {
 
 
       {/* 選手追加フォーム */}      
-       <div className="w-full rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
-        <h2 className="text-lg font-bold text-blue-600 mb-4">{editingPlayer.id ? "選手を編集" : "選手を追加"}</h2>
+      <div className="w-full rounded-2xl p-4 bg-white/10 border border-white/10 ring-1 ring-inset ring-white/10 shadow mb-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-blue-600">
+            {editingPlayer.id ? "選手を編集" : "選手を追加"}
+          </h2>
+
+          <button
+            type="button"
+            onClick={openVoiceModal}
+            className="shrink-0 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-sky-700 active:scale-95"
+          >
+            🎤 音声入力
+          </button>
+        </div>
         
       
         {FIELDS.map(({ id, label, placeholder }) => (
@@ -1299,6 +1561,213 @@ const saveTeam = async () => {
         >
           OK
         </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 音声入力モーダル */}
+{showVoiceModal && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-950/65 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-6 sm:items-center sm:px-6 sm:py-6"
+    role="dialog"
+    aria-modal="true"
+    onClick={() => {
+      if (isListening) stopListening();
+      setShowVoiceModal(false);
+    }}
+  >
+    <div
+      className="w-full max-w-[560px] overflow-hidden rounded-[28px] bg-white text-gray-900 shadow-[0_18px_60px_rgba(15,23,42,0.35)]"
+      onClick={(e) => e.stopPropagation()}
+      role="document"
+    >
+      <div className="bg-gradient-to-r from-sky-600 to-cyan-500 px-4 pb-4 pt-3 text-white">
+        <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-white/70 sm:hidden" />
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[18px] font-extrabold tracking-wide">
+              🎤 音声入力
+            </p>
+            <p className="mt-1 text-[12px] leading-5 text-white/90 sm:text-[13px]">
+              「苗字」「名前」「背番号」の順番で話してください
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (isListening) stopListening();
+              setShowVoiceModal(false);
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg font-bold text-white transition hover:bg-white/30 active:scale-95"
+            aria-label="閉じる"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mt-3 rounded-2xl bg-white/16 px-3 py-2.5 text-[12px] leading-5 text-white sm:text-[13px]">
+          <div className="font-bold">話し方の例</div>
+          <div className="mt-0.5">やまだ　たろう　背番号2</div>
+          <div className="mt-1 text-red-100">
+            ※項目の間は少し間をあけてください
+          </div>
+        </div>
+      </div>
+
+      <div className="max-h-[78svh] overflow-y-auto px-4 pb-4 pt-4 sm:px-5">
+        {!voiceSupported && (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
+            この端末・ブラウザでは音声入力が利用できません
+          </div>
+        )}
+
+        {voiceError && (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
+            {voiceError}
+          </div>
+        )}
+
+        {voiceTranscript && (
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            <div className="text-[12px] font-bold tracking-wide text-slate-500">
+              認識結果
+            </div>
+            <div className="mt-1 font-semibold text-slate-800">
+              {voiceTranscript}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
+          <div className="grid grid-cols-[1.15fr_1.15fr_0.8fr] gap-2 sm:gap-3">
+            <div className="col-span-1">
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                ふりがな
+              </label>
+              <input
+                type="text"
+                name="lastNameKana"
+                value={voicePlayer.lastNameKana}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="kana"
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="hidden sm:block" />
+            <div className="hidden sm:block" />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[1.15fr_1.15fr_0.8fr] gap-2 sm:gap-3">
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                苗字
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                value={voicePlayer.lastName}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                名前
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                value={voicePlayer.firstName}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="kana"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                背番号
+              </label>
+              <input
+                type="text"
+                name="number"
+                value={voicePlayer.number}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <label className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <div className="text-[14px] font-extrabold text-slate-800">女子選手</div>
+              <div className="text-[12px] text-slate-500">必要な場合のみチェックしてください</div>
+            </div>
+            <input
+              type="checkbox"
+              name="isFemale"
+              checked={voicePlayer.isFemale}
+              onChange={handleVoiceFieldChange}
+              className="h-6 w-6 accent-sky-600"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-[24px] border border-sky-100 bg-sky-50 p-3 sm:p-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (isListening) {
+                stopListening();
+              } else {
+                startListening();
+              }
+            }}
+            disabled={!voiceSupported}
+            className={`w-full rounded-2xl px-4 py-4 text-[18px] font-extrabold text-white shadow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+              isListening
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-sky-600 hover:bg-sky-700"
+            }`}
+          >
+            {isListening ? "■ 停止" : "🎤 開始"}
+          </button>
+
+          <p className="mt-2 text-center text-[12px] text-slate-600">
+            開始後に話して、終わったら停止を押してください
+          </p>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (isListening) stopListening();
+              setShowVoiceModal(false);
+            }}
+            className="rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-[15px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
+          >
+            キャンセル
+          </button>
+
+          <button
+            type="button"
+            onClick={applyVoicePlayerToForm}
+            className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-[15px] font-bold text-white shadow transition hover:bg-emerald-700 active:scale-[0.98]"
+          >
+            入力欄へ反映
+          </button>
+        </div>
       </div>
     </div>
   </div>
