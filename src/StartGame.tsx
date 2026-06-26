@@ -196,6 +196,25 @@ async function clearUsedSubstitutionStateOnGameStart() {
 }
 
 
+// ✅ 試合開始時は、打順に残っている代打・代走・リエントリー等の理由を必ず消す
+// 前試合や「戻す」操作で startingBattingOrder / battingOrder に reason が残ると、
+// 試合開始直後の攻撃画面で守備位置が「代走」「代打」と表示されるため。
+function sanitizeGameStartBattingOrder(order: BattingEntry[] | null | undefined): BattingEntry[] {
+  if (!Array.isArray(order)) return [];
+
+  return order
+    .map((entry: any) => {
+      const id = Number(typeof entry === "number" ? entry : entry?.id);
+      if (!Number.isFinite(id)) return null;
+
+      // reason は持ち越さない。守備位置は lineupAssignments / startingExtraPositionMap から表示させる。
+      return { id };
+    })
+    .filter((entry): entry is BattingEntry => entry !== null)
+    .slice(0, MAX_BATTING_ORDER);
+}
+
+
 
 const StartGame = ({
   onStart,
@@ -629,6 +648,9 @@ const proceedStart = async () => {
   await localForage.removeItem("startTime");
   await localForage.removeItem("gameStartTime");
 
+  // ✅ 攻撃画面側にも「新しい試合開始」を通知して、画面内 state の残骸を消す
+  await localForage.setItem("gameStartToken", Date.now());
+
   // ✅ 試合開始時に1人アナウンスモードの前試合状態も完全クリア
   // ここで消しておかないと、1回表・1回裏で前試合のチェック状態やsnapshotが残ることがある
   await clearOnePersonGameStartState();
@@ -660,15 +682,17 @@ const proceedStart = async () => {
         teamKey(firstTeamId, "startingassignments")
       )) ?? {};
 
-    const thirdO =
+    const thirdO = sanitizeGameStartBattingOrder(
       (await localForage.getItem<BattingEntry[]>(
         teamKey(thirdTeamId, "startingBattingOrder")
-      )) ?? [];
+      )) ?? []
+    );
 
-    const firstO =
+    const firstO = sanitizeGameStartBattingOrder(
       (await localForage.getItem<BattingEntry[]>(
         teamKey(firstTeamId, "startingBattingOrder")
-      )) ?? [];
+      )) ?? []
+    );
 
     const thirdPlayers = thirdFolder?.team?.players || [];
     const firstPlayers = firstFolder?.team?.players || [];
@@ -817,7 +841,7 @@ const draftO = await localForage.getItem<BattingEntry[]>("startingBattingOrder_d
 const savedO = await localForage.getItem<BattingEntry[]>("startingBattingOrder");
 const stateO = battingOrder; // ← StartGame画面に表示されている打順
 const oldO   = await localForage.getItem<BattingEntry[]>("battingOrder");
-let adoptO = draftO ?? savedO ?? stateO ?? oldO ?? [];
+let adoptO = sanitizeGameStartBattingOrder(draftO ?? savedO ?? stateO ?? oldO ?? []);
 
 const draftExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap_draft");
 const savedExtraPos = await localForage.getItem<ExtraPositionMap>("startingExtraPositionMap");
@@ -837,7 +861,7 @@ if (!Array.isArray(adoptO) || adoptO.length === 0) {
   const ids = orderPositions
     .map(p => normA[p])
     .filter((id): id is number => typeof id === "number");
-  adoptO = ids.slice(0, MAX_BATTING_ORDER).map(id => ({ id, reason: "スタメン" }));
+  adoptO = ids.slice(0, MAX_BATTING_ORDER).map(id => ({ id }));
 }
 
 // ベンチ外
