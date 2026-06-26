@@ -737,35 +737,47 @@ const parseVoiceText = (raw: string) => {
   let rawFirstName = "";
 
   // 推奨パターン:
-  // やまだ 名前 たろう
-  const nameLabelMatch = withoutNumber.match(
-    /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
+  // 山田 ひらがな たろう
+  // 山田 平仮名 たろう
+  const hiraganaLabelMatch = withoutNumber.match(
+    /^(.+?)\s*(?:ひらがな|平仮名)\s*([^\s]+)$/
   );
 
-  if (nameLabelMatch) {
-    rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
-    rawFirstName = nameLabelMatch[2] ?? "";
+  if (hiraganaLabelMatch) {
+    rawLastName = hiraganaLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+    rawFirstName = hiraganaLabelMatch[2] ?? "";
   } else {
     // 予備パターン:
-    // 苗字 やまだ 名前 たろう
-    const labeledMatch = withoutNumber.match(
-      /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名)\s*([^\s]+)/
+    // やまだ 名前 たろう
+    const nameLabelMatch = withoutNumber.match(
+      /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
     );
 
-    if (labeledMatch) {
-      rawLastName = labeledMatch[1] ?? "";
-      rawFirstName = labeledMatch[2] ?? "";
+    if (nameLabelMatch) {
+      rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+      rawFirstName = nameLabelMatch[2] ?? "";
     } else {
       // 予備パターン:
-      // やまだ たろう
-      const parts = withoutNumber.split(" ").filter(Boolean);
+      // 苗字 やまだ 名前 たろう
+      const labeledMatch = withoutNumber.match(
+        /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名|ひらがな|平仮名)\s*([^\s]+)/
+      );
 
-      if (parts.length >= 2) {
-        rawLastName = parts[0];
-        rawFirstName = parts[1];
+      if (labeledMatch) {
+        rawLastName = labeledMatch[1] ?? "";
+        rawFirstName = labeledMatch[2] ?? "";
       } else {
-        rawLastName = withoutNumber;
-        rawFirstName = "";
+        // 予備パターン:
+        // やまだ たろう
+        const parts = withoutNumber.split(" ").filter(Boolean);
+
+        if (parts.length >= 2) {
+          rawLastName = parts[0];
+          rawFirstName = parts[1];
+        } else {
+          rawLastName = withoutNumber;
+          rawFirstName = "";
+        }
       }
     }
   }
@@ -776,12 +788,12 @@ const parseVoiceText = (raw: string) => {
   setVoicePlayer((prev) => ({
     ...prev,
     lastName: nextLastName,
-    // 苗字が漢字で認識された場合でも、対応表からふりがなを入れる
     lastNameKana: nextLastNameKana,
     firstName: getFirstNameForVoice(rawFirstName),
     number,
   }));
 };
+
 
 const openVoiceModal = () => {
   setVoiceError("");
@@ -1670,9 +1682,9 @@ const saveTeam = async () => {
               🎤 音声入力
             </p>
 <p className="mt-2 rounded-xl bg-white px-3 py-2 text-[15px] font-extrabold leading-6 text-red-600 shadow-sm sm:text-[17px]">
-  苗字のあとに”名前”と言って、名前・背番号の順番で話してください
+  苗字のあとに「ひらがな」と言って、名前・背番号の順番で話してください
   <div className="font-bold">＜話し方の例＞</div>
-  やまだ、名前 たろう、背番号 2
+  山田、ひらがな、たろう、背番号2
 </p>
   <div className="mt-1 text-[17px] font-extrabold leading-6 sm:text-[19px]">
     
