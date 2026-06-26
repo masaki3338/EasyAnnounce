@@ -693,13 +693,23 @@ const getLastNameKana = (value: string) => {
     ([, kanji]) => kanji === trimmed
   );
 
-  return found?.[0] ?? "";
+  // 対応表にない漢字苗字でも空白にしない。
+  // ふりがな欄で手修正できるよう、認識された値をいったん表示する。
+  return found?.[0] ?? trimmed;
 };
 
 const toCommonLastNameKanji = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
   const kana = getLastNameKana(trimmed);
   return commonLastNameMap[kana] ?? trimmed;
+};
+
+const getFirstNameForVoice = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  // 変換できる場合はひらがな、変換できない漢字名などは空白にせず認識結果を表示
+  return toHiraganaOnly(trimmed) || trimmed;
 };
 
 const parseVoiceText = (raw: string) => {
@@ -767,7 +777,7 @@ const parseVoiceText = (raw: string) => {
     lastName: nextLastName,
     // 苗字が漢字で認識された場合でも、対応表からふりがなを入れる
     lastNameKana: nextLastNameKana,
-    firstName: toHiraganaOnly(rawFirstName),
+    firstName: getFirstNameForVoice(rawFirstName),
     number,
   }));
 };
@@ -838,7 +848,7 @@ const handleVoiceFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (name === "firstName") {
       return {
         ...prev,
-        firstName: toHiraganaOnly(value),
+        firstName: getFirstNameForVoice(value),
       };
     }
 
@@ -861,6 +871,20 @@ const applyVoicePlayerToForm = () => {
   }));
 
   setShowVoiceModal(false);
+};
+
+const clearVoiceInput = () => {
+  if (isListening) stopListening();
+
+  setVoiceError("");
+  setVoiceTranscript("");
+  setVoicePlayer({
+    lastName: "",
+    lastNameKana: "",
+    firstName: "",
+    number: "",
+    isFemale: false,
+  });
 };
 
 useEffect(() => {
@@ -1711,7 +1735,15 @@ const saveTeam = async () => {
               />
             </div>
 
-            <div className="hidden sm:block" />
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={clearVoiceInput}
+                className="h-9 rounded-xl border border-red-200 bg-white px-3 text-[12px] font-extrabold text-red-600 shadow-sm transition hover:bg-red-50 active:scale-95"
+              >
+                クリア
+              </button>
+            </div>
             <div className="hidden sm:block" />
           </div>
 
