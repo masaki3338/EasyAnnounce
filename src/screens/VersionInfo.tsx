@@ -42,9 +42,14 @@ const historyData: HistoryItem[] = [
     details: ["GooglePlay Release"],
   },
   {
-    date: "2026.06.04",
-    version: "Vesion 1.10",
-    details: ["1人アナウンスモード追加"],
+    date: "2026.06.15",
+    version: "Vesion 1.01",
+    details: ["シートノック時間変更可能対応"],
+  },
+  {
+    date: "2026.06.30",
+    version: "Vesion 1.02",
+    details: ["1人で両チームアナウンス対応"],
   },
  ];
 
