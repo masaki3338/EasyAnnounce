@@ -687,26 +687,61 @@ const toCommonLastNameKanji = (value: string) => {
 };
 
 const parseVoiceText = (raw: string) => {
-  const text = raw
+  const original = raw.trim();
+
+  const text = original
     .replace(/　/g, " ")
-    .replace(/[、,]/g, " ")
-    .replace(/。/g, " ")
+    .replace(/[、,。]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  const numberMatch = text.match(/(?:背番号|せばんごう)?\s*([0-9０-９]{1,3})\s*(?:番)?/);
+  setVoiceTranscript(raw);
+
+  // 背番号を取得
+  const numberMatch = text.match(/(?:背番号|せばんごう|番号)?\s*([0-9０-９]{1,3})\s*(?:番)?/);
   const number = numberMatch ? normalizeDigits(numberMatch[1]) : "";
 
-  const namePart = numberMatch
+  // 背番号部分を除外
+  const withoutNumber = numberMatch
     ? text.replace(numberMatch[0], "").trim()
     : text;
 
-  const parts = namePart.split(" ").filter(Boolean);
+  let rawLastName = "";
+  let rawFirstName = "";
 
-  const rawLastName = parts[0] ?? "";
-  const rawFirstName = parts[1] ?? "";
+  // 推奨パターン:
+  // やまだ 名前 たろう
+  const nameLabelMatch = withoutNumber.match(
+    /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
+  );
 
-  setVoiceTranscript(raw);
+  if (nameLabelMatch) {
+    rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+    rawFirstName = nameLabelMatch[2] ?? "";
+  } else {
+    // 予備パターン:
+    // 苗字 やまだ 名前 たろう
+    const labeledMatch = withoutNumber.match(
+      /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名)\s*([^\s]+)/
+    );
+
+    if (labeledMatch) {
+      rawLastName = labeledMatch[1] ?? "";
+      rawFirstName = labeledMatch[2] ?? "";
+    } else {
+      // 予備パターン:
+      // やまだ たろう
+      const parts = withoutNumber.split(" ").filter(Boolean);
+
+      if (parts.length >= 2) {
+        rawLastName = parts[0];
+        rawFirstName = parts[1];
+      } else {
+        rawLastName = withoutNumber;
+        rawFirstName = "";
+      }
+    }
+  }
 
   setVoicePlayer((prev) => ({
     ...prev,
@@ -1589,9 +1624,14 @@ const saveTeam = async () => {
             <p className="text-[18px] font-extrabold tracking-wide">
               🎤 音声入力
             </p>
-            <p className="mt-1 text-[12px] leading-5 text-white/90 sm:text-[13px]">
-              「苗字」「名前」「背番号」の順番で話してください
-            </p>
+<p className="mt-2 rounded-xl bg-white px-3 py-2 text-[15px] font-extrabold leading-6 text-red-600 shadow-sm sm:text-[17px]">
+  苗字のあとに”名前”と言って、名前・背番号の順番で話してください
+  <div className="font-bold">＜話し方の例＞</div>
+  やまだ、名前 たろう、背番号 2
+</p>
+  <div className="mt-1 text-[17px] font-extrabold leading-6 sm:text-[19px]">
+    
+  </div>
           </div>
 
           <button
@@ -1607,13 +1647,7 @@ const saveTeam = async () => {
           </button>
         </div>
 
-        <div className="mt-3 rounded-2xl bg-white/16 px-3 py-2.5 text-[12px] leading-5 text-white sm:text-[13px]">
-          <div className="font-bold">話し方の例</div>
-          <div className="mt-0.5">やまだ　たろう　背番号2</div>
-          <div className="mt-1 text-red-100">
-            ※項目の間は少し間をあけてください
-          </div>
-        </div>
+
       </div>
 
       <div className="max-h-[78svh] overflow-y-auto px-4 pb-4 pt-4 sm:px-5">
