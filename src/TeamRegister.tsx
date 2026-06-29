@@ -623,32 +623,112 @@ const normalizeDigits = (value: string) =>
     String.fromCharCode(s.charCodeAt(0) - 0xfee0)
   );
 
-const toHiraganaOnly = (value: string) => {
-  const normalized = wanakana.toHiragana(value).replace(/\s+/g, "").trim();
-
-  const commonFirstNameMap: Record<string, string> = {
-    太郎: "たろう",
-    次郎: "じろう",
-    二郎: "じろう",
-    三郎: "さぶろう",
-    健: "けん",
-    翔: "しょう",
-    大翔: "ひろと",
-    蓮: "れん",
-    陸: "りく",
-    颯太: "そうた",
-    悠真: "ゆうま",
-    湊: "みなと",
-    陽翔: "はると",
-    大和: "やまと",
-    蒼: "あおい",
-  };
-
-  if (commonFirstNameMap[normalized]) {
-    return commonFirstNameMap[normalized];
-  }
-
-  return normalized.replace(/[^ぁ-ゖーゝゞ]/g, "");
+const commonFirstNameMap: Record<string, string> = {
+  太郎: "たろう",
+  一郎: "いちろう",
+  次郎: "じろう",
+  二郎: "じろう",
+  三郎: "さぶろう",
+  健: "けん",
+  健太: "けんた",
+  健斗: "けんと",
+  翔: "しょう",
+  翔太: "しょうた",
+  翔平: "しょうへい",
+  大翔: "ひろと",
+  蓮: "れん",
+  陸: "りく",
+  陸斗: "りくと",
+  颯: "そう",
+  颯太: "そうた",
+  悠: "ゆう",
+  悠斗: "ゆうと",
+  悠人: "ゆうと",
+  悠真: "ゆうま",
+  優斗: "ゆうと",
+  優太: "ゆうた",
+  優真: "ゆうま",
+  湊: "みなと",
+  陽: "はる",
+  陽太: "ようた",
+  陽翔: "はると",
+  大和: "やまと",
+  蒼: "あおい",
+  蒼太: "そうた",
+  仁: "じん",
+  仁翔: "まさと",
+  琉生: "るい",
+  琉斗: "りゅうと",
+  琉翔: "りゅうと",
+  瑛太: "えいた",
+  瑛斗: "えいと",
+  英太: "えいた",
+  亮: "りょう",
+  涼: "りょう",
+  遼: "りょう",
+  凌: "りょう",
+  龍: "りゅう",
+  龍太: "りゅうた",
+  竜太: "りゅうた",
+  光: "ひかる",
+  光希: "こうき",
+  光輝: "こうき",
+  晴: "はる",
+  晴人: "はると",
+  晴翔: "はると",
+  春斗: "はると",
+  春人: "はると",
+  大輝: "だいき",
+  大樹: "だいき",
+  大地: "だいち",
+  大河: "たいが",
+  海斗: "かいと",
+  海翔: "かいと",
+  快斗: "かいと",
+  奏太: "そうた",
+  奏斗: "かなと",
+  奏多: "かなた",
+  匠: "たくみ",
+  拓海: "たくみ",
+  拓真: "たくま",
+  拓斗: "たくと",
+  隼人: "はやと",
+  隼: "はやと",
+  蓮斗: "れんと",
+  結斗: "ゆいと",
+  結人: "ゆいと",
+  一翔: "いちと",
+  一真: "かずま",
+  和真: "かずま",
+  颯真: "そうま",
+  颯馬: "そうま",
+  斗真: "とうま",
+  佑: "ゆう",
+  佑太: "ゆうた",
+  祐太: "ゆうた",
+  祐樹: "ゆうき",
+  優希: "ゆうき",
+  悠希: "ゆうき",
+  翼: "つばさ",
+  歩: "あゆむ",
+  真: "まこと",
+  誠: "まこと",
+  樹: "いつき",
+  朔: "さく",
+  朔太郎: "さくたろう",
+  侑斗: "ゆうと",
+  侑真: "ゆうま",
+  直人: "なおと",
+  直樹: "なおき",
+  直也: "なおや",
+  智也: "ともや",
+  智樹: "ともき",
+  智哉: "ともや",
+  颯人: "はやと",
+  煌: "こう",
+  煌太: "こうた",
+  虎太郎: "こたろう",
+  琥太郎: "こたろう",
 };
 
 const commonLastNameMap: Record<string, string> = {
@@ -678,12 +758,67 @@ const commonLastNameMap: Record<string, string> = {
   あべ: "阿部",
   いしかわ: "石川",
   やました: "山下",
+  まえだ: "前田",
+  ふじた: "藤田",
+  おかだ: "岡田",
+  ごとう: "後藤",
+  おがわ: "小川",
+  はせがわ: "長谷川",
+  むらかみ: "村上",
+  こんどう: "近藤",
+  いしかわ: "石川",
+  さいとう: "齋藤",
+  ふじい: "藤井",
+  さかもと: "坂本",
+  あおき: "青木",
+  ふくしま: "福島",
+  ふくい: "福井",
+  ふくもと: "福本",
+};
+
+const hiraOnly = (value: string) => value.replace(/[^ぁ-ゖーゝゞ]/g, "");
+
+const toHiraganaOnly = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  // 音声認識で名前が漢字になった場合、まず名前辞書でひらがなに戻す
+  if (commonFirstNameMap[trimmed]) {
+    return commonFirstNameMap[trimmed];
+  }
+
+  const normalized = wanakana.toHiragana(trimmed).replace(/\s+/g, "").trim();
+  return hiraOnly(normalized);
+};
+
+const getLastNameKana = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  // 音声認識が「やまだ」「ヤマダ」のように返した場合
+  const kana = toHiraganaOnly(trimmed);
+  if (kana) return kana;
+
+  // 音声認識が「山田」のように漢字で返した場合、苗字辞書を逆引きしてひらがなに戻す
+  const found = Object.entries(commonLastNameMap).find(
+    ([, kanji]) => kanji === trimmed
+  );
+
+  return found?.[0] ?? "";
 };
 
 const toCommonLastNameKanji = (value: string) => {
   const trimmed = value.replace(/\s+/g, "").trim();
-  const kana = toHiraganaOnly(trimmed);
+  const kana = getLastNameKana(trimmed);
   return commonLastNameMap[kana] ?? trimmed;
+};
+
+const getFirstNameForVoice = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  if (!trimmed) return "";
+
+  // 名前欄はひらがなのみ。漢字で返ってきた場合は名前辞書でひらがなに戻す。
+  return toHiraganaOnly(trimmed);
 };
 
 const parseVoiceText = (raw: string) => {
@@ -710,47 +845,64 @@ const parseVoiceText = (raw: string) => {
   let rawFirstName = "";
 
   // 推奨パターン:
-  // やまだ 名前 たろう
-  const nameLabelMatch = withoutNumber.match(
-    /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
+  // 山田 ひらがな たろう
+  // 山田 平仮名 たろう
+  const hiraganaLabelMatch = withoutNumber.match(
+    /^(.+?)\s*(?:ひらがな|平仮名)\s*([^\s]+)$/
   );
 
-  if (nameLabelMatch) {
-    rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
-    rawFirstName = nameLabelMatch[2] ?? "";
+  if (hiraganaLabelMatch) {
+    rawLastName = hiraganaLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+    rawFirstName = hiraganaLabelMatch[2] ?? "";
   } else {
     // 予備パターン:
-    // 苗字 やまだ 名前 たろう
-    const labeledMatch = withoutNumber.match(
-      /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名)\s*([^\s]+)/
+    // やまだ 名前 たろう
+    const nameLabelMatch = withoutNumber.match(
+      /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
     );
 
-    if (labeledMatch) {
-      rawLastName = labeledMatch[1] ?? "";
-      rawFirstName = labeledMatch[2] ?? "";
+    if (nameLabelMatch) {
+      rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+      rawFirstName = nameLabelMatch[2] ?? "";
     } else {
       // 予備パターン:
-      // やまだ たろう
-      const parts = withoutNumber.split(" ").filter(Boolean);
+      // 苗字 やまだ 名前 たろう
+      const labeledMatch = withoutNumber.match(
+        /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名|ひらがな|平仮名)\s*([^\s]+)/
+      );
 
-      if (parts.length >= 2) {
-        rawLastName = parts[0];
-        rawFirstName = parts[1];
+      if (labeledMatch) {
+        rawLastName = labeledMatch[1] ?? "";
+        rawFirstName = labeledMatch[2] ?? "";
       } else {
-        rawLastName = withoutNumber;
-        rawFirstName = "";
+        // 予備パターン:
+        // やまだ たろう
+        const parts = withoutNumber.split(" ").filter(Boolean);
+
+        if (parts.length >= 2) {
+          rawLastName = parts[0];
+          rawFirstName = parts[1];
+        } else {
+          rawLastName = withoutNumber;
+          rawFirstName = "";
+        }
       }
     }
   }
 
+  const nextLastNameKana = getLastNameKana(rawLastName);
+  const nextLastName = toCommonLastNameKanji(rawLastName);
+  const nextFirstName = getFirstNameForVoice(rawFirstName);
+
   setVoicePlayer((prev) => ({
     ...prev,
-    lastName: toCommonLastNameKanji(rawLastName),
-    lastNameKana: toHiraganaOnly(rawLastName),
-    firstName: toHiraganaOnly(rawFirstName),
+    lastName: nextLastName,
+    lastNameKana: nextLastNameKana,
+    firstName: nextFirstName,
     number,
   }));
 };
+
 
 const openVoiceModal = () => {
   setVoiceError("");
@@ -1625,9 +1777,9 @@ const saveTeam = async () => {
               🎤 音声入力
             </p>
 <p className="mt-2 rounded-xl bg-white px-3 py-2 text-[15px] font-extrabold leading-6 text-red-600 shadow-sm sm:text-[17px]">
-  苗字のあとに”名前”と言って、名前・背番号の順番で話してください
+  苗字のあとに「ひらがな」と言って、名前・背番号の順番で話してください
   <div className="font-bold">＜話し方の例＞</div>
-  やまだ、名前 たろう、背番号 2
+  山田、ひらがな、たろう、背番号2
 </p>
   <div className="mt-1 text-[17px] font-extrabold leading-6 sm:text-[19px]">
     
