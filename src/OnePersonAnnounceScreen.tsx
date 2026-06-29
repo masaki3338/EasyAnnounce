@@ -3982,18 +3982,17 @@ const getOnePersonPitchLimitMessage = (pitcher: any, total: number): string => {
 
 const buildOnePersonPitchAnnounceText = async () => {
   const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
-  const defenseChangeContext =
-    (await localForage.getItem<any>("onePersonDefenseChangeContext")) || null;
 
-  // ✅ イニング終了後の代打/代走後守備交代では、
-  // 守備交代対象は「直前まで攻撃していたチーム」です。
-  // ここで isTop から現在の守備側を再計算すると、
-  // リエントリー時に usedPlayerInfo / benchPlayers を反対チーム側へ保存してしまい、
-  // 外れたBが出場済み選手に表示されません。
-  const defenseSide =
-    defenseChangeContext?.enabled && defenseChangeContext?.targetSide
-      ? defenseChangeContext.targetSide
-      : getOnePersonDefenseSideByTopBottom(isTop, savedFirstAttackSide);
+  // ✅ 投球数モーダルは「いま攻撃していたチーム」ではなく、
+  // その半回で実際に守っていたチームの投手を表示する。
+  // 得点モーダルやメンバー交換モーダルを挟むと、その間に state の isTop や
+  // onePersonDefenseChangeContext が次処理用の値へ寄ることがあるため、
+  // 半回終了時に確定している lastEndedHalfRef を最優先で使う。
+  const targetIsTop = lastEndedHalfRef.current?.isTop ?? isTop;
+  const defenseSide = getOnePersonDefenseSideByTopBottom(
+    targetIsTop,
+    savedFirstAttackSide
+  );
 
   const defenseTeam =
     (await localForage.getItem<any>(`onePerson.${defenseSide}.team`)) || null;
@@ -4040,7 +4039,6 @@ const buildOnePersonPitchAnnounceText = async () => {
   if (displayCurrent !== displayTotal) {
     lines.push(`トータル${displayTotal}球です。`);
   }
-
 
   const limitMessage = getOnePersonPitchLimitMessage(pitcher, displayTotal);
   if (limitMessage) lines.push(limitMessage);
