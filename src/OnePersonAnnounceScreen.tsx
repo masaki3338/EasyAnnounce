@@ -4033,8 +4033,14 @@ const buildOnePersonPitchAnnounceText = async () => {
 
   const lines = [
     `${name}、この回の投球数は${displayCurrent}球です。`,
-    `トータル${displayTotal}球です。`,
   ];
+
+  // ✅ この回の投球数とトータルが同じ場合は、トータル表示を省略する
+  // 例：この回 12球 / トータル 12球 → 「トータル12球です。」は出さない
+  if (displayCurrent !== displayTotal) {
+    lines.push(`トータル${displayTotal}球です。`);
+  }
+
 
   const limitMessage = getOnePersonPitchLimitMessage(pitcher, displayTotal);
   if (limitMessage) lines.push(limitMessage);
