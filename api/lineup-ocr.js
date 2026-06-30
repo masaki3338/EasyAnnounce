@@ -1,4 +1,12 @@
+const fs = require("fs/promises");
+const formidableImport = require("formidable");
 const OpenAIImport = require("openai");
+
+const formidable =
+  formidableImport.formidable ||
+  formidableImport.default ||
+  formidableImport;
+
 const OpenAI = OpenAIImport.default || OpenAIImport;
 
 function getOpenAI() {
@@ -7,49 +15,34 @@ function getOpenAI() {
   });
 }
 
-async function readRequestBody(req) {
-  const chunks = [];
+function parseForm(req) {
+  const form = formidable({
+    multiples: false,
+    maxFileSize: 20 * 1024 * 1024,
+    keepExtensions: true,
+  });
 
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
+  return new Promise((resolve, reject) => {
+    form.parse(req, (err, fields, files) => {
+      if (err) {
+        reject(err);
+        return;
+      }
 
-  return Buffer.concat(chunks);
+      resolve({ fields, files });
+    });
+  });
 }
 
-function extractMultipartImage(body, contentType) {
-  const boundaryMatch = String(contentType || "").match(/boundary=(.+)$/);
+function getUploadedImage(files) {
+  const image = Array.isArray(files.image) ? files.image[0] : files.image;
 
-  if (!boundaryMatch) {
-    throw new Error("multipart boundary が見つかりません");
-  }
-
-  const boundary = `--${boundaryMatch[1]}`;
-  const bodyText = body.toString("binary");
-  const parts = bodyText.split(boundary);
-  const imagePart = parts.find((part) => part.includes('name="image"'));
-
-  if (!imagePart) {
+  if (!image) {
+    console.log("uploaded files keys:", Object.keys(files || {}));
     throw new Error("image ファイルが送信されていません");
   }
 
-  const headerEnd = imagePart.indexOf("\r\n\r\n");
-
-  if (headerEnd < 0) {
-    throw new Error("画像データの形式が不正です");
-  }
-
-  const header = imagePart.slice(0, headerEnd);
-  const mimeMatch = header.match(/Content-Type:\s*([^\r\n]+)/i);
-  const mimeType = mimeMatch?.[1]?.trim() || "image/jpeg";
-
-  let imageBinary = imagePart.slice(headerEnd + 4);
-  imageBinary = imageBinary.replace(/\r\n--$/, "").replace(/\r\n$/, "");
-
-  return {
-    mimeType,
-    buffer: Buffer.from(imageBinary, "binary"),
-  };
+  return image;
 }
 
 function extractJson(text) {
@@ -90,7 +83,7 @@ function normalizeResult(data) {
   };
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method === "GET") {
     return res.status(200).json({
       ok: true,
@@ -110,14 +103,15 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const { files } = await parseForm(req);
+    const image = getUploadedImage(files);
+
+    const imageBuffer = await fs.readFile(image.filepath);
+    const mimeType = image.mimetype || "image/jpeg";
+    const base64 = imageBuffer.toString("base64");
+    const imageUrl = `data:${mimeType};base64,${base64}`;
+
     const openai = getOpenAI();
-
-    const contentType = req.headers["content-type"] || "";
-    const body = await readRequestBody(req);
-    const image = extractMultipartImage(body, contentType);
-
-    const base64 = image.buffer.toString("base64");
-    const imageUrl = `data:${image.mimeType};base64,${base64}`;
 
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
@@ -197,6 +191,7 @@ module.exports = async function handler(req, res) {
       parsed = extractJson(outputText);
     } catch (error) {
       console.error("JSON parse error:", outputText);
+
       return res.status(500).json({
         error: "AIの返答をJSONとして読み取れませんでした",
         raw: outputText,
@@ -211,4 +206,12 @@ module.exports = async function handler(req, res) {
       error: error?.message || "メンバー表のAI読み取りに失敗しました",
     });
   }
+}
+
+module.exports = handler;
+
+module.exports.config = {
+  api: {
+    bodyParser: false,
+  },
 };
