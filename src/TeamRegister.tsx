@@ -1,5 +1,16 @@
 import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
+import * as wanakana from "wanakana";
+
+declare global {
+  interface Window {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
+
+
+
 type Player = {
   id: number;
   lastName: string;
@@ -27,29 +38,6 @@ type TeamFolder = {
 type TeamRegisterStore = {
   selectedTeamId: string | null;
   teams: TeamFolder[];
-};
-
-type MemberReadPlayer = {
-  number?: string;
-  lastName?: string;
-  firstName?: string;
-  lastNameKana?: string;
-  firstNameKana?: string;
-  isFemale?: boolean;
-  battingOrder?: number | string;
-  position?: string;
-  role?: "starter" | "bench" | string;
-  confidence?: number | string;
-  memo?: string;
-};
-
-type MemberReadResponse = {
-  teamName?: string;
-  furigana?: string;
-  players?: MemberReadPlayer[];
-  starters?: MemberReadPlayer[];
-  bench?: MemberReadPlayer[];
-  error?: string;
 };
 
 const TEAM_STORE_KEY = "teamRegisterStore";
@@ -91,15 +79,20 @@ const TeamRegister = () => {
   const snapshotRef = useRef<string | null>(null);
   const initDoneRef = useRef(false);
 
-  // メンバー表読み取り
-  const [showMemberReadModal, setShowMemberReadModal] = useState(false);
-  const [memberReadLoading, setMemberReadLoading] = useState(false);
-  const [memberReadError, setMemberReadError] = useState("");
-  const [memberReadTeamName, setMemberReadTeamName] = useState("");
-  const [memberReadPlayers, setMemberReadPlayers] = useState<MemberReadPlayer[]>([]);
-  const [memberReadImagePreview, setMemberReadImagePreview] = useState("");
-  const [memberReadFileName, setMemberReadFileName] = useState("");
-  const memberImageInputRef = useRef<HTMLInputElement>(null);
+  // 音声入力モーダル
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voicePlayer, setVoicePlayer] = useState({
+    lastName: "",
+    lastNameKana: "",
+    firstName: "",
+    number: "",
+    isFemale: false,
+  });
+  const recognitionRef = useRef<any>(null);
 
   // 必須入力欄
   const firstNameInputRef = useRef<HTMLInputElement>(null);
@@ -630,168 +623,266 @@ const normalizeDigits = (value: string) =>
     String.fromCharCode(s.charCodeAt(0) - 0xfee0)
   );
 
-const normalizeMemberReadPlayer = (player: MemberReadPlayer): MemberReadPlayer => ({
-  ...player,
-  number: normalizeDigits(String(player.number ?? "")).replace(/[^0-9]/g, ""),
-  lastName: String(player.lastName ?? "").trim(),
-  firstName: String(player.firstName ?? "").trim(),
-  lastNameKana: String(player.lastNameKana ?? "").trim(),
-  firstNameKana: String(player.firstNameKana ?? "").trim(),
-  isFemale: Boolean(player.isFemale),
-});
+const toHiraganaOnly = (value: string) => {
+  const normalized = wanakana.toHiragana(value).replace(/\s+/g, "").trim();
 
-const openMemberReadPicker = () => {
-  setMemberReadError("");
-  setMemberReadPlayers([]);
-  setMemberReadTeamName("");
-  setMemberReadFileName("");
-  setMemberReadImagePreview("");
-  memberImageInputRef.current?.click();
-};
+  const commonFirstNameMap: Record<string, string> = {
+    太郎: "たろう",
+    次郎: "じろう",
+    二郎: "じろう",
+    三郎: "さぶろう",
+    健: "けん",
+    翔: "しょう",
+    大翔: "ひろと",
+    蓮: "れん",
+    陸: "りく",
+    颯太: "そうた",
+    悠真: "ゆうま",
+    湊: "みなと",
+    陽翔: "はると",
+    大和: "やまと",
+    蒼: "あおい",
+  };
 
-const handleMemberImageSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  e.target.value = "";
-
-  if (!file) return;
-
-  setShowMemberReadModal(true);
-  setMemberReadLoading(true);
-  setMemberReadError("");
-  setMemberReadPlayers([]);
-  setMemberReadTeamName("");
-  setMemberReadFileName(file.name);
-  setMemberReadImagePreview(URL.createObjectURL(file));
-
-  try {
-    const formData = new FormData();
-    formData.append("image", file);
-
-    // サーバー側でAI画像解析を実行するAPI。
-    // 返却形式:
-    // {
-    //   teamName?: string,
-    //   players?: [{ number, lastName, firstName, lastNameKana, firstNameKana, isFemale, role, battingOrder, position, confidence }]
-    // }
-const res = await fetch("/api/lineup-ocr", {
-  method: "POST",
-  body: formData,
-});
-
-const data: MemberReadResponse = await res.json().catch(() => ({}));
-
-if (!res.ok) {
-  throw new Error(
-    data?.error || `読み取りAPIエラー: ${res.status}`
-  );
-}
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    const players = [
-      ...(Array.isArray(data.starters) ? data.starters : []),
-      ...(Array.isArray(data.bench) ? data.bench : []),
-      ...(Array.isArray(data.players) ? data.players : []),
-    ]
-      .map(normalizeMemberReadPlayer)
-      .filter((p) => (p.lastName || p.firstName || p.number));
-
-    if (players.length === 0) {
-      throw new Error("選手情報を読み取れませんでした。画像を撮り直してください。");
-    }
-
-    setMemberReadTeamName(String(data.teamName ?? "").trim());
-    setMemberReadPlayers(players);
-  } catch (error: any) {
-    console.error("member read error:", error);
-    setMemberReadError(
-      error?.message ||
-        "メンバー表の読み取りに失敗しました。画像を撮り直すか、手入力してください。"
-    );
-  } finally {
-    setMemberReadLoading(false);
+  if (commonFirstNameMap[normalized]) {
+    return commonFirstNameMap[normalized];
   }
+
+  return normalized.replace(/[^ぁ-ゖーゝゞ]/g, "");
 };
 
-const handleMemberReadPlayerChange = (
-  index: number,
-  field: keyof MemberReadPlayer,
-  value: string | boolean
-) => {
-  setMemberReadPlayers((prev) =>
-    prev.map((player, i) => {
-      if (i !== index) return player;
+const commonLastNameMap: Record<string, string> = {
+  やまだ: "山田",
+  さとう: "佐藤",
+  すずき: "鈴木",
+  たかはし: "高橋",
+  たなか: "田中",
+  いとう: "伊藤",
+  わたなべ: "渡辺",
+  やまもと: "山本",
+  なかむら: "中村",
+  こばやし: "小林",
+  かとう: "加藤",
+  よしだ: "吉田",
+  やまぐち: "山口",
+  まつもと: "松本",
+  いのうえ: "井上",
+  きむら: "木村",
+  はやし: "林",
+  さいとう: "斎藤",
+  しみず: "清水",
+  やまざき: "山崎",
+  もり: "森",
+  いけだ: "池田",
+  はしもと: "橋本",
+  あべ: "阿部",
+  いしかわ: "石川",
+  やました: "山下",
+};
 
-      if (field === "number") {
-        return {
-          ...player,
-          number: normalizeDigits(String(value)).replace(/[^0-9]/g, ""),
-        };
-      }
+const toCommonLastNameKanji = (value: string) => {
+  const trimmed = value.replace(/\s+/g, "").trim();
+  const kana = toHiraganaOnly(trimmed);
+  return commonLastNameMap[kana] ?? trimmed;
+};
 
-      if (field === "isFemale") {
-        return {
-          ...player,
-          isFemale: Boolean(value),
-        };
-      }
+const parseVoiceText = (raw: string) => {
+  const original = raw.trim();
 
-      return {
-        ...player,
-        [field]: String(value),
-      };
-    })
+  const text = original
+    .replace(/　/g, " ")
+    .replace(/[、,。]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  setVoiceTranscript(raw);
+
+  // 背番号を取得
+  const numberMatch = text.match(/(?:背番号|せばんごう|番号)?\s*([0-9０-９]{1,3})\s*(?:番)?/);
+  const number = numberMatch ? normalizeDigits(numberMatch[1]) : "";
+
+  // 背番号部分を除外
+  const withoutNumber = numberMatch
+    ? text.replace(numberMatch[0], "").trim()
+    : text;
+
+  let rawLastName = "";
+  let rawFirstName = "";
+
+  // 推奨パターン:
+  // やまだ 名前 たろう
+  const nameLabelMatch = withoutNumber.match(
+    /^(.+?)\s*(?:名前|名)\s*([^\s]+)$/
   );
+
+  if (nameLabelMatch) {
+    rawLastName = nameLabelMatch[1]?.replace(/\s+/g, "") ?? "";
+    rawFirstName = nameLabelMatch[2] ?? "";
+  } else {
+    // 予備パターン:
+    // 苗字 やまだ 名前 たろう
+    const labeledMatch = withoutNumber.match(
+      /(?:苗字|名字|姓)\s*([^\s]+)\s*(?:名前|名)\s*([^\s]+)/
+    );
+
+    if (labeledMatch) {
+      rawLastName = labeledMatch[1] ?? "";
+      rawFirstName = labeledMatch[2] ?? "";
+    } else {
+      // 予備パターン:
+      // やまだ たろう
+      const parts = withoutNumber.split(" ").filter(Boolean);
+
+      if (parts.length >= 2) {
+        rawLastName = parts[0];
+        rawFirstName = parts[1];
+      } else {
+        rawLastName = withoutNumber;
+        rawFirstName = "";
+      }
+    }
+  }
+
+  setVoicePlayer((prev) => ({
+    ...prev,
+    lastName: toCommonLastNameKanji(rawLastName),
+    lastNameKana: toHiraganaOnly(rawLastName),
+    firstName: toHiraganaOnly(rawFirstName),
+    number,
+  }));
 };
 
-const closeMemberReadModal = () => {
-  setShowMemberReadModal(false);
-  setMemberReadLoading(false);
-  setMemberReadError("");
+const openVoiceModal = () => {
+  setVoiceError("");
+  setVoiceTranscript("");
+  setVoicePlayer({
+    lastName: editingPlayer.lastName ?? "",
+    lastNameKana: editingPlayer.lastNameKana ?? "",
+    firstName: editingPlayer.firstName ?? "",
+    number: editingPlayer.number ?? "",
+    isFemale: editingPlayer.isFemale ?? false,
+  });
+  setShowVoiceModal(true);
 };
 
-const registerAllMemberReadPlayers = () => {
-  const playersToAdd = memberReadPlayers
-    .map(normalizeMemberReadPlayer)
-    .filter((p) => p.lastName || p.firstName || p.number);
-
-  if (playersToAdd.length === 0) {
-    setMemberReadError("登録できる選手がありません");
+const startListening = () => {
+  if (!recognitionRef.current) {
+    setVoiceError("この端末では音声入力が利用できません");
     return;
   }
 
-  setTeam((prev) => {
-    const baseTime = Date.now();
-    const newPlayers: Player[] = playersToAdd.map((p, index) => ({
-      id: baseTime + index,
-      lastName: p.lastName ?? "",
-      firstName: p.firstName ?? "",
-      lastNameKana: p.lastNameKana ?? "",
-      firstNameKana: p.firstNameKana ?? "",
-      number: p.number ?? "",
-      isFemale: Boolean(p.isFemale),
-    }));
+  setVoiceError("");
+  setVoiceTranscript("");
+
+  try {
+    recognitionRef.current.start();
+    setIsListening(true);
+  } catch (e) {
+    console.error(e);
+    setVoiceError("音声入力を開始できませんでした");
+    setIsListening(false);
+  }
+};
+
+const stopListening = () => {
+  try {
+    recognitionRef.current?.stop();
+  } catch (e) {
+    console.error(e);
+  }
+  setIsListening(false);
+};
+
+const handleVoiceFieldChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value, type, checked } = e.target;
+
+  setVoicePlayer((prev) => {
+    if (type === "checkbox") {
+      return { ...prev, [name]: checked };
+    }
+
+    if (name === "number") {
+      return {
+        ...prev,
+        number: normalizeDigits(value).replace(/[^0-9]/g, ""),
+      };
+    }
+
+    if (name === "lastNameKana") {
+      return {
+        ...prev,
+        lastNameKana: toHiraganaOnly(value),
+      };
+    }
+
+    if (name === "firstName") {
+      return {
+        ...prev,
+        firstName: toHiraganaOnly(value),
+      };
+    }
 
     return {
       ...prev,
-      name: memberReadTeamName || prev.name,
-      players: [...prev.players, ...newPlayers],
+      [name]: value,
     };
   });
-
-  if (memberReadTeamName && !teamListName.trim()) {
-    setTeamListName(memberReadTeamName);
-  }
-
-  setShowMemberReadModal(false);
-  setMemberReadPlayers([]);
-  setMemberReadTeamName("");
-  setMemberReadFileName("");
-  setMemberReadImagePreview("");
-  setMemberReadError("");
 };
+
+const applyVoicePlayerToForm = () => {
+  setEditingPlayer((prev) => ({
+    ...prev,
+    lastName: voicePlayer.lastName,
+    lastNameKana: voicePlayer.lastNameKana,
+    firstName: voicePlayer.firstName,
+    firstNameKana: voicePlayer.firstName,
+    number: voicePlayer.number,
+    isFemale: voicePlayer.isFemale,
+  }));
+
+  setShowVoiceModal(false);
+};
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  setVoiceSupported(!!SR);
+
+  if (!SR) return;
+
+  const recognition = new SR();
+  recognition.lang = "ja-JP";
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event: any) => {
+    const transcript = event?.results?.[0]?.[0]?.transcript ?? "";
+    parseVoiceText(transcript);
+    setIsListening(false);
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error("speech error", event);
+    setVoiceError("音声認識に失敗しました。もう一度お試しください。");
+    setIsListening(false);
+  };
+
+  recognition.onend = () => {
+    setIsListening(false);
+  };
+
+  recognitionRef.current = recognition;
+
+  return () => {
+    try {
+      recognition.abort?.();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+}, []);
 
 
 
@@ -1150,23 +1241,13 @@ const saveTeam = async () => {
             {editingPlayer.id ? "選手を編集" : "選手を追加"}
           </h2>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={openMemberReadPicker}
-              className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white shadow hover:bg-sky-700 active:scale-95 sm:px-4 sm:text-sm"
-            >
-              📷 メンバー表読み取り
-            </button>
-            <input
-              ref={memberImageInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleMemberImageSelected}
-              className="hidden"
-            />
-          </div>
+          <button
+            type="button"
+            onClick={openVoiceModal}
+            className="shrink-0 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-sky-700 active:scale-95"
+          >
+            🎤 音声入力
+          </button>
         </div>
         
       
@@ -1520,16 +1601,19 @@ const saveTeam = async () => {
   </div>
 )}
 
-{/* メンバー表読み取りモーダル */}
-{showMemberReadModal && (
+{/* 音声入力モーダル */}
+{showVoiceModal && (
   <div
-    className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-6 sm:items-center sm:px-6 sm:py-6"
+    className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-950/65 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-6 sm:items-center sm:px-6 sm:py-6"
     role="dialog"
     aria-modal="true"
-    onClick={closeMemberReadModal}
+    onClick={() => {
+      if (isListening) stopListening();
+      setShowVoiceModal(false);
+    }}
   >
     <div
-      className="w-full max-w-[760px] overflow-hidden rounded-[28px] bg-white text-gray-900 shadow-2xl"
+      className="w-full max-w-[560px] overflow-hidden rounded-[28px] bg-white text-gray-900 shadow-[0_18px_60px_rgba(15,23,42,0.35)]"
       onClick={(e) => e.stopPropagation()}
       role="document"
     >
@@ -1538,167 +1622,173 @@ const saveTeam = async () => {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[18px] font-extrabold tracking-wide">
-              📷 メンバー表読み取り
+              🎤 音声入力
             </p>
-            <p className="mt-1 text-[12px] leading-5 text-white/90 sm:text-[13px]">
-              撮影画像をAIで読み取り、選手をまとめて登録します
-            </p>
+<p className="mt-2 rounded-xl bg-white px-3 py-2 text-[15px] font-extrabold leading-6 text-red-600 shadow-sm sm:text-[17px]">
+  苗字のあとに”名前”と言って、名前・背番号の順番で話してください
+  <div className="font-bold">＜話し方の例＞</div>
+  やまだ、名前 たろう、背番号 2
+</p>
+  <div className="mt-1 text-[17px] font-extrabold leading-6 sm:text-[19px]">
+    
+  </div>
           </div>
 
           <button
             type="button"
-            onClick={closeMemberReadModal}
+            onClick={() => {
+              if (isListening) stopListening();
+              setShowVoiceModal(false);
+            }}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg font-bold text-white transition hover:bg-white/30 active:scale-95"
             aria-label="閉じる"
           >
             ×
           </button>
         </div>
+
+
       </div>
 
       <div className="max-h-[78svh] overflow-y-auto px-4 pb-4 pt-4 sm:px-5">
-        {memberReadImagePreview && (
-          <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-            <img
-              src={memberReadImagePreview}
-              alt="読み取り対象のメンバー表"
-              className="max-h-[220px] w-full object-contain"
-            />
-            {memberReadFileName && (
-              <div className="border-t border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500">
-                {memberReadFileName}
-              </div>
-            )}
+        {!voiceSupported && (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
+            この端末・ブラウザでは音声入力が利用できません
           </div>
         )}
 
-        {memberReadLoading && (
-          <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-center">
-            <div className="text-base font-extrabold text-sky-700">
-              AIでメンバー表を読み取り中です
+        {voiceError && (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-600">
+            {voiceError}
+          </div>
+        )}
+
+        {voiceTranscript && (
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            <div className="text-[12px] font-bold tracking-wide text-slate-500">
+              認識結果
             </div>
-            <div className="mt-1 text-sm text-slate-600">
-              数十秒かかる場合があります
+            <div className="mt-1 font-semibold text-slate-800">
+              {voiceTranscript}
             </div>
           </div>
         )}
 
-        {memberReadError && (
-          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
-            {memberReadError}
-          </div>
-        )}
-
-        {!memberReadLoading && memberReadPlayers.length > 0 && (
-          <>
-            <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <div className="text-sm font-extrabold text-emerald-700">
-                {memberReadPlayers.length}人を読み取りました
-              </div>
-              <div className="mt-1 text-xs leading-5 text-slate-600">
-                読み取り結果を確認し、間違いがあれば修正してから一括登録してください。
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-bold text-slate-600">
-                チーム名
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
+          <div className="grid grid-cols-[1.15fr_1.15fr_0.8fr] gap-2 sm:gap-3">
+            <div className="col-span-1">
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                ふりがな
               </label>
               <input
                 type="text"
-                value={memberReadTeamName}
-                onChange={(e) => setMemberReadTeamName(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
-                placeholder="読み取れた場合に表示されます"
+                name="lastNameKana"
+                value={voicePlayer.lastNameKana}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="kana"
+                autoComplete="off"
               />
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
-              <table className="min-w-[720px] w-full border-collapse bg-white text-sm">
-                <thead className="bg-slate-100 text-xs text-slate-600">
-                  <tr>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">種別</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">背番号</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">姓</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">ふりがな</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">名</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-left">名ふりがな</th>
-                    <th className="border-b border-slate-200 px-2 py-2 text-center">女子</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {memberReadPlayers.map((p, index) => (
-                    <tr key={index} className="odd:bg-white even:bg-slate-50">
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.role ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "role", e.target.value)}
-                          className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                          placeholder="控え"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.number ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "number", e.target.value)}
-                          className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-center"
-                          inputMode="numeric"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.lastName ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "lastName", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.lastNameKana ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "lastNameKana", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.firstName ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "firstName", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2">
-                        <input
-                          type="text"
-                          value={String(p.firstNameKana ?? "")}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "firstNameKana", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 px-2 py-1"
-                        />
-                      </td>
-                      <td className="border-b border-slate-100 px-2 py-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(p.isFemale)}
-                          onChange={(e) => handleMemberReadPlayerChange(index, "isFemale", e.target.checked)}
-                          className="h-5 w-5 accent-sky-600"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="hidden sm:block" />
+            <div className="hidden sm:block" />
+          </div>
+
+          <div className="mt-3 grid grid-cols-[1.15fr_1.15fr_0.8fr] gap-2 sm:gap-3">
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                苗字
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                value={voicePlayer.lastName}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                autoComplete="off"
+              />
             </div>
-          </>
-        )}
+
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                名前
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                value={voicePlayer.firstName}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="kana"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-center text-[13px] font-extrabold text-slate-700 sm:text-[14px]">
+                背番号
+              </label>
+              <input
+                type="text"
+                name="number"
+                value={voicePlayer.number}
+                onChange={handleVoiceFieldChange}
+                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-center text-[16px] font-semibold text-gray-900 shadow-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <label className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <div className="text-[14px] font-extrabold text-slate-800">女子選手</div>
+              <div className="text-[12px] text-slate-500">必要な場合のみチェックしてください</div>
+            </div>
+            <input
+              type="checkbox"
+              name="isFemale"
+              checked={voicePlayer.isFemale}
+              onChange={handleVoiceFieldChange}
+              className="h-6 w-6 accent-sky-600"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-[24px] border border-sky-100 bg-sky-50 p-3 sm:p-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (isListening) {
+                stopListening();
+              } else {
+                startListening();
+              }
+            }}
+            disabled={!voiceSupported}
+            className={`w-full rounded-2xl px-4 py-4 text-[18px] font-extrabold text-white shadow transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+              isListening
+                ? "bg-red-500 hover:bg-red-600"
+                : "bg-sky-600 hover:bg-sky-700"
+            }`}
+          >
+            {isListening ? "■ 停止" : "🎤 開始"}
+          </button>
+
+          <p className="mt-2 text-center text-[12px] text-slate-600">
+            開始後に話して、終わったら停止を押してください
+          </p>
+        </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
-            onClick={closeMemberReadModal}
+            onClick={() => {
+              if (isListening) stopListening();
+              setShowVoiceModal(false);
+            }}
             className="rounded-2xl border border-slate-300 bg-white px-4 py-3.5 text-[15px] font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
           >
             キャンセル
@@ -1706,11 +1796,10 @@ const saveTeam = async () => {
 
           <button
             type="button"
-            onClick={registerAllMemberReadPlayers}
-            disabled={memberReadLoading || memberReadPlayers.length === 0}
-            className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-[15px] font-bold text-white shadow transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300"
+            onClick={applyVoicePlayerToForm}
+            className="rounded-2xl bg-emerald-600 px-4 py-3.5 text-[15px] font-bold text-white shadow transition hover:bg-emerald-700 active:scale-[0.98]"
           >
-            全員を一括登録
+            入力欄へ反映
           </button>
         </div>
       </div>
