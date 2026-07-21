@@ -5349,9 +5349,9 @@ const buildOnePersonBatterAnnouncementHTML = (
 
   return (
     `${targetInning}回の${targetIsTop ? "表" : "裏"}、${targetTeamName}の攻撃は、<br/>` +
-    `${orderNo}番 ${posName ? `${posName} ` : ""}${fullName}${honorific}` +
-    `${num ? `、背番号 ${num}` : ""}。<br/>` +
-    `バッターは ${lastName}${honorific}。`
+    `${orderNo}番 ${posName ? `${posName} ` : ""}${fullName}${honorific}、<br/>` +
+    `${posName ? `${posName} ` : ""}${lastName}${honorific}` +
+    `${num ? `、背番号 ${num}` : ""}。`
   );
 };
 
