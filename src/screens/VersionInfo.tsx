@@ -47,7 +47,7 @@ const historyData: HistoryItem[] = [
     details: ["シートノック時間変更可能対応"],
   },
   {
-    date: "2026.06.30",
+    date: "2026.07.20",
     version: "Vesion 1.02",
     details: ["1人で両チームアナウンス対応"],
   },
