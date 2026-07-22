@@ -1532,7 +1532,7 @@ const handleStop = () => { ttsStop(); };
   };
     return (    
       <div
-        className="max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
+        className="easy-defense-screen max-w-4xl mx-auto px-2 pt-1 pb-2 select-none"
         onContextMenu={(e) => e.preventDefault()}        // 右クリック/長押しのメニュー抑止
         onSelectStart={(e) => e.preventDefault()}         // テキスト選択開始を抑止
         style={{
@@ -1541,6 +1541,77 @@ const handleStop = () => { ttsStop(); };
           userSelect: "none",
         }}
       >
+      {/* 全ボタン共通の押下フィードバック
+          ・0.08秒で96%に縮小
+          ・押下中は少し濃く表示
+          ・中央からリップルを表示
+          Androidのバイブレーション処理とは独立して動作します。 */}
+      <style>{`
+        .easy-defense-screen button:not(:disabled) {
+          -webkit-tap-highlight-color: transparent;
+          touch-action: manipulation;
+          transition:
+            transform 80ms ease,
+            filter 80ms ease,
+            background-color 80ms ease;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled) {
+          position: relative;
+          overflow: hidden;
+          isolation: isolate;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled)::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.42);
+          pointer-events: none;
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(0);
+          z-index: 0;
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled) > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .easy-defense-screen button:not(:disabled):active {
+          transform: scale(0.96) !important;
+          filter: brightness(0.86);
+        }
+
+        .easy-defense-screen button:not(.absolute):not(:disabled):active::after {
+          animation: easy-defense-ripple 420ms ease-out;
+        }
+
+        @keyframes easy-defense-ripple {
+          0% {
+            opacity: 0.55;
+            transform: translate(-50%, -50%) scale(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(28);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .easy-defense-screen button:not(:disabled) {
+            transition: none;
+          }
+
+          .easy-defense-screen button:not(.absolute):not(:disabled):active::after {
+            animation: none;
+          }
+        }
+      `}</style>
 
       <section className="mb-2">
 <h2
