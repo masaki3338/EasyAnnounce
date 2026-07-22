@@ -246,47 +246,48 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       );
     };
 
-    const boysPlayerLines = [
-      `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
-      `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
-      `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
-      `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
-      `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
-      `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
-      `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
-      `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
-      `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
-    ];
+const boysPlayerLines = [
+  `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
+  `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
+  `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
+  `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
+  `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
+  `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
+  `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
+  `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
+  `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
+];
 
-    const text = leagueMode === "boys"
-      ? (
-          inning === "1回の裏"
-            ? [
-                `${inning}、守ります、${teamReading}の`,
-                ...boysPlayerLines,
-              ].join("、")
-            : [
-                `${inning}、まず守ります、${teamReading}の`,
-                ...boysPlayerLines,
-                `審判は球審、${umpireYomi("球審")}`,
-                `塁審、一塁、${umpireYomi("一塁")}`,
-                `二塁、${umpireYomi("二塁")}`,
-                `三塁、${umpireYomi("三塁")}`,
-                `以上四氏でございます。`,
-              ].join("、")
-        )
+const text =
+  leagueMode === "boys"
+    ? inning === "1回の裏"
+      ? [
+          `${inning}、守ります、${teamReading}の`,
+          ...boysPlayerLines,
+        ].join("\n")
       : [
-          `${inning}、守ります、${teamReading}のシートをお知らせします。`,
-          ...positionLabels.map(([pos, label]) => {
-            const p = positions[pos];
-            const ln = p?.lastName || "";
-            const forceFull = ln && dupLastNames.has(ln);
-            const yomi = forceFull
-              ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
-              : `${p?.lastNameKana || ""}`;
-            return `${label}、${yomi}${p?.honorific || "くん"}`;
-          }),
-        ].join("、") + "です。";
+          `${inning}、まず守ります、${teamReading}の`,
+          ...boysPlayerLines,
+          `審判は球審、${umpireYomi("球審")}`,
+          `塁審、一塁、${umpireYomi("一塁")}`,
+          `二塁、${umpireYomi("二塁")}`,
+          `三塁、${umpireYomi("三塁")}`,
+          `以上四氏でございます。`,
+        ].join("\n")
+    : [
+        `${inning}、守ります、${teamReading}のシートをお知らせします。`,
+        ...positionLabels.map(([pos, label]) => {
+          const p = positions[pos];
+          const ln = p?.lastName || "";
+          const forceFull = ln && dupLastNames.has(ln);
+
+          const yomi = forceFull
+            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
+            : `${p?.lastNameKana || ""}`;
+
+          return `${label}、${yomi}${p?.honorific || "くん"}`;
+        }),
+      ].join("、") + "です。";
 
     setSpeaking(true);
     void (async () => {
@@ -333,14 +334,14 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   };
 
   const boysPlayersAnnouncement =
-      `ピッチャーは ${fullNameRuby(positions["投"])} ${positions["投"]?.honorific || "くん"}、　　` +
+      `ピッチャーは ${fullNameRuby(positions["投"])} ${positions["投"]?.honorific || "くん"}、<br />` +
       `キャッチャー ${fullNameRuby(positions["捕"])} ${positions["捕"]?.honorific || "くん"}、<br />` +
-      `ファースト ${fullNameRuby(positions["一"])} ${positions["一"]?.honorific || "くん"}、　　` +
+      `ファースト ${fullNameRuby(positions["一"])} ${positions["一"]?.honorific || "くん"}、<br />` +
       `セカンド ${fullNameRuby(positions["二"])} ${positions["二"]?.honorific || "くん"}、<br />` +
-      `サード ${fullNameRuby(positions["三"])} ${positions["三"]?.honorific || "くん"}、　` +
+      `サード ${fullNameRuby(positions["三"])} ${positions["三"]?.honorific || "くん"}、<br />` +
       `ショート ${fullNameRuby(positions["遊"])} ${positions["遊"]?.honorific || "くん"}、<br />` +
-      `レフト ${fullNameRuby(positions["左"])} ${positions["左"]?.honorific || "くん"}、　` +
-      `センター ${fullNameRuby(positions["中"])} ${positions["中"]?.honorific || "くん"}、　` +
+      `レフト ${fullNameRuby(positions["左"])} ${positions["左"]?.honorific || "くん"}、<br />` +
+      `センター ${fullNameRuby(positions["中"])} ${positions["中"]?.honorific || "くん"}、<br />` +
       `ライト ${fullNameRuby(positions["右"])} ${positions["右"]?.honorific || "くん"}`;
 
   const formattedAnnouncement = leagueMode === "boys"
@@ -351,8 +352,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           : `${inning}、まず守ります　${teamName} の<br /><br />` +
             boysPlayersAnnouncement +
             `<br /><br />` +
-            `審判は球審 ${umpireHTML("球審")}、　　塁審　一塁 ${umpireHTML("一塁")}、<br />` +
-            `二塁 ${umpireHTML("二塁")}、　　三塁 ${umpireHTML("三塁")}、以上四氏でございます。`
+            `審判は球審 ${umpireHTML("球審")}、塁審　一塁 ${umpireHTML("一塁")}、` +
+            `二塁 ${umpireHTML("二塁")}、三塁 ${umpireHTML("三塁")}、以上四氏でございます。`
       )
     : `${inning}、守ります　${teamName} のシートをお知らせします。
 
