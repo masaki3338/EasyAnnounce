@@ -2308,8 +2308,8 @@ await saveMatchInfo({
     if (leagueMode === "boys") {
       const halfText = isTop ? "表" : "裏";
       //setPopupMessage(`${inning}回の${halfText}、${teamName}の得点はありません。`);
-      setPopupMessage(`${teamName}、この回の得点はありません。`);
-      setPopupSpeakMessage(`${teamReading}、この回の得点はありません。`);
+      setPopupMessage(`${teamName}、この回の得点は 無得点。`);
+      setPopupSpeakMessage(`${teamReading}、この回の得点は 無得点。`);
 
     if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
       setPendingGroundPopup(true);
@@ -5959,7 +5959,20 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                 {/* （任意）フッターにOK をまとめたい場合 */}
                 <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
                   <button
-                    onClick={() => setShowStartTimePopup(false)}
+                    onClick={() => {
+                      setShowStartTimePopup(false);
+
+                      // ボーイズリーグの1回表終了時は、
+                      // 開始時刻モーダルの次に得点入力モーダルを表示する。
+                      if (afterStartTimeAction === "scoreModal") {
+                        setAfterStartTimeAction(null);
+
+                        // モーダルが同時表示にならないよう、次の描画で開く
+                        window.setTimeout(() => {
+                          setShowModal(true);
+                        }, 0);
+                      }
+                    }}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
                   >
                     OK

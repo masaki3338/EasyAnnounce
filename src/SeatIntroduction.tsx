@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
 import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
   onNavigate: (screen: ScreenType) => void;
@@ -89,6 +90,8 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
   const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
+  const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
+  const [umpires, setUmpires] = useState<{ role: string; name: string; furigana: string }[]>([]);
   // ★ 同姓（苗字）重複セット
   const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -112,7 +115,15 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
     ["右", "ライト"],
   ];
 
-  const inning = isHome ? "1回の表" : "1回の裏";
+  // 試合前アナウンスから開いたシート紹介は、先攻・後攻に関係なく
+  // 最初に紹介する守備チームとして「1回の表」と表示する。
+  // 試合中に開いた場合は従来どおり isHome で判定する。
+  const inning =
+    backTarget === ("announcement" as ScreenType)
+      ? "1回の表"
+      : isHome
+      ? "1回の表"
+      : "1回の裏";
 
   useEffect(() => {
     const loadData = async () => {
@@ -131,6 +142,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         setTeamReading(team.furigana || team.kana || team.reading || team.name || "");
       }
       if (matchInfo) {
+        setLeagueMode(getLeagueMode());
+        setUmpires(Array.isArray(matchInfo.umpires) ? matchInfo.umpires : []);
         setIsHome(
           typeof matchInfo.seatIntroIsHome === "boolean"
             ? matchInfo.seatIntroIsHome
@@ -177,24 +190,105 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
   useEffect(() => { void prewarmTTS(); }, []);
 
+  // 審判の役割名は保存元によって
+  // 「一塁」「1塁」「一塁審」「塁審（一塁）」など表記が異なるため正規化して検索する
+  const normalizeUmpireRole = (value: any) =>
+    String(value ?? "")
+      .trim()
+      .replace(/[　\s]/g, "")
+      .replace(/[（）()［］\[\]【】]/g, "")
+      .replace(/１/g, "1")
+      .replace(/２/g, "2")
+      .replace(/３/g, "3")
+      .replace(/一塁/g, "1塁")
+      .replace(/二塁/g, "2塁")
+      .replace(/三塁/g, "3塁");
+
+  const findUmpireByRole = (target: "球審" | "一塁" | "二塁" | "三塁") => {
+    const normalizedTarget =
+      target === "一塁" ? "1塁" :
+      target === "二塁" ? "2塁" :
+      target === "三塁" ? "3塁" :
+      "球審";
+
+    return umpires.find((u: any) => {
+      const roleText = normalizeUmpireRole(
+        u?.role ??
+        u?.position ??
+        u?.umpireRole ??
+        u?.type ??
+        u?.label ??
+        ""
+      );
+
+      if (normalizedTarget === "球審") {
+        return roleText.includes("球審") || roleText.includes("主審");
+      }
+
+      return roleText.includes(normalizedTarget);
+    });
+  };
+
   const speakText = () => {
-    // 表示と同じ文面（読みやすい句切り）で VOICEVOX 読み上げ
-    const text =
-      [
-        `${inning}、守ります、${teamReading}のシートをお知らせします。`,
-        ...positionLabels.map(([pos, label]) => {
-          const p = positions[pos];
-          const ln = p?.lastName || "";
-          const forceFull = ln && dupLastNames.has(ln);
-          const yomi = forceFull
-            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
-            : `${p?.lastNameKana || ""}`;
-          //return `${label} ${yomi}${p?.honorific || "くん"}`;
-          return `${label}、${yomi}${p?.honorific || "くん"}`;
-        }),
-      ].join("、") + "です。";
+    const honor = (p?: PositionInfo) => p?.honorific || "くん";
+    const fullKana = (p?: PositionInfo) =>
+      `${p?.lastNameKana || p?.lastName || ""} ${p?.firstNameKana || p?.firstName || ""}`.trim();
+
+    const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
+      const u: any = findUmpireByRole(role);
+      return (
+        u?.furigana ||
+        u?.nameKana ||
+        u?.kana ||
+        u?.reading ||
+        u?.name ||
+        "未設定"
+      );
+    };
+
+    const boysPlayerLines = [
+      `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
+      `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
+      `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
+      `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
+      `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
+      `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
+      `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
+      `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
+      `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
+    ];
+
+    const text = leagueMode === "boys"
+      ? (
+          inning === "1回の裏"
+            ? [
+                `${inning}、守ります、${teamReading}の`,
+                ...boysPlayerLines,
+              ].join("、")
+            : [
+                `${inning}、まず守ります、${teamReading}の`,
+                ...boysPlayerLines,
+                `審判は球審、${umpireYomi("球審")}`,
+                `塁審、一塁、${umpireYomi("一塁")}`,
+                `二塁、${umpireYomi("二塁")}`,
+                `三塁、${umpireYomi("三塁")}`,
+                `以上四氏でございます。`,
+              ].join("、")
+        )
+      : [
+          `${inning}、守ります、${teamReading}のシートをお知らせします。`,
+          ...positionLabels.map(([pos, label]) => {
+            const p = positions[pos];
+            const ln = p?.lastName || "";
+            const forceFull = ln && dupLastNames.has(ln);
+            const yomi = forceFull
+              ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
+              : `${p?.lastNameKana || ""}`;
+            return `${label}、${yomi}${p?.honorific || "くん"}`;
+          }),
+        ].join("、") + "です。";
+
     setSpeaking(true);
-    // ❗️待たずに発火（IIFEでtry/finally）
     void (async () => {
       try {
         await ttsSpeak(text, { progressive: true, cache: true });
@@ -209,24 +303,75 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   };
 
 
-  const formattedAnnouncement =
-    `${inning}、守ります　${teamName} のシートをお知らせします。\n\n` +
-    positionLabels
-      .map(([pos, label]) => {
-        const player = positions[pos];
-        const p = positions[pos];
-        const ln = p?.lastName || "";
-        const forceFull = ln && dupLastNames.has(ln);
-        const nameHTML = p?.lastName
-          ? (forceFull
-              ? `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
-                `<ruby>${p.firstName || ""}<rt>${p.firstNameKana || ""}</rt></ruby>`
-              : `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`)
-          : "（苗字）";
-        return `${label}　${nameHTML}　${p?.honorific || "くん"}`;
+  const fullNameRuby = (p?: PositionInfo) => {
+    if (!p?.lastName && !p?.firstName) return "（選手名）";
+    return (
+      `<ruby>${p.lastName || ""}<rt>${p.lastNameKana || ""}</rt></ruby>` +
+      `<ruby>${p.firstName || ""}<rt>${p.firstNameKana || ""}</rt></ruby>`
+    );
+  };
 
-      })
-      .join("<br />") + "です。";
+  const umpireHTML = (role: "球審" | "一塁" | "二塁" | "三塁") => {
+    const u: any = findUmpireByRole(role);
+    if (!u) return "（未設定）";
+
+    const name =
+      u?.name ||
+      u?.umpireName ||
+      u?.displayName ||
+      "";
+
+    const furigana =
+      u?.furigana ||
+      u?.nameKana ||
+      u?.kana ||
+      u?.reading ||
+      "";
+
+    if (!name) return "（未設定）";
+    return `<ruby>${name}<rt>${furigana}</rt></ruby>`;
+  };
+
+  const boysPlayersAnnouncement =
+      `ピッチャーは ${fullNameRuby(positions["投"])} ${positions["投"]?.honorific || "くん"}、　　` +
+      `キャッチャー ${fullNameRuby(positions["捕"])} ${positions["捕"]?.honorific || "くん"}、<br />` +
+      `ファースト ${fullNameRuby(positions["一"])} ${positions["一"]?.honorific || "くん"}、　　` +
+      `セカンド ${fullNameRuby(positions["二"])} ${positions["二"]?.honorific || "くん"}、<br />` +
+      `サード ${fullNameRuby(positions["三"])} ${positions["三"]?.honorific || "くん"}、　` +
+      `ショート ${fullNameRuby(positions["遊"])} ${positions["遊"]?.honorific || "くん"}、<br />` +
+      `レフト ${fullNameRuby(positions["左"])} ${positions["左"]?.honorific || "くん"}、　` +
+      `センター ${fullNameRuby(positions["中"])} ${positions["中"]?.honorific || "くん"}、　` +
+      `ライト ${fullNameRuby(positions["右"])} ${positions["右"]?.honorific || "くん"}`;
+
+  const formattedAnnouncement = leagueMode === "boys"
+    ? (
+        inning === "1回の裏"
+          ? `${inning}、守ります　${teamName} の<br /><br />` +
+            boysPlayersAnnouncement
+          : `${inning}、まず守ります　${teamName} の<br /><br />` +
+            boysPlayersAnnouncement +
+            `<br /><br />` +
+            `審判は球審 ${umpireHTML("球審")}、　　塁審　一塁 ${umpireHTML("一塁")}、<br />` +
+            `二塁 ${umpireHTML("二塁")}、　　三塁 ${umpireHTML("三塁")}、以上四氏でございます。`
+      )
+    : `${inning}、守ります　${teamName} のシートをお知らせします。
+
+` +
+      positionLabels
+        .map(([pos, label]) => {
+          const p = positions[pos];
+          const ln = p?.lastName || "";
+          const forceFull = ln && dupLastNames.has(ln);
+          const nameHTML = p?.lastName
+            ? (forceFull
+                ? `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>` +
+                  `<ruby>${p.firstName || ""}<rt>${p.firstNameKana || ""}</rt></ruby>`
+                : `<ruby>${p.lastName}<rt>${p.lastNameKana || ""}</rt></ruby>`)
+            : "（苗字）";
+          return `${label}　${nameHTML}　${p?.honorific || "くん"}`;
+        })
+        .join("<br />") + "です。";
+
 
   if (!teamName) {
     return (

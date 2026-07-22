@@ -319,6 +319,7 @@ useEffect(() => {
 
   const [showWaterBreakPopup, setShowWaterBreakPopup] = useState(false);
   const [waterBreakMinutes, setWaterBreakMinutes] = useState<number>(3);
+  const [waterBreakAnnouncementMinutes, setWaterBreakAnnouncementMinutes] = useState<number>(1);
   const [waterBreakRemaining, setWaterBreakRemaining] = useState<number>(3 * 60);
   const [waterBreakRunning, setWaterBreakRunning] = useState(false);
   const [waterBreakAnnounced, setWaterBreakAnnounced] = useState(false);
@@ -609,6 +610,7 @@ const handleWaterBreakStart = () => {
   }
 
   setWaterBreakAnnounced(false);
+  setWaterBreakNotice("");
   setWaterBreakRunning(true);
 };
 
@@ -620,6 +622,7 @@ const handleWaterBreakClear = () => {
   setWaterBreakRunning(false);
   setWaterBreakRemaining(waterBreakMinutes * 60);
   setWaterBreakAnnounced(false);
+  setWaterBreakNotice("");
 };
 
 useEffect(() => {
@@ -629,18 +632,13 @@ useEffect(() => {
     setWaterBreakRemaining((prev) => {
       const next = prev - 1;
 
-      if (waterBreakMinutes === 5 && next === 60) {
-        const msg = "クーリングタイム残り1分です。";
-        setWaterBreakNotice(msg);
-        showCoolingNoticePopup(msg);
-        speak(msg);
-      }
+      const announcementSeconds = waterBreakAnnouncementMinutes * 60;
 
-      if (waterBreakMinutes === 10 && next === 120) {
-        const msg = "クーリングタイム残り2分です。";
+      if (!waterBreakAnnounced && next === announcementSeconds) {
+        const msg = `クーリングタイム残り${waterBreakAnnouncementMinutes}分です。`;
+        setWaterBreakAnnounced(true);
         setWaterBreakNotice(msg);
         showCoolingNoticePopup(msg);
-        speak(msg);
       }
 
       if (next <= 0) {
@@ -660,12 +658,27 @@ useEffect(() => {
   }, 1000);
 
   return () => window.clearInterval(timer);
-}, [waterBreakRunning, waterBreakMinutes]);
+}, [
+  waterBreakRunning,
+  waterBreakAnnouncementMinutes,
+  waterBreakAnnounced,
+]);
 
 useEffect(() => {
-  if (!waterBreakRunning && waterBreakRemaining === waterBreakMinutes * 60) {
-    setWaterBreakRemaining(waterBreakMinutes * 60);
+  // クーリングタイム設定を変更したときだけ初期状態へ戻す。
+  // タイマー終了で waterBreakRunning が false になっただけでは、
+  // 「クーリングタイム終了です。」を消さない。
+  if (waterBreakRunning) return;
+
+  setWaterBreakRemaining(waterBreakMinutes * 60);
+  setWaterBreakNotice("");
+  setWaterBreakAnnounced(false);
+
+  // 残り時間アナウンスは、必ずクーリングタイムより短くする
+  if (waterBreakAnnouncementMinutes >= waterBreakMinutes) {
+    setWaterBreakAnnouncementMinutes(Math.max(1, waterBreakMinutes - 1));
   }
+  // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
 // マウント時に一度だけ軽いウォームアップ
@@ -4247,6 +4260,37 @@ return (
             </select>
           </div>
 
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              残り時間アナウンス
+            </label>
+            <select
+              value={waterBreakAnnouncementMinutes}
+              onChange={(e) => {
+                setWaterBreakAnnouncementMinutes(Number(e.target.value));
+                setWaterBreakAnnounced(false);
+                setWaterBreakNotice("");
+              }}
+              disabled={waterBreakRunning || waterBreakMinutes <= 1}
+              className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-800
+                         disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              {Array.from(
+                { length: Math.max(0, waterBreakMinutes - 1) },
+                (_, i) => i + 1
+              ).map((min) => (
+                <option key={min} value={min}>
+                  残り{min}分
+                </option>
+              ))}
+            </select>
+            {waterBreakMinutes <= 1 && (
+              <p className="mt-2 text-xs font-semibold text-amber-700">
+                クーリングタイムが1分の場合、残り時間アナウンスは設定できません。
+              </p>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               {waterBreakNotice || waterBreakMessage}
@@ -4255,7 +4299,7 @@ return (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(waterBreakMessage);
+                  await speak(waterBreakNotice || waterBreakMessage);
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2"

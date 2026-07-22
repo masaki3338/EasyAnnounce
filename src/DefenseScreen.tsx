@@ -439,17 +439,31 @@ const buildPitchAnnouncementMessages = (
   const suffix = pitcher.isFemale ? "さん" : "くん";
   const pitcherRuby = nameRubyHTML(pitcher);
 
+  // ✅ ボーイズリーグ専用文言
+  // 1回：「投球数は〇球です。」
+  // 2回以降：「投球数は〇球です。」
+  //          「○○投手の合計投球数は〇球です。」
+  if (isBoys) {
+    const msgs: string[] = [
+      `投球数は${current}球です。`,
+    ];
+
+    if (Number(inning) >= 2) {
+      msgs.push(
+        `${pitcherRuby}投手の合計投球数は${total}球です。`
+      );
+    }
+
+    return msgs;
+  }
+
   const msgs: string[] = [];
   msgs.push(
     `${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${current}球です`
   );
 
   if (current !== total) {
-    msgs.push(
-      isBoys
-        ? `合計投球数は${total}球です`
-        : `トータル ${total}球です`
-    );
+    msgs.push(`トータル ${total}球です`);
   }
 
   return msgs;
@@ -2849,14 +2863,14 @@ if (typeof reEntryTarget?.index === "number") {
             const pitcher = teamPlayers.find((p) => p.id === pitcherId);
 
             if (pitcher) {
-              const suffix = pitcher.isFemale ? "さん" : "くん";
-              const pitcherRuby = nameRubyHTML(pitcher); // ふりがなルビ（名なしなら姓だけになる実装にしている前提）
-
-              const msgs: string[] = [];
-              msgs.push(`${pitcherCall(pitcherRuby, suffix)}、この回の投球数は${currentPitchCount}球です`);
-              msgs.push(`トータル ${safe}球です`);
-
-              setAnnounceMessages(msgs);
+              setAnnounceMessages(
+                buildPitchAnnouncementMessages(
+                  pitcherId,
+                  currentPitchCount,
+                  safe,
+                  teamPlayers
+                )
+              );
             }
 
             setShowTotalPitchModal(false);

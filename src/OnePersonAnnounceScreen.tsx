@@ -1518,7 +1518,7 @@ const closeSubModal = () => {
 
   const [gameStartTime, setGameStartTime] = useState<string | null>(null);
   const [showStartTimePopup, setShowStartTimePopup] = useState(false);
-  const [afterStartTimeAction, setAfterStartTimeAction] = useState<"scoreModal" | null>(null);
+  const [afterStartTimeAction, setAfterStartTimeAction] = useState<"scoreModal" | "afterPitchModal" | null>(null);
   const [showStartGameComplete, setShowStartGameComplete] = useState(false);
 
   const [announcedIds, setAnnouncedIds] = useState<number[]>([]);
@@ -4028,10 +4028,32 @@ const buildOnePersonPitchAnnounceText = async () => {
   const honorific = pitcher?.isFemale ? "さん" : "くん";
   const name = pitcher
     ? `${pitcher.lastName ?? ""}${honorific}`
-    : "ピッチャー";
+    : "未設定";
+
+  // ✅ ボーイズリーグ専用文言
+  // 1回：この回の投球数のみ
+  // 2回以降：この回の投球数＋現在投手の合計投球数
+  if (leagueMode === "boys") {
+    const endedInning = Number(lastEndedHalfRef.current?.inning ?? inning ?? 1);
+    const pitcherLabel = pitcher
+      ? `${pitcher.lastName ?? ""}投手`
+      : "未設定投手";
+
+    const boysLines = [
+      `投球数は${displayCurrent}球です。`,
+    ];
+
+    if (endedInning >= 2) {
+      boysLines.push(
+        `${pitcherLabel}の合計投球数は${displayTotal}球です。`
+      );
+    }
+
+    return boysLines.join("\n");
+  }
 
   const lines = [
-    `${name}、この回の投球数は${displayCurrent}球です。`,
+    `ピッチャー ${name}、この回の投球数は${displayCurrent}球です。`,
   ];
 
   // ✅ この回の投球数とトータルが同じ場合は、トータル表示を省略する
@@ -5755,8 +5777,13 @@ const snapshot =
 
 
   if (score > 0) {
-    setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-    setPopupSpeakMessage(`${teamReading}、この回の得点は${score}点です。`);
+    if (leagueMode === "boys") {
+      setPopupMessage(`この回の得点は${score}点。`);
+      setPopupSpeakMessage(`この回の得点は${score}点。`);
+    } else {
+      setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
+      setPopupSpeakMessage(`${teamReading}、この回の得点は${score}点です。`);
+    }
 
   if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
     setPendingGroundPopup(true);
@@ -5767,10 +5794,8 @@ const snapshot =
   } else {
     // ★ ボーイズリーグは0点でも得点モーダルを表示
     if (leagueMode === "boys") {
-      const halfText = isTop ? "表" : "裏";
-      //setPopupMessage(`${inning}回の${halfText}、${teamName}の得点はありません。`);
-      setPopupMessage(`${teamName}、この回の得点はありません。`);
-      setPopupSpeakMessage(`${teamReading}、この回の得点はありません。`);
+      setPopupMessage("この回の得点は 無得点");
+      setPopupSpeakMessage("この回の得点は 無得点");
 
     if (leagueMode !== "boys" && isHome && inning === 4 && !isTop) {
       setPendingGroundPopup(true);
@@ -6025,6 +6050,29 @@ const announce = async (text: string | string[]) => {
   const joined = Array.isArray(text) ? text.join("、") : text;
   const plain = normalizeForTTS(joined); // ruby→かな & タグ除去
   await speak(plain);
+};
+
+const continueAfterPitchAnnouncement = async () => {
+  const endedHalf = lastEndedHalfRef.current;
+
+  // ✅ 代打・代走がある場合は、1回表でもシート紹介より先に守備交代へ進める。
+  const hasPendingDefense = await hasCurrentOffensePendingDefenseSetup();
+
+  if (hasPendingDefense) {
+    await openExistingDefenseChangeForEndedOffenseTeam();
+    return;
+  }
+
+  // ✅ 代打・代走が無い1回表終了後だけは、
+  // シート紹介 → 1回裏へ戻る
+  if (endedHalf?.inning === 1 && endedHalf?.isTop) {
+    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
+    await localForage.setItem("seatIntroLock", false);
+    await goSeatIntroFromOffense();
+    return;
+  }
+
+  await switchHalfInOnePersonMode();
 };
 
 const handleNext = async () => {
@@ -7200,29 +7248,9 @@ useEffect(() => {
                 }
               }
 
-              // ★ ボーイズリーグ：1回表終了時に開始時刻を先に表示
-              const effectiveStartTime = gameStartTime || startTime;
-
-              const shouldShowStartTime =
-                leagueMode === "boys" &&
-                Number(inning) === 1 &&
-                isTop === true &&
-                !isHome && // 先攻のみ
-                !!effectiveStartTime &&
-                !hasShownStartTimePopup.current;
-
-              if (shouldShowStartTime) {
-                if (!gameStartTime && effectiveStartTime) {
-                  setGameStartTime(effectiveStartTime);
-                }
-
-                hasShownStartTimePopup.current = true;
-                setAfterStartTimeAction("scoreModal");
-                setShowStartTimePopup(true);
-                return;
-              }
-
-              // 通常の得点入力
+              // 得点入力を先に表示する。
+              // ボーイズリーグ1回表の開始時刻は、
+              // 得点モーダル → 投球数モーダルの後に表示する。
               setShowModal(true);
             }}
             className="
@@ -9573,7 +9601,21 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                                 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md">
                   <h2 className="text-xl font-extrabold tracking-wide">開始時刻</h2>
                   <button
-                    onClick={() => setShowStartTimePopup(false)}
+                    onClick={() => {
+                      setShowStartTimePopup(false);
+
+                      if (afterStartTimeAction === "scoreModal") {
+                        setAfterStartTimeAction(null);
+                        window.setTimeout(() => {
+                          setShowModal(true);
+                        }, 0);
+                      } else if (afterStartTimeAction === "afterPitchModal") {
+                        setAfterStartTimeAction(null);
+                        window.setTimeout(() => {
+                          void continueAfterPitchAnnouncement();
+                        }, 0);
+                      }
+                    }}
                     aria-label="閉じる"
                     className="rounded-full w-9 h-9 flex items-center justify-center
                               bg-white/15 hover:bg-white/25 active:bg-white/30
@@ -9601,7 +9643,8 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
 
                     {/* 文言 */}
                     <p className="text-lg font-bold text-red-700 text-center">
-                      この試合の開始時刻は {formatJaTime(gameStartTime)} です。
+                      {leagueMode === "boys" ? "なお、この試合の開始時刻は" : "この試合の開始時刻は"}{" "}
+                      {formatJaTime(gameStartTime)} です。
                     </p>
 
                     {/* 読み上げ／停止（横いっぱい・等幅、アイコン右に文言で改行なし） */}
@@ -9610,7 +9653,11 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                         className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                   inline-flex items-center justify-center gap-2 shadow-md"
                         onClick={async () => {
-                          await speak(normalizeJapaneseTime(`この試合の開始時刻は${gameStartTime}です。`));
+                          const startTimeAnnouncement =
+                            leagueMode === "boys"
+                              ? `なお、この試合の開始時刻は${gameStartTime}です。`
+                              : `この試合の開始時刻は${gameStartTime}です。`;
+                          await speak(normalizeJapaneseTime(startTimeAnnouncement));
                         }}
                       >
                         <IconMic className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -9631,7 +9678,27 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                 {/* （任意）フッターにOK をまとめたい場合 */}
                 <div className="sticky bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t px-4 py-3">
                   <button
-                    onClick={() => setShowStartTimePopup(false)}
+                    onClick={() => {
+                      setShowStartTimePopup(false);
+
+                      if (afterStartTimeAction === "scoreModal") {
+                        setAfterStartTimeAction(null);
+
+                        // 開始時刻モーダルと得点入力モーダルが
+                        // 同時表示にならないよう、次の描画で開く。
+                        window.setTimeout(() => {
+                          setShowModal(true);
+                        }, 0);
+                      } else if (afterStartTimeAction === "afterPitchModal") {
+                        setAfterStartTimeAction(null);
+
+                        // ボーイズリーグ1回表終了時：
+                        // 得点 → 投球数 → 開始時刻 の後に通常の遷移を続ける。
+                        window.setTimeout(() => {
+                          void continueAfterPitchAnnouncement();
+                        }, 0);
+                      }
+                    }}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-md font-semibold"
                   >
                     OK
@@ -9831,27 +9898,29 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                   }
 
                   const endedHalf = lastEndedHalfRef.current;
+                  const effectiveStartTime = gameStartTime || startTime;
 
-                  // ✅ 代打・代走がある場合は、1回表でもシート紹介より先に守備交代へ進める。
-                  // 以前は「1回表終了 → シート紹介」を先に判定していたため、
-                  // 1回表だけ代打後の守備交代画面へ遷移できなかった。
-                  const hasPendingDefense = await hasCurrentOffensePendingDefenseSetup();
+                  // ✅ ボーイズリーグ1回表終了時だけ、
+                  // 得点 → 投球数 → 開始時刻 の順で表示する。
+                  const shouldShowStartTimeAfterPitch =
+                    leagueMode === "boys" &&
+                    endedHalf?.inning === 1 &&
+                    endedHalf?.isTop === true &&
+                    !!effectiveStartTime &&
+                    !hasShownStartTimePopup.current;
 
-                  if (hasPendingDefense) {
-                    await openExistingDefenseChangeForEndedOffenseTeam();
+                  if (shouldShowStartTimeAfterPitch) {
+                    if (!gameStartTime && effectiveStartTime) {
+                      setGameStartTime(effectiveStartTime);
+                    }
+
+                    hasShownStartTimePopup.current = true;
+                    setAfterStartTimeAction("afterPitchModal");
+                    setShowStartTimePopup(true);
                     return;
                   }
 
-                  // ✅ 代打・代走が無い1回表終了後だけは、
-                  // 投球数アナウンスOK → シート紹介 → 1回裏へ戻る
-                  if (endedHalf?.inning === 1 && endedHalf?.isTop) {
-                    await localForage.setItem("postDefenseSeatIntro", { enabled: false });
-                    await localForage.setItem("seatIntroLock", false);
-                    await goSeatIntroFromOffense();
-                    return;
-                  }
-
-                  await switchHalfInOnePersonMode();
+                  await continueAfterPitchAnnouncement();
                 }}
                 className="mt-4 w-full rounded-xl bg-emerald-600 py-3 font-extrabold text-white shadow active:scale-95"
               >
