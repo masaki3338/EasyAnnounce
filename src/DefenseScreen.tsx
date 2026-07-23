@@ -2056,7 +2056,9 @@ const handleStop = () => { ttsStop(); };
         }}
       />
     )}
-    <span className="relative z-10">⚾︎投球数－１</span>
+    <span className="relative z-10">
+      {pressedPitchButton === "subtract" ? "－1しました" : "⚾︎投球数－１"}
+    </span>
   </button>
 
   {/* 中央表示（4/12） */}
@@ -2180,7 +2182,9 @@ const handleStop = () => { ttsStop(); };
         }}
       />
     )}
-    <span className="relative z-10">⚾️投球数＋１</span>
+    <span className="relative z-10">
+      {pressedPitchButton === "add" ? "＋1しました" : "⚾️投球数＋１"}
+    </span>
   </button>
 </div>
 

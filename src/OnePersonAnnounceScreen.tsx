@@ -4073,9 +4073,9 @@ const buildOnePersonPitchAnnounceText = async () => {
     lines.push(`トータル${displayTotal}球です。`);
   }
 
-  const limitMessage = getOnePersonPitchLimitMessage(pitcher, displayTotal);
-  if (limitMessage) lines.push(limitMessage);
-
+  // イニング終了時は投球数だけを表示する。
+  // 投球制限の10球前・到達メッセージは、投球数ボタンを押した瞬間の
+  // 通知モーダルで表示済みのため、ここでは重複表示しない。
   return lines.join("\n");
 };
 
