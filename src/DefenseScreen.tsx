@@ -138,19 +138,36 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
   const [pitchFlash, setPitchFlash] =
     useState<"add" | "subtract" | null>(null);
 
+  const pitchFeedbackTimerRef = useRef<number | null>(null);
+
   const handlePitchButtonPress = (target: "add" | "subtract") => {
+    // 連打時は前回の解除タイマーをキャンセル
+    if (pitchFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pitchFeedbackTimerRef.current);
+    }
+
+    const effectId = Date.now();
     setPressedPitchButton(target);
-    setPitchRipple({ target, id: Date.now() });
+    setPitchRipple({ target, id: effectId });
     setPitchFlash(target);
 
-    // 素早いタップでも見えるように、指を離した後までフラッシュを残す
-    window.setTimeout(() => {
-      setPitchFlash((current) => (current === target ? null : current));
-    }, 180);
+    // 短押しでも必ず見えるように、最低250msは色変化を維持する
+    pitchFeedbackTimerRef.current = window.setTimeout(() => {
+      setPressedPitchButton((current) =>
+        current === target ? null : current
+      );
+      setPitchFlash((current) =>
+        current === target ? null : current
+      );
+      pitchFeedbackTimerRef.current = null;
+    }, 250);
 
     // Android Chrome / Android PWAで振動
     try {
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.vibrate === "function"
+      ) {
         navigator.vibrate(50);
       }
     } catch (error) {
@@ -158,9 +175,18 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
     }
   };
 
-  const handlePitchButtonRelease = () => {
-    setPressedPitchButton(null);
-  };
+  // 指を離しても即解除しない。
+  // handlePitchButtonPress 内の250msタイマーで解除する。
+  const handlePitchButtonRelease = () => {};
+
+  useEffect(() => {
+    return () => {
+      if (pitchFeedbackTimerRef.current !== null) {
+        window.clearTimeout(pitchFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
   const openTotalPitchModal = (currentTotal: number) => {
     setTotalPitchInput(String(currentTotal ?? 0));
     setShowTotalPitchModal(true);
@@ -2013,7 +2039,7 @@ const handleStop = () => { ttsStop(); };
         style={{
           background:
             "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
-          animation: "pitch-button-flash 180ms ease-out forwards",
+          animation: "pitch-button-flash 250ms ease-out forwards",
         }}
       />
     )}
@@ -2137,7 +2163,7 @@ const handleStop = () => { ttsStop(); };
         style={{
           background:
             "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
-          animation: "pitch-button-flash 180ms ease-out forwards",
+          animation: "pitch-button-flash 250ms ease-out forwards",
         }}
       />
     )}
