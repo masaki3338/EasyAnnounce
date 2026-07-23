@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f6b3d" />
+  <meta name="description" content="少年野球のアナウンス当番を支援するWebアプリ『Easyアナウンス』。表示された文言を読むだけで、試合前案内、スタメン発表、選手交代、投球数管理などを簡単に行えます。" />
+  <meta property="og:title" content="Easyアナウンス｜少年野球のアナウンス当番をもっと簡単に" />
+  <meta property="og:description" content="読む文言が画面に表示されるから、初めてのアナウンス当番でも安心。" />
+  <meta property="og:type" content="website" />
+  <title>Easyアナウンス｜少年野球のアナウンス支援アプリ</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Easyアナウンス",
+    "applicationCategory": "SportsApplication",
+    "operatingSystem": "Android, iOS, iPadOS, Web",
+    "offers": {"@type":"Offer","price":"0","priceCurrency":"JPY"},
+    "description": "少年野球の試合アナウンスを支援するアプリです。"
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Easyアナウンス トップへ">
+      <img class="brand-logo" src="./assets/app-icon.png" alt="Easyアナウンス ロゴ" />
+      <span>Easyアナウンス</span>
+    </a>
+    <button class="menu-button" aria-label="メニューを開く" aria-expanded="false">☰</button>
+    <nav class="nav" aria-label="メインメニュー">
+      <a href="#features">機能</a>
+      <a href="#visuals">紹介画像</a>
+      <a href="#screens">画面</a>
+      <a href="#howto">使い方</a>
+      <a href="#ios">iPhone</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero section">
+      <div class="hero-copy">
+        <p class="eyebrow">少年野球・中学硬式野球の保護者をサポート</p>
+        <h1>アナウンス当番を、<br><span>もっと簡単に。</span></h1>
+        <p class="lead">読む文言が画面に表示されるから、初めてでも迷いにくい。スマホやタブレットひとつで、試合の進行に合わせたアナウンスを支援します。</p>
+        <ul class="hero-points">
+          <li>ふりがな・背番号登録に対応</li>
+          <li>試合前案内、打者案内、守備交代、投球数管理をサポート</li>
+          <li>スマホ・タブレット前提の見やすい画面設計</li>
+        </ul>
+        <div class="cta-group">
+          <a class="button primary android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Google Playでインストール</a>
+          <a class="button secondary ios-cta" href="#ios-guide">iPhone・iPadで使う</a>
+          <a class="button ghost web-cta" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">ブラウザで使ってみる</a>
+        </div>
+        <p class="small-note">基本機能は無料。会員登録なしで利用できます。</p>
+      </div>
+
+      <div class="hero-media" aria-label="Easyアナウンス紹介画像">
+        <img src="./assets/home-promo.png" alt="Easyアナウンスのホーム画面と紹介画像" />
+      </div>
+    </section>
+
+    <section class="section banner-section">
+      <div class="banner-panel">
+        <img src="./assets/hero-banner.png" alt="Easyアナウンスの主な機能を紹介するバナー画像" loading="lazy" />
+      </div>
+    </section>
+
+    <section class="problem section alt">
+      <div class="section-heading">
+        <p class="eyebrow">こんなお悩みありませんか？</p>
+        <h2>アナウンス当番は、覚えることが多い。</h2>
+      </div>
+      <div class="cards three">
+        <article class="card"><span class="icon">📄</span><h3>資料が多くて大変</h3><p>マニュアル、選手名簿、球数カウンターなど、準備だけでも負担になります。</p></article>
+        <article class="card"><span class="icon">🔄</span><h3>選手交代が複雑</h3><p>代打、代走、守備変更が重なると、どの順番で読めばよいか迷います。</p></article>
+        <article class="card"><span class="icon">⚾</span><h3>試合を見る余裕がない</h3><p>次の案内を考えることに集中して、子どものプレーを見逃してしまいます。</p></article>
+      </div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">主な機能</p>
+        <h2>試合前から試合終了までをサポート</h2>
+        <p>操作した内容に合わせて、アナウンス文言を画面に表示します。</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature"><b>01</b><div><h3>試合前アナウンス</h3><p>試合開始前の案内、シートノック、スターティングメンバー発表を支援します。</p></div></article>
+        <article class="feature"><b>02</b><div><h3>打者・得点の案内</h3><p>打順、守備位置、選手名、背番号などを登録内容から表示します。</p></div></article>
+        <article class="feature"><b>03</b><div><h3>選手交代・守備変更</h3><p>交代内容を画面で選択し、読み上げる順番に合わせた文言を作成します。</p></div></article>
+        <article class="feature"><b>04</b><div><h3>投球数カウント</h3><p>投球数を記録し、イニング終了時などに投手の球数を案内できます。</p></div></article>
+        <article class="feature"><b>05</b><div><h3>読み上げ・停止ボタン</h3><p>アナウンス文言エリアには、共通デザインの読み上げボタンと停止ボタンを配置しています。</p></div></article>
+        <article class="feature"><b>06</b><div><h3>ふりがなをルビ表示</h3><p>登録した選手名のふりがなを画面上に表示し、読み間違いを減らします。</p></div></article>
+        <article class="feature"><b>07</b><div><h3>1人アナウンスモード</h3><p>1人で1塁側・3塁側の両チームを担当する運用にも対応しています。</p></div></article>
+        <article class="feature"><b>08</b><div><h3>リーグ別設定</h3><p>現在はポニーリーグとボーイズリーグの運用に対応しています。</p></div></article>
+      </div>
+    </section>
+
+    <section id="visuals" class="section alt">
+      <div class="section-heading">
+        <p class="eyebrow">紹介画像</p>
+        <h2>機能がひと目で分かる紹介ビジュアル</h2>
+        <p>サイト掲載向けに加工した画像で、Easyアナウンスの主な流れと特長をまとめています。</p>
+      </div>
+      <div class="promo-grid">
+        <article class="promo-card featured-promo">
+          <img src="./assets/pregame-promo.png" alt="試合前アナウンス機能の紹介画像" loading="lazy" />
+          <div>
+            <span>試合前アナウンス</span>
+            <h3>試合前の流れを順番どおりに案内</h3>
+            <p>ウォーミングアップ、シートノック、スタメン発表、集合・試合開始挨拶まで、進行に沿って迷わず進められます。</p>
+          </div>
+        </article>
+        <article class="promo-card">
+          <img src="./assets/batter-promo.png" alt="打者アナウンス機能の紹介画像" loading="lazy" />
+          <div>
+            <span>打者アナウンス</span>
+            <h3>打者案内を自動表示</h3>
+            <p>打順・守備位置・選手名・背番号を分かりやすく表示し、ルビ表示と読み上げボタンにも対応します。</p>
+          </div>
+        </article>
+        <article class="promo-card">
+          <img src="./assets/pitchcount-promo.png" alt="投球数カウント機能の紹介画像" loading="lazy" />
+          <div>
+            <span>守備・投球数</span>
+            <h3>投球数カウントも簡単</h3>
+            <p>守備画面から＋1 / −1 で操作でき、この回の投球数と累計投球数を視覚的に確認できます。</p>
+          </div>
+        </article>
+        <article class="promo-card wide">
+          <img src="./assets/defensechange-promo.png" alt="守備交代機能の紹介画像" loading="lazy" />
+          <div>
+            <span>守備交代</span>
+            <h3>複雑な守備交代もスムーズ</h3>
+            <p>守備番号での交代、配置の確認、交代アナウンス文の自動作成までまとめて対応します。</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="screens section" id="screens">
+      <div class="section-heading">
+        <p class="eyebrow">実際の画面</p>
+        <h2>試合の流れに沿って、必要な操作を分かりやすく表示</h2>
+        <p>スマートフォンやタブレットで見やすく、アナウンス文言には読み上げ・停止ボタンを共通デザインで配置しています。</p>
+      </div>
+      <div class="screen-showcase">
+        <article class="screen-card featured">
+          <img src="./assets/pre-game.jpg" alt="試合前アナウンス画面" loading="lazy" />
+          <div><span>試合前</span><h3>試合前アナウンス</h3><p>シートノック、スタメン発表、集合・試合開始挨拶を順番に進められます。</p></div>
+        </article>
+        <article class="screen-card">
+          <img src="./assets/sheet-knock.jpg" alt="シートノック画面" loading="lazy" />
+          <div><span>試合前</span><h3>シートノック</h3><p>読み上げのタイミング、タイマー、残り時間の案内を一画面で確認できます。</p></div>
+        </article>
+        <article class="screen-card">
+          <img src="./assets/offense.jpg" alt="攻撃画面" loading="lazy" />
+          <div><span>試合中</span><h3>攻撃画面</h3><p>打者、得点、代走、代打などを試合の進行に合わせて操作できます。</p></div>
+        </article>
+        <article class="screen-card">
+          <img src="./assets/defense.jpg" alt="守備画面" loading="lazy" />
+          <div><span>試合中</span><h3>守備・投球数</h3><p>守備位置と投球数を確認しながら、イニング終了時の案内を行えます。</p></div>
+        </article>
+        <article class="screen-card">
+          <img src="./assets/number-change.jpg" alt="守備番号で交代する画面" loading="lazy" />
+          <div><span>選手交代</span><h3>守備番号で交代</h3><p>手書きメモを使いながら、複数の交代や守備位置変更をまとめて入力できます。</p></div>
+        </article>
+        <article class="screen-card">
+          <img src="./assets/change-announcement.jpg" alt="交代アナウンス画面" loading="lazy" />
+          <div><span>アナウンス</span><h3>交代文言を自動表示</h3><p>登録したふりがなをルビ表示し、複雑な交代内容も読む順番で表示します。</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="howto" class="section alt">
+      <div class="section-heading">
+        <p class="eyebrow">使い方</p>
+        <h2>基本操作は4ステップ</h2>
+      </div>
+      <ol class="steps">
+        <li><span>1</span><div><h3>チーム・選手を登録</h3><p>選手名、ふりがな、背番号などを登録します。</p></div></li>
+        <li><span>2</span><div><h3>試合情報を設定</h3><p>対戦チーム、先攻・後攻、スタメン、審判などを入力します。</p></div></li>
+        <li><span>3</span><div><h3>試合に合わせて操作</h3><p>打者、得点、選手交代、投球数などを画面から選びます。</p></div></li>
+        <li><span>4</span><div><h3>表示された文言を読む</h3><p>ルビ付きの文言を確認し、読み上げボタンまたは自分の声で案内します。</p></div></li>
+      </ol>
+    </section>
+
+    <section class="platform section">
+      <div class="section-heading">
+        <p class="eyebrow">端末別の始め方</p>
+        <h2>AndroidでもiPhoneでも利用できます</h2>
+      </div>
+      <div class="platform-grid">
+        <article class="platform-card android">
+          <p class="platform-name">Android</p>
+          <h3>Google Playからインストール</h3>
+          <p>Google Playで「野球アナウンス支援 Easyアナウンス」をインストールしてください。</p>
+          <a class="button primary" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Google Playを開く</a>
+        </article>
+        <article class="platform-card ios" id="ios">
+          <p class="platform-name">iPhone・iPad</p>
+          <h3>Safariからホーム画面へ追加</h3>
+          <p>App Storeではなく、SafariでWebアプリを開き、ホーム画面へ追加して利用します。</p>
+          <a class="button secondary" href="#ios-guide">手順を見る</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="ios-guide" class="section alt ios-guide">
+      <div class="section-heading">
+        <p class="eyebrow">iPhone・iPad導入ガイド</p>
+        <h2>Safariでホーム画面に追加する方法</h2>
+        <p class="warning">Instagram内のブラウザでは追加できない場合があります。右上の「…」から外部ブラウザで開き、Safariを使用してください。</p>
+      </div>
+      <div class="guide-grid">
+        <article><span>1</span><div class="guide-visual">Safari</div><h3>Safariで開く</h3><p>下のボタンからEasyアナウンスを開きます。</p></article>
+        <article><span>2</span><div class="guide-visual">□<br>↑</div><h3>共有ボタンを押す</h3><p>Safari画面下部の共有ボタンを押します。</p></article>
+        <article><span>3</span><div class="guide-visual">＋</div><h3>ホーム画面に追加</h3><p>メニューから「ホーム画面に追加」を選択します。</p></article>
+        <article><span>4</span><div class="guide-visual">ON</div><h3>Webアプリとして開く</h3><p>表示された場合は設定をオンにし、「追加」を押します。</p></article>
+      </div>
+      <div class="center"><a class="button primary" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">SafariでEasyアナウンスを開く</a></div>
+    </section>
+
+    <section class="updates section">
+      <div class="section-heading"><p class="eyebrow">アップデート</p><h2>使いやすさを継続して改善しています</h2></div>
+      <div class="timeline">
+        <article><time>2026.07.23</time><div><strong>Version 1.03</strong><p>投球数ボタンの視覚効果を改善し、Android端末ではバイブレーションに対応しました。</p></div></article>
+        <article><time>2026.07.20</time><div><strong>Version 1.02</strong><p>1人で両チームのアナウンスを担当できる機能を追加しました。</p></div></article>
+        <article><time>2026.06.15</time><div><strong>Version 1.01</strong><p>シートノック時間の変更機能を追加しました。</p></div></article>
+      </div>
+    </section>
+
+    <section id="faq" class="section alt">
+      <div class="section-heading"><p class="eyebrow">よくある質問</p><h2>FAQ</h2></div>
+      <div class="faq-list">
+        <details><summary>料金はかかりますか？</summary><p>無料で利用できます。</p></details>
+        <details><summary>iPhoneでも使えますか？</summary><p>利用できます。SafariでEasyアナウンスを開き、ホーム画面に追加してください。</p></details>
+        <details><summary>どのリーグに対応していますか？</summary><p>現在はポニーリーグとボーイズリーグに対応しています。ほかのリーグへの対応は、ご要望を確認しながら検討します。</p></details>
+        <details><summary>スマートフォン以外でも使えますか？</summary><p>スマートフォンとタブレットでの利用を前提に設計しています。</p></details>
+        <details><summary>機種変更時にデータは引き継がれますか？</summary><p>現在、端末間の自動引き継ぎには対応していません。機種変更前に必要な情報を確認してください。</p></details>
+      </div>
+    </section>
+
+    <section class="final-cta section">
+      <div>
+        <p class="eyebrow">Easyアナウンスを始める</p>
+        <h2>アナウンスの不安を減らして、<br>子どもたちの試合をもっと楽しもう！</h2>
+      </div>
+      <div class="cta-group">
+        <a class="button light android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Android版をインストール</a>
+        <a class="button outline-light ios-cta" href="#ios-guide">iPhoneの設定方法</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-brand"><img class="brand-logo" src="./assets/app-icon.png" alt="" /><strong>Easyアナウンス</strong></div>
+    <div class="footer-links">
+      <a href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">Webアプリ</a>
+      <a href="mailto:easyannounce2026@gmail.com">お問い合わせ</a>
+    </div>
+    <p>© 2026 Easyアナウンス</p>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>
