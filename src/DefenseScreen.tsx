@@ -143,7 +143,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
     // Android Chrome / Android PWAで振動
     try {
       if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(20);
+        navigator.vibrate(50);
       }
     } catch (error) {
       console.warn("vibration unavailable", error);
