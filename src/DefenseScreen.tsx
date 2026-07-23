@@ -135,10 +135,18 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
     target: "add" | "subtract";
     id: number;
   } | null>(null);
+  const [pitchFlash, setPitchFlash] =
+    useState<"add" | "subtract" | null>(null);
 
   const handlePitchButtonPress = (target: "add" | "subtract") => {
     setPressedPitchButton(target);
     setPitchRipple({ target, id: Date.now() });
+    setPitchFlash(target);
+
+    // 素早いタップでも見えるように、指を離した後までフラッシュを残す
+    window.setTimeout(() => {
+      setPitchFlash((current) => (current === target ? null : current));
+    }, 180);
 
     // Android Chrome / Android PWAで振動
     try {
@@ -1639,6 +1647,30 @@ const handleStop = () => { ttsStop(); };
           }
         }
 
+        @keyframes pitch-button-flash {
+          0% {
+            opacity: 0.95;
+          }
+          45% {
+            opacity: 0.72;
+          }
+          100% {
+            opacity: 0;
+          }
+        }
+
+        @keyframes pitch-button-pop {
+          0% {
+            transform: scale(0.90);
+          }
+          55% {
+            transform: scale(1.04);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .easy-defense-screen button:not(:disabled) {
             transition: none;
@@ -1959,14 +1991,32 @@ const handleStop = () => { ttsStop(); };
     "
     style={{
       transform:
-        pressedPitchButton === "subtract" ? "scale(0.96)" : "scale(1)",
-      filter:
-        pressedPitchButton === "subtract" ? "brightness(0.78)" : "brightness(1)",
-      transition: "transform 80ms ease, filter 80ms ease",
+        pressedPitchButton === "subtract" ? "scale(0.90)" : "scale(1)",
+      backgroundColor:
+        pressedPitchButton === "subtract" ? "#dc2626" : "#eab308",
+      color:
+        pressedPitchButton === "subtract" ? "#ffffff" : "#ffffff",
+      boxShadow:
+        pressedPitchButton === "subtract"
+          ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 24px 10px rgba(239,68,68,0.95)"
+          : "0 4px 10px rgba(0,0,0,0.24)",
+      transition:
+        "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
       WebkitTapHighlightColor: "transparent",
       touchAction: "manipulation",
     }}
   >
+    {pitchFlash === "subtract" && (
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 z-20 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+          animation: "pitch-button-flash 180ms ease-out forwards",
+        }}
+      />
+    )}
     {pitchRipple?.target === "subtract" && (
       <span
         key={pitchRipple.id}
@@ -2065,14 +2115,32 @@ const handleStop = () => { ttsStop(); };
     "
     style={{
       transform:
-        pressedPitchButton === "add" ? "scale(0.96)" : "scale(1)",
-      filter:
-        pressedPitchButton === "add" ? "brightness(0.72)" : "brightness(1)",
-      transition: "transform 80ms ease, filter 80ms ease",
+        pressedPitchButton === "add" ? "scale(0.90)" : "scale(1)",
+      backgroundColor:
+        pressedPitchButton === "add" ? "#2563eb" : "#22c55e",
+      color:
+        pressedPitchButton === "add" ? "#ffffff" : "#ffffff",
+      boxShadow:
+        pressedPitchButton === "add"
+          ? "0 0 0 4px rgba(255,255,255,0.95), 0 0 26px 10px rgba(37,99,235,0.95)"
+          : "0 4px 10px rgba(0,0,0,0.24)",
+      transition:
+        "transform 70ms ease, background-color 70ms linear, box-shadow 70ms linear",
       WebkitTapHighlightColor: "transparent",
       touchAction: "manipulation",
     }}
   >
+    {pitchFlash === "add" && (
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 z-20 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0.2), rgba(255,255,255,1), rgba(255,255,255,0.2))",
+          animation: "pitch-button-flash 180ms ease-out forwards",
+        }}
+      />
+    )}
     {pitchRipple?.target === "add" && (
       <span
         key={pitchRipple.id}
