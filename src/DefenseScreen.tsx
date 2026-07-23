@@ -127,6 +127,32 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
   const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
   const [showTotalPitchModal, setShowTotalPitchModal] = useState(false);
   const [totalPitchInput, setTotalPitchInput] = useState<string>(""); // 入力中の文字列
+
+  // 投球数±1ボタン専用の押下フィードバック
+  const [pressedPitchButton, setPressedPitchButton] =
+    useState<"add" | "subtract" | null>(null);
+  const [pitchRipple, setPitchRipple] = useState<{
+    target: "add" | "subtract";
+    id: number;
+  } | null>(null);
+
+  const handlePitchButtonPress = (target: "add" | "subtract") => {
+    setPressedPitchButton(target);
+    setPitchRipple({ target, id: Date.now() });
+
+    // Android Chrome / Android PWAで振動
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(20);
+      }
+    } catch (error) {
+      console.warn("vibration unavailable", error);
+    }
+  };
+
+  const handlePitchButtonRelease = () => {
+    setPressedPitchButton(null);
+  };
   const openTotalPitchModal = (currentTotal: number) => {
     setTotalPitchInput(String(currentTotal ?? 0));
     setShowTotalPitchModal(true);
@@ -1602,6 +1628,17 @@ const handleStop = () => { ttsStop(); };
           }
         }
 
+        @keyframes pitch-button-ripple {
+          0% {
+            opacity: 0.7;
+            transform: translate(-50%, -50%) scale(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(18);
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .easy-defense-screen button:not(:disabled) {
             transition: none;
@@ -1898,22 +1935,52 @@ const handleStop = () => { ttsStop(); };
 >
   {/* －1（4/12） */}
   <button
+    type="button"
+    onPointerDown={() => handlePitchButtonPress("subtract")}
+    onPointerUp={handlePitchButtonRelease}
+    onPointerCancel={handlePitchButtonRelease}
+    onPointerLeave={handlePitchButtonRelease}
     onClick={subtractPitch}
     className="
+      relative overflow-hidden
       col-span-4
       mx-auto
       w-[80%]
       h-10
       md:h-[clamp(42px,5.2dvh,58px)]
       rounded
-      bg-yellow-500 text-white hover:bg-yellow-600
+      bg-yellow-500 text-white
       whitespace-nowrap
       text-sm
       md:text-[clamp(15px,2.2dvh,22px)]
       font-bold
+      shadow-md
+      select-none
     "
+    style={{
+      transform:
+        pressedPitchButton === "subtract" ? "scale(0.96)" : "scale(1)",
+      filter:
+        pressedPitchButton === "subtract" ? "brightness(0.78)" : "brightness(1)",
+      transition: "transform 80ms ease, filter 80ms ease",
+      WebkitTapHighlightColor: "transparent",
+      touchAction: "manipulation",
+    }}
   >
-    ⚾︎投球数－１
+    {pitchRipple?.target === "subtract" && (
+      <span
+        key={pitchRipple.id}
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+        style={{
+          width: "16px",
+          height: "16px",
+          transform: "translate(-50%, -50%) scale(0)",
+          animation: "pitch-button-ripple 420ms ease-out forwards",
+        }}
+      />
+    )}
+    <span className="relative z-10">⚾︎投球数－１</span>
   </button>
 
   {/* 中央表示（4/12） */}
@@ -1975,21 +2042,51 @@ const handleStop = () => { ttsStop(); };
 
   {/* ＋1（4/12） */}
   <button
+    type="button"
+    onPointerDown={() => handlePitchButtonPress("add")}
+    onPointerUp={handlePitchButtonRelease}
+    onPointerCancel={handlePitchButtonRelease}
+    onPointerLeave={handlePitchButtonRelease}
     onClick={addPitch}
     className="
+      relative overflow-hidden
       col-span-4
       w-full
       h-10
       md:h-[clamp(42px,5.2dvh,58px)]
       rounded
-      bg-green-500 text-white hover:bg-green-600
+      bg-green-500 text-white
       whitespace-nowrap
       text-sm
       md:text-[clamp(15px,2.2dvh,22px)]
       font-bold
+      shadow-md
+      select-none
     "
+    style={{
+      transform:
+        pressedPitchButton === "add" ? "scale(0.96)" : "scale(1)",
+      filter:
+        pressedPitchButton === "add" ? "brightness(0.72)" : "brightness(1)",
+      transition: "transform 80ms ease, filter 80ms ease",
+      WebkitTapHighlightColor: "transparent",
+      touchAction: "manipulation",
+    }}
   >
-    ⚾️投球数＋１
+    {pitchRipple?.target === "add" && (
+      <span
+        key={pitchRipple.id}
+        aria-hidden="true"
+        className="absolute left-1/2 top-1/2 rounded-full bg-white/60 pointer-events-none"
+        style={{
+          width: "16px",
+          height: "16px",
+          transform: "translate(-50%, -50%) scale(0)",
+          animation: "pitch-button-ripple 420ms ease-out forwards",
+        }}
+      />
+    )}
+    <span className="relative z-10">⚾️投球数＋１</span>
   </button>
 </div>
 
