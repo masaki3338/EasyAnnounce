@@ -25,3 +25,12 @@ Vercel CLIを使う場合は、このフォルダで `vercel` を実行します
 
 - Webアプリ: https://easy-announce-p.vercel.app/
 - Google Play: https://play.google.com/store/apps/details?id=com.easyannounce.pony
+
+- Instagram: https://www.instagram.com/easyannounce
+
+
+## 今回の変更
+
+- `Qa.tsx` のQ&A内容を紹介サイトのFAQへ反映
+- スマートフォンで読みやすい折りたたみ表示に調整
+- Android/iPhoneのインストール案内をQ&A内にも追加

@@ -36,15 +36,16 @@
       <a href="#howto">使い方</a>
       <a href="#ios">iPhone</a>
       <a href="#faq">FAQ</a>
+      <a class="nav-instagram" href="https://www.instagram.com/easyannounce2026/" target="_blank" rel="noopener">Instagram</a>
     </nav>
   </header>
 
   <main id="top">
     <section class="hero section">
       <div class="hero-copy">
-        <p class="eyebrow">少年野球・中学硬式野球の保護者をサポート</p>
-        <h1>アナウンス当番を、<br><span>もっと簡単に。</span></h1>
-        <p class="lead">読む文言が画面に表示されるから、初めてでも迷いにくい。スマホやタブレットひとつで、試合の進行に合わせたアナウンスを支援します。</p>
+        <p class="eyebrow">スマホひとつで、アナウンス当番をサポート</p>
+        <h1>野球のアナウンス当番を<br><span>もっと簡単に。</span></h1>
+        <p class="lead">表示された文言を読むだけ。スマホ・タブレットで、試合前案内、打者案内、守備交代、投球数管理まで分かりやすくサポートします。</p>
         <ul class="hero-points">
           <li>ふりがな・背番号登録に対応</li>
           <li>試合前案内、打者案内、守備交代、投球数管理をサポート</li>
@@ -53,6 +54,7 @@
         <div class="cta-group">
           <a class="button primary android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Google Playでインストール</a>
           <a class="button secondary ios-cta" href="#ios-guide">iPhone・iPadで使う</a>
+          <a class="button instagram-button" href="https://www.instagram.com/easyannounce2026/" target="_blank" rel="noopener" aria-label="Easyアナウンス公式Instagramを見る">Instagramで最新情報を見る</a>
           <a class="button ghost web-cta" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">ブラウザで使ってみる</a>
         </div>
         <p class="small-note">基本機能は無料。会員登録なしで利用できます。</p>
@@ -66,6 +68,18 @@
     <section class="section banner-section">
       <div class="banner-panel">
         <img src="./assets/hero-banner.png" alt="Easyアナウンスの主な機能を紹介するバナー画像" loading="lazy" />
+      </div>
+    </section>
+
+    <section class="instagram-section section" id="instagram">
+      <div class="instagram-panel">
+        <div class="instagram-mark" aria-hidden="true">◎</div>
+        <div>
+          <p class="eyebrow">公式Instagram</p>
+          <h2>使い方・アップデート情報を発信中</h2>
+          <p>新機能、操作方法、よくあるご質問への回答などを掲載しています。フォローして最新情報をご確認ください。</p>
+        </div>
+        <a class="button instagram-button" href="https://www.instagram.com/easyannounce2026/" target="_blank" rel="noopener">Instagramをフォロー</a>
       </div>
     </section>
 
@@ -215,11 +229,27 @@
         <h2>Safariでホーム画面に追加する方法</h2>
         <p class="warning">Instagram内のブラウザでは追加できない場合があります。右上の「…」から外部ブラウザで開き、Safariを使用してください。</p>
       </div>
-      <div class="guide-grid">
-        <article><span>1</span><div class="guide-visual">Safari</div><h3>Safariで開く</h3><p>下のボタンからEasyアナウンスを開きます。</p></article>
-        <article><span>2</span><div class="guide-visual">□<br>↑</div><h3>共有ボタンを押す</h3><p>Safari画面下部の共有ボタンを押します。</p></article>
-        <article><span>3</span><div class="guide-visual">＋</div><h3>ホーム画面に追加</h3><p>メニューから「ホーム画面に追加」を選択します。</p></article>
-        <article><span>4</span><div class="guide-visual">ON</div><h3>Webアプリとして開く</h3><p>表示された場合は設定をオンにし、「追加」を押します。</p></article>
+      <div class="ios-photo-guide">
+        <article class="ios-step">
+          <div class="step-label"><span>1</span><div><h3>プロフィールの「iOSでダウンロード」をタップ</h3><p>InstagramのプロフィールリンクからEasyアナウンスを開きます。</p></div></div>
+          <img src="./assets/ios-guide/01-link.png" alt="InstagramプロフィールのiOSでダウンロードリンク" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>2</span><div><h3>「…」から外部ブラウザーで開く</h3><p>Instagram内ブラウザの右上メニューを開きます。</p></div></div>
+          <img src="./assets/ios-guide/02-external-browser.png" alt="Instagram内ブラウザで外部ブラウザーを開く操作" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>3</span><div><h3>Safariのメニューを開く</h3><p>画面右下のメニューから共有・ブックマークの項目を表示します。</p></div></div>
+          <img src="./assets/ios-guide/03-safari-menu.png" alt="Safariのメニューを開いた画面" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>4</span><div><h3>「ホーム画面に追加」を選ぶ</h3><p>メニューを下へスクロールし、「ホーム画面に追加」をタップします。</p></div></div>
+          <img src="./assets/ios-guide/04-home-screen.png" alt="Safariでホーム画面に追加を選ぶ画面" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>5</span><div><h3>「Webアプリとして開く」をオンにして追加</h3><p>右上の「追加」を押すと、ホーム画面からアプリのように起動できます。</p></div></div>
+          <img src="./assets/ios-guide/05-add.png" alt="Easyアナウンスをホーム画面に追加する最終画面" loading="lazy" />
+        </article>
       </div>
       <div class="center"><a class="button primary" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">SafariでEasyアナウンスを開く</a></div>
     </section>
@@ -252,6 +282,7 @@
       <div class="cta-group">
         <a class="button light android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Android版をインストール</a>
         <a class="button outline-light ios-cta" href="#ios-guide">iPhoneの設定方法</a>
+        <a class="button instagram-light" href="https://www.instagram.com/easyannounce2026/" target="_blank" rel="noopener">Instagramを見る</a>
       </div>
     </section>
   </main>
@@ -260,6 +291,7 @@
     <div class="footer-brand"><img class="brand-logo" src="./assets/app-icon.png" alt="" /><strong>Easyアナウンス</strong></div>
     <div class="footer-links">
       <a href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">Webアプリ</a>
+      <a href="https://www.instagram.com/easyannounce2026/" target="_blank" rel="noopener">Instagram</a>
       <a href="mailto:easyannounce2026@gmail.com">お問い合わせ</a>
     </div>
     <p>© 2026 Easyアナウンス</p>

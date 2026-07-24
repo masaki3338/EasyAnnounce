@@ -110,3 +110,106 @@ footer{padding:45px max(20px,calc((100vw - 1120px)/2));background:#0d241a;color:
   footer{grid-template-columns:1fr}
   .footer-links{flex-direction:column;gap:10px}
 }
+
+/* 2026-07 mobile-first / Instagram / iPhone guide update */
+.nav-instagram,.instagram-button{background:linear-gradient(135deg,#833ab4,#fd1d1d 55%,#fcb045);color:#fff!important;border-color:transparent;box-shadow:0 9px 24px rgba(193,53,132,.22)}
+.nav-instagram{padding:7px 13px;border-radius:999px}
+.instagram-section{padding-top:34px;padding-bottom:34px}
+.instagram-panel{max-width:1120px;margin:auto;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:22px;padding:28px;border-radius:26px;background:linear-gradient(135deg,#fff7fb,#fff8ef);border:1px solid #f2d8e8;box-shadow:var(--shadow)}
+.instagram-mark{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;font-size:39px;font-weight:900;color:#fff;background:linear-gradient(135deg,#833ab4,#fd1d1d 55%,#fcb045)}
+.instagram-panel h2{margin:0 0 5px;font-size:clamp(24px,3vw,34px);line-height:1.35}
+.instagram-panel p{margin:0;color:var(--muted)}
+.ios-photo-guide{max-width:1050px;margin:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.ios-step{background:#fff;border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 14px 36px rgba(18,68,44,.08)}
+.ios-step:last-child{grid-column:1/-1;max-width:520px;width:100%;justify-self:center}
+.step-label{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.step-label>span{flex:0 0 36px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--green);color:#fff;font-weight:900}
+.step-label h3{margin:1px 0 3px;font-size:20px;line-height:1.4}
+.step-label p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}
+.ios-step img{display:block;width:100%;max-height:650px;object-fit:contain;border-radius:16px;background:#eef2f5}
+.instagram-light{background:linear-gradient(135deg,#833ab4,#fd1d1d 55%,#fcb045);color:#fff}
+
+@media(max-width:950px){
+  .site-header{padding:10px 16px}
+  .brand{font-size:16px}
+  .brand-logo{width:36px;height:36px}
+  .nav{top:57px;gap:8px;align-items:stretch}
+  .nav a{padding:11px 12px;border-radius:10px;text-align:center}
+  .instagram-panel{grid-template-columns:auto 1fr}
+  .instagram-panel .button{grid-column:1/-1;width:100%}
+}
+@media(max-width:560px){
+  body{font-size:16px;line-height:1.65}
+  .section{padding:54px 16px}
+  .site-header{min-height:58px}
+  .hero{padding-top:28px;padding-bottom:32px;gap:24px;text-align:left}
+  .hero h1{font-size:clamp(34px,10.4vw,46px);line-height:1.22;letter-spacing:-.035em}
+  .hero .eyebrow{font-size:12px}
+  .lead{font-size:17px;line-height:1.7}
+  .hero-points{font-size:14px;gap:7px}
+  .hero-media{order:-1}
+  .hero-media img{border-radius:20px;box-shadow:0 18px 45px rgba(8,74,42,.16)}
+  .cta-group{gap:10px;margin-top:22px}
+  .button{min-height:54px;font-size:16px;border-radius:13px}
+  .section-heading{margin-bottom:28px;text-align:left}
+  .section-heading h2{font-size:29px;line-height:1.4}
+  .section-heading .eyebrow{font-size:12px}
+  .banner-section{display:none}
+  .instagram-section{padding-top:18px;padding-bottom:18px}
+  .instagram-panel{grid-template-columns:1fr;padding:20px;gap:12px;text-align:left}
+  .instagram-mark{width:50px;height:50px;border-radius:15px;font-size:33px}
+  .instagram-panel h2{font-size:24px}
+  .card,.feature,.promo-card,.screen-card,.platform-card,.steps li{border-radius:18px}
+  .feature-grid{gap:10px}
+  .feature{gap:12px;padding:16px}
+  .feature>b{flex-basis:38px;width:38px;height:38px}
+  .feature h3{font-size:18px}
+  .screen-card img{height:auto;max-height:none;object-fit:contain}
+  .ios-photo-guide{grid-template-columns:1fr;gap:18px}
+  .ios-step,.ios-step:last-child{grid-column:auto;max-width:none;padding:14px;border-radius:18px}
+  .step-label h3{font-size:18px}
+  .ios-step img{max-height:none;border-radius:12px}
+  .warning{font-size:14px;padding:13px}
+  .final-cta{text-align:left}
+  .final-cta .cta-group{justify-content:stretch}
+}
+
+
+/* Free-use emphasis */
+.free-badge{display:inline-flex;align-items:center;gap:10px;margin:0 0 16px;padding:8px 14px;border:2px solid #ef3f3f;border-radius:999px;background:#fff4f4;color:#c51f1f;box-shadow:0 8px 22px rgba(239,63,63,.12)}
+.free-badge strong{font-size:18px;line-height:1}.free-badge span{font-weight:800;font-size:14px}
+.lead strong{color:var(--red);font-weight:900}
+.free-note{display:flex;align-items:center;gap:10px;margin-top:16px;padding:13px 16px;border-radius:14px;background:#fff4f4;border:1px solid #ffd1d1;color:#9f1919}
+.free-note>span{width:30px;height:30px;flex:0 0 30px;display:grid;place-items:center;border-radius:50%;background:var(--red);color:#fff;font-weight:900}
+.free-note strong,.free-note small{display:block}.free-note strong{font-size:16px}.free-note small{margin-top:2px;color:#6f4343}
+.free-section{padding-top:34px;padding-bottom:34px;background:#fff}
+.free-panel{max-width:900px;margin:auto;padding:42px;border-radius:28px;text-align:center;background:linear-gradient(135deg,#fff6f6,#fffdf4);border:2px solid #ffd9d9;box-shadow:0 18px 50px rgba(190,45,45,.09)}
+.free-panel h2{margin:0 0 12px;font-size:clamp(34px,5vw,52px);line-height:1.25}.free-panel h2 span{color:var(--red)}
+.free-panel>p:not(.eyebrow){max-width:700px;margin:0 auto;color:var(--muted);font-size:17px}
+.free-points{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:22px}.free-points span{padding:8px 13px;border-radius:999px;background:#fff;color:#9f1919;border:1px solid #ffcaca;font-weight:900}
+@media(max-width:560px){
+  .free-badge{margin-bottom:12px;padding:7px 12px}.free-badge strong{font-size:17px}.free-badge span{font-size:13px}
+  .free-note{align-items:flex-start;text-align:left}
+  .free-section{padding-top:18px;padding-bottom:18px}
+  .free-panel{padding:25px 18px;border-radius:20px;text-align:left}
+  .free-panel h2{font-size:32px}.free-panel>p:not(.eyebrow){font-size:16px}
+  .free-points{justify-content:flex-start}.free-points span{font-size:13px}
+}
+
+
+/* Q&A section */
+.faq-answer{padding:0 0 20px;color:var(--muted)}
+.faq-answer>p:first-child{margin-top:0}
+.faq-subcard{margin-top:14px;padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--bg)}
+.faq-subcard h3{margin:0 0 8px;color:var(--text);font-size:17px}
+.faq-subcard h4{margin:14px 0 4px;color:var(--text);font-size:15px}
+.faq-subcard ul,.faq-subcard ol{margin:7px 0 0;padding-left:1.45em}
+.faq-subcard li+li{margin-top:4px}
+.faq-note{font-size:13px;color:var(--muted)!important}
+.faq-button{width:auto;min-height:44px;margin-top:14px;padding:10px 16px;font-size:14px}
+@media(max-width:560px){
+  .faq-list details{padding:0 16px}
+  .faq-list summary{font-size:16px;line-height:1.5;padding:17px 0}
+  .faq-subcard{padding:15px}
+  .faq-button{width:100%}
+}
