@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f6b3d" />
-  <meta name="description" content="少年野球のアナウンス当番を支援するWebアプリ『Easyアナウンス』。表示された文言を読むだけで、試合前案内、スタメン発表、選手交代、投球数管理などを簡単に行えます。" />
-  <meta property="og:title" content="Easyアナウンス｜少年野球のアナウンス当番をもっと簡単に" />
-  <meta property="og:description" content="読む文言が画面に表示されるから、初めてのアナウンス当番でも安心。" />
+  <meta name="description" content="無料で使える少年野球のアナウンス支援アプリ「Easyアナウンス」。表示された文言を読むだけで、試合前案内、スタメン発表、選手交代、投球数管理などを簡単に行えます。" />
+  <meta property="og:title" content="Easyアナウンス｜無料で使える野球アナウンス支援アプリ" />
+  <meta property="og:description" content="無料で使えて、読む文言が画面に表示されるから、初めてのアナウンス当番でも安心。" />
   <meta property="og:type" content="website" />
   <title>Easyアナウンス｜少年野球のアナウンス支援アプリ</title>
   <link rel="stylesheet" href="./styles.css" />
@@ -36,16 +36,19 @@
       <a href="#howto">使い方</a>
       <a href="#ios">iPhone</a>
       <a href="#faq">FAQ</a>
+      <a class="nav-instagram" href="https://www.instagram.com/easyannounce" target="_blank" rel="noopener">Instagram</a>
     </nav>
   </header>
 
   <main id="top">
     <section class="hero section">
       <div class="hero-copy">
-        <p class="eyebrow">少年野球・中学硬式野球の保護者をサポート</p>
-        <h1>アナウンス当番を、<br><span>もっと簡単に。</span></h1>
-        <p class="lead">読む文言が画面に表示されるから、初めてでも迷いにくい。スマホやタブレットひとつで、試合の進行に合わせたアナウンスを支援します。</p>
+        <div class="free-badge" aria-label="無料で利用できます"><strong>利用料 0円</strong><span>無料で使えます</span></div>
+        <p class="eyebrow">スマホひとつで、アナウンス当番をサポート</p>
+        <h1>野球のアナウンス当番を<br><span>もっと簡単に。</span></h1>
+        <p class="lead"><strong>無料で使える</strong>野球アナウンス支援アプリです。表示された文言を読むだけ。スマホ・タブレットで、試合前案内、打者案内、守備交代、投球数管理まで分かりやすくサポートします。</p>
         <ul class="hero-points">
+          <li><strong>無料・会員登録なし</strong>ですぐに使える</li>
           <li>ふりがな・背番号登録に対応</li>
           <li>試合前案内、打者案内、守備交代、投球数管理をサポート</li>
           <li>スマホ・タブレット前提の見やすい画面設計</li>
@@ -53,9 +56,10 @@
         <div class="cta-group">
           <a class="button primary android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Google Playでインストール</a>
           <a class="button secondary ios-cta" href="#ios-guide">iPhone・iPadで使う</a>
+          <a class="button instagram-button" href="https://www.instagram.com/easyannounce" target="_blank" rel="noopener" aria-label="Easyアナウンス公式Instagramを見る">Instagramで最新情報を見る</a>
           <a class="button ghost web-cta" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">ブラウザで使ってみる</a>
         </div>
-        <p class="small-note">基本機能は無料。会員登録なしで利用できます。</p>
+        <div class="free-note"><span>✓</span><div><strong>無料で利用できます</strong><small>会員登録なし。利用料はかかりません。</small></div></div>
       </div>
 
       <div class="hero-media" aria-label="Easyアナウンス紹介画像">
@@ -66,6 +70,29 @@
     <section class="section banner-section">
       <div class="banner-panel">
         <img src="./assets/hero-banner.png" alt="Easyアナウンスの主な機能を紹介するバナー画像" loading="lazy" />
+      </div>
+    </section>
+
+    <section class="instagram-section section" id="instagram">
+      <div class="instagram-panel">
+        <div class="instagram-mark" aria-hidden="true">◎</div>
+        <div>
+          <p class="eyebrow">公式Instagram</p>
+          <h2>使い方・アップデート情報を発信中</h2>
+          <p>新機能、操作方法、よくあるご質問への回答などを掲載しています。フォローして最新情報をご確認ください。</p>
+        </div>
+        <a class="button instagram-button" href="https://www.instagram.com/easyannounce" target="_blank" rel="noopener">Instagramをフォロー</a>
+      </div>
+    </section>
+
+    <section class="free-section section" aria-labelledby="free-title">
+      <div class="free-panel">
+        <p class="eyebrow">料金について</p>
+        <h2 id="free-title">Easyアナウンスは<br><span>無料で使えます。</span></h2>
+        <p>アプリのインストールも、Webアプリの利用も無料です。会員登録も必要ありません。まずは試合前に操作を試してみてください。</p>
+        <div class="free-points">
+          <span>利用料 0円</span><span>会員登録なし</span><span>スマホで利用可能</span>
+        </div>
       </div>
     </section>
 
@@ -215,11 +242,27 @@
         <h2>Safariでホーム画面に追加する方法</h2>
         <p class="warning">Instagram内のブラウザでは追加できない場合があります。右上の「…」から外部ブラウザで開き、Safariを使用してください。</p>
       </div>
-      <div class="guide-grid">
-        <article><span>1</span><div class="guide-visual">Safari</div><h3>Safariで開く</h3><p>下のボタンからEasyアナウンスを開きます。</p></article>
-        <article><span>2</span><div class="guide-visual">□<br>↑</div><h3>共有ボタンを押す</h3><p>Safari画面下部の共有ボタンを押します。</p></article>
-        <article><span>3</span><div class="guide-visual">＋</div><h3>ホーム画面に追加</h3><p>メニューから「ホーム画面に追加」を選択します。</p></article>
-        <article><span>4</span><div class="guide-visual">ON</div><h3>Webアプリとして開く</h3><p>表示された場合は設定をオンにし、「追加」を押します。</p></article>
+      <div class="ios-photo-guide">
+        <article class="ios-step">
+          <div class="step-label"><span>1</span><div><h3>プロフィールの「iOSでダウンロード」をタップ</h3><p>InstagramのプロフィールリンクからEasyアナウンスを開きます。</p></div></div>
+          <img src="./assets/ios-guide/01-link.png" alt="InstagramプロフィールのiOSでダウンロードリンク" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>2</span><div><h3>「…」から外部ブラウザーで開く</h3><p>Instagram内ブラウザの右上メニューを開きます。</p></div></div>
+          <img src="./assets/ios-guide/02-external-browser.png" alt="Instagram内ブラウザで外部ブラウザーを開く操作" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>3</span><div><h3>Safariのメニューを開く</h3><p>画面右下のメニューから共有・ブックマークの項目を表示します。</p></div></div>
+          <img src="./assets/ios-guide/03-safari-menu.png" alt="Safariのメニューを開いた画面" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>4</span><div><h3>「ホーム画面に追加」を選ぶ</h3><p>メニューを下へスクロールし、「ホーム画面に追加」をタップします。</p></div></div>
+          <img src="./assets/ios-guide/04-home-screen.png" alt="Safariでホーム画面に追加を選ぶ画面" loading="lazy" />
+        </article>
+        <article class="ios-step">
+          <div class="step-label"><span>5</span><div><h3>「Webアプリとして開く」をオンにして追加</h3><p>右上の「追加」を押すと、ホーム画面からアプリのように起動できます。</p></div></div>
+          <img src="./assets/ios-guide/05-add.png" alt="Easyアナウンスをホーム画面に追加する最終画面" loading="lazy" />
+        </article>
       </div>
       <div class="center"><a class="button primary" href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">SafariでEasyアナウンスを開く</a></div>
     </section>
@@ -234,24 +277,77 @@
     </section>
 
     <section id="faq" class="section alt">
-      <div class="section-heading"><p class="eyebrow">よくある質問</p><h2>FAQ</h2></div>
+      <div class="section-heading">
+        <p class="eyebrow">よくある質問</p>
+        <h2>Q＆A</h2>
+        <p>インストール方法、基本操作、データ保存、読み上げ音声などについてご案内します。</p>
+      </div>
       <div class="faq-list">
-        <details><summary>料金はかかりますか？</summary><p>無料で利用できます。</p></details>
-        <details><summary>iPhoneでも使えますか？</summary><p>利用できます。SafariでEasyアナウンスを開き、ホーム画面に追加してください。</p></details>
-        <details><summary>どのリーグに対応していますか？</summary><p>現在はポニーリーグとボーイズリーグに対応しています。ほかのリーグへの対応は、ご要望を確認しながら検討します。</p></details>
-        <details><summary>スマートフォン以外でも使えますか？</summary><p>スマートフォンとタブレットでの利用を前提に設計しています。</p></details>
-        <details><summary>機種変更時にデータは引き継がれますか？</summary><p>現在、端末間の自動引き継ぎには対応していません。機種変更前に必要な情報を確認してください。</p></details>
+        <details open>
+          <summary>Q. インストール方法がわかりません</summary>
+          <div class="faq-answer">
+            <p>端末によってインストール方法が異なります。Android端末はGoogle Playからインストールできます。iPhone／iPadはSafariでWebアプリを開き、ホーム画面に追加して使用します。</p>
+            <div class="faq-subcard">
+              <h3>📱 Androidの場合（Google Play）</h3>
+              <ol>
+                <li>Google Playで「Easyアナウンス」を検索</li>
+                <li>アプリのページを開く</li>
+                <li>「インストール」をタップ</li>
+              </ol>
+              <a class="button primary faq-button" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Google Playで開く</a>
+            </div>
+            <div class="faq-subcard">
+              <h3>📱 iPhone／iPadの場合（Safari）</h3>
+              <ol>
+                <li>Safariで本アプリを開く</li>
+                <li>画面下の「共有」ボタンをタップ</li>
+                <li>「ホーム画面に追加」を選択</li>
+                <li>名前を確認して「追加」をタップ</li>
+              </ol>
+              <p class="faq-note">ホーム画面にアイコンが追加され、通常のアプリと同じように使用できます。</p>
+              <a class="button secondary faq-button" href="#ios-guide">画像付きの手順を見る</a>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Q. どんなアプリですか？</summary>
+          <div class="faq-answer"><p>本アプリは、両チームがそれぞれ自チームのアナウンスを担当することを前提としたアナウンス支援アプリです。試合の流れに合わせて、自チームが行うべきアナウンス内容を画面に表示し、読み上げをサポートします。</p></div>
+        </details>
+
+        <details>
+          <summary>Q. アナウンスが全くわかりません</summary>
+          <div class="faq-answer">
+            <p>ご安心ください。アナウンスは大きく分けて<strong>「試合前」「試合中」「試合後」</strong>の3つの流れがあります。この流れに沿って操作を行うと、読み上げる文章が表示されます。</p>
+            <div class="faq-subcard"><h3>● 試合開始前のアナウンス</h3><ul><li>ウォーミングアップ、シートノックのお知らせ</li><li>スターティングメンバー発表</li><li>シート紹介など</li></ul></div>
+            <div class="faq-subcard"><h3>● 試合中のアナウンス</h3><h4>▶ 攻撃時</h4><ul><li>打順の読み上げ</li><li>代打・代走の紹介</li><li>ファールボール注意喚起</li><li>得点の読み上げ（無得点時はなし）</li></ul><h4>▶ 守備時</h4><ul><li>選手交代・守備位置変更</li><li>投球数の案内</li></ul></div>
+            <div class="faq-subcard"><h3>● 試合終了のアナウンス</h3><ul><li>試合結果の発表（勝利チームのみ）</li></ul></div>
+            <div class="faq-subcard"><h3>● その他</h3><ul><li>次の試合の案内</li><li>タイブレーク開始など</li></ul></div>
+          </div>
+        </details>
+
+        <details><summary>Q. 試合中に画面を閉じてしまいました</summary><div class="faq-answer"><p>問題ありません。メニュー画面の【試合を継続する】ボタンで復帰できます。</p></div></details>
+        <details><summary>Q. 通信環境がなくても使えますか？</summary><div class="faq-answer"><p>はい。インストール後は基本的にオフラインで使用できます。</p><p class="faq-note">※初回インストール時は通信環境が必要です。</p></div></details>
+        <details><summary>Q. セキュリティは大丈夫ですか？</summary><div class="faq-answer"><p>本Webアプリはインストール後、基本的にオフラインで使用します。データは端末内に保存され、外部へ送信・共有されることはありません。個人情報が外部に送信されることはありません。</p></div></details>
+        <details><summary>Q. 操作方法が急に変わった（バージョンが勝手に変わった）</summary><div class="faq-answer"><p>本アプリはWebアプリのため、アプリのアップデート操作を行わなくても自動的に最新の状態に更新されます。そのため、操作方法が一部変更されることがありますが、不具合の修正や使いやすさ向上のための改善となります。</p><p class="faq-note">※通信環境があるときのみ更新され、オフラインでは更新されません。</p></div></details>
+        <details><summary>Q. チーム・選手登録したデータを他の端末で使えますか？</summary><div class="faq-answer"><p>はい、可能です。【バックアップ】を行い、他端末で【復元】を行うことで復元できます。</p></div></details>
+        <details><summary>Q. 操作方法がわかりません</summary><div class="faq-answer"><p>運用設定画面の【チュートリアル】に簡単な操作方法を記載していますので参考にしてください。各画面の上部にある「❔」ボタンを押すと使い方が表示されます。</p></div></details>
+        <details><summary>Q. 文字が小さくて見づらいです</summary><div class="faq-answer"><p>推奨端末は<strong>7インチ以上のタブレット</strong>です。スマートフォンでも使用可能ですが、操作性・視認性の面からタブレット利用を推奨します。</p></div></details>
+        <details><summary>Q. 読み上げ音声を変更できますか？</summary><div class="faq-answer"><p>Android端末では、端末側の設定から読み上げ音声を変更できます。「設定」→「ユーザー補助」→「優先するエンジン」→「音声データをインストール」→「日本語」から、音声Ⅰ、音声Ⅱ、音声Ⅲ、音声Ⅳの4種類を選択できます。</p><p class="faq-note">※アプリ内の表示名は同じでも、端末設定で選んだ音声によって実際の読み上げ音声が変わります。</p></div></details>
+        <details><summary>Q. 読み上げ音声が機械的に感じます</summary><div class="faq-answer"><p>現在は標準音声のWeb Speech APIを使用しています。今後のアップデートで、より滑らかで自然な音声へ改善予定です。</p></div></details>
+        <details><summary>Q. 大会ごとにルールが違う場合、対応できますか？</summary><div class="faq-answer"><p>【運用設定画面】で規定投球数、タイブレークルールの変更が可能です。</p></div></details>
       </div>
     </section>
 
     <section class="final-cta section">
       <div>
-        <p class="eyebrow">Easyアナウンスを始める</p>
-        <h2>アナウンスの不安を減らして、<br>子どもたちの試合をもっと楽しもう！</h2>
+        <p class="eyebrow">無料で今すぐ始める</p>
+        <h2>利用料0円・会員登録なし。<br>アナウンスの不安を減らそう！</h2>
       </div>
       <div class="cta-group">
         <a class="button light android-cta" href="https://play.google.com/store/apps/details?id=com.easyannounce.pony" target="_blank" rel="noopener">Android版をインストール</a>
         <a class="button outline-light ios-cta" href="#ios-guide">iPhoneの設定方法</a>
+        <a class="button instagram-light" href="https://www.instagram.com/easyannounce" target="_blank" rel="noopener">Instagramを見る</a>
       </div>
     </section>
   </main>
@@ -260,6 +356,7 @@
     <div class="footer-brand"><img class="brand-logo" src="./assets/app-icon.png" alt="" /><strong>Easyアナウンス</strong></div>
     <div class="footer-links">
       <a href="https://easy-announce-p.vercel.app/" target="_blank" rel="noopener">Webアプリ</a>
+      <a href="https://www.instagram.com/easyannounce" target="_blank" rel="noopener">Instagram</a>
       <a href="mailto:easyannounce2026@gmail.com">お問い合わせ</a>
     </div>
     <p>© 2026 Easyアナウンス</p>
