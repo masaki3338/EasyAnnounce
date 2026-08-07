@@ -1,7 +1,60 @@
 // src/screens/OperationSettings.tsx
 import type { ScreenType } from "../App";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import localForage from "localforage";
 import { getLeagueMode } from "../lib/leagueSettings";
+
+
+type AnnouncementTimingSettings = {
+  coolingEnabled: boolean;
+  coolingMinutes: number;
+  coolingAnnouncementMinutes: number;
+  coolingFirstInning: number;
+  coolingSecondInning: number | null;
+  groundMaintenanceInning: number | null;
+};
+
+const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
+  coolingEnabled: false,
+  coolingMinutes: 3,
+  coolingAnnouncementMinutes: 1,
+  coolingFirstInning: 3,
+  coolingSecondInning: 5,
+  groundMaintenanceInning: 5,
+};
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const NumberStepper: React.FC<{
+  value: number;
+  min: number;
+  max: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}> = ({ value, min, max, suffix, onChange }) => (
+  <div className="grid grid-cols-[48px_1fr_48px] items-center gap-2">
+    <button
+      type="button"
+      onClick={() => onChange(clamp(value - 1, min, max))}
+      disabled={value <= min}
+      className="h-11 rounded-xl bg-slate-700 text-xl font-bold disabled:opacity-35 active:scale-95"
+    >
+      −
+    </button>
+    <div className="h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center font-bold">
+      {value}{suffix}
+    </div>
+    <button
+      type="button"
+      onClick={() => onChange(clamp(value + 1, min, max))}
+      disabled={value >= max}
+      className="h-11 rounded-xl bg-slate-700 text-xl font-bold disabled:opacity-35 active:scale-95"
+    >
+      ＋
+    </button>
+  </div>
+);
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
@@ -29,6 +82,39 @@ const TileButton: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
+  const [timingSettings, setTimingSettings] =
+    useState<AnnouncementTimingSettings>(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const saved =
+        (await localForage.getItem<Partial<AnnouncementTimingSettings>>(
+          "announcementTimingSettings"
+        )) || {};
+      setTimingSettings({
+        ...DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS,
+        ...saved,
+      });
+      setSettingsLoaded(true);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void localForage.setItem("announcementTimingSettings", timingSettings);
+    window.dispatchEvent(
+      new CustomEvent("easyannounce:timing-settings-changed", {
+        detail: timingSettings,
+      })
+    );
+  }, [timingSettings, settingsLoaded]);
+
+  const updateTimingSettings = (
+    patch: Partial<AnnouncementTimingSettings>
+  ) => {
+    setTimingSettings((prev) => ({ ...prev, ...patch }));
+  };
 
   const leagueMode = getLeagueMode();
   const manualFile = leagueMode === "boys" ? "Boysmanual.pdf" : "manual.pdf";
@@ -68,7 +154,7 @@ export default function OperationSettings({ onNavigate }: Props) {
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-2xl flex flex-col justify-center gap-4">
+      <div className="flex-1 w-full max-w-2xl flex flex-col gap-4 py-5">
         <TileButton
           icon={<span className="text-2xl">⚾️</span>}
           title="規定投球数"
@@ -82,6 +168,138 @@ export default function OperationSettings({ onNavigate }: Props) {
           desc="開始回・無死満塁など"
           onClick={() => onNavigate("tiebreakRule")}
         />
+
+        <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">💧</span>
+            <div>
+              <h2 className="font-bold">クーリングタイム</h2>
+              <p className="text-xs opacity-75">指定した回の裏終了時に表示</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {[{ label: "なし", value: false }, { label: "あり", value: true }].map((item) => (
+              <label
+                key={item.label}
+                className={`h-11 rounded-xl border flex items-center justify-center gap-2 font-bold ${
+                  timingSettings.coolingEnabled === item.value
+                    ? "bg-sky-600 border-sky-400"
+                    : "bg-white/5 border-white/15"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="coolingEnabled"
+                  checked={timingSettings.coolingEnabled === item.value}
+                  onChange={() => updateTimingSettings({ coolingEnabled: item.value })}
+                  className="accent-sky-500"
+                />
+                {item.label}
+              </label>
+            ))}
+          </div>
+
+          {timingSettings.coolingEnabled && (
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="text-sm font-semibold mb-2">クーリング時間</div>
+                <NumberStepper
+                  value={timingSettings.coolingMinutes}
+                  min={1}
+                  max={30}
+                  suffix="分"
+                  onChange={(coolingMinutes) => updateTimingSettings({ coolingMinutes })}
+                />
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold mb-2">残りアナウンス</div>
+                <select
+                  value={timingSettings.coolingAnnouncementMinutes}
+                  onChange={(e) =>
+                    updateTimingSettings({
+                      coolingAnnouncementMinutes: Number(e.target.value),
+                    })
+                  }
+                  className="w-full h-11 rounded-xl bg-slate-800 border border-white/15 px-3 text-white font-bold"
+                >
+                  <option value={0}>なし</option>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((minutes) => (
+                    <option key={minutes} value={minutes}>{minutes}分</option>
+                  ))}
+                </select>
+                {timingSettings.coolingAnnouncementMinutes > 0 &&
+                  timingSettings.coolingAnnouncementMinutes >= timingSettings.coolingMinutes && (
+                    <p className="mt-2 text-xs text-amber-300">
+                      残りアナウンスはクーリング時間より短く設定してください。
+                    </p>
+                  )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-sm font-semibold mb-2">1回目</span>
+                  <select
+                    value={timingSettings.coolingFirstInning}
+                    onChange={(e) =>
+                      updateTimingSettings({ coolingFirstInning: Number(e.target.value) })
+                    }
+                    className="w-full h-11 rounded-xl bg-slate-800 border border-white/15 px-3 text-white"
+                  >
+                    {Array.from({ length: 9 }, (_, i) => i + 1).map((inningNo) => (
+                      <option key={inningNo} value={inningNo}>{inningNo}回裏</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="block text-sm font-semibold mb-2">2回目</span>
+                  <select
+                    value={timingSettings.coolingSecondInning ?? "none"}
+                    onChange={(e) =>
+                      updateTimingSettings({
+                        coolingSecondInning:
+                          e.target.value === "none" ? null : Number(e.target.value),
+                      })
+                    }
+                    className="w-full h-11 rounded-xl bg-slate-800 border border-white/15 px-3 text-white"
+                  >
+                    <option value="none">なし</option>
+                    {Array.from({ length: 9 }, (_, i) => i + 1).map((inningNo) => (
+                      <option key={inningNo} value={inningNo}>{inningNo}回裏</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl bg-white/10 border border-white/10 p-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🧹</span>
+            <div>
+              <h2 className="font-bold">グラウンド整備</h2>
+              <p className="text-xs opacity-75">指定した回の裏終了時に表示  ※ ポニーリーグは4回裏</p>
+            </div>
+          </div>
+          <select
+            value={timingSettings.groundMaintenanceInning ?? "none"}
+            onChange={(e) =>
+              updateTimingSettings({
+                groundMaintenanceInning:
+                  e.target.value === "none" ? null : Number(e.target.value),
+              })
+            }
+            className="mt-4 w-full h-12 rounded-xl bg-slate-800 border border-white/15 px-3 text-white font-bold"
+          >
+            <option value="none">なし</option>
+            {Array.from({ length: 9 }, (_, i) => i + 1).map((inningNo) => (
+              <option key={inningNo} value={inningNo}>{inningNo}回裏</option>
+            ))}
+          </select>
+        </section>
 
         <TileButton
           icon={<span className="text-2xl">📘</span>}
