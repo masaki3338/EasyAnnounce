@@ -811,6 +811,11 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
   const [combinedCoolingRunning, setCombinedCoolingRunning] = useState(false);
   const [combinedCoolingAnnounced, setCombinedCoolingAnnounced] = useState(false);
   const [combinedCoolingNotice, setCombinedCoolingNotice] = useState("");
+  const [combinedCoolingMinutes, setCombinedCoolingMinutes] = useState(
+    DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS.coolingMinutes
+  );
+  const [combinedCoolingAnnouncementMinutes, setCombinedCoolingAnnouncementMinutes] =
+    useState(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS.coolingAnnouncementMinutes);
 
   const isConfiguredCoolingTime = (endedInning: number, endedIsTop: boolean) => {
     if (endedIsTop || !announcementTimingSettings.coolingEnabled) return false;
@@ -826,6 +831,31 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const changeCombinedCoolingMinutes = (delta: number) => {
+    if (combinedCoolingRunning) return;
+
+    setCombinedCoolingMinutes((prev) => {
+      const next = Math.min(30, Math.max(1, prev + delta));
+      setCombinedCoolingAnnouncementMinutes((announcePrev) =>
+        Math.min(announcePrev, next)
+      );
+      setCombinedCoolingRemaining(next * 60);
+      setCombinedCoolingAnnounced(false);
+      setCombinedCoolingNotice("");
+      return next;
+    });
+  };
+
+  const changeCombinedCoolingAnnouncementMinutes = (delta: number) => {
+    if (combinedCoolingRunning) return;
+
+    setCombinedCoolingAnnouncementMinutes((prev) =>
+      Math.min(combinedCoolingMinutes, Math.max(0, prev + delta))
+    );
+    setCombinedCoolingAnnounced(false);
+    setCombinedCoolingNotice("");
   };
 
   const buildMemberExchangeAnnouncement = async () => {
@@ -864,7 +894,21 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     setCombinedAuxInning(endedInning);
 
     if (tabs.includes("cooling")) {
-      setCombinedCoolingRemaining(announcementTimingSettings.coolingMinutes * 60);
+      const minutes = Math.min(
+        30,
+        Math.max(1, Number(announcementTimingSettings.coolingMinutes || 3))
+      );
+      const announceMinutes = Math.min(
+        minutes,
+        Math.max(
+          0,
+          Number(announcementTimingSettings.coolingAnnouncementMinutes || 0)
+        )
+      );
+
+      setCombinedCoolingMinutes(minutes);
+      setCombinedCoolingAnnouncementMinutes(announceMinutes);
+      setCombinedCoolingRemaining(minutes * 60);
       setCombinedCoolingRunning(false);
       setCombinedCoolingAnnounced(false);
       setCombinedCoolingNotice("");
@@ -881,16 +925,16 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
       setCombinedCoolingRemaining((prev) => {
         const next = Math.max(0, prev - 1);
         const announceSec =
-          announcementTimingSettings.coolingAnnouncementMinutes * 60;
+          combinedCoolingAnnouncementMinutes * 60;
 
         if (
-          announcementTimingSettings.coolingAnnouncementMinutes > 0 &&
+          combinedCoolingAnnouncementMinutes > 0 &&
           !combinedCoolingAnnounced &&
           next === announceSec
         ) {
           setCombinedCoolingAnnounced(true);
           setCombinedCoolingNotice(
-            `クーリングタイム残り${announcementTimingSettings.coolingAnnouncementMinutes}分です。`
+            `クーリングタイム残り${combinedCoolingAnnouncementMinutes}分です。`
           );
         }
 
@@ -910,7 +954,7 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
   }, [
     combinedCoolingRunning,
     combinedCoolingAnnounced,
-    announcementTimingSettings.coolingAnnouncementMinutes,
+    combinedCoolingAnnouncementMinutes,
   ]);
 
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
@@ -9869,16 +9913,59 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
                           <div className="text-xs font-bold text-sky-700">クーリング時間</div>
-                          <div className="mt-1 text-xl font-extrabold text-sky-900">
-                            {announcementTimingSettings.coolingMinutes}分
+                          <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingMinutes(-1)}
+                              disabled={combinedCoolingRunning || combinedCoolingMinutes <= 1}
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                              {combinedCoolingMinutes}分
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingMinutes(1)}
+                              disabled={combinedCoolingRunning || combinedCoolingMinutes >= 30}
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              ＋
+                            </button>
                           </div>
                         </div>
+
                         <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
                           <div className="text-xs font-bold text-sky-700">残りアナウンス</div>
-                          <div className="mt-1 text-xl font-extrabold text-sky-900">
-                            {announcementTimingSettings.coolingAnnouncementMinutes === 0
-                              ? "なし"
-                              : `${announcementTimingSettings.coolingAnnouncementMinutes}分`}
+                          <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingAnnouncementMinutes(-1)}
+                              disabled={
+                                combinedCoolingRunning ||
+                                combinedCoolingAnnouncementMinutes <= 0
+                              }
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                              {combinedCoolingAnnouncementMinutes === 0
+                                ? "なし"
+                                : `${combinedCoolingAnnouncementMinutes}分`}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => changeCombinedCoolingAnnouncementMinutes(1)}
+                              disabled={
+                                combinedCoolingRunning ||
+                                combinedCoolingAnnouncementMinutes >= combinedCoolingMinutes
+                              }
+                              className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                            >
+                              ＋
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -9886,14 +9973,14 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                       <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
                         <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
                           {combinedCoolingNotice ||
-                            `ただいまから${announcementTimingSettings.coolingMinutes}分間のクーリングタイムを取ります。`}
+                            `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`}
                         </p>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                           <button
                             onClick={async () =>
                               await speak(
                                 combinedCoolingNotice ||
-                                  `ただいまから${announcementTimingSettings.coolingMinutes}分間のクーリングタイムを取ります。`
+                                  `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`
                               )
                             }
                             className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
@@ -9921,11 +10008,23 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                           onClick={() => {
                             if (combinedCoolingRemaining <= 0) {
                               setCombinedCoolingRemaining(
-                                announcementTimingSettings.coolingMinutes * 60
+                                combinedCoolingMinutes * 60
                               );
                             }
-                            setCombinedCoolingAnnounced(false);
-                            setCombinedCoolingNotice("");
+
+                            if (
+                              combinedCoolingAnnouncementMinutes > 0 &&
+                              combinedCoolingAnnouncementMinutes === combinedCoolingMinutes
+                            ) {
+                              setCombinedCoolingAnnounced(true);
+                              setCombinedCoolingNotice(
+                                `クーリングタイム残り${combinedCoolingAnnouncementMinutes}分です。`
+                              );
+                            } else {
+                              setCombinedCoolingAnnounced(false);
+                              setCombinedCoolingNotice("");
+                            }
+
                             setCombinedCoolingRunning(true);
                           }}
                           disabled={combinedCoolingRunning}
@@ -9943,7 +10042,7 @@ const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
                           onClick={() => {
                             setCombinedCoolingRunning(false);
                             setCombinedCoolingRemaining(
-                              announcementTimingSettings.coolingMinutes * 60
+                              combinedCoolingMinutes * 60
                             );
                             setCombinedCoolingAnnounced(false);
                             setCombinedCoolingNotice("");

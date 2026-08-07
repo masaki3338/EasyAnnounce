@@ -675,13 +675,51 @@ const formatWaterBreakTime = (sec: number) => {
 
 const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
 
+const changeWaterBreakMinutes = (delta: number) => {
+  if (waterBreakRunning) return;
+
+  setWaterBreakMinutes((prev) => {
+    const next = Math.min(30, Math.max(1, prev + delta));
+
+    setWaterBreakAnnouncementMinutes((announcePrev) =>
+      Math.min(announcePrev, next)
+    );
+    setWaterBreakRemaining(next * 60);
+    setWaterBreakAnnounced(false);
+    setWaterBreakNotice("");
+
+    return next;
+  });
+};
+
+const changeWaterBreakAnnouncementMinutes = (delta: number) => {
+  if (waterBreakRunning) return;
+
+  setWaterBreakAnnouncementMinutes((prev) =>
+    Math.min(waterBreakMinutes, Math.max(0, prev + delta))
+  );
+  setWaterBreakAnnounced(false);
+  setWaterBreakNotice("");
+};
+
 const handleWaterBreakStart = () => {
   if (waterBreakRemaining <= 0) {
     setWaterBreakRemaining(waterBreakMinutes * 60);
   }
 
-  setWaterBreakAnnounced(false);
-  setWaterBreakNotice("");
+  if (
+    waterBreakAnnouncementMinutes > 0 &&
+    waterBreakAnnouncementMinutes === waterBreakMinutes
+  ) {
+    const msg = `クーリングタイム残り${waterBreakAnnouncementMinutes}分です。`;
+    setWaterBreakAnnounced(true);
+    setWaterBreakNotice(msg);
+    showCoolingNoticePopup(msg);
+  } else {
+    setWaterBreakAnnounced(false);
+    setWaterBreakNotice("");
+  }
+
   setWaterBreakRunning(true);
 };
 
@@ -750,14 +788,9 @@ useEffect(() => {
   setWaterBreakNotice("");
   setWaterBreakAnnounced(false);
 
-  // 残り時間アナウンスは、0（なし）またはクーリングタイムより短い値にする
-  if (
-    waterBreakAnnouncementMinutes > 0 &&
-    waterBreakAnnouncementMinutes >= waterBreakMinutes
-  ) {
-    setWaterBreakAnnouncementMinutes(
-      waterBreakMinutes > 1 ? waterBreakMinutes - 1 : 0
-    );
+  // 残り時間アナウンスは、0（なし）またはクーリング時間以下にする
+  if (waterBreakAnnouncementMinutes > waterBreakMinutes) {
+    setWaterBreakAnnouncementMinutes(waterBreakMinutes);
   }
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
@@ -4317,14 +4350,56 @@ return (
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
               <div className="text-xs font-bold text-sky-700">クーリング時間</div>
-              <div className="mt-1 text-xl font-extrabold text-sky-900">
-                {waterBreakMinutes}分
+              <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakMinutes(-1)}
+                  disabled={waterBreakRunning || waterBreakMinutes <= 1}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  −
+                </button>
+                <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                  {waterBreakMinutes}分
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakMinutes(1)}
+                  disabled={waterBreakRunning || waterBreakMinutes >= 30}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  ＋
+                </button>
               </div>
             </div>
+
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-center">
               <div className="text-xs font-bold text-sky-700">残りアナウンス</div>
-              <div className="mt-1 text-xl font-extrabold text-sky-900">
-                {waterBreakAnnouncementMinutes}分
+              <div className="mt-2 grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakAnnouncementMinutes(-1)}
+                  disabled={waterBreakRunning || waterBreakAnnouncementMinutes <= 0}
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  −
+                </button>
+                <div className="text-xl font-extrabold text-sky-900 whitespace-nowrap">
+                  {waterBreakAnnouncementMinutes === 0
+                    ? "なし"
+                    : `${waterBreakAnnouncementMinutes}分`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => changeWaterBreakAnnouncementMinutes(1)}
+                  disabled={
+                    waterBreakRunning ||
+                    waterBreakAnnouncementMinutes >= waterBreakMinutes
+                  }
+                  className="h-10 rounded-xl bg-sky-700 text-white text-xl font-bold disabled:bg-gray-300 disabled:text-gray-500 active:scale-95"
+                >
+                  ＋
+                </button>
               </div>
             </div>
           </div>
