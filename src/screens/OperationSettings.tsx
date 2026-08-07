@@ -82,6 +82,7 @@ const TileButton: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [timingSettings, setTimingSettings] =
     useState<AnnouncementTimingSettings>(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -131,7 +132,25 @@ export default function OperationSettings({ onNavigate }: Props) {
         paddingBottom: "max(16px, env(safe-area-inset-bottom))",
       }}
     >
-      <header className="w-full max-w-2xl">
+      <header className="relative w-full max-w-2xl">
+        <button
+          type="button"
+          onClick={() => setShowHelpModal(true)}
+          aria-label="運用設定画面の使い方"
+          title="使い方"
+          className="
+            absolute right-0 top-0 z-20
+            w-10 h-10 rounded-full
+            bg-sky-600 hover:bg-sky-700
+            text-white font-bold text-lg
+            shadow-md
+            flex items-center justify-center
+            active:scale-95
+          "
+        >
+          ？
+        </button>
+
         <div className="mt-3 text-center select-none">
           <h1
             className="
@@ -355,6 +374,190 @@ export default function OperationSettings({ onNavigate }: Props) {
           onClick={() => onNavigate("versionInfo")}
         />
       </div>
+
+
+      {showHelpModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 px-3 py-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label="運用設定画面の使い方"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div
+            className="
+              w-full max-w-[min(96vw,900px)]
+              max-h-[88svh]
+              overflow-hidden
+              rounded-[22px]
+              bg-white
+              text-slate-900
+              shadow-[0_20px_60px_rgba(0,0,0,0.35)]
+              flex flex-col
+            "
+            onClick={(e) => e.stopPropagation()}
+            role="document"
+          >
+            {/* ヘッダー */}
+            <div className="flex items-center justify-between bg-sky-600 px-4 py-3 text-white">
+              <div className="flex items-center gap-2">
+                <span className="text-[18px] leading-none">❓</span>
+                <h2 className="text-[18px] font-extrabold leading-tight tracking-[0.01em]">
+                  運用設定画面の使い方
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                aria-label="閉じる"
+                className="
+                  flex h-8 w-8 items-center justify-center
+                  rounded-full bg-white/20 text-[18px] font-bold text-white
+                  transition hover:bg-white/30 active:scale-95
+                "
+              >
+                ×
+              </button>
+            </div>
+
+            {/* 本文 */}
+            <div className="overflow-y-auto bg-white px-4 py-4">
+              <div className="space-y-3">
+
+                <div className="rounded-[16px] border border-sky-200 bg-sky-50 px-3 py-3">
+                  <p className="text-[13px] font-semibold leading-5 text-slate-800">
+                    この画面では、試合で使用する
+                    <span className="font-bold">
+                      投球数・タイブレーク・クーリングタイム・グラウンド整備・読み上げ・リーグ・アナウンスモード
+                    </span>
+                    などを設定できます。
+                  </p>
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div className="text-[11px] font-semibold tracking-[0.02em] text-slate-500">
+                      おすすめ
+                    </div>
+                    <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
+                      試合開始前に一度確認してください
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[16px] border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+                  <h3 className="text-[15px] font-extrabold leading-tight text-emerald-700">
+                    試合ルール・タイミング設定
+                  </h3>
+
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                      <div className="font-bold text-amber-800">⚾ 規定投球数</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        学年や大会規定に合わせて、投球数の上限を設定します。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3">
+                      <div className="font-bold text-violet-800">🔀 タイブレークルール</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        タイブレーク開始時のアウト数やランナー配置などを設定します。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                      <div className="font-bold text-sky-800">💧 クーリングタイム</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        クーリングタイムの有無、時間、残り時間アナウンス、表示する回を設定します。
+                      </p>
+                      <p className="mt-1 text-[12.5px] leading-5 text-sky-900">
+                        「なし」にすると自動表示しません。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-3">
+                      <div className="font-bold text-teal-800">🧹 グラウンド整備</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        グラウンド整備のアナウンスを表示する回を設定します。
+                      </p>
+                      <p className="mt-1 text-[12.5px] leading-5 text-teal-900">
+                        「なし」にすると自動表示しません。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[16px] border border-blue-200 bg-white px-3 py-3 shadow-sm">
+                  <h3 className="text-[15px] font-extrabold leading-tight text-blue-700">
+                    アナウンス・表示設定
+                  </h3>
+
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3">
+                      <div className="font-bold text-rose-800">🔊 読み上げ設定</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        声や読み上げ速度など、音声に関する設定を変更します。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3">
+                      <div className="font-bold text-cyan-800">🏆 リーグ設定</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        ポニーリーグ／ボーイズリーグを切り替えます。
+                      </p>
+                      <p className="mt-1 text-[12.5px] leading-5 text-cyan-900">
+                        選択したリーグに合わせて、試合中の機能やアナウンス内容が切り替わります。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3">
+                      <div className="font-bold text-indigo-800">🎤 アナウンスモード</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        「自チームのみ」と「両チームを1人でアナウンス」を切り替えます。
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="font-bold text-slate-800">📘 連盟アナウンスマニュアル</div>
+                      <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
+                        現在選択しているリーグの連盟アナウンスマニュアルを表示します。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[16px] border border-orange-200 bg-orange-50 px-3 py-3 shadow-sm">
+                  <h3 className="text-[15px] font-extrabold leading-tight text-orange-700">
+                    困ったとき
+                  </h3>
+                  <div className="mt-2 space-y-1 text-[13px] leading-5 text-slate-700">
+                    <p><span className="font-bold">【チュートリアル】</span> … 基本的な使い方を確認できます。</p>
+                    <p><span className="font-bold">【Q＆A】</span> … よくある質問を確認できます。</p>
+                    <p><span className="font-bold">【お問い合わせ】</span> … 不具合や要望を送るときに使用します。</p>
+                    <p><span className="font-bold">【バージョン情報】</span> … 更新履歴などを確認できます。</p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* フッター */}
+            <div className="border-t bg-white px-3 pb-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="
+                  w-full rounded-2xl
+                  bg-emerald-600 py-3
+                  text-[15px] font-bold text-white
+                  shadow-sm transition
+                  hover:bg-emerald-700 active:scale-[0.98]
+                "
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showManual && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm">
