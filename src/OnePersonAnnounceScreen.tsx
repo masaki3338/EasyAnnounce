@@ -8312,7 +8312,7 @@ useEffect(() => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-xl shadow-xl text-center space-y-4 max-w-sm w-full">
               <h2 className="text-lg font-bold text-red-600">守備位置の設定</h2>
-              <p>代打／代走で出場した選手の守備位置を設定してください。</p>
+              <p>代打/代走で出場した選手の<br />守備位置を設定してください。</p>
               <button
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                 onClick={() => {
