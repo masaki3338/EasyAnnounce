@@ -48,6 +48,44 @@ export function setSelectedPiperModel(modelId: PiperModelId): void {
   localStorage.setItem("tts:piper:model", modelId);
 }
 
+
+let multilingualWasmPromise: Promise<any> | null = null;
+
+/**
+ * piper-plus@0.6.0 の RustWasmAdapter は wasmLoader を渡した場合、
+ * loader側で wasm-bindgen の default() 初期化まで完了していることを前提にする。
+ *
+ * 単純に import("piper-plus/wasm/multilingual") を返すだけでは
+ * WASM本体が未初期化のため ja のRust G2Pが失敗し、
+ * JS G2Pへフォールバックして
+ * "G2P: language 'ja' is not initialised"
+ * になる。
+ */
+async function loadInitializedMultilingualWasm(): Promise<any> {
+  if (!multilingualWasmPromise) {
+    multilingualWasmPromise = (async () => {
+      const mod: any = await import("piper-plus/wasm/multilingual");
+
+      if (typeof mod.default === "function") {
+        await mod.default();
+      }
+
+      if (typeof mod.WasmPhonemizer !== "function") {
+        throw new Error(
+          "Piper-Plus multilingual WASM の WasmPhonemizer を読み込めませんでした。"
+        );
+      }
+
+      return mod;
+    })().catch((error) => {
+      multilingualWasmPromise = null;
+      throw error;
+    });
+  }
+
+  return multilingualWasmPromise;
+}
+
 /**
  * 今回の学習済みconfigは multilingual / 173音素ですが、
  * single-speaker fine-tuning後のconfigには language_id_map がありません。
@@ -130,9 +168,7 @@ async function initializePiperModel(
 
       // Vite/Vercel/スマホでも確実に multilingual Rust WASM を読む。
       // package.json の正式export: "piper-plus/wasm/multilingual"
-      wasmLoader: async () => {
-        return await import("piper-plus/wasm/multilingual");
-      },
+      wasmLoader: loadInitializedMultilingualWasm,
     } as any);
   } finally {
     globalThis.fetch = originalFetch;
@@ -285,7 +321,13 @@ async function getEngine(modelId: PiperModelId = getSelectedPiperModel()): Promi
     .catch((error) => {
       enginePromises.delete(modelId);
       console.error(`[Piper:${modelId}] initialize failed:`, error);
-      throw error;
+
+      const message =
+        error instanceof Error ? error.message : String(error);
+
+      throw new Error(
+        `Piper-Plus初期化失敗 (${PIPER_MODELS[modelId].label}): ${message}`
+      );
     });
 
   enginePromises.set(modelId, promise);
