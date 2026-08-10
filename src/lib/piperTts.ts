@@ -62,14 +62,81 @@ export function setSelectedPiperModel(modelId: PiperModelId): void {
  */
 async function initializePiperModel(
   options: Parameters<typeof PiperPlus.initialize>[0],
-  _modelId: PiperModelId
+  modelId: PiperModelId
 ): Promise<PiperPlus> {
-  // piper-plus@0.6.x の通常初期化を使用する。
-  // config.json に偽の language_id_map を追加すると、
-  // ブラウザ側G2Pが「ja」を初期化していない状態でも
-  // synthesize(..., { language: "ja" }) が日本語G2Pへ進み、
-  // "language 'ja' is not initialised" になるため、ここでは改変しない。
-  return await PiperPlus.initialize(options);
+  const originalFetch = globalThis.fetch.bind(globalThis);
+
+  /**
+   * 自作ウグイス嬢モデルは single-speaker 化した結果、
+   * config.json から language_id_map が消えている。
+   *
+   * piper-plus@0.6.0 は language_id_map に "ja" が無いと
+   * Rust WASM 日本語G2Pを起動せず、JS G2Pへフォールバックする。
+   * JS G2P側の日本語は OpenJTalk Module が必要なので、
+   * スマホでは "language 'ja' is not initialised" になる。
+   *
+   * そこで初期化中だけ config に ja:0 を補う。
+   * ONNX側が lid を持たない場合は run() パッチで lid を削除する。
+   */
+  const patchedFetch: typeof fetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ) => {
+    const response = await originalFetch(input, init);
+
+    if (modelId !== "uguisu" || !response.ok) {
+      return response;
+    }
+
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+
+    const isUguisuConfig =
+      url.includes("EasyAnnounce/easyannounce-uguisu") &&
+      /config\.json(?:\?|$)/i.test(url);
+
+    if (!isUguisuConfig) {
+      return response;
+    }
+
+    try {
+      const json = await response.clone().json();
+
+      if (!json.language_id_map) {
+        json.language_id_map = { ja: 0 };
+      } else if (json.language_id_map.ja === undefined) {
+        json.language_id_map.ja = 0;
+      }
+
+      return new Response(JSON.stringify(json), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    } catch {
+      return response;
+    }
+  };
+
+  globalThis.fetch = patchedFetch;
+
+  try {
+    return await PiperPlus.initialize({
+      ...(options as any),
+
+      // Vite/Vercel/スマホでも確実に multilingual Rust WASM を読む。
+      // package.json の正式export: "piper-plus/wasm/multilingual"
+      wasmLoader: async () => {
+        return await import("piper-plus/wasm/multilingual");
+      },
+    } as any);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 if (ort.env?.wasm) {
@@ -321,21 +388,12 @@ async function synthesizePiperChunk(
   patchSingleSpeakerInputs(engine as any);
   const lengthScale = Math.min(2, Math.max(0.5, 1 / speedScale));
   const modelConfig = PIPER_MODELS[modelId];
-  const synthOptions: Record<string, unknown> = {
+  const result = await engine.synthesize(text, {
+    language: "ja",
     noiseScale: modelConfig.noiseScale,
     lengthScale,
     noiseW: modelConfig.noiseW,
-  };
-
-  // ウグイス嬢は single-speaker fine-tuning モデル。
-  // language_id_map を持たないため、language:"ja" を強制すると
-  // @piper-plus/g2p 側の未初期化 ja ルートへ入る環境がある。
-  // つくよみちゃん/CSS10は従来どおり日本語を明示する。
-  if (modelId !== "uguisu") {
-    synthOptions.language = "ja";
-  }
-
-  const result = await engine.synthesize(text, synthOptions as any);
+  } as any);
   return result.toBlob();
 }
 
