@@ -62,55 +62,14 @@ export function setSelectedPiperModel(modelId: PiperModelId): void {
  */
 async function initializePiperModel(
   options: Parameters<typeof PiperPlus.initialize>[0],
-  modelId: PiperModelId
+  _modelId: PiperModelId
 ): Promise<PiperPlus> {
-  const originalFetch = globalThis.fetch.bind(globalThis);
-
-  const patchedFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const response = await originalFetch(input, init);
-
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-
-    const shouldPatchUguisuConfig =
-      modelId === "uguisu" &&
-      url.includes("EasyAnnounce/easyannounce-uguisu") &&
-      /config\.json(?:\?|$)/i.test(url);
-
-    if (!shouldPatchUguisuConfig || !response.ok) {
-      return response;
-    }
-
-    try {
-      const json = await response.clone().json();
-
-      // 日本語だけを使うEasyアナウンスでは ja のみで十分。
-      // これにより piper-plus が Rust WASM G2P を初期化する。
-      if (!json.language_id_map) {
-        json.language_id_map = { ja: 0 };
-      }
-
-      return new Response(JSON.stringify(json), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
-    } catch {
-      return response;
-    }
-  };
-
-  globalThis.fetch = patchedFetch;
-
-  try {
-    return await PiperPlus.initialize(options);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  // piper-plus@0.6.x の通常初期化を使用する。
+  // config.json に偽の language_id_map を追加すると、
+  // ブラウザ側G2Pが「ja」を初期化していない状態でも
+  // synthesize(..., { language: "ja" }) が日本語G2Pへ進み、
+  // "language 'ja' is not initialised" になるため、ここでは改変しない。
+  return await PiperPlus.initialize(options);
 }
 
 if (ort.env?.wasm) {
@@ -188,13 +147,9 @@ function patchSingleSpeakerInputs(engine: any): void {
   const needsEmbedding = inputNames.includes("speaker_embedding");
   const needsMask = inputNames.includes("speaker_embedding_mask");
 
-  // 重要:
-  // speaker_embedding が不要なモデルでも run() のパッチは必ず入れる。
-  // 今回のウグイス嬢ONNXは lid 入力を持たない一方、
-  // Rust multilingual G2Pを有効にするためconfig側には一時的に
-  // language_id_map = { ja: 0 } を追加している。
-  // PiperPlus._infer() はそのconfigを見て feeds.lid を作るため、
-  // ORTへ渡す直前に未知の lid を削除する必要がある。
+  // speaker_embedding が不要なモデルでも run() のパッチは入れる。
+  // モデル/configの組み合わせによって未知の lid が渡された場合は、
+  // ONNXが lid 入力を持たないときだけ防御的に削除する。
   const embeddingMeta = findInputMeta(session, "speaker_embedding");
   const embeddingShape = getMetaShape(embeddingMeta);
 
@@ -208,7 +163,6 @@ function patchSingleSpeakerInputs(engine: any): void {
   session.run = async (feeds: Record<string, any>, ...args: any[]) => {
     const patchedFeeds: Record<string, any> = { ...feeds };
 
-    // config補正で ja:0 を追加してRust G2Pを有効化するが、
     // single-speaker ONNXが lid 入力を持たない場合はORTへ渡さない。
     if (
       Object.prototype.hasOwnProperty.call(patchedFeeds, "lid") &&
@@ -367,12 +321,21 @@ async function synthesizePiperChunk(
   patchSingleSpeakerInputs(engine as any);
   const lengthScale = Math.min(2, Math.max(0.5, 1 / speedScale));
   const modelConfig = PIPER_MODELS[modelId];
-  const result = await engine.synthesize(text, {
-    language: "ja",
+  const synthOptions: Record<string, unknown> = {
     noiseScale: modelConfig.noiseScale,
     lengthScale,
     noiseW: modelConfig.noiseW,
-  });
+  };
+
+  // ウグイス嬢は single-speaker fine-tuning モデル。
+  // language_id_map を持たないため、language:"ja" を強制すると
+  // @piper-plus/g2p 側の未初期化 ja ルートへ入る環境がある。
+  // つくよみちゃん/CSS10は従来どおり日本語を明示する。
+  if (modelId !== "uguisu") {
+    synthOptions.language = "ja";
+  }
+
+  const result = await engine.synthesize(text, synthOptions as any);
   return result.toBlob();
 }
 
