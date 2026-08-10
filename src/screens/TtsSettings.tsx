@@ -1,6 +1,13 @@
 // src/components/TtsSettings.tsx  ← 使っている場所に合わせてパス調整OK
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
+import {
+  PIPER_MODELS,
+  PiperModelId,
+  prewarmPiper,
+  setPiperProgressListener,
+  setSelectedPiperModel,
+} from "../lib/piperTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
 const IconBack = () => (
@@ -45,6 +52,32 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   });
   const [selectedName, setSelectedName] = useState<string | "">(localStorage.getItem("tts:webspeech:voiceName") || "");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [piperReady, setPiperReady] = useState(false);
+  const [piperLoading, setPiperLoading] = useState(false);
+  const [piperProgress, setPiperProgress] = useState(0);
+  const [piperStatus, setPiperStatus] = useState("");
+  const [piperError, setPiperError] = useState("");
+
+  const [engine, setEngine] = useState<"webspeech" | "piper">(() =>
+    localStorage.getItem("tts:engine") === "piper" ? "piper" : "webspeech"
+  );
+
+  const [piperModel, setPiperModel] = useState<PiperModelId>(() => {
+    const v = localStorage.getItem("tts:piper:model");
+    return v === "tsukuyomi" || v === "css10" || v === "uguisu" ? v : "uguisu";
+  });
+
+  const handleEngineChange = (value: "webspeech" | "piper") => {
+    setEngine(value);
+    localStorage.setItem("tts:engine", value);
+  };
+
+  const handlePiperModelChange = (value: PiperModelId) => {
+    setPiperModel(value);
+    setSelectedPiperModel(value);
+    setPiperReady(false);
+    setPiperError("");
+  };
 
   // 初回：保存が空ならデフォルトを選択
   const onceRef = useRef(false);
@@ -85,6 +118,55 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     localStorage.setItem("tts:volume", String(clamped));
   };
 
+
+  // Piper選択時に先読みして、実際のアナウンス開始を速くする
+  useEffect(() => {
+    if (engine !== "piper") return;
+
+    let cancelled = false;
+
+    setPiperProgressListener(({ stage, progress, message }) => {
+      if (cancelled) return;
+      setPiperProgress(Math.round(progress * 100));
+
+      if (stage === "model") {
+        setPiperStatus(progress >= 0.7 ? "音声モデルを読み込みました" : "音声モデルを準備しています");
+      } else if (stage === "phonemizer") {
+        setPiperStatus("日本語読み上げを準備しています");
+      } else if (stage === "ready") {
+        setPiperStatus("準備完了");
+      } else {
+        setPiperStatus(message || "準備しています");
+      }
+    });
+
+    setPiperLoading(true);
+    setPiperError("");
+    setPiperStatus("Piper-Plusを準備しています");
+
+    prewarmPiper(piperModel)
+      .then(() => {
+        if (cancelled) return;
+        setPiperReady(true);
+        setPiperProgress(100);
+        setPiperStatus("準備完了");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Piper prewarm error:", error);
+        setPiperError("Piper-Plusの準備に失敗しました。通信環境を確認して再度お試しください。");
+        setPiperStatus("");
+      })
+      .finally(() => {
+        if (!cancelled) setPiperLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      setPiperProgressListener(null);
+    };
+  }, [engine, piperModel]);
+
   const handleTest = async () => {
     if (isSpeaking) return;
     setIsSpeaking(true);
@@ -95,12 +177,16 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
         pitch,
         volume,
       });
-    } catch {
-      // noop
+    } catch (error) {
+      console.error("TTS test error:", error);
+      if (engine === "piper") {
+        setPiperError("テスト読み上げに失敗しました。もう一度お試しください。");
+      }
     } finally {
       setIsSpeaking(false);
     }
   };
+
 
   return (
     <div
@@ -130,12 +216,12 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               🔊 読み上げ設定
             </span>
           </h1>
-          <p className="text-white/70 text-sm mt-1">端末の日本語音声と読み上げパラメータをカスタマイズ</p>
+          <p className="text-white/70 text-sm mt-1">端末音声またはPiper-Plusを選択して読み上げをカスタマイズ</p>
         </div>
 
         {/* カード全体 */}
         <section className="w-[100svw] -mx-5 md:mx-0 md:w-full rounded-none md:rounded-3xl p-4 md:p-6 bg-white/5 border border-white/10 ring-1 ring-inset ring-white/10 shadow-xl shadow-black/20 backdrop-blur-md">
-          {/* 使う音声 */}
+          {/* 読み上げ方式 */}
           <div className="rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.03] border border-white/10 p-4 md:p-5 shadow-md shadow-black/20">
             <div className="flex items-center justify-between mb-3">
               <div className="inline-flex items-center gap-2">
@@ -143,29 +229,97 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                   🗣️
                 </span>
                 <h2 className="text-lg md:text-xl font-bold tracking-wide">
-                  使う音声（端末の日本語のみ）
+                  使う音声
                 </h2>
               </div>
             </div>
 
             <select
               className="w-full rounded-2xl bg-white text-gray-800 p-3 pr-10 shadow-inner focus:outline-none focus:ring-4 focus:ring-sky-400/40"
-              value={selectedName}
-              onChange={(e) => handleSelectVoice(e.target.value)}
+              value={engine}
+              onChange={(e) => handleEngineChange(e.target.value as "webspeech" | "piper")}
             >
-              {voices.length === 0 && <option value="">（利用可能な音声が見つかりません）</option>}
-              {voices.map(v => (
-                <option key={`${v.name}__${v.voiceURI}`} value={v.name}>
-                  {v.default ? "★ " : ""}{v.name} ({v.lang})
-                </option>
-              ))}
+              <option value="webspeech">端末の日本語音声（今まで通り）</option>
+              <option value="piper">Piper-Plus（音声モデルを選択）</option>
             </select>
-            <div className="mt-2 text-sm text-white/85">
-              現在の選択：<span className="font-semibold">{selectedLabel}</span>
-            </div>
-            <div className="text-xs text-white/60 mt-2 leading-relaxed">
-              ※ Web Speech APIの仕様により、この一覧は端末/ブラウザが公開している日本語音声のみです。
-            </div>
+
+            {engine === "webspeech" ? (
+              <>
+                <div className="mt-4 text-sm font-semibold text-white/90">端末音声</div>
+                <select
+                  className="mt-2 w-full rounded-2xl bg-white text-gray-800 p-3 pr-10 shadow-inner focus:outline-none focus:ring-4 focus:ring-sky-400/40"
+                  value={selectedName}
+                  onChange={(e) => handleSelectVoice(e.target.value)}
+                >
+                  {voices.length === 0 && <option value="">（利用可能な音声が見つかりません）</option>}
+                  {voices.map(v => (
+                    <option key={`${v.name}__${v.voiceURI}`} value={v.name}>
+                      {v.default ? "★ " : ""}{v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 text-sm text-white/85">
+                  現在の選択：<span className="font-semibold">{selectedLabel}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-4 text-sm font-semibold text-emerald-300">
+                  ⚾ Piper-Plus 音声モデル
+                </div>
+
+                <select
+                  className="mt-2 w-full rounded-2xl bg-white text-gray-800 p-3 pr-10 shadow-inner focus:outline-none focus:ring-4 focus:ring-emerald-400/40"
+                  value={piperModel}
+                  onChange={(e) => handlePiperModelChange(e.target.value as PiperModelId)}
+                >
+                  <option value="tsukuyomi">つくよみちゃん</option>
+                  <option value="css10">CSS10 日本語女性</option>
+                  <option value="uguisu">ウグイス嬢（テスト）</option>
+                </select>
+
+                <div className="mt-2 text-sm text-white/85">
+                  現在の選択：<span className="font-semibold">{PIPER_MODELS[piperModel].label}</span>
+                </div>
+
+                <div className="mt-3 rounded-2xl bg-black/15 border border-white/10 p-3">
+                  {piperReady ? (
+                    <div className="flex items-center gap-2 text-sm text-emerald-300 font-semibold">
+                      <span>✓</span>
+                      <span>準備完了</span>
+                    </div>
+                  ) : piperLoading ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3 text-xs text-white/75">
+                        <span>{piperStatus || "準備しています"}</span>
+                        <span>{piperProgress}%</span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-400 transition-all duration-300"
+                          style={{ width: `${Math.max(3, piperProgress)}%` }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-xs text-white/65">
+                      Piper-Plusを選択すると音声モデルを準備します。
+                    </div>
+                  )}
+
+                  {piperError && (
+                    <p className="text-xs text-rose-300 mt-2 leading-relaxed">
+                      {piperError}
+                    </p>
+                  )}
+                </div>
+
+                <p className="text-xs text-white/60 mt-2 leading-relaxed">
+                  ※ 初回のみ音声モデルの読み込みに時間がかかります。
+                  2回目以降は端末内キャッシュを利用します。
+                </p>
+              </>
+            )}
           </div>
 
           {/* 読み上げ速度 */}
@@ -193,7 +347,9 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             />
           </div>
 
-          {/* ピッチ（声の高さ） */}
+          {engine === "webspeech" && (
+            <>
+              {/* ピッチ（声の高さ） */}
           <div className="rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.03] border border-white/10 p-4 md:p-5 shadow-md shadow-black/20 mt-5">
             <div className="flex items-center justify-between mb-3">
               <div className="inline-flex items-center gap-2">
@@ -224,6 +380,9 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             )}
           </div>
 
+            </>
+          )}
+
           {/* 音量（このアプリの読み上げのみ） */}
           <div className="rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.03] border border-white/10 p-4 md:p-5 shadow-md shadow-black/20 mt-5">
             <div className="flex items-center justify-between mb-3">
@@ -253,16 +412,16 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
           <div className="mt-6">
             <button
               onClick={handleTest}
-              disabled={isSpeaking}
+              disabled={isSpeaking || (engine === "piper" && piperLoading)}
               className={`w-full h-12 rounded-2xl text-white font-semibold tracking-wide shadow-lg shadow-black/30 active:scale-[0.99] transition-transform ${
-                isSpeaking ? "bg-gray-500/60 cursor-not-allowed" : "bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500"
+                (isSpeaking || (engine === "piper" && piperLoading)) ? "bg-gray-500/60 cursor-not-allowed" : "bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500"
               }`}
               title="現在の設定で読み上げテスト"
             >
-              現在の設定でテスト読み上げ
+              {engine === "piper" && piperLoading ? "Piper-Plusを準備中..." : isSpeaking ? "読み上げ中..." : "現在の設定でテスト読み上げ"}
             </button>
             <p className="text-[11px] text-white/60 mt-2 leading-relaxed">
-              ※ 一部の音声は、ピッチ/音量の反映が弱い・無効の場合があります。
+              ※ Piper-Plusはブラウザ内で動作します。初回はモデル読み込みのため少し時間がかかります。
             </p>
           </div>
         </section>
