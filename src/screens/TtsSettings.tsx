@@ -1,13 +1,7 @@
 // src/components/TtsSettings.tsx  ← 使っている場所に合わせてパス調整OK
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
-import {
-  PIPER_MODELS,
-  PiperModelId,
-  prewarmPiper,
-  setPiperProgressListener,
-  setSelectedPiperModel,
-} from "../lib/piperTts";
+import { prewarmPiper, setPiperProgressListener } from "../lib/piperTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
 const IconBack = () => (
@@ -62,21 +56,9 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     localStorage.getItem("tts:engine") === "piper" ? "piper" : "webspeech"
   );
 
-  const [piperModel, setPiperModel] = useState<PiperModelId>(() => {
-    const v = localStorage.getItem("tts:piper:model");
-    return v === "tsukuyomi" || v === "css10" || v === "uguisu" ? v : "uguisu";
-  });
-
   const handleEngineChange = (value: "webspeech" | "piper") => {
     setEngine(value);
     localStorage.setItem("tts:engine", value);
-  };
-
-  const handlePiperModelChange = (value: PiperModelId) => {
-    setPiperModel(value);
-    setSelectedPiperModel(value);
-    setPiperReady(false);
-    setPiperError("");
   };
 
   // 初回：保存が空ならデフォルトを選択
@@ -144,7 +126,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     setPiperError("");
     setPiperStatus("Piper-Plusを準備しています");
 
-    prewarmPiper(piperModel)
+    prewarmPiper()
       .then(() => {
         if (cancelled) return;
         setPiperReady(true);
@@ -165,7 +147,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
       cancelled = true;
       setPiperProgressListener(null);
     };
-  }, [engine, piperModel]);
+  }, [engine]);
 
   const handleTest = async () => {
     if (isSpeaking) return;
@@ -180,7 +162,11 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     } catch (error) {
       console.error("TTS test error:", error);
       if (engine === "piper") {
-        setPiperError("テスト読み上げに失敗しました。もう一度お試しください。");
+        const message =
+          error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : String(error);
+        setPiperError(`テスト読み上げ失敗：${message}`);
       }
     } finally {
       setIsSpeaking(false);
@@ -240,7 +226,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               onChange={(e) => handleEngineChange(e.target.value as "webspeech" | "piper")}
             >
               <option value="webspeech">端末の日本語音声（今まで通り）</option>
-              <option value="piper">Piper-Plus（音声モデルを選択）</option>
+              <option value="piper">Piper-Plus ウグイス嬢</option>
             </select>
 
             {engine === "webspeech" ? (
@@ -265,21 +251,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             ) : (
               <>
                 <div className="mt-4 text-sm font-semibold text-emerald-300">
-                  ⚾ Piper-Plus 音声モデル
-                </div>
-
-                <select
-                  className="mt-2 w-full rounded-2xl bg-white text-gray-800 p-3 pr-10 shadow-inner focus:outline-none focus:ring-4 focus:ring-emerald-400/40"
-                  value={piperModel}
-                  onChange={(e) => handlePiperModelChange(e.target.value as PiperModelId)}
-                >
-                  <option value="tsukuyomi">つくよみちゃん</option>
-                  <option value="css10">CSS10 日本語女性</option>
-                  <option value="uguisu">ウグイス嬢（テスト）</option>
-                </select>
-
-                <div className="mt-2 text-sm text-white/85">
-                  現在の選択：<span className="font-semibold">{PIPER_MODELS[piperModel].label}</span>
+                  ⚾ Piper-Plus ウグイス嬢
                 </div>
 
                 <div className="mt-3 rounded-2xl bg-black/15 border border-white/10 p-3">
