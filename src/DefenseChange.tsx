@@ -403,7 +403,9 @@ const generateAnnouncementText = (
   usedPlayerInfo: Record<string, any>,
   ohtaniRule: boolean,              // ← 追加
   reentryPreviewIds: Set<number> = new Set(),   // ★ 追加
-  reentryFixedIds:   Set<number> = new Set()    // ★ 追加
+  reentryFixedIds:   Set<number> = new Set(),   // ★ 追加
+  pendingDisableDH: boolean = false,
+  dhDisableSnapshot?: { dhId: number; pitcherId: number } | null
 ): string => {
 
  (window as any).__teamPlayers = teamPlayers;
@@ -2339,7 +2341,51 @@ if (isOhtaniDhPinchHitFix) {
 // ★ ケース分岐：
 let line: string;
 
-if (isReentrySameOrder) {
+// ✅ DH解除などで、元から守っている投手本人が打順に入るだけのケース。
+// records 側では pos:"－" などで作られることがあるため、r.pos には依存しない。
+// 「ファースト岡田くんに代わりまして、ピッチャーの今澤くん」
+// と作り、後段で「が入ります。」を付ける。
+const originalPitcherIdForReplace =
+  typeof initialAssignments?.["投"] === "number"
+    ? Number(initialAssignments["投"])
+    : null;
+
+const currentPitcherIdForReplace =
+  typeof assignments?.["投"] === "number"
+    ? Number(assignments["投"])
+    : null;
+
+const isOriginalPitcherEnteringBattingOrderOnly =
+  originalPitcherIdForReplace != null &&
+  currentPitcherIdForReplace != null &&
+  Number(r.to.id) === originalPitcherIdForReplace &&
+  Number(r.to.id) === currentPitcherIdForReplace &&
+  (r.pos === "-" || r.pos === "－" || r.pos === "指" || r.pos === "DH" || r.pos === "指名打者");
+
+if (isOriginalPitcherEnteringBattingOrderOnly) {
+  const fromPosSym =
+    Object.entries(initialAssignments ?? {}).find(
+      ([, id]) => Number(id) === Number(r.from.id)
+    )?.[0] ?? r.pos;
+
+  const fromPosLabel =
+    posJP[normalizeAnnouncePos(fromPosSym)] ??
+    posJP[fromPosSym] ??
+    fromPosSym ??
+    "";
+
+  line =
+    `${fromPosLabel} ${nameWithHonor(r.from)}に代わりまして、` +
+    `ピッチャーの${nameWithHonor(r.to)}`;
+
+  console.log("[DH ORIGINAL PITCHER BATTING ENTRY]", {
+    fromId: r.from.id,
+    fromPos: fromPosSym,
+    pitcherId: r.to.id,
+    recordPos: r.pos,
+  });
+}
+else if (isReentrySameOrder) {
   console.log("[REPLACE] REENTRY same-order", { from: r.from.id, to: r.to.id, pos: r.pos, order: r.order });
   line = `${posJP[r.pos]} ${nameWithHonor(r.from)}に代わりまして、${nameWithHonor(r.to)}がリエントリーで${posJP[r.pos]}`;
 } else if (isPinchFrom) {
@@ -2381,7 +2427,7 @@ if (isReentrySameOrder) reentryOccurred = true; // ← 追加
 
 
 // ✅ lineupLines：同じ打順＋守備（例：9番 指名打者）が既にある場合は「上書き」する
-if (r.order > 0) {
+if (r.order > 0 && !isOriginalPitcherEnteringBattingOrderOnly) {
   const isReentryTo = reentryToIds.has(r.to.id);
 
   // 背番号の表記：希望どおり「背番号22」形式（スペース無し）
@@ -2666,10 +2712,46 @@ const fromSym =
 
 const head = buildFromHead(r.from.id, fromSym);
 
-addReplaceLine(
-  `${head}${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指}へ`,
-  i === mixed.length - 1 && shift.length === 0
-);
+// ✅ DH解除専用：
+// 守備位置を変えていない「現在の投手」が、DH解除によって打順に入るだけの場合。
+// 内部的には fromPos が「指」ではなく「一」などの mixed として作られることがあるため、
+// fromPos では判定せず、DH解除スナップショットの pitcherId を基準に判定する。
+const pitcherIdAtOpenForDhJoin =
+  typeof initialAssignments?.["投"] === "number"
+    ? Number(initialAssignments["投"])
+    : null;
+
+const currentPitcherId =
+  typeof assignments?.["投"] === "number"
+    ? Number(assignments["投"])
+    : null;
+
+const isDhDisablePitcherJoinsBattingOrder =
+  pitcherIdAtOpenForDhJoin != null &&
+  currentPitcherId != null &&
+  Number(r.to.id) === pitcherIdAtOpenForDhJoin &&
+  Number(r.to.id) === currentPitcherId &&
+  normalizeAnnouncePos(r.toPos) === "投" &&
+  r.order > 0;
+
+if (isDhDisablePitcherJoinsBattingOrder) {
+  addReplaceLine(
+    `${head}${r.order}番にピッチャーの${nameWithHonor(r.to)}が入ります`,
+    i === mixed.length - 1 && shift.length === 0
+  );
+
+  console.log("[DH DISABLE ANN] pitcher joins batting order", {
+    fromId: r.from.id,
+    fromPos: r.fromPos,
+    pitcherId: r.to.id,
+    order: r.order,
+  });
+} else {
+  addReplaceLine(
+    `${head}${r.order}番に${fullNameWithHonor(r.to)}が入り ${posJP[normalizeAnnouncePos(r.toPos)] ?? posJP.指}へ`,
+    i === mixed.length - 1 && shift.length === 0
+  );
+}
 
 
 // ✅ lineupLines（重複防止付き）
@@ -2891,9 +2973,35 @@ const pinchReasonForShift =
   )?.reason as string | undefined) ??
   (pinchInfoForShift?.reason as string | undefined);
 
+// ✅ DH運用中：画面を開いた時点の「元投手本人」が
+// 投手から別の守備位置へ移る場合は、過去の代打/代走履歴より
+// 「ピッチャーの○○くんが△△」を優先する。
+const originalPitcherId =
+  typeof initialAssignments?.["投"] === "number"
+    ? Number(initialAssignments["投"])
+    : null;
+
+const isOriginalPitcherMovingToAnotherPosition =
+  originalPitcherId != null &&
+  Number(s.player.id) === originalPitcherId &&
+  toSym !== "投" &&
+  toSym !== "指";
+
+if (isOriginalPitcherMovingToAnotherPosition) {
+  result.push(
+    `ピッチャーの${nameWithHonor(s.player)}が${toLabel}、`
+  );
+
+  console.log("[DH ORIGINAL PITCHER MOVE]", {
+    playerId: s.player.id,
+    from: fromSym,
+    to: toSym,
+    ignoredPinchReason: pinchReasonForShift ?? null,
+  });
+}
 // ✅ 代打/代走由来の選手なら、initialAssignments に残っていても
 //    「先ほど代打/代走いたしました…」を優先する
-if (pinchReasonForShift) {
+else if (pinchReasonForShift) {
   const phrase =
     pinchReasonForShift === "代打"
       ? "代打いたしました"
@@ -3337,6 +3445,94 @@ if (isOhtaniSinglePitcherPlayerChange) {
   /* ---- 「以上に代わります。」判定 ---- */
   if ((total >= 2) || (lineupLines.length >= 2)) {
     result.push("以上に代わります。");
+  }
+}
+
+// =====================================================
+// ✅ 元からいる投手がDH解除で打順に入るだけの場合の最終文言補正
+// =====================================================
+// 重要：交代確定処理では pendingDisableDH / dhDisableSnapshot が
+// アナウンス表示前に false / null へ戻るため、それらには依存しない。
+//
+// 判定条件：
+// 1) 画面を開いた時の投手がいる
+// 2) 現在の投手も同じ選手
+// 3) 生成文の中で、その投手が「○番に～が入り ピッチャーへ」と出ている
+//
+// この条件なら実際の投手交代ではなく、元から守っている投手が
+// DH解除によって打順に入っただけなので、
+// 「○番にピッチャーの○○くんが入ります」に直す。
+{
+  const pitcherIdAtOpen =
+    typeof initialAssignments?.["投"] === "number"
+      ? Number(initialAssignments["投"])
+      : null;
+
+  const currentPitcherId =
+    typeof assignments?.["投"] === "number"
+      ? Number(assignments["投"])
+      : null;
+
+  const samePitcherContinues =
+    pitcherIdAtOpen != null &&
+    currentPitcherId != null &&
+    pitcherIdAtOpen === currentPitcherId;
+
+  if (samePitcherContinues) {
+    const pitcher = teamPlayers.find(
+      (p) => Number(p.id) === Number(currentPitcherId)
+    );
+
+    if (pitcher) {
+      const fullPitcherName = fullNameWithHonor(pitcher);
+      const shortPitcherName = nameWithHonor(pitcher);
+
+      for (let i = 0; i < result.length; i++) {
+        const before = result[i];
+        let line = before;
+
+        // 「5番に宇江城翔くんが入り ピッチャーへ」
+        // 「5番に宇江城くんが入りピッチャーへ」
+        // など、スペース有無・フルネーム/姓のみの両方に対応
+        const names = [fullPitcherName, shortPitcherName];
+
+        for (const nm of names) {
+          const patterns = [
+            `${nm}が入り ピッチャーへ`,
+            `${nm}が入りピッチャーへ`,
+            `${nm}が入り ピッチャーに`,
+            `${nm}が入りピッチャーに`,
+          ];
+
+          for (const target of patterns) {
+            if (!line.includes(target)) continue;
+
+            line = line.replace(
+              target,
+              `ピッチャーの${shortPitcherName}が入ります`
+            );
+            break;
+          }
+
+          if (line !== before) break;
+        }
+
+        // 文末整理
+        if (line !== before) {
+          line = line
+            .replace(/が入ります、$/, "が入ります。")
+            .replace(/が入ります。。$/, "が入ります。");
+
+          console.log("[DH ANN FIX SUCCESS]", {
+            pitcherId: currentPitcherId,
+            before,
+            after: line,
+          });
+
+          result[i] = line;
+        }
+      }
+    }
   }
 }
 
@@ -4072,6 +4268,18 @@ const skipUnannouncedConfirmRef = useRef(false);
 
 const snapshotRef = useRef<string | null>(null);
 
+// ✅ 守備交代画面を「最初に開いた瞬間」の状態。
+// 「戻る」→「変更した内容を保存していませんがよろしいですか？」→ YES の場合は、
+// 通常モード／1人アナウンスモードとも、この状態へ完全に戻してから画面遷移する。
+const openingStateRef = useRef<{
+  assignments: Record<string, number | null>;
+  battingOrder: { id: number; reason: string }[];
+  benchPlayers: Player[];
+  usedPlayerInfo: Record<number, any>;
+  dhEnabledAtStart: boolean;
+  ohtaniRule: boolean;
+} | null>(null);
+
 //非リエントリー時の確認モーダル
 type PendingNonReentryDrop = {
   toPos: string;      // 守備位置シンボル（"捕"など）
@@ -4112,6 +4320,7 @@ useEffect(() => {
   if (!initDoneRef.current) {
     if (isInitialReady()) {
       snapshotRef.current = buildSnapshot();
+
       setIsDirty(false);
       initDoneRef.current = true;
       console.log("[DEBUG] baseline set after initial data");
@@ -4131,6 +4340,22 @@ useEffect(() => {
   setIsDirty(changed);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [assignments, battingOrder, pendingDisableDH, dhDisableSnapshot, dhEnabledAtStart]);
+
+
+// ✅ benchPlayers は assignments より後に作られる場合があるため、
+// 画面オープン時スナップショットの bench だけ初回値で補完する。
+// assignments / battingOrder は絶対にここでは上書きしない。
+useEffect(() => {
+  const opening = openingStateRef.current;
+  if (!opening) return;
+  if (!Array.isArray(benchPlayers) || benchPlayers.length === 0) return;
+  if (Array.isArray(opening.benchPlayers) && opening.benchPlayers.length > 0) return;
+
+  openingStateRef.current = {
+    ...opening,
+    benchPlayers: structuredClone(benchPlayers),
+  };
+}, [benchPlayers]);
 
 
 const getEffectivePlayerId = (playerId: number | null | undefined) => {
@@ -4670,6 +4895,35 @@ console.log("[SEAT INTRO FLAG]", {
   hasPinchAtLoad,
   shouldGo: isVisitor && inning === 1 && hasPinchAtLoad,
 });
+    // ✅ 「戻る → YES」で戻す基準は、必ずここで保存する。
+    // localForage読込 + 代打/代走反映まで完了した newAssignments を使うため、
+    // 初期レンダー時の空 assignments を誤って保存しない。
+    const loadedFieldCount = Object.values(newAssignments || {}).filter(
+      (id) => typeof id === "number" && Number.isFinite(Number(id))
+    ).length;
+
+    if (loadedFieldCount > 0) {
+      openingStateRef.current = {
+        assignments: structuredClone(newAssignments),
+        battingOrder: structuredClone(order),
+        // benchPlayers は別処理で後から構成されるため、ここでは現在値を入れ、
+        // 後段の useEffect で初回だけ補完する。
+        benchPlayers: structuredClone(benchPlayers || []),
+        usedPlayerInfo: structuredClone(usedInfo || {}),
+        dhEnabledAtStart: Boolean(dhEnabledAtStart),
+        ohtaniRule: Boolean(ohtaniNow),
+      };
+
+      console.log("[DefenseChange] opening state captured from loadData", {
+        fieldCount: loadedFieldCount,
+        assignments: openingStateRef.current.assignments,
+      });
+    } else {
+      console.warn(
+        "[DefenseChange] opening state NOT captured because newAssignments is empty"
+      );
+    }
+
     setAssignments(newAssignments);
     setTeamPlayers(updatedTeamPlayers);
 
@@ -5081,7 +5335,9 @@ const baseDisplayText = generateAnnouncementText(
   usedPlayerInfo,
   ohtaniRule,
   reentryPreviewIds,
-  reentryFixedIds
+  reentryFixedIds,
+  pendingDisableDH,
+  dhDisableSnapshot
 );
 
 const baseSpeakText = generateAnnouncementText(
@@ -5094,7 +5350,9 @@ const baseSpeakText = generateAnnouncementText(
   usedPlayerInfo,
   ohtaniRule,
   reentryPreviewIds,
-  reentryFixedIds
+  reentryFixedIds,
+  pendingDisableDH,
+  dhDisableSnapshot
 );
 
 const displayText = [baseDisplayText, pitcherCountAnnouncement]
@@ -6973,22 +7231,169 @@ const restoreOnePersonBackSnapshotIfNeeded = async () => {
   await localForage.setItem(`onePerson.${side}.lastBatterIndex`, currentBatterIndex);
 };
 
+// ✅ 「戻る」→ YES 用：守備交代画面を開いた瞬間の状態へ戻す。
+// 画面stateだけでなく localForage も戻すため、あとで守備交代画面を開き直しても
+// YESを押す前に行った未確定変更は一切残らない。
+const restoreDefenseChangeOpeningState = async () => {
+  const opening = openingStateRef.current;
+  if (!opening) {
+    console.warn("[DefenseChange] opening state is not available");
+    return;
+  }
+
+  let restoredAssignments = structuredClone(opening.assignments || {});
+  const restoredBattingOrder = structuredClone(opening.battingOrder || []);
+  const restoredBenchPlayers = structuredClone(opening.benchPlayers || []);
+  const restoredUsedPlayerInfo = structuredClone(opening.usedPlayerInfo || {});
+
+  // ✅ 安全装置：空スナップショットを守備位置へ書き込まない。
+  // 万一 openingState が壊れていても、現在の保存済み lineupAssignments を使う。
+  const restoredFieldCount = Object.values(restoredAssignments || {}).filter(
+    (id) => typeof id === "number" && Number.isFinite(Number(id))
+  ).length;
+
+  if (restoredFieldCount === 0) {
+    const persistedAssignments =
+      (await localForage.getItem<Record<string, number | null>>(
+        "lineupAssignments"
+      )) || {};
+
+    const persistedFieldCount = Object.values(persistedAssignments).filter(
+      (id) => typeof id === "number" && Number.isFinite(Number(id))
+    ).length;
+
+    if (persistedFieldCount > 0) {
+      restoredAssignments = structuredClone(persistedAssignments);
+      console.warn(
+        "[DefenseChange] opening assignments was empty; persisted lineupAssignments was used"
+      );
+    } else {
+      console.error(
+        "[DefenseChange] restore aborted: no valid assignments are available"
+      );
+      return;
+    }
+  }
+
+  // まず画面stateを開いた時点へ戻す
+  setAssignments(restoredAssignments);
+  setBattingOrder(restoredBattingOrder);
+  setBattingOrderDraft(restoredBattingOrder);
+  setBenchPlayers(restoredBenchPlayers);
+  setUsedPlayerInfo(restoredUsedPlayerInfo);
+  setDhEnabledAtStart(opening.dhEnabledAtStart);
+  setOhtaniRule(opening.ohtaniRule);
+
+  // 未確定操作で作られた画面内の一時状態も破棄
+  setBattingReplacements({});
+  setSubstitutionLogs([]);
+  setPairLocks({});
+  setPendingDisableDH(false);
+  setDhDisableSnapshot(null);
+  setTouchedFieldPos(new Set());
+  setReentryPreviewIds(new Set());
+  setReentryFixedIds(new Set());
+  setHasShownAnnouncement(false);
+
+  // 通常モードが読むキーも開いた時点へ戻す
+  await localForage.setItem("lineupAssignments", restoredAssignments);
+  await localForage.setItem("battingOrder", restoredBattingOrder);
+  await localForage.setItem("benchPlayers", restoredBenchPlayers);
+  await localForage.setItem("usedPlayerInfo", restoredUsedPlayerInfo);
+  await localForage.setItem("dhEnabledAtStart", opening.dhEnabledAtStart);
+  await localForage.setItem("ohtaniRule", opening.ohtaniRule);
+
+  localStorage.setItem("assignmentsVersion", String(Date.now()));
+  localStorage.setItem("battingOrderVersion", String(Date.now()));
+
+  // ✅ 1人アナウンスモードでは、守備交代対象チーム専用キーも戻す。
+  // commonキーだけ戻しても onePerson.first / third に未確定内容が残ると、
+  // 次回開いた時にそちらから再読込されるため。
+  const ctx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  if (ctx?.enabled) {
+    const targetSide =
+      ctx?.targetSide === "first" || ctx?.targetSide === "third"
+        ? ctx.targetSide
+        : ctx?.defenseSide === "first" || ctx?.defenseSide === "third"
+          ? ctx.defenseSide
+          : null;
+
+    if (targetSide) {
+      await localForage.setItem(
+        `onePerson.${targetSide}.lineupAssignments`,
+        restoredAssignments
+      );
+      await localForage.setItem(
+        `onePerson.${targetSide}.battingOrder`,
+        restoredBattingOrder
+      );
+      await localForage.setItem(
+        `onePerson.${targetSide}.benchPlayers`,
+        restoredBenchPlayers
+      );
+      await localForage.setItem(
+        `onePerson.${targetSide}.usedPlayerInfo`,
+        restoredUsedPlayerInfo
+      );
+    }
+  }
+
+  // dirty基準も開いた時点へ戻す
+  snapshotRef.current = JSON.stringify({
+    assignments: restoredAssignments,
+    battingOrder: restoredBattingOrder,
+    pendingDisableDH: false,
+    dhDisableSnapshot: null,
+    dhEnabledAtStart: opening.dhEnabledAtStart,
+  });
+  setIsDirty(false);
+
+  console.log("[DefenseChange] restored to opening state");
+};
+
 // DefenseChange.tsx 内
 const handleBackToDefense = async () => {
   console.log("[DefenseChange] back to defense (no commit)");
 
-  // 「確定せずに戻る」場合は、画面オープン時点の大谷ルールへ戻す（storage も復元）
-  if (ohtaniRule !== ohtaniRuleAtOpenRef.current) {
-    setOhtaniRule(ohtaniRuleAtOpenRef.current);
-    void localForage
-      .setItem("ohtaniRule", ohtaniRuleAtOpenRef.current)
-      .catch((e) => console.warn("failed to restore ohtaniRule on back", e));
-  }
+  // ✅ YESで戻る時は、未確定の変更を破棄して
+  // 守備交代画面を最初に開いた状態へ必ず戻す。
+  await restoreDefenseChangeOpeningState();
 
+  // 1人モードでは、このあと攻撃画面へ戻すために
+  // DefenseChange表示用として一時コピーしていた通常キーを
+  // 攻撃側スナップショットへ戻す。
   await restoreOnePersonBackSnapshotIfNeeded();
 
-  // ✅ 守備画面へ戻すのは App.tsx 側の画面遷移（setScreen）で行う
+  // ✅ 守備画面／1人アナウンス画面への遷移は App.tsx 側に一本化
   await onConfirmed();
+};
+
+// ✅ 「変更した内容を保存していませんがよろしいですか？」の YES 専用。
+// 1人アナウンスモードでは、未確定変更だけを破棄して
+// 守備交代画面を「最初に開いた状態」へ戻し、その画面に留まる。
+// 通常モードは従来どおり、復元後に前の画面へ戻る。
+const handleDiscardChangesYes = async () => {
+  const ctx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  const isOnePersonMode = !!ctx?.enabled;
+
+  if (isOnePersonMode) {
+    console.log(
+      "[DefenseChange] one-person discard: restore opening state and stay on DefenseChange"
+    );
+
+    // 重要：
+    // restoreOnePersonBackSnapshotIfNeeded() は呼ばない。
+    // これを呼ぶと commonキーが攻撃側状態へ戻り、
+    // さらに onConfirmed() で次画面へ遷移してしまう。
+    await restoreDefenseChangeOpeningState();
+
+    // 確認モーダルを閉じ、守備交代画面にそのまま留まる。
+    setShowLeaveConfirm(false);
+    return;
+  }
+
+  // 通常モードは従来どおり
+  await handleBackToDefense();
 };
 
 const checkReentryForBenchToField = ({
@@ -9901,16 +10306,10 @@ const canDropHere =
           <button
             className="col-span-1 py-3 font-semibold bg-green-600 text-white rounded-br-2xl hover:bg-green-700"
             onClick={() => {
-              setShowLeaveConfirm(false);
-
-              // 代打・代走後に強制表示された守備交代画面では、
-              // YESでも画面遷移させず「交代確定」を促す。
-              if (isForcedDefenseChangeByPinch) {
-                setShowForcedCommitMessage(true);
-                return;
-              }
-
-              handleBackToDefense();
+              // ✅ YES:
+              // ・1人アナウンスモード → 開いた時の状態へ戻して、この画面に留まる
+              // ・通常モード           → 従来どおり前画面へ戻る
+              void handleDiscardChangesYes();
             }}
 
           >

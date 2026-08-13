@@ -5189,38 +5189,15 @@ const hasCurrentOffensePendingDefenseSetup = async () => {
       ? battingOrder || []
       : [];
 
-  // ✅ DHへの代打は assignments["指"] を代打選手へ即時引継ぎ済みなので、
-  // 「守備位置を決める必要がある代打」には含めない。
-  // これを通常の代打と同じ pending 扱いにすると、
-  // 次の守備交代画面でDHの守備位置が消えたり未設定扱いになる。
-  const sideAssignments =
-    (await localForage.getItem<Record<string, number | null>>(
-      `onePerson.${offenseSide}.lineupAssignments`
-    )) || {};
-
-  const hasRealPendingDefense = (
-    order: any[],
-    lineup: Record<string, number | null>
-  ) =>
-    Array.isArray(order) &&
-    order.some((e: any) => {
-      if (!isPendingDefenseReason(e?.reason)) return false;
-
-      const playerId = Number(e?.id);
-      const isInheritedDh =
-        Number.isFinite(playerId) &&
-        Number(lineup?.["指"]) === playerId;
-
-      return !isInheritedDh;
-    });
-
-  const sideHasPending = hasRealPendingDefense(sideOrder, sideAssignments);
-  const stateHasPending = hasRealPendingDefense(
-    stateOrder,
-    currentOnePersonOffenseSideRef.current === offenseSide
-      ? assignments || {}
-      : sideAssignments
-  );
+  // ✅ 代打・代走・臨時代走がある場合は、元の守備位置がDHかどうかに関係なく
+  // 必ず「代打/代走で出場した選手の守備位置を設定してください」モーダルを出す。
+  //
+  // DHへの代打では assignments["指"] を代打選手へ引き継いでいるが、
+  // それはDH表示を壊さないための現在位置の保持であり、
+  // 「次の守備位置設定が不要」という意味ではない。
+  // そのため pending 判定は battingOrder の reason だけで行う。
+  const sideHasPending = hasPendingDefenseInOrder(sideOrder);
+  const stateHasPending = hasPendingDefenseInOrder(stateOrder);
   const result = sideHasPending || stateHasPending;
 
   // ✅ 代打・代走が見つからない場合は、古い pending フラグを消す。
@@ -7976,46 +7953,136 @@ useEffect(() => {
           const stop  = () => speechSynthesis.cancel();
 
           const confirmDisableDH = async () => {
-            pushHistory(); // ← 追加（DH解除の確定前に退避）
+            pushHistory(); // DH解除の確定前に退避
+
+            const mi =
+              (await localForage.getItem<any>("matchInfo")) || {};
+
+            const singleMode =
+              mi?.announcementMode === "single" || isOnePersonMode;
+
+            // ✅ 1人モードでは「現在画面の assignments」を正本にしない。
+            // 代打・代走や守備交代画面を挟んだ直後は state が一部だけの状態に
+            // なっていることがあり、そのまま { ...assignments, 指:null } とすると
+            // 他の守備位置まで欠落して保存されてしまう。
+            const offenseSide = singleMode
+              ? (
+                  currentOnePersonOffenseSideRef.current ||
+                  getOnePersonSideByTopBottom(
+                    Boolean(mi?.isTop ?? isTop),
+                    await getSavedOnePersonFirstAttackSide()
+                  )
+                )
+              : null;
+
+            const canonicalTeam = offenseSide
+              ? await loadCanonicalOnePersonTeam(offenseSide)
+              : null;
+
+            const savedSideAssignments = offenseSide
+              ? await loadBestOnePersonLineupAssignments(offenseSide)
+              : {};
+
+            // チーム別データを最優先。
+            // 万一そこが空の場合だけ現在stateを保険として使う。
+            const baseAssignments =
+              countAssignedPositionsForOnePerson(savedSideAssignments) > 0
+                ? { ...savedSideAssignments }
+                : { ...assignments };
 
             // 1) 打順：DHの枠を「現在の投手」に置換
             const newOrder = [...battingOrder];
             newOrder[dhOrderIndex] = { id: pitcherId!, reason: "DH解除" };
 
-            // 2) 守備：指名打者を無効化（=DHなし）
-            const newAssignments = { ...assignments, 指: null };
+            // 2) 守備：9つの守備位置は完全に維持し、DHだけ解除
+            const newAssignments: Record<string, number | null> = {
+              ...baseAssignments,
+              指: null,
+            };
 
-            // 3) 反映＆保存（この画面で完結）
+            // 投手は必ず現在の投手を維持
+            newAssignments["投"] = pitcherId!;
+
+            // 3) 画面stateと通常キーへ反映
             setBattingOrder(newOrder);
             setAssignments(newAssignments);
+
             await localForage.setItem("battingOrder", newOrder);
-            await localForage.setItem("lineupAssignments", newAssignments);
-            await localForage.setItem("dhEnabledAtStart", false); // 守備画面でも“指”不可に
+            await localForage.setItem(
+              "lineupAssignments",
+              newAssignments
+            );
+            await localForage.setItem("dhEnabledAtStart", false);
+            await localForage.setItem("ohtaniRule", false);
 
-            // 4) ベンチ再計算（DH解除後は投手をスタメン集合に含めない）
-            const all = allPlayers.length ? allPlayers : players;
-            const starterIds = new Set(newOrder.map(e => e.id));
-            // ✅ スタメン画面の指定を唯一の情報源にする
-            const matchInfoForBench =
-              (await localForage.getItem<any>("matchInfo")) || {};
+            // 4) 1人モードでは必ず同じチーム側にも保存
+            let newBench: any[] = [];
 
-            const currentTeamId =
-              currentOffenseSide === "first"
-                ? matchInfoForBench?.firstBaseTeamId
-                : matchInfoForBench?.thirdBaseTeamId;
-
-            const benchOutIds: number[] =
-              currentTeamId
-                ? ((await localForage.getItem<number[]>(
-                    `startingBenchOutIds_${currentTeamId}`
-                  )) || [])
+            if (offenseSide) {
+              const teamPlayers = Array.isArray(canonicalTeam?.players)
+                ? canonicalTeam.players
                 : [];
-            const newBench = all.filter((pp: any) => !starterIds.has(pp.id) && !benchOutIds.includes(pp.id));
+
+              newBench = await buildOnePersonBenchPlayers(
+                offenseSide,
+                teamPlayers,
+                newOrder,
+                newAssignments
+              );
+
+              await localForage.setItem(
+                `onePerson.${offenseSide}.battingOrder`,
+                newOrder
+              );
+              await localForage.setItem(
+                `onePerson.${offenseSide}.lineupAssignments`,
+                newAssignments
+              );
+              await localForage.setItem(
+                `onePerson.${offenseSide}.benchPlayers`,
+                newBench
+              );
+
+              // DHに出した代打・代走は、DH解除により投手へ打順が置換されるため
+              // 守備位置未設定の pending 対象として残さない。
+              await localForage.removeItem(
+                `onePerson.${offenseSide}.pendingDefenseSetup`
+              );
+            } else {
+              // 通常モード用の従来互換
+              const all = allPlayers.length ? allPlayers : players;
+              const starterIds = new Set(newOrder.map((e) => Number(e.id)));
+              const assignmentIds = new Set(
+                Object.values(newAssignments)
+                  .map((v) => Number(v))
+                  .filter(Number.isFinite)
+              );
+
+              newBench = all.filter((pp: any) => {
+                const id = Number(pp?.id);
+                return (
+                  Number.isFinite(id) &&
+                  !starterIds.has(id) &&
+                  !assignmentIds.has(id)
+                );
+              });
+            }
+
             setBenchPlayers(newBench);
+            await localForage.setItem("benchPlayers", newBench);
+
+            localStorage.setItem(
+              "assignmentsVersion",
+              String(Date.now())
+            );
+            localStorage.setItem(
+              "battingOrderVersion",
+              String(Date.now())
+            );
 
             setShowDhDisableModal(false);
 
-            // もし今がDHの打席中なら、置換後の打者表示を最新化
+            // 解除後はDHの打順枠に入った投手を現在打者として維持
             setCurrentBatterIndex(dhOrderIndex);
             setIsLeadingBatter(true);
           };
