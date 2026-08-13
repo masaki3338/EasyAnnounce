@@ -2125,59 +2125,48 @@ if (pinchTexts.length === 1) {
 // （ヘッダー決定の直前に追加）
 
 
-// ✅ ヘッダーは「選手の交代」と「実際の守備位置変更」を別々に判定する。
-//
-//  1) 選手の交代だけ       → 「選手の交代をお知らせいたします。」
-//  2) 守備位置の変更だけ   → 「シートの変更をお知らせいたします。」
-//  3) 両方ある             → 「選手の交代並びにシートの変更をお知らせいたします。」
-//
-// result に本文が先に入っていることだけを理由に「選手の交代」と決めない。
-// これが、代打/代走・リエントリー・特殊処理を含むケースで
-// ヘッダーが使い分けられなくなる原因だった。
+// ✅ リエントリーが1つでもあれば、最初に「選手の交代」を必ず付ける。
+//    それ以外（通常のみ）のときは従来ルールのまま。
+/* ---- ヘッダー ---- */
+// ピンチ（代打/代走の「そのまま入り」）はこの時点で result に本文が入っている。
+// 本文行が1つでもあれば、必ず「選手の交代…」を先頭に付ける（リエントリー含む）。
 if (!skipHeader) {
-  const hasBodyLinesAlready = result.some((l) => {
-    const t = l.trim();
-    return !!t && !/お知らせいたします[。]$/.test(t);
-  });
+  const hasBodyLinesAlready = result.length > 0;
+  if (reentryOccurred || hasBodyLinesAlready) {
+    const alreadyHasHeader = result.some(l => /お知らせいたします[。]$/.test(l.trim()));
+    if (!alreadyHasHeader) {
+      result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
+    }
+  } else {
+    if (hasMixed || (hasReplace && hasShift)) {
+      // --- 前置き文（交代のみ / 交代＋シート変更）を切り替える ---
 
-  // 大谷ルール内部で発生する「投⇄指」だけの見かけ上の shift は、
-  // 守備位置変更（シート変更）として数えない。
-  const isOhtaniVirtualDhShift = (s: Extract<ChangeRecord, { type: "shift" }>) =>
-    ohtaniRule &&
-    ((s.fromPos === "投" && s.toPos === "指") ||
-     (s.fromPos === "指" && s.toPos === "投"));
+      // 大谷ルール時に発生する「投⇄指だけ」の shift はシート変更として数えない
+      const isOhtaniDhOnlyShift =
+        ohtaniRule &&
+        shift.length > 0 &&
+        shift.every(s =>
+          (s.fromPos === "投" && s.toPos === "指") ||
+          (s.fromPos === "指" && s.toPos === "投")
+        );
 
-  const hasRealShift = shift.some((s) => !isOhtaniVirtualDhShift(s));
+      // 実質シート変更があるか？（mixed は確実にシート変更。shift も原則シート変更）
+      const hasSeatChange =
+        mixed.length > 0 ||
+        (shift.length > 0 && !isOhtaniDhOnlyShift);
 
-  // replace = 選手だけ交代
-  // mixed   = 選手交代 + 守備位置変更
-  // reentry / 先行生成済み本文 = 選手交代を伴うアナウンス
-  const hasPlayerChange =
-    hasReplace ||
-    hasMixed ||
-    reentryOccurred ||
-    hasBodyLinesAlready;
+      // 前置き文を決定
+      const head = hasSeatChange
+        ? `${teamName}、選手の交代並びにシートの変更をお知らせいたします。`
+        : `${teamName}、選手の交代をお知らせいたします。`;
 
-  // shift = 同じ選手の守備位置変更
-  // mixed = 選手が替わり、かつ入る守備位置も変わる
-  const hasSeatChange = hasMixed || hasRealShift;
+      result.push(head);
 
-  let head = "";
-
-  if (hasPlayerChange && hasSeatChange) {
-    head = `${teamName}、選手の交代並びにシートの変更をお知らせいたします。`;
-  } else if (hasPlayerChange) {
-    head = `${teamName}、選手の交代をお知らせいたします。`;
-  } else if (hasSeatChange) {
-    head = `${teamName}、シートの変更をお知らせいたします。`;
-  }
-
-  if (head) {
-    // 特別処理で本文が先に作られていても、ヘッダーは必ず先頭へ。
-    const alreadyHasHeader = result.some((l) =>
-      /お知らせいたします[。]$/.test(l.trim())
-    );
-    if (!alreadyHasHeader) result.unshift(head);
+    } else if (hasReplace) {
+      result.push(`${teamName}、選手の交代をお知らせいたします。`);
+    } else if (hasShift) {
+      result.push(`${teamName}、シートの変更をお知らせいたします。`);
+    }
   }
 }
 
@@ -3438,7 +3427,7 @@ else if (historicalPinchReasonForShift) {
     return s.length > 0 && !isHeader(s) && !isLineup(s) && !isClosing(s);
   };
   const isPinchHead = (t: string) =>
-    /^((同じく)?先ほど(代打|代走|臨時代走)(いたしました|しました|に出ました))/.test(t.trim());
+    /^((同じく)?先ほど(代打|代走|臨時代走)(しました|いたしました|に出ました))/.test(t.trim());
 
   // 既存 result を分類して並べ替え
   const headers: string[] = [];
@@ -3525,6 +3514,67 @@ else if (historicalPinchReasonForShift) {
   result.splice(0, result.length, ...headers, ...chained, ...lineups, ...closings);
 }
 
+// ✅ 最終表示順：代打・代走・臨時代走の選手を必ず先に読む
+//
+// ポジション連結処理のあとにもう一度並べる。
+// これにより、たとえば
+//   「ファーストの横山くんに代わりまして…」
+//   「先ほど代打しました藤本くんがファースト…」
+// となっていても、最終表示は
+//   「先ほど代打しました藤本くんがファースト…」
+//   「ファーストの横山くんに代わりまして…」
+// の順になる。
+{
+  const isHeader = (t: string) =>
+    /お知らせいたします。$/.test(t.trim());
+
+  const isLineup = (t: string) =>
+    /^\d+番\s/.test(t.trim());
+
+  const isClosing = (t: string) =>
+    t.trim().endsWith("以上に代わります。");
+
+  const isRecentPinchLine = (t: string) =>
+    /^(同じく)?先ほど(代打|代走|臨時代走)(しました|いたしました|に出ました)/.test(
+      t.trim()
+    );
+
+  const headers: string[] = [];
+  const recentPinchBodies: string[] = [];
+  const normalBodies: string[] = [];
+  const lineups: string[] = [];
+  const closings: string[] = [];
+
+  for (const line of result) {
+    if (isHeader(line)) {
+      headers.push(line);
+    } else if (isLineup(line)) {
+      lineups.push(line);
+    } else if (isClosing(line)) {
+      closings.push(line);
+    } else if (isRecentPinchLine(line)) {
+      recentPinchBodies.push(line);
+    } else {
+      normalBodies.push(line);
+    }
+  }
+
+  result.splice(
+    0,
+    result.length,
+    ...headers,
+    ...recentPinchBodies,
+    ...normalBodies,
+    ...lineups,
+    ...closings
+  );
+
+  console.log("[ANN ORDER] recent pinch first", {
+    recentPinchBodies,
+    normalBodies,
+  });
+}
+
 // 🆕 中間行の終端補正：このあとに“本文行”が続く場合は「…に入ります。」→「、」
 {
   const isBody = (t: string) =>
@@ -3570,7 +3620,7 @@ else if (historicalPinchReasonForShift) {
     if (!isBody(line)) { lastReason = null; continue; }
 
     // 先頭が「先ほど◯◯いたしました…」または「先ほど◯◯に出ました…」かを判定
-    const m = line.match(/^先ほど(代打|代走|臨時代走)(?:いたしました|に出ました)/);
+    const m = line.match(/^先ほど(代打|代走|臨時代走)(?:しました|いたしました|に出ました)/);
     // 「先ほど…」以外の本文行が間に入っても、同じ理由の連続とみなす
     if (!m) { continue; }
 
@@ -3579,7 +3629,7 @@ else if (historicalPinchReasonForShift) {
     if (lastReason === reason) {
       // 2 行目以降：先頭を「同じく先ほど◯◯…」に置換
       result[i] = line.replace(
-        /^先ほど(代打|代走|臨時代走)((?:いたしました|に出ました))/,
+        /^先ほど(代打|代走|臨時代走)((?:しました|いたしました|に出ました))/,
         (_all, r, suf) => `同じく先ほど${r}${suf}`
       );
     }
@@ -3676,6 +3726,72 @@ else if (historicalPinchReasonForShift) {
       }
     }
 
+  }
+}
+
+// ============================================================
+// ✅ 複数本文の「入ります」統一
+//
+// ルール：
+// ・本文が2行以上ある場合、途中行では「入ります。」を使わない
+// ・途中行は「入り、」でつなぐ
+// ・最後の本文行だけ「入ります。」で締める
+//
+// 例：
+//   先ほど代打しました藤本くんがファーストに入ります。
+//   ファーストの横山くんに代わりまして、8番にピッチャーの髙城くんが入ります。
+// ↓
+//   先ほど代打しました藤本くんがファーストに入り、
+//   ファーストの横山くんに代わりまして、8番にピッチャーの髙城くんが入ります。
+// ============================================================
+{
+  const isHeader = (t: string) =>
+    /お知らせいたします。$/.test(t.trim());
+
+  const isLineup = (t: string) =>
+    /^\d+番\s/.test(t.trim());
+
+  const isClosing = (t: string) =>
+    t.trim().endsWith("以上に代わります。");
+
+  const bodyIndexes = result
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(({ line }) =>
+      line.length > 0 &&
+      !isHeader(line) &&
+      !isLineup(line) &&
+      !isClosing(line)
+    )
+    .map(({ index }) => index);
+
+  if (bodyIndexes.length >= 2) {
+    const lastBodyIndex = bodyIndexes[bodyIndexes.length - 1];
+
+    for (const index of bodyIndexes) {
+      let line = result[index].trim();
+
+      // 最後の本文は「入ります。」で締める側なので触らない
+      if (index === lastBodyIndex) continue;
+
+      // 「～に入ります。」「～へ入ります。」→「～に入り、」「～へ入り、」
+      line = line
+        .replace(/に入ります。$/, "に入り、")
+        .replace(/へ入ります。$/, "へ入り、");
+
+      // 「～が入ります。」→「～が入り、」
+      line = line.replace(/が入ります。$/, "が入り、");
+
+      // 「～入ります。」だけが残る一般形
+      line = line.replace(/入ります。$/, "入り、");
+
+      result[index] = line;
+    }
+
+    console.log("[ANN ENDING] middle lines use '入り、'", {
+      bodyIndexes,
+      lastBodyIndex,
+      bodyLines: bodyIndexes.map(i => result[i]),
+    });
   }
 }
 
@@ -7148,86 +7264,31 @@ if (!fromIsField && toPos !== BENCH) {
       }
     }
 
-    // ★ 投手（投）を他守備にドロップ → DH解除 ＆ 指名打者の打順に投手を入れる
-    // （大谷ルールでも通常DHでも同じ扱いにする）
-    if (srcFrom === "投" && toPos !== BENCH && toPos !== "投" && assignments?.["指"]) {
-      setAssignments((prev) => {
-        setOhtaniRule(false);
-
-        const pitcherId = prev["投"];
-        if (typeof pitcherId !== "number") return prev;
-
-        const replacedId = prev[toPos] ?? null; // 移動先にいた選手（いなければnull）
-        const next: any = { ...prev };
-
-        // 1) 守備：投手を toPos へ、投の枠には移動先の選手（or null）を入れる（入替）
-        next[toPos] = pitcherId;
-        next["投"] = replacedId;
-
-        // 2) DH解除：指名打者を消す（DH枠は空に）
-        next["指"] = null;
-
-        // ✅ 追加：大谷ルール時は「フィールド図が打順側DHスロットを見る」ので、そこも空にする
-        if (ohtaniRule) {
-          const dhStarterId =
-            typeof initialAssignments?.["指"] === "number" ? (initialAssignments["指"] as number) : null;
-
-          let dhSlotIndex = -1;
-          if (dhStarterId != null) {
-            dhSlotIndex = startingOrderRef.current.findIndex((e) => e.id === dhStarterId);
-            if (dhSlotIndex < 0) dhSlotIndex = battingOrder.findIndex((e) => e.id === dhStarterId);
-          }
-
-          if (dhSlotIndex >= 0) {
-            // フィールド図に使っている draft を空にしてDH表示を確実に消す
-            setBattingOrderDraft((prevDraft) => {
-              const base = (prevDraft?.length ? [...prevDraft] : [...battingOrder]);
-              if (base[dhSlotIndex]) base[dhSlotIndex] = { ...base[dhSlotIndex], id: 0 };
-              return base;
-            });
-
-            // 表示ブレ防止：DH枠の置換も消す（※この後で投手を入れるなら、ここで消してOK）
-            setBattingReplacements((prevRep) => {
-              const n = { ...prevRep } as any;
-              delete n[dhSlotIndex];
-              return n;
-            });
-          }
-        }
-
-        // 3) DH解除フラグ（既存の流れに合わせる）
-        setDhEnabledAtStart(false);
-        setDhDisableDirty(true);
-        setPendingDisableDH(false);
-        if (ohtaniRule) setOhtaniRule(false);
-
-        // 4) 「指名打者の打順」に投手を入れる
-        //    DHの打順スロット＝ initialAssignments["指"] の選手がいた打順
-        const dhStarterId =
-          typeof initialAssignments?.["指"] === "number" ? (initialAssignments["指"] as number) : null;
-
-        let dhSlotIndex = -1;
-        if (dhStarterId != null) {
-          dhSlotIndex = startingOrderRef.current.findIndex((e) => e.id === dhStarterId);
-          if (dhSlotIndex < 0) dhSlotIndex = battingOrder.findIndex((e) => e.id === dhStarterId);
-        }
-        const pitcherPlayer = teamPlayers.find((p) => p.id === pitcherId);
-        if (pitcherPlayer && dhSlotIndex >= 0) {
-          setBattingReplacements((prevRep) => ({
-            ...prevRep,
-            [dhSlotIndex]: pitcherPlayer,
-          }));
-        }
-
-        // 5) ログ
-        updateLog("投", pitcherId, toPos, replacedId);
-
-        return next;
+    // ✅ DH制：投手を他の守備位置へ動かしてもDHは解除しない
+    //
+    // 例：
+    //   投手A、センターB、DH C
+    //   Aをセンターへドラッグ
+    //   → センターA、投手B、DH C のまま
+    //
+    // 投手の守備位置変更は、下の通常のフィールド↔フィールド入替処理に任せる。
+    // DH解除は
+    //   ・「DH解除」ボタン
+    //   ・通常DHでDH選手自身を守備へ入れる
+    // の場合だけ行う。
+    if (
+      srcFrom === "投" &&
+      toPos !== BENCH &&
+      toPos !== "投" &&
+      typeof assignments?.["指"] === "number"
+    ) {
+      console.log("[DH KEEP] pitcher moved to another field position", {
+        from: srcFrom,
+        to: toPos,
+        pitcherId: assignments?.["投"] ?? null,
+        dhId: assignments?.["指"] ?? null,
       });
-
-      setHoverPos(null);
-      setDraggingFrom(null);
-      return;
+      // returnしない。通常のフィールド入替処理へ進む。
     }
 
 // ★ DHを他守備にドロップ
@@ -7397,37 +7458,39 @@ if (srcFrom === "指" && toPos !== BENCH && toPos !== "指") {
         newAssignments[toPos] = fromId ?? null;
         newAssignments[fromPos] = toId ?? null;
 
-        // ✅ 大谷ルールON：投手（投）を他守備に動かしたらDH解除扱いにして「指」を空にする
-        //   ＝ フィールド図のDH選手を無しにする（大谷ルールなしと同じ動きに寄せる）
-        const dhActive = typeof prev["指"] === "number" && prev["指"] != null;
+        // 操作前のDHを退避。投手側の守備移動では絶対に変更しない。
+        const dhIdBeforeFieldSwap =
+          typeof prev["指"] === "number"
+            ? Number(prev["指"])
+            : null;
 
-        if (ohtaniRule && dhActive && fromPos === "投" && toPos !== "投") {
-          // フィールド図：DHを空に
-          newAssignments["指"] = null;
+        // ✅ 投手を別守備へ移動してもDHは維持する。
+        // 「投→中」「投→一」などは通常の守備位置入替であり、
+        // DH解除条件にはしない。
+        //
+        // 大谷ルールでも投手側とDH側は別枠として扱うため、
+        // 投手側の守備位置変更だけでは assignments["指"] を変更しない。
+        if (
+          fromPos === "投" &&
+          toPos !== "投" &&
+          dhIdBeforeFieldSwap != null
+        ) {
+          newAssignments["指"] = dhIdBeforeFieldSwap;
 
-          // 解除状態フラグ（既存のDH解除ボタンと同じ扱い）
+          // 守備位置を動かしただけなのでDH解除フラグも立てない
           setPendingDisableDH(false);
-          setDhDisableDirty(true);
-          setDhEnabledAtStart(false);
+          setDhDisableDirty(false);
+          setDhEnabledAtStart(true);
 
-          // （任意）大谷ルール時にフィールド図が打順側DHスロットを見てしまう場合の保険
-          // → DH表示を確実に消したいなら併用
-          const dhStarterId = initialAssignments?.["指"];
-          const dhSlotIndex =
-            typeof dhStarterId === "number"
-              ? startingOrderRef.current.findIndex(e => e.id === dhStarterId)
-              : -1;
-
-          if (dhSlotIndex >= 0) {
-            setBattingOrderDraft(prevDraft => {
-              const base = (prevDraft?.length ? [...prevDraft] : [...battingOrder]);
-              if (base[dhSlotIndex]) base[dhSlotIndex] = { ...base[dhSlotIndex], id: 0 }; // 0=空扱い
-              return base;
-            });
-          }
+          console.log("[DH KEEP] field swap preserves DH", {
+            fromPos,
+            toPos,
+            movedPitcherId: fromId ?? null,
+            newPitcherId: toId ?? null,
+            preservedDhId: dhIdBeforeFieldSwap,
+          });
         }
 
-        // （この下に既存のDH解除判定などが続く想定）
         // ※ ここで使っている draggingFrom を fromPos に置き換えるのがポイント
 
         // 例：以前位置保存（ここも fromPos）
