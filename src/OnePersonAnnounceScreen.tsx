@@ -501,6 +501,15 @@ const OnePersonAnnounceScreen: React.FC<OnePersonAnnounceScreenProps> = ({
     const opener = onOpenDefenseChange ?? onChangeDefense ?? onSwitchToDefense;
 
     if (typeof opener === "function") {
+      // ✅ 守備交代画面を開く直前のバージョンを記録。
+      // DefenseChange の「交代確定」でこの値が更新されたら、
+      // 攻撃画面側の state を onePerson チーム専用キーから読み直す。
+      defenseReturnAssignmentsVersionRef.current =
+        localStorage.getItem("assignmentsVersion") || "";
+      defenseReturnBattingOrderVersionRef.current =
+        localStorage.getItem("battingOrderVersion") || "";
+      defenseReturnSyncPendingRef.current = true;
+
       await opener();
       return;
     }
@@ -530,6 +539,12 @@ const OnePersonAnnounceScreen: React.FC<OnePersonAnnounceScreenProps> = ({
   // 保存時は必ずこの ref の side に保存する。
   const currentOnePersonOffenseSideRef = useRef<"first" | "third" | null>(null);
 
+  // ✅ 守備交代画面から戻った時の再同期用
+  // OnePersonAnnounceScreen は画面切替時にアンマウントされない経路があるため、
+  // 初回 useEffect(loadData) だけでは守備交代確定後の最新打順・守備位置を拾えない。
+  const defenseReturnSyncPendingRef = useRef(false);
+  const defenseReturnAssignmentsVersionRef = useRef<string>("");
+  const defenseReturnBattingOrderVersionRef = useRef<string>("");
 
 
   const [announcement, setAnnouncement] = useState<React.ReactNode>(null);
@@ -4598,6 +4613,31 @@ const loadBestOnePersonLineupAssignments = async (
   const teamId =
     side === "first" ? mi?.firstBaseTeamId : mi?.thirdBaseTeamId;
 
+  // ✅ 守備交代で「交代確定」されたデータを最優先する。
+  //
+  // 以前は「割り当て数が多いデータ」を best として選んでいたため、
+  // 大谷ルール解除後でも、古い「投＋指」を含む10枠データが
+  // 確定後の正しい9枠データより優先されてしまっていた。
+  //
+  // DefenseChange は確定時に confirmedLineupAssignments を保存しているので、
+  // これが存在する間は現在の正式な守備位置としてそのまま使用する。
+  const confirmed =
+    (await localForage.getItem<Record<string, number | null>>(
+      `onePerson.${side}.confirmedLineupAssignments`
+    )) || {};
+
+  const confirmedCount = countAssignedPositionsForOnePerson(confirmed);
+
+  if (confirmedCount > 0) {
+    console.log("[ONEPERSON LINEUP PRIORITY] confirmed", {
+      side,
+      confirmedCount,
+      confirmed,
+    });
+    return confirmed;
+  }
+
+  // 確定データがまだ無い試合開始直後だけ、従来の候補から選ぶ。
   const keys = [
     `onePerson.${side}.lineupAssignments`,
     `onePerson.${side}.assignments`,
@@ -4619,6 +4659,12 @@ const loadBestOnePersonLineupAssignments = async (
       bestCount = count;
     }
   }
+
+  console.log("[ONEPERSON LINEUP PRIORITY] fallback", {
+    side,
+    bestCount,
+    best,
+  });
 
   return best || {};
 };
@@ -5914,6 +5960,67 @@ const loadOnePersonTeamForHalf = async (
   }
 
 };
+
+// ✅ 守備交代確定後、攻撃画面の打順・守備位置を即時再読み込みする。
+// DefenseChange 側は確定時に assignmentsVersion / battingOrderVersion を更新している。
+// 同一タブでは storage イベントが発火しないため、守備交代を開いている間だけ短時間監視する。
+useEffect(() => {
+  const timer = window.setInterval(() => {
+    if (!defenseReturnSyncPendingRef.current) return;
+
+    const currentAssignmentsVersion =
+      localStorage.getItem("assignmentsVersion") || "";
+    const currentBattingOrderVersion =
+      localStorage.getItem("battingOrderVersion") || "";
+
+    const assignmentsChanged =
+      currentAssignmentsVersion !==
+      defenseReturnAssignmentsVersionRef.current;
+
+    const battingOrderChanged =
+      currentBattingOrderVersion !==
+      defenseReturnBattingOrderVersionRef.current;
+
+    if (!assignmentsChanged && !battingOrderChanged) return;
+
+    // 再読み込み自身が version を更新するので、先に監視を解除する。
+    defenseReturnSyncPendingRef.current = false;
+
+    void (async () => {
+      try {
+        const mi = (await localForage.getItem<any>("matchInfo")) || {};
+        if (mi?.announcementMode !== "single") return;
+
+        const savedFirstAttackSide =
+          await getSavedOnePersonFirstAttackSide();
+
+        // DefenseChange 側で matchInfo.isDefense=true にされるため、
+        // 表裏は画面stateの isTop を正として現在攻撃側を読み直す。
+        await loadOnePersonTeamForHalf(
+          Boolean(isTop),
+          savedFirstAttackSide
+        );
+
+        console.log("[ONEPERSON DEFENSE RETURN SYNC] reloaded", {
+          isTop,
+          offenseSide:
+            currentOnePersonOffenseSideRef.current,
+          assignmentsVersion: currentAssignmentsVersion,
+          battingOrderVersion: currentBattingOrderVersion,
+        });
+      } catch (error) {
+        console.warn(
+          "[ONEPERSON DEFENSE RETURN SYNC] failed",
+          error
+        );
+      }
+    })();
+  }, 200);
+
+  return () => {
+    window.clearInterval(timer);
+  };
+}, [isTop]);
 
 const switchHalfInOnePersonMode = async () => {
   const savedFirstAttackSide = await getSavedOnePersonFirstAttackSide();
