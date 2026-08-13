@@ -2125,48 +2125,59 @@ if (pinchTexts.length === 1) {
 // （ヘッダー決定の直前に追加）
 
 
-// ✅ リエントリーが1つでもあれば、最初に「選手の交代」を必ず付ける。
-//    それ以外（通常のみ）のときは従来ルールのまま。
-/* ---- ヘッダー ---- */
-// ピンチ（代打/代走の「そのまま入り」）はこの時点で result に本文が入っている。
-// 本文行が1つでもあれば、必ず「選手の交代…」を先頭に付ける（リエントリー含む）。
+// ✅ ヘッダーは「選手の交代」と「実際の守備位置変更」を別々に判定する。
+//
+//  1) 選手の交代だけ       → 「選手の交代をお知らせいたします。」
+//  2) 守備位置の変更だけ   → 「シートの変更をお知らせいたします。」
+//  3) 両方ある             → 「選手の交代並びにシートの変更をお知らせいたします。」
+//
+// result に本文が先に入っていることだけを理由に「選手の交代」と決めない。
+// これが、代打/代走・リエントリー・特殊処理を含むケースで
+// ヘッダーが使い分けられなくなる原因だった。
 if (!skipHeader) {
-  const hasBodyLinesAlready = result.length > 0;
-  if (reentryOccurred || hasBodyLinesAlready) {
-    const alreadyHasHeader = result.some(l => /お知らせいたします[。]$/.test(l.trim()));
-    if (!alreadyHasHeader) {
-      result.unshift(`${teamName}、選手の交代をお知らせいたします。`);
-    }
-  } else {
-    if (hasMixed || (hasReplace && hasShift)) {
-      // --- 前置き文（交代のみ / 交代＋シート変更）を切り替える ---
+  const hasBodyLinesAlready = result.some((l) => {
+    const t = l.trim();
+    return !!t && !/お知らせいたします[。]$/.test(t);
+  });
 
-      // 大谷ルール時に発生する「投⇄指だけ」の shift はシート変更として数えない
-      const isOhtaniDhOnlyShift =
-        ohtaniRule &&
-        shift.length > 0 &&
-        shift.every(s =>
-          (s.fromPos === "投" && s.toPos === "指") ||
-          (s.fromPos === "指" && s.toPos === "投")
-        );
+  // 大谷ルール内部で発生する「投⇄指」だけの見かけ上の shift は、
+  // 守備位置変更（シート変更）として数えない。
+  const isOhtaniVirtualDhShift = (s: Extract<ChangeRecord, { type: "shift" }>) =>
+    ohtaniRule &&
+    ((s.fromPos === "投" && s.toPos === "指") ||
+     (s.fromPos === "指" && s.toPos === "投"));
 
-      // 実質シート変更があるか？（mixed は確実にシート変更。shift も原則シート変更）
-      const hasSeatChange =
-        mixed.length > 0 ||
-        (shift.length > 0 && !isOhtaniDhOnlyShift);
+  const hasRealShift = shift.some((s) => !isOhtaniVirtualDhShift(s));
 
-      // 前置き文を決定
-      const head = hasSeatChange
-        ? `${teamName}、選手の交代並びにシートの変更をお知らせいたします。`
-        : `${teamName}、選手の交代をお知らせいたします。`;
+  // replace = 選手だけ交代
+  // mixed   = 選手交代 + 守備位置変更
+  // reentry / 先行生成済み本文 = 選手交代を伴うアナウンス
+  const hasPlayerChange =
+    hasReplace ||
+    hasMixed ||
+    reentryOccurred ||
+    hasBodyLinesAlready;
 
-      result.push(head);
+  // shift = 同じ選手の守備位置変更
+  // mixed = 選手が替わり、かつ入る守備位置も変わる
+  const hasSeatChange = hasMixed || hasRealShift;
 
-    } else if (hasReplace) {
-      result.push(`${teamName}、選手の交代をお知らせいたします。`);
-    } else if (hasShift) {
-      result.push(`${teamName}、シートの変更をお知らせいたします。`);
-    }
+  let head = "";
+
+  if (hasPlayerChange && hasSeatChange) {
+    head = `${teamName}、選手の交代並びにシートの変更をお知らせいたします。`;
+  } else if (hasPlayerChange) {
+    head = `${teamName}、選手の交代をお知らせいたします。`;
+  } else if (hasSeatChange) {
+    head = `${teamName}、シートの変更をお知らせいたします。`;
+  }
+
+  if (head) {
+    // 特別処理で本文が先に作られていても、ヘッダーは必ず先頭へ。
+    const alreadyHasHeader = result.some((l) =>
+      /お知らせいたします[。]$/.test(l.trim())
+    );
+    if (!alreadyHasHeader) result.unshift(head);
   }
 }
 
@@ -3427,7 +3438,7 @@ else if (historicalPinchReasonForShift) {
     return s.length > 0 && !isHeader(s) && !isLineup(s) && !isClosing(s);
   };
   const isPinchHead = (t: string) =>
-    /^((同じく)?先ほど(代打|代走|臨時代走)(いたしました|に出ました))/.test(t.trim());
+    /^((同じく)?先ほど(代打|代走|臨時代走)(いたしました|しました|に出ました))/.test(t.trim());
 
   // 既存 result を分類して並べ替え
   const headers: string[] = [];
