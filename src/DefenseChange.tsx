@@ -495,6 +495,42 @@ const isReentryBySameOrderDeep = (
   let  shift    = records.filter(r => r.type === "shift")   as Extract<ChangeRecord, {type:"shift"}>[];
   let  mixed    = records.filter(r => r.type === "mixed")   as Extract<ChangeRecord, {type:"mixed"}>[];
 
+  // ✅ 大谷ルール開始時の「投手 → 指名打者」は実際の守備変更ではない。
+  // 投手役とDH役は別枠として扱うため、投手交代後も元投手のDH役は継続中。
+  // records上に疑似的な shift「投→指」が作られても、アナウンス対象から除外する。
+  {
+    const ohtaniStarterId =
+      typeof initialAssignments?.["投"] === "number" &&
+      typeof initialAssignments?.["指"] === "number" &&
+      Number(initialAssignments["投"]) === Number(initialAssignments["指"])
+        ? Number(initialAssignments["投"])
+        : null;
+
+    if (ohtaniStarterId != null) {
+      shift = shift.filter((s) => {
+        const fromSym =
+          (posNameToSymbol as any)[s.fromPos] ?? normalizeAnnouncePos(s.fromPos);
+        const toSym =
+          (posNameToSymbol as any)[s.toPos] ?? normalizeAnnouncePos(s.toPos);
+
+        const isPseudoPitcherToDhShift =
+          Number(s.player?.id) === ohtaniStarterId &&
+          fromSym === "投" &&
+          toSym === "指";
+
+        if (isPseudoPitcherToDhShift) {
+          console.log("[OHTANI] suppress pseudo P->DH shift", {
+            playerId: s.player?.id,
+            fromPos: s.fromPos,
+            toPos: s.toPos,
+          });
+        }
+
+        return !isPseudoPitcherToDhShift;
+      });
+    }
+  }
+
   /* ---------- 文言生成用バッファ ---------- */
   const result: string[] = [];
   const lineupLines: {order:number; text:string}[] = [];
@@ -3056,7 +3092,52 @@ const isDhDisablePitcherJoinsBattingOrder =
   normalizeAnnouncePos(r.toPos) === "投" &&
   r.order > 0;
 
-if (isDhDisablePitcherJoinsBattingOrder) {
+// ✅ DH解除時：画面を開いた時点の投手本人が、投手以外の守備位置へ移るケース。
+// 例：
+//   ファーストの岡田くんに代わりまして、
+//   ピッチャーの藤田くんがファースト、
+//   指名打者の今澤くんがピッチャーに入ります。
+//
+// DH解除後は assignments["指"] が null になるため、
+// 「開始時にDHあり」かつ「現在DHなし」で、このケースを限定する。
+const dhWasActiveAtOpen =
+  typeof initialAssignments?.["指"] === "number";
+
+const dhIsDisabledNow =
+  assignments?.["指"] == null;
+
+const toPosForDhPitcherMove =
+  normalizeAnnouncePos(r.toPos);
+
+const isDhDisableOriginalPitcherMovesToField =
+  pitcherIdAtOpenForDhJoin != null &&
+  dhWasActiveAtOpen &&
+  dhIsDisabledNow &&
+  Number(r.to.id) === pitcherIdAtOpenForDhJoin &&
+  toPosForDhPitcherMove !== "投" &&
+  toPosForDhPitcherMove !== "指";
+
+if (isDhDisableOriginalPitcherMovesToField) {
+  const toLabel =
+    posJP[toPosForDhPitcherMove as keyof typeof posJP] ??
+    toPosForDhPitcherMove;
+
+  // この後に「指名打者の○○くんがピッチャーに入ります」が続くため、
+  // 元投手の守備移動は必ず「～がファースト、」の形にする。
+  result.push(
+    `${head}ピッチャーの${nameWithHonor(r.to)}が${toLabel}、`
+  );
+
+  console.log("[DH DISABLE ANN] original pitcher moves to field", {
+    fromId: r.from.id,
+    fromPos: r.fromPos,
+    pitcherId: r.to.id,
+    toPos: r.toPos,
+    toLabel,
+    order: r.order,
+  });
+}
+else if (isDhDisablePitcherJoinsBattingOrder) {
   addReplaceLine(
     `${head}${r.order}番にピッチャーの${nameWithHonor(r.to)}が入ります`,
     i === mixed.length - 1 && shift.length === 0
@@ -3773,16 +3854,19 @@ else if (historicalPinchReasonForShift) {
       // 最後の本文は「入ります。」で締める側なので触らない
       if (index === lastBodyIndex) continue;
 
-      // 「～に入ります。」「～へ入ります。」→「～に入り、」「～へ入り、」
+      // ✅ 最後以外の本文では、もともと「入ります」で終わる行だけ
+      // 「入り、」へ変更する。
+      // 「○○くんがファースト、」のように、すでに守備位置＋読点で
+      // 終わっている文はそのままにする。
       line = line
-        .replace(/に入ります。$/, "に入り、")
-        .replace(/へ入ります。$/, "へ入り、");
+        .replace(/に入ります。?$/, "に入り、")
+        .replace(/へ入ります。?$/, "へ入り、")
+        .replace(/が入ります。?$/, "が入り、")
+        .replace(/入ります。?$/, "入り、");
 
-      // 「～が入ります。」→「～が入り、」
-      line = line.replace(/が入ります。$/, "が入り、");
-
-      // 「～入ります。」だけが残る一般形
-      line = line.replace(/入ります。$/, "入り、");
+      // 念のため、中間本文に残った「入ります」はすべて「入り」へ統一。
+      // これにより1つのアナウンス内で「入ります」は最後の本文だけになる。
+      line = line.replace(/入ります/g, "入り");
 
       result[index] = line;
     }
