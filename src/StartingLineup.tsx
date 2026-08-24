@@ -193,9 +193,11 @@ const StartingLineup = () => {
    * --------------------------- */
 
   // タッチ（スマホ）用：ドラッグ対象保持
-  const [touchDrag, setTouchDrag] = useState<{ playerId: number; fromPos?: string } | null>(
-    null
-  );
+  const [touchDrag, setTouchDrag] = useState<{
+    playerId: number;
+    fromPos?: string;
+    kind?: "player" | "order" | "swapPos";
+  } | null>(null);
 
   // ドラッグ中の選手ID／ホバー中のターゲット
   const [draggingPlayerId, setDraggingPlayerId] = useState<number | null>(null);
@@ -1314,7 +1316,7 @@ const changePositionByBattingIndex = (targetIndex: number, nextPos: string) => {
       e.dataTransfer.setData("text", `swapPos:${playerId}:${token}`);
     } catch {}
 
-    setTouchDrag((prev) => prev ?? { playerId });
+    setTouchDrag((prev) => prev ?? { playerId, kind: "swapPos" });
     setDragKind("swapPos");
 
     const cleanup = () => {
@@ -1933,90 +1935,162 @@ useEffect(() => {
   }, [extraPositionMap]);
 
   /**
-   * グローバルtouchend：
-   * 指を離した位置の守備ラベルを自動検出して入替（swapPos）
-   * ※元仕様をそのまま維持
+   * iPhone / iPad 用のタッチDnD。
+   * touchend は「指を離した先」ではなく「触り始めた要素」に届くため、
+   * window で最終座標を取得し elementFromPoint() で移動先を判定する。
    */
   useEffect(() => {
-    const dropTo = (targetPlayerId: number) => {
-      if (!touchDrag || !targetPlayerId) {
+    if (!isTouchDevice()) return;
+
+    const makeTouchFakeEvent = () =>
+      makeFakeDragEvent({
+        playerId: String(touchDrag?.playerId ?? ""),
+        battingPlayerId: String(touchDrag?.playerId ?? ""),
+        "text/plain": String(touchDrag?.playerId ?? ""),
+        fromPosition: touchDrag?.fromPos ?? "",
+        dragKind:
+          touchDrag?.kind === "swapPos"
+            ? "swapPos"
+            : touchDrag?.kind === "order"
+              ? "order"
+              : "",
+      });
+
+    const routeTouchDrop = (x: number, y: number) => {
+      if (!touchDrag) return;
+
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      if (!el) {
         setTouchDrag(null);
+        setDraggingPlayerId(null);
+        setDragKind(null);
         return;
       }
-      const fake = {
-        preventDefault: () => {},
-        stopPropagation: () => {},
-        dataTransfer: {
-          getData: (key: string) => {
-            if (key === "dragKind") return "swapPos";
-            if (key === "swapSourceId" || key === "text/plain")
-              return String(touchDrag.playerId);
-            if (key === "swapToken") return swapTokenRef.current || "";
-            return "";
-          },
-        },
-      } as unknown as React.DragEvent<HTMLSpanElement>;
 
-      handleDropToPosSpan(fake, targetPlayerId);
-      hoverTargetRef.current = null;
+      // 守備位置ラベル同士の入替は従来処理を優先
+      const posLabel = el.closest('[data-role="poslabel"]') as HTMLElement | null;
+      if ((touchDrag.kind === "swapPos" || dragKind === "swapPos") && posLabel) {
+        const targetPlayerId = Number(posLabel.getAttribute("data-player-id") || 0);
+        if (targetPlayerId) {
+          const fake = {
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            dataTransfer: {
+              getData: (key: string) => {
+                if (key === "dragKind") return "swapPos";
+                if (key === "swapSourceId" || key === "text/plain")
+                  return String(touchDrag.playerId);
+                if (key === "swapToken") return swapTokenRef.current || "";
+                return "";
+              },
+            },
+          } as unknown as React.DragEvent<HTMLSpanElement>;
+          handleDropToPosSpan(fake, targetPlayerId);
+        }
+        setTouchDrag(null);
+        setDraggingPlayerId(null);
+        setDragKind(null);
+        return;
+      }
+
+      const zone = el.closest('[data-drop-zone]') as HTMLElement | null;
+      const fake = makeTouchFakeEvent();
+
+      if (zone) {
+        const kind = zone.dataset.dropZone;
+
+        if (kind === "position") {
+          const pos = zone.dataset.position;
+          if (pos) handleDropToPosition(fake, pos);
+        } else if (kind === "batting") {
+          const idx = Number(zone.dataset.battingIndex);
+          if (Number.isFinite(idx)) {
+            const targetPlayerId = Number(zone.dataset.playerId || 0) || null;
+            handleDropToBattingOrder(fake, idx, targetPlayerId);
+          }
+        } else if (kind === "bench") {
+          handleDropToBench(fake);
+        } else if (kind === "benchOut") {
+          handleDropToBenchOut(fake);
+        } else if (kind === "dh") {
+          handleDropToDhArea(fake);
+        }
+      }
+
+      setHoverPosKey(null);
+      setHoverOrderPlayerId(null);
       setTouchDrag(null);
-    };
-
-    const pickByPoint = (x: number, y: number) => {
-      const el = document.elementFromPoint(x, y) as HTMLElement | null;
-      const t = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as
-        | HTMLElement
-        | null;
-      const pid = t ? Number(t.getAttribute("data-player-id")) : 0;
-      if (pid) dropTo(pid);
-      else setTouchDrag(null);
+      setDraggingPlayerId(null);
+      setDragKind(null);
     };
 
     const onTouchMove = (ev: TouchEvent) => {
-      const t = ev.touches && ev.touches[0];
+      if (!touchDrag) return;
+      const t = ev.touches?.[0];
       if (!t) return;
+
       lastTouchRef.current = { x: t.clientX, y: t.clientY };
+
+      // ドラッグ中に画面スクロールへ奪われるのを防ぐ
+      if (ev.cancelable) ev.preventDefault();
+
       const el = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null;
-      const h = el?.closest('[data-role="poslabel"], [data-role="posrow"]') as
-        | HTMLElement
-        | null;
-      const pid = h ? Number(h.getAttribute("data-player-id")) : 0;
-      if (pid) hoverTargetRef.current = pid;
+      const zone = el?.closest('[data-drop-zone]') as HTMLElement | null;
+      const kind = zone?.dataset.dropZone;
+
+      if (kind === "position") {
+        setHoverPosKey(zone?.dataset.position ?? null);
+      } else {
+        setHoverPosKey(null);
+      }
+
+      if (kind === "batting") {
+        const pid = Number(zone?.dataset.playerId || 0);
+        const idx = Number(zone?.dataset.battingIndex || 0);
+        setHoverOrderPlayerId(pid || -(idx + 1));
+      } else {
+        setHoverOrderPlayerId(null);
+      }
     };
 
     const onTouchEnd = (ev: TouchEvent) => {
       if (!touchDrag) return;
-      const pid = hoverTargetRef.current;
-      if (pid) return dropTo(pid);
 
-      const t = ev.changedTouches && ev.changedTouches[0];
-      if (!t) return setTouchDrag(null);
+      const t = ev.changedTouches?.[0];
+      const x = t?.clientX ?? lastTouchRef.current?.x;
+      const y = t?.clientY ?? lastTouchRef.current?.y;
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          pickByPoint(t.clientX, t.clientY);
-        });
-      });
+      if (typeof x !== "number" || typeof y !== "number") {
+        setTouchDrag(null);
+        setDraggingPlayerId(null);
+        setDragKind(null);
+        return;
+      }
+
+      if (ev.cancelable) ev.preventDefault();
+
+      // Safariでtouchend直後のhit-testが安定するよう1フレーム後に判定
+      requestAnimationFrame(() => routeTouchDrop(x, y));
     };
 
-    const onDragEnd = (_ev: DragEvent) => {
-      if (!touchDrag) return;
-      const pid = hoverTargetRef.current;
-      if (pid) return dropTo(pid);
-      const p = lastTouchRef.current;
-      if (p) pickByPoint(p.x, p.y);
-      else setTouchDrag(null);
+    const onTouchCancel = () => {
+      setHoverPosKey(null);
+      setHoverOrderPlayerId(null);
+      setTouchDrag(null);
+      setDraggingPlayerId(null);
+      setDragKind(null);
     };
 
-    window.addEventListener("touchmove", onTouchMove, { passive: true, capture: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
     window.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
-    window.addEventListener("dragend", onDragEnd, { passive: true, capture: true });
+    window.addEventListener("touchcancel", onTouchCancel, { passive: true, capture: true });
+
     return () => {
       window.removeEventListener("touchmove", onTouchMove, true);
       window.removeEventListener("touchend", onTouchEnd, true);
-      window.removeEventListener("dragend", onDragEnd, true);
+      window.removeEventListener("touchcancel", onTouchCancel, true);
     };
-  }, [touchDrag]);
+  }, [touchDrag, dragKind, assignments, battingOrder, extraPositionMap]);
 
   /**
    * 初期データロード（starting***優先 → フォールバック）
@@ -2397,7 +2471,9 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
             return (
               <div
                 key={pos}
-                draggable={!!player}
+                data-drop-zone="position"
+                data-position={pos}
+                draggable={!isTouchDevice() && !!player}
                 onDragStart={(e) => player && handleDragStart(e, player.id, pos)}
                 onDragEnter={() => setHoverPosKey(pos)}
                 onDragLeave={() => setHoverPosKey((v) => (v === pos ? null : v))}
@@ -2406,35 +2482,11 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   handleDropToPosition(e, pos);
                   setHoverPosKey(null);
                 }}
-                onTouchStart={() => player && setTouchDrag({ playerId: player.id, fromPos: pos })}
-                onTouchEnd={(ev) => {
-                  if (!touchDrag) return;
-
-                  const t = ev.changedTouches?.[0];
-                  const x = t?.clientX ?? lastTouchRef.current?.x ?? 0;
-                  const y = t?.clientY ?? lastTouchRef.current?.y ?? 0;
-
-                  const el = document.elementFromPoint(x, y) as HTMLElement | null;
-                  const droppedOnBench =
-                    !!benchDropRef.current &&
-                    !!el &&
-                    benchDropRef.current.contains(el);
-
-                  const fake = makeFakeDragEvent({
-                    playerId: String(touchDrag.playerId),
-                    "text/plain": String(touchDrag.playerId),
-                    fromPosition: touchDrag.fromPos ?? "",
-                  });
-
-                  // スマホで DH → ベンチ入り選手 の時だけ、守備位置処理ではなくベンチ処理に送る
-                  if (touchDrag.fromPos === DH && droppedOnBench) {
-                    handleDropToBench(fake);
-                    setTouchDrag(null);
-                    return;
-                  }
-
-                  handleDropToPosition(fake, pos);
-                  setTouchDrag(null);
+                onTouchStart={() => {
+                  if (!player) return;
+                  setDragKind(null);
+                  setDraggingPlayerId(player.id);
+                  setTouchDrag({ playerId: player.id, fromPos: pos, kind: "player" });
                 }}
                 style={{
                   ...positionStyles[pos],
@@ -2452,7 +2504,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
               >
                 {player ? (
                   <div
-                    draggable
+                    draggable={!isTouchDevice()}
                     onDragStart={(e) => handleDragStart(e, player.id, pos)}
                     style={{ WebkitUserDrag: "none", touchAction: "none" }}
                     className={`relative w-full h-full flex items-center justify-center font-semibold
@@ -2498,6 +2550,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           </h2>
 
           <div
+            data-drop-zone="dh"
             className={`flex flex-wrap items-start content-start gap-1.5 p-1.5 bg-white/10 border rounded-xl ring-1 ring-inset
               ${
                 canAddExtraDhPlayer
@@ -2533,9 +2586,13 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
               dhDisplayPlayers.map((p) => (
                 <div
                   key={p.id}
-                  draggable
+                  draggable={!isTouchDevice()}
                   onDragStart={(e) => handleDragStart(e, p.id, DH)}
-                  onTouchStart={() => setTouchDrag({ playerId: p.id, fromPos: DH })}
+                  onTouchStart={() => {
+                    setDragKind(null);
+                    setDraggingPlayerId(p.id);
+                    setTouchDrag({ playerId: p.id, fromPos: DH, kind: "player" });
+                  }}
                   style={{ touchAction: "none" }}
                   className={`px-2 py-1 text-[14px] font-bold leading-tight bg-white/85 text-gray-900 border border-yellow-200 rounded-lg cursor-move select-none shadow-sm
                     ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
@@ -2562,6 +2619,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
 
   <div
     ref={benchDropRef}
+    data-drop-zone="bench"
     className="flex flex-wrap items-start content-start gap-1.5 p-1.5 bg-white/10 border border-white/10 rounded-xl ring-1 ring-inset ring-white/10"
     onDragOver={allowDrop}
     onDrop={handleDropToBench}
@@ -2584,9 +2642,13 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
       availablePlayers.map((p) => (
         <div
           key={p.id}
-          draggable
+          draggable={!isTouchDevice()}
           onDragStart={(e) => handleDragStart(e, p.id)}
-          onTouchStart={() => setTouchDrag({ playerId: p.id })}
+          onTouchStart={() => {
+            setDragKind(null);
+            setDraggingPlayerId(p.id);
+            setTouchDrag({ playerId: p.id, kind: "player" });
+          }}
           style={{ touchAction: "none" }}
           className={`px-2 py-1 md:px-[clamp(8px,1.1dvh,12px)] md:py-[clamp(4px,0.7dvh,8px)] text-[14px] md:text-[clamp(14px,1.7dvh,18px)] font-bold leading-tight bg-white/85 text-gray-900 border border-rose-200 rounded-lg md:rounded-lg cursor-move select-none shadow-sm
             ${draggingPlayerId === p.id ? "ring-4 ring-amber-400 bg-amber-100" : ""}`}
@@ -2624,6 +2686,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
   </div>
 
   <div
+    data-drop-zone="benchOut"
     className="flex flex-wrap items-start content-start gap-1.5 p-1.5
       rounded-2xl border ring-1 ring-inset
       border-rose-600/90 ring-rose-600/60
@@ -2639,10 +2702,11 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
   benchOutPlayers.map((p) => (
     <div
       key={p.id}
-      draggable
+      draggable={!isTouchDevice()}
       onDragStart={(e) => handleDragStart(e, p.id)}
       onTouchStart={() => {
-        setTouchDrag({ playerId: p.id });
+        setDragKind(null);
+        setTouchDrag({ playerId: p.id, kind: "player" });
         setDraggingPlayerId(p.id);
       }}
       onTouchEnd={() => {
@@ -2705,6 +2769,8 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   key={entry?.id ?? `slot-${i}`}
                   data-role="posrow"
                   data-player-id={entry?.id ?? ""}
+                  data-drop-zone="batting"
+                  data-batting-index={i}
                   className={`relative rounded-xl bg-sky-400/15 border border-sky-300/40 p-2 pr-10 shadow select-none
                     ${entry ? "cursor-move" : "cursor-default"}
                     ${
@@ -2712,7 +2778,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                         ? "ring-2 ring-emerald-400"
                         : ""
                     }`}
-                  draggable={!!entry}
+                  draggable={!isTouchDevice() && !!entry}
                   onDragStart={(e) => {
                     if (!entry) return;
                     const t = e.target as HTMLElement;
@@ -2733,6 +2799,19 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
                   }}
                   onDragLeave={() => {
                     setHoverOrderPlayerId((v) => (v === hoverKey ? null : v));
+                  }}
+                  onTouchStart={(e) => {
+                    if (!entry) return;
+                    const target = e.target as HTMLElement;
+                    if (
+                      target.closest('[data-role="poslabel"]') ||
+                      target.closest("button")
+                    ) {
+                      return;
+                    }
+                    setDragKind("order");
+                    setDraggingPlayerId(entry.id);
+                    setTouchDrag({ playerId: entry.id, kind: "order" });
                   }}
                   onTouchEnd={() => {
                     if (!touchDrag) return;
@@ -2788,7 +2867,7 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
           : "守備なし"
         : "未設定"
     }
-    draggable={!!entry && !!pos}
+    draggable={!isTouchDevice() && !!entry && !!pos}
     onDragStart={(e) => {
       if (!entry || !pos) return;
       handlePosDragStart(e, entry.id);
@@ -2814,7 +2893,11 @@ const canAddExtraDhPlayer = dhDisplayPlayers.length < maxExtraDhPlayers;
     onTouchStart={(ev) => {
       ev.stopPropagation();
       if (!entry || !pos) return;
-      setTouchDrag({ playerId: entry.id });
+      setDragKind("swapPos");
+      swapSourceIdRef.current = entry.id;
+      const token = `${Date.now()}-${entry.id}`;
+      swapTokenRef.current = token;
+      setTouchDrag({ playerId: entry.id, kind: "swapPos" });
     }}
   >
     {entry ? (displayPos ? positionNames[displayPos] : "未設定") : "未設定"}
