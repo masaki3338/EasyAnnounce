@@ -1,500 +1,345 @@
-// src/lib/piperTts.ts
-// Easyアナウンス 本番用 Piper-Plus ブラウザWASM版
-// Vercel / PWA対応・PCローカルサーバー不要
-
-import { PiperPlus } from "piper-plus";
 import * as ort from "onnxruntime-web/wasm";
+import { PiperPlus } from "piper-plus";
 
-export type PiperModelId = "uguisu" | "tsukuyomi" | "css10";
-
-export const PIPER_MODELS: Record<PiperModelId, {
-  label: string;
-  model: string;
-  noiseScale: number;
-  noiseW: number;
-  needsUguisuConfigPatch?: boolean;
-}> = {
-  uguisu: {
-    label: "ウグイス嬢（テスト）",
-    model: "EasyAnnounce/easyannounce-uguisu",
-    noiseScale: 0.4,
-    noiseW: 0.5,
-    needsUguisuConfigPatch: true,
-  },
-  tsukuyomi: {
-    label: "つくよみちゃん",
-    model: "ayousanz/piper-plus-tsukuyomi-chan",
-    noiseScale: 0.667,
-    noiseW: 0.8,
-  },
-  css10: {
-    label: "CSS10 日本語女性",
-    model: "ayousanz/piper-plus-css10-ja-6lang",
-    noiseScale: 0.667,
-    noiseW: 0.8,
-  },
+type PiperSpeakOptions = {
+  speedScale?: number;
+  volume?: number;
 };
 
-const DEFAULT_PIPER_MODEL: PiperModelId = "uguisu";
+type PiperProgressInfo = {
+  stage?: string;
+  progress?: number;
+  message?: string;
+};
 
-export function getSelectedPiperModel(): PiperModelId {
-  const value = localStorage.getItem("tts:piper:model");
-  return value === "tsukuyomi" || value === "css10" || value === "uguisu"
-    ? value
-    : DEFAULT_PIPER_MODEL;
+export type PiperModelId = "easy-announce";
+
+export const PIPER_MODELS = {
+  "easy-announce": {
+    id: "easy-announce" as PiperModelId,
+    label: "Easyアナウンス AI音声（Piper-Plus）",
+  },
+} as const;
+
+type PiperProgressListener = (info: PiperProgressInfo) => void;
+
+const MODEL_PATH = "/models/easy-announce/easy_announce.onnx";
+
+let piperProgressListener: PiperProgressListener | null = null;
+let selectedPiperModel: PiperModelId = "easy-announce";
+
+let enginePromise: Promise<any> | null = null;
+
+let audioContext: AudioContext | null = null;
+let currentSource: AudioBufferSourceNode | null = null;
+let currentGain: GainNode | null = null;
+
+let generationId = 0;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
-export function setSelectedPiperModel(modelId: PiperModelId): void {
-  localStorage.setItem("tts:piper:model", modelId);
+function getModelUrl(): string {
+  return new URL(MODEL_PATH, window.location.origin).href;
 }
 
+function getAudioContext(): AudioContext {
+  if (audioContext) {
+    return audioContext;
+  }
 
-let multilingualWasmPromise: Promise<any> | null = null;
-
-/**
- * piper-plus@0.6.0 の RustWasmAdapter は wasmLoader を渡した場合、
- * loader側で wasm-bindgen の default() 初期化まで完了していることを前提にする。
- *
- * 単純に import("piper-plus/wasm/multilingual") を返すだけでは
- * WASM本体が未初期化のため ja のRust G2Pが失敗し、
- * JS G2Pへフォールバックして
- * "G2P: language 'ja' is not initialised"
- * になる。
- */
-async function loadInitializedMultilingualWasm(): Promise<any> {
-  if (!multilingualWasmPromise) {
-    multilingualWasmPromise = (async () => {
-      const mod: any = await import("piper-plus/wasm/multilingual");
-
-      if (typeof mod.default === "function") {
-        await mod.default();
+  const AudioContextCtor =
+    window.AudioContext ||
+    (
+      window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
       }
+    ).webkitAudioContext;
 
-      if (typeof mod.WasmPhonemizer !== "function") {
-        throw new Error(
-          "Piper-Plus multilingual WASM の WasmPhonemizer を読み込めませんでした。"
-        );
-      }
+  if (!AudioContextCtor) {
+    throw new Error(
+      "このブラウザではAudioContextを利用できません。"
+    );
+  }
 
-      return mod;
-    })().catch((error) => {
-      multilingualWasmPromise = null;
+  audioContext = new AudioContextCtor();
+
+  return audioContext;
+}
+
+async function resumeAudioContext() {
+  const ctx = getAudioContext();
+
+  if (ctx.state === "suspended") {
+    await ctx.resume();
+  }
+
+  return ctx;
+}
+
+export function setSelectedPiperModel(
+  model: PiperModelId | string
+) {
+  selectedPiperModel =
+    model === "easy-announce"
+      ? "easy-announce"
+      : "easy-announce";
+
+  try {
+    localStorage.setItem(
+      "tts:piper:model",
+      selectedPiperModel
+    );
+  } catch {}
+}
+
+export function setPiperProgressListener(
+  listener: PiperProgressListener | null
+) {
+  piperProgressListener = listener;
+}
+
+async function getEngine() {
+  ort.env.wasm.proxy = false;
+  ort.env.wasm.numThreads = 1;
+
+  if (!enginePromise) {
+    const modelUrl = getModelUrl();
+
+    console.log(
+      "[Piper-Plus] model URL:",
+      modelUrl
+    );
+
+    enginePromise = PiperPlus.initialize({
+      model: modelUrl,
+      ort,
+      onProgress: (
+        info: PiperProgressInfo
+      ) => {
+        try {
+          piperProgressListener?.(info);
+        } catch {}
+
+        if (import.meta.env.DEV) {
+          console.log(
+            "[Piper-Plus]",
+            info.stage,
+            info.progress,
+            info.message
+          );
+        }
+      },
+    }).catch((error: unknown) => {
+      enginePromise = null;
+
+      console.error(
+        "[Piper-Plus] initialization failed:",
+        error
+      );
+
       throw error;
     });
   }
 
-  return multilingualWasmPromise;
+  return enginePromise;
 }
 
-/**
- * 今回の学習済みconfigは multilingual / 173音素ですが、
- * single-speaker fine-tuning後のconfigには language_id_map がありません。
- *
- * piper-plus@0.6.0 は language_id_map が無いと日本語をJS側G2Pへ回し、
- * @piper-plus/g2p の JapaneseG2P が openjtalkModule を要求します。
- *
- * 初期化時にHugging Faceのconfigだけを一時的に補正して、
- * Rust multilingual WASM G2Pを選ばせます。
- *
- * ONNX自体が lid 入力を持たない場合は、後段のrunパッチで lid を除去します。
- */
-async function initializePiperModel(
-  options: Parameters<typeof PiperPlus.initialize>[0],
-  modelId: PiperModelId
-): Promise<PiperPlus> {
-  const originalFetch = globalThis.fetch.bind(globalThis);
+async function playSamples(
+  samples: Float32Array,
+  sampleRate: number,
+  volume: number,
+  myGenerationId: number
+) {
+  const ctx = await resumeAudioContext();
 
-  /**
-   * 自作ウグイス嬢モデルは single-speaker 化した結果、
-   * config.json から language_id_map が消えている。
-   *
-   * piper-plus@0.6.0 は language_id_map に "ja" が無いと
-   * Rust WASM 日本語G2Pを起動せず、JS G2Pへフォールバックする。
-   * JS G2P側の日本語は OpenJTalk Module が必要なので、
-   * スマホでは "language 'ja' is not initialised" になる。
-   *
-   * そこで初期化中だけ config に ja:0 を補う。
-   * ONNX側が lid を持たない場合は run() パッチで lid を削除する。
-   */
-  const patchedFetch: typeof fetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit
-  ) => {
-    const response = await originalFetch(input, init);
-
-    if (modelId !== "uguisu" || !response.ok) {
-      return response;
-    }
-
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-
-    const isUguisuConfig =
-      url.includes("EasyAnnounce/easyannounce-uguisu") &&
-      /config\.json(?:\?|$)/i.test(url);
-
-    if (!isUguisuConfig) {
-      return response;
-    }
-
-    try {
-      const json = await response.clone().json();
-
-      if (!json.language_id_map) {
-        json.language_id_map = { ja: 0 };
-      } else if (json.language_id_map.ja === undefined) {
-        json.language_id_map.ja = 0;
-      }
-
-      return new Response(JSON.stringify(json), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
-    } catch {
-      return response;
-    }
-  };
-
-  globalThis.fetch = patchedFetch;
+  if (myGenerationId !== generationId) {
+    return;
+  }
 
   try {
-    return await PiperPlus.initialize({
-      ...(options as any),
+    currentSource?.stop();
+  } catch {}
 
-      // Vite/Vercel/スマホでも確実に multilingual Rust WASM を読む。
-      // package.json の正式export: "piper-plus/wasm/multilingual"
-      wasmLoader: loadInitializedMultilingualWasm,
-    } as any);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-}
+  try {
+    currentSource?.disconnect();
+  } catch {}
 
-if (ort.env?.wasm) {
-  // スマホ/PWAでは安定性を優先
-  ort.env.wasm.numThreads = 1;
-  ort.env.wasm.proxy = false;
+  try {
+    currentGain?.disconnect();
+  } catch {}
 
-  const origin =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : "";
-
-  // vite.config.ts 側で /ort/ に配置したランタイムを使用
-  ort.env.wasm.wasmPaths = {
-    wasm: `${origin}/ort/ort-wasm-simd-threaded.wasm`,
-    mjs: `${origin}/ort/ort-wasm-simd-threaded.mjs`,
-  };
-}
-
-const enginePromises = new Map<PiperModelId, Promise<PiperPlus>>();
-let currentAudio: HTMLAudioElement | null = null;
-let synthInProgress = false;
-
-export type PiperProgress = {
-  stage: string;
-  progress: number;
-  message: string;
-};
-
-let progressListener: ((p: PiperProgress) => void) | null = null;
-
-export function setPiperProgressListener(
-  listener: ((p: PiperProgress) => void) | null
-) {
-  progressListener = listener;
-}
-
-function getMetaShape(meta: any): number[] | undefined {
-  const shape = meta?.dimensions ?? meta?.shape ?? meta?.dims;
-  return Array.isArray(shape) ? shape : undefined;
-}
-
-function findInputMeta(session: any, name: string): any {
-  const metadata = session?.inputMetadata;
-  if (!metadata) return undefined;
-
-  if (Array.isArray(metadata)) {
-    return metadata.find((m: any) => m?.name === name);
-  }
-
-  return metadata[name];
-}
-
-function positiveDim(value: unknown, fallback: number): number {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/**
- * piper-plus@0.6.0 の一部モデルでは
- * speaker_embedding / speaker_embedding_mask がONNX必須入力でも、
- * 通常の synthesize() では未指定になる場合がある。
- *
- * Easyアナウンスでは単一話者モデルを使用するため、
- * ゼロembedding + mask=0 を補完して既定話者で推論する。
- */
-function patchSingleSpeakerInputs(engine: any): void {
-  const session = engine?._session;
-  if (!session || session.__easyAnnounceSpeakerPatch) return;
-
-  const inputNames: string[] = Array.isArray(session.inputNames)
-    ? session.inputNames
-    : [];
-
-  const needsEmbedding = inputNames.includes("speaker_embedding");
-  const needsMask = inputNames.includes("speaker_embedding_mask");
-
-  // speaker_embedding が不要なモデルでも run() のパッチは入れる。
-  // モデル/configの組み合わせによって未知の lid が渡された場合は、
-  // ONNXが lid 入力を持たないときだけ防御的に削除する。
-  const embeddingMeta = findInputMeta(session, "speaker_embedding");
-  const embeddingShape = getMetaShape(embeddingMeta);
-
-  const embeddingSize = positiveDim(
-    embeddingShape?.[embeddingShape.length - 1],
-    256
+  const buffer = ctx.createBuffer(
+    1,
+    samples.length,
+    sampleRate
   );
 
-  const originalRun = session.run.bind(session);
+  buffer.copyToChannel(
+    samples,
+    0
+  );
 
-  session.run = async (feeds: Record<string, any>, ...args: any[]) => {
-    const patchedFeeds: Record<string, any> = { ...feeds };
+  const source =
+    ctx.createBufferSource();
 
-    // single-speaker ONNXが lid 入力を持たない場合はORTへ渡さない。
-    if (
-      Object.prototype.hasOwnProperty.call(patchedFeeds, "lid") &&
-      !inputNames.includes("lid")
-    ) {
-      console.debug("[Piper] removing unsupported lid input for single-speaker ONNX");
-      delete patchedFeeds.lid;
-    }
+  const gain =
+    ctx.createGain();
 
-    if (needsEmbedding && !patchedFeeds.speaker_embedding) {
-      patchedFeeds.speaker_embedding = new ort.Tensor(
-        "float32",
-        new Float32Array(embeddingSize),
-        [1, embeddingSize]
-      );
-    }
+  gain.gain.value =
+    clamp(volume, 0, 1);
 
-    if (needsMask && !patchedFeeds.speaker_embedding_mask) {
-      patchedFeeds.speaker_embedding_mask = new ort.Tensor(
-        "int64",
-        new BigInt64Array([0n]),
-        [1, 1]
-      );
-    }
+  source.buffer = buffer;
 
-    return originalRun(patchedFeeds, ...args);
-  };
+  source.connect(gain);
+  gain.connect(ctx.destination);
 
-  session.__easyAnnounceSpeakerPatch = true;
-}
+  currentSource = source;
+  currentGain = gain;
 
-async function getEngine(modelId: PiperModelId = getSelectedPiperModel()): Promise<PiperPlus> {
-  const existing = enginePromises.get(modelId);
-  if (existing) return existing;
-
-  if (!ort.InferenceSession) {
-    throw new Error("Piper-Plusの音声エンジンを初期化できませんでした。");
-  }
-
-  const config = PIPER_MODELS[modelId];
-
-  const promise = initializePiperModel({
-    model: config.model,
-    ort,
-    onProgress: ({ stage, progress, message }) => {
-      progressListener?.({ stage, progress, message });
-    },
-  } as any, modelId)
-    .then((engine) => {
-      patchSingleSpeakerInputs(engine as any);
-      return engine;
-    })
-    .catch((error) => {
-      enginePromises.delete(modelId);
-      console.error(`[Piper:${modelId}] initialize failed:`, error);
-
-      const message =
-        error instanceof Error ? error.message : String(error);
-
-      throw new Error(
-        `Piper-Plus初期化失敗 (${PIPER_MODELS[modelId].label}): ${message}`
-      );
-    });
-
-  enginePromises.set(modelId, promise);
-  return promise;
-}
-
-/**
- * モデルを先読みする。
- * Piper選択時に設定画面で呼んでおくと、実際のアナウンス開始が速くなる。
- */
-export async function prewarmPiper(modelId: PiperModelId = getSelectedPiperModel()): Promise<void> {
-  const engine = await getEngine(modelId);
-  patchSingleSpeakerInputs(engine as any);
-}
-
-export function stopPiper(): void {
-  if (currentAudio) {
-    try {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-    } catch {}
-
-    currentAudio = null;
-  }
-}
-
-export function isPiperBusy(): boolean {
-  return synthInProgress;
-}
-
-type PiperSpeakOptions = { speedScale?: number; volume?: number; modelId?: PiperModelId };
-
-
-/**
- * Easyアナウンス専用読み補正。
- * 表示文は変えず、Piperへ渡す文字列だけ補正する。
- */
-function normalizeBaseballReading(text: string): string {
-  return String(text)
-    .replace(/([0-9０-９一二三四五六七八九十]+)\s*回\s*の\s*表/g, "$1回のおもて")
-    .replace(/([0-9０-９一二三四五六七八九十]+)\s*回\s*表/g, "$1回おもて")
-    .replace(/([0-9０-９一二三四五六七八九十]+)\s*回\s*の\s*裏/g, "$1回のうら")
-    .replace(/([0-9０-９一二三四五六七八九十]+)\s*回\s*裏/g, "$1回うら");
-}
-
-function splitPiperText(text: string, maxChars = 26): string[] {
-  const normalized = text.replace(/\r?\n+/g, "。").replace(/[ \t]+/g, " ").trim();
-  if (!normalized) return [];
-  const parts = normalized.match(/[^。！？!?、，,]+[。！？!?、，,]?/g) ?? [normalized];
-  const chunks: string[] = [];
-  let current = "";
-
-  const flush = () => {
-    const s = current.trim();
-    if (s) chunks.push(s);
-    current = "";
-  };
-
-  for (const raw of parts) {
-    const part = raw.trim();
-    if (!part) continue;
-
-    if ((current + part).length <= maxChars) {
-      current += part;
-      continue;
-    }
-    flush();
-
-    if (part.length <= maxChars) {
-      current = part;
-      continue;
-    }
-
-    let rest = part;
-    while (rest.length > maxChars) {
-      let cut = maxChars;
-      const w = rest.slice(0, maxChars + 1);
-      for (const token of ["、", "，", ",", " "]) {
-        const pos = w.lastIndexOf(token);
-        if (pos >= Math.floor(maxChars * 0.55)) {
-          cut = pos + token.length;
-          break;
+  await new Promise<void>(
+    (resolve, reject) => {
+      source.onended = () => {
+        if (currentSource === source) {
+          currentSource = null;
+          currentGain = null;
         }
+
+        resolve();
+      };
+
+      try {
+        source.start();
+      } catch (error) {
+        if (currentSource === source) {
+          currentSource = null;
+          currentGain = null;
+        }
+
+        reject(error);
       }
-      chunks.push(rest.slice(0, cut).trim());
-      rest = rest.slice(cut).trim();
     }
-    if (rest) current = rest;
-  }
-  flush();
-  return chunks;
+  );
 }
 
-async function synthesizePiperChunk(
-  engine: PiperPlus,
-  text: string,
-  speedScale: number,
-  modelId: PiperModelId
-): Promise<Blob> {
-  patchSingleSpeakerInputs(engine as any);
-  const lengthScale = Math.min(2, Math.max(0.5, 1 / speedScale));
-  const modelConfig = PIPER_MODELS[modelId];
-  const result = await engine.synthesize(text, {
-    language: "ja",
-    noiseScale: modelConfig.noiseScale,
-    lengthScale,
-    noiseW: modelConfig.noiseW,
-  } as any);
-  return result.toBlob();
-}
-
-async function playPiperBlob(blob: Blob, volume: number): Promise<void> {
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  currentAudio = audio;
-  audio.preload = "auto";
-  audio.volume = volume;
-
-  await new Promise<void>((resolve, reject) => {
-    const cleanup = () => {
-      URL.revokeObjectURL(url);
-      if (currentAudio === audio) currentAudio = null;
-    };
-    audio.onended = () => { cleanup(); resolve(); };
-    audio.onerror = () => { cleanup(); reject(new Error("Piper-Plus音声の再生に失敗しました。")); };
-    audio.play().catch((e) => { cleanup(); reject(e); });
-  });
-}
-
-/**
- * 長文低遅延版:
- * 最初の短いチャンクだけ生成して再生開始し、
- * 再生中に次チャンクを先行生成する。
- */
 export async function speakPiper(
   text: string,
   options: PiperSpeakOptions = {}
 ): Promise<void> {
-  if (!text?.trim() || synthInProgress) return;
+  const cleanText =
+    String(text ?? "").trim();
 
-  synthInProgress = true;
-  stopPiper();
+  if (!cleanText) {
+    return;
+  }
+
+  const myGenerationId =
+    ++generationId;
+
+  await resumeAudioContext();
+
+  const engine =
+    await getEngine();
+
+  if (
+    myGenerationId !== generationId
+  ) {
+    return;
+  }
+
+  const speedScale =
+    Number.isFinite(
+      options.speedScale
+    )
+      ? clamp(
+          Number(
+            options.speedScale
+          ),
+          0.5,
+          2.0
+        )
+      : 1.0;
+
+  const volume =
+    Number.isFinite(
+      options.volume
+    )
+      ? clamp(
+          Number(
+            options.volume
+          ),
+          0,
+          1
+        )
+      : 0.8;
+
+  const result =
+    await engine.synthesize(
+      cleanText,
+      {
+        language: "ja",
+        lengthScale:
+          1 / speedScale,
+      }
+    );
+
+  if (
+    myGenerationId !== generationId
+  ) {
+    return;
+  }
+
+  if (
+    !result ||
+    !result.samples
+  ) {
+    throw new Error(
+      "Piper-Plusから音声データが返されませんでした。"
+    );
+  }
+
+  const samples =
+    result.samples instanceof Float32Array
+      ? result.samples
+      : new Float32Array(
+          result.samples
+        );
+
+  const sampleRate =
+    Number(
+      result.sampleRate ||
+        22050
+    );
+
+  await playSamples(
+    samples,
+    sampleRate,
+    volume,
+    myGenerationId
+  );
+}
+
+export function stopPiper() {
+  generationId++;
 
   try {
-    const modelId = options.modelId ?? getSelectedPiperModel();
-    const engine = await getEngine(modelId);
-    patchSingleSpeakerInputs(engine as any);
+    currentSource?.stop();
+  } catch {}
 
-    const speedScale = Math.min(2, Math.max(0.5, Number(options.speedScale ?? 1)));
-    const volume = Math.min(1, Math.max(0, Number(options.volume ?? 0.8)));
-    const chunks = splitPiperText(normalizeBaseballReading(text));
-    if (!chunks.length) return;
+  try {
+    currentSource?.disconnect();
+  } catch {}
 
-    // 1チャンク目だけ待つので、長文全体の生成完了を待たない
-    let nextBlobPromise = synthesizePiperChunk(engine, chunks[0], speedScale, modelId);
+  try {
+    currentGain?.disconnect();
+  } catch {}
 
-    for (let i = 0; i < chunks.length; i++) {
-      const blob = await nextBlobPromise;
+  currentSource = null;
+  currentGain = null;
+}
 
-      // 再生中に次の音声を生成
-      if (i + 1 < chunks.length) {
-        nextBlobPromise = synthesizePiperChunk(engine, chunks[i + 1], speedScale, modelId);
-      }
-
-      await playPiperBlob(blob, volume);
-    }
-  } finally {
-    synthInProgress = false;
-  }
+export async function prewarmPiper(): Promise<void> {
+  await resumeAudioContext();
+  await getEngine();
 }

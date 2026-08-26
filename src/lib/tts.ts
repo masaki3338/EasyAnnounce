@@ -1,5 +1,5 @@
 import { prewarmPiper, speakPiper, stopPiper } from "./piperTts";
-// src/lib/tts.ts  — Web Speech API 専用版（VOICEVOX非依存）
+// src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
   progressive?: boolean; // 互換用: 未使用
