@@ -58,41 +58,110 @@ export default function Qa({ onBack }: Props) {
         <div className="space-y-3 pb-6">
           <QAItem q="Q. インストール方法がわかりません" defaultOpen>
             <p>
-              本アプリは、通常のApp Store／Google Playからダウンロードするアプリではありません。
+              端末によってインストール方法が異なります。
               <br />
-              WEBアプリ（PWA）形式のため、ブラウザから開いて「ホーム画面に追加」して使用します。
+              Android端末はGoogle Playからインストールできます。
               <br />
-              一度追加すると、通常のアプリと同じように使用できます。
+              iPhone／iPadはSafariでWEBアプリを開き、ホーム画面に追加して使用します。
             </p>
 
             <div className="mt-3">
-              <div className="font-semibold">📱 アプリをホーム画面に追加する方法</div>
+              <div className="font-semibold">📱 端末別のインストール方法</div>
 
               <div className="mt-2 space-y-3">
                 <Card>
-                  <div className="font-semibold">▼ Androidの場合（Chrome）</div>
+                  <div className="font-semibold">▼ Androidの場合（Google Play）</div>
                   <ol className="list-decimal pl-5 mt-2 space-y-1">
-                    <li>画面右上の「︙」メニューを開く</li>
-                    <li>「アプリをインストール」または「ホーム画面に追加」を選択</li>
+                    <li>Google Playで「Easyアナウンス」を検索</li>
+                    <li>アプリのページを開く</li>
                     <li>「インストール」をタップ</li>
                   </ol>
-                  <div className="mt-2 text-xs opacity-80">
-                    ホーム画面にアイコンが追加されます。
-                  </div>
+                  <a
+                    href="https://play.google.com/store/apps/details?id=com.easyannounce.pony"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 transition"
+                  >
+                    Google Playで開く
+                  </a>
                 </Card>
 
                 <Card>
                   <div className="font-semibold">▼ iPhone／iPadの場合（Safari）</div>
                   <ol className="list-decimal pl-5 mt-2 space-y-1">
+                    <li>Safariで本アプリを開く</li>
                     <li>画面下の「共有」ボタン（⬆️）をタップ</li>
                     <li>「ホーム画面に追加」を選択</li>
                     <li>名前を確認して「追加」をタップ</li>
                   </ol>
                   <div className="mt-2 text-xs opacity-80">
-                    ホーム画面にアイコンが追加されます。
+                    ホーム画面にアイコンが追加され、通常のアプリと同じように使用できます。
                   </div>
                 </Card>
               </div>
+            </div>
+          </QAItem>
+
+          <QAItem q="Q. どんなアプリですか？">
+            <p>
+              本アプリは、両チームがそれぞれ自チームのアナウンスを担当することを前提とした
+              アナウンス支援アプリです。
+              <br />
+              試合の流れに合わせて、自チームが行うべきアナウンス内容を画面に表示し、
+              読み上げをサポートします。
+            </p>
+          </QAItem>
+
+          <QAItem q="Q. アナウンスが全くわかりません">
+            <p>
+              ご安心ください。アナウンスは大きく分けて
+              <b>「試合前」「試合中」「試合後」</b>の3つの流れがあります。<br />
+              この流れに沿って操作を行い読み上げる文章が表示されます。
+            </p>
+
+            <div className="mt-3 space-y-3">
+
+              <Card>
+                <div className="font-semibold">● 試合開始前のアナウンス</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>ウォーミングアップ、シートノックのお知らせ</li>
+                  <li>スターティングメンバー発表</li>
+                  <li>シート紹介など</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● 試合中のアナウンス</div>
+
+                <div className="mt-2 font-semibold">▶ 攻撃時</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>打順の読み上げ</li>
+                  <li>代打・代走の紹介</li>
+                  <li>ファールボール注意喚起</li>
+                  <li>得点の読み上げ（無得点時はなし）</li>
+                </ul>
+
+                <div className="mt-2 font-semibold">▶ 守備時</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>選手交代・守備位置変更</li>
+                  <li>投球数の案内</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● 試合終了のアナウンス</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>試合結果の発表（勝利チームのみ）</li>
+                </ul>
+              </Card>
+
+              <Card>
+                <div className="font-semibold">● その他</div>
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                  <li>次の試合の案内</li>
+                  <li>タイブレーク開始など</li>
+                </ul>
+              </Card>
             </div>
           </QAItem>
 
@@ -110,12 +179,6 @@ export default function Qa({ onBack }: Props) {
             </p>
           </QAItem>
 
-          <QAItem q="Q. チーム・選手登録したデータを他の端末で使えますか？">
-            <p>
-              はい、可能です。【バックアップ保存】を行い、他端末で【バックアップ読込】を行うことで復元できます。
-            </p>
-          </QAItem>
-
           <QAItem q="Q. セキュリティは大丈夫ですか？">
             <p>
               本WEBアプリはインストール後、基本的にオフラインで使用します。
@@ -123,6 +186,32 @@ export default function Qa({ onBack }: Props) {
               データは端末内に保存され、外部へ送信・共有されることはありません。
               <br />
               個人情報が外部に送信されることはありません。
+            </p>
+          </QAItem>
+
+          <QAItem q="Q. 操作方法が急に変わった（バージョンが勝手に変わった）">
+            <p>
+              本アプリはWEBアプリのため、アプリのアップデート操作を行わなくても自動的に最新の状態に更新されます。
+              <br />
+              そのため、操作方法が一部変更されることがありますが、
+              <br />
+              不具合や使いやすさ向上のための改善となります。
+              <br />
+              ※通信環境があるときのみ更新され、オフラインでは更新されません。
+            </p>
+          </QAItem>
+
+          <QAItem q="Q. チーム・選手登録したデータを他の端末で使えますか？">
+            <p>
+              はい、可能です。【バックアップ】を行い、他端末で【復元】を行うことで復元できます。
+            </p>
+          </QAItem>
+
+          <QAItem q="Q. 操作方法がわかりません">
+            <p>
+              運用設定画面の【チュートリアル】に簡単な操作方法を記載していますので参考にしてください。
+              <br />
+              各画面の上部にある ❔ボタンを押すと使い方が表示されますので参考にしてください。
             </p>
           </QAItem>
 
@@ -134,9 +223,22 @@ export default function Qa({ onBack }: Props) {
             </p>
           </QAItem>
 
+          <QAItem q="Q. 読み上げ音声を変更できますか？">
+            <p>
+              Android端末では、端末側の設定から読み上げ音声を変更できます。
+              <br />
+              「設定」→「ユーザー補助」→「優先するエンジン」→「音声データをインストール」→「日本語」から、
+              <br />
+              音声Ⅰ、音声Ⅱ、音声Ⅲ、音声Ⅳ の4種類を選択できます。
+              <br />
+              ※アプリ内の表示名は同じでも、端末設定で選んだ音声によって実際の読み上げ音声が変わります。
+              
+            </p>
+          </QAItem>
+
           <QAItem q="Q. 読み上げ音声が機械的に感じます">
             <p>
-              現在は標準音声を使用しています。
+              現在は標準音声のWeb Speech APIを使用しています。
               <br />
               今後のアップデートで、より滑らかで自然な音声へ改善予定です。
             </p>
