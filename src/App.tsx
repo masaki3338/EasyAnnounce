@@ -10,7 +10,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
-import { speak, stop } from "./lib/tts"; // ファイル先頭付近に追記
+import { speak, stop, prewarmTTS } from "./lib/tts";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -66,7 +66,7 @@ const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
   groundMaintenanceInning: 5,
 };
 
-const APP_VERSION = "1.04"
+const APP_VERSION = "1.05"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -215,6 +215,9 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
+  const [isTtsStarting, setIsTtsStarting] = useState(
+    () => localStorage.getItem("tts:engine") === "piper"
+  );
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -795,13 +798,29 @@ useEffect(() => {
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
-// マウント時に一度だけ軽いウォームアップ
+// マウント時に一度だけTTSを事前読み込み
+// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は、
+// 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
 useEffect(() => {
-  if (warmedOnceRef.current) return; // ← dev StrictMode の二重実行ガード
+  if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
   warmedOnceRef.current = true;
 
-  fetch("/api/tts-voicevox/version", { cache: "no-store" })
-    .catch(() => {});
+  const isPiper = localStorage.getItem("tts:engine") === "piper";
+
+  if (!isPiper) {
+    setIsTtsStarting(false);
+    return;
+  }
+
+  setIsTtsStarting(true);
+
+  void prewarmTTS()
+    .catch((error) => {
+      console.warn("[TTS] prewarm failed:", error);
+    })
+    .finally(() => {
+      setIsTtsStarting(false);
+    });
 }, []);
 
 
@@ -1080,6 +1099,29 @@ const handleSpeak = async () => {
 
 return (
   <>
+    {isTtsStarting && (
+      <div
+        className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 text-white"
+        role="status"
+        aria-live="polite"
+        aria-label="起動中"
+      >
+        <div className="flex flex-col items-center gap-4 px-6 text-center">
+          <div
+            className="h-12 w-12 rounded-full border-4 border-white/30 border-t-white animate-spin"
+            aria-hidden="true"
+          />
+          <div>
+            <div className="text-xl font-extrabold tracking-wide">
+              起動中...
+            </div>
+            <p className="mt-2 text-sm text-white/70">
+              AI音声を準備しています
+            </p>
+          </div>
+        </div>
+      </div>
+    )}
     {screen === "menu" && (
       <button
         type="button"
