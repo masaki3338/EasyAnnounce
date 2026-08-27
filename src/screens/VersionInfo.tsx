@@ -69,6 +69,11 @@ const historyData: HistoryItem[] = [
       ・グラウンド整備のアナウンス設定`,
     ],
   },
+  {
+    date: "2026.08.30",
+    version: "Version 1.05",
+    details: ["読み上げ設定画面でAI音声の選択追加"],
+  },
 ];
 
 export default function VersionInfo({ version, onBack }: Props) {
