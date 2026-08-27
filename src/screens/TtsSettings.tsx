@@ -4,7 +4,7 @@ import { speak } from "../lib/tts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
 const PIPER_VOICE_VALUE = "__easy_announce_piper__";
-const PIPER_VOICE_LABEL = "Easyアナウンス AI音声（Piper-Plus）";
+const PIPER_VOICE_LABEL = "AI音声（ウグイス嬢）";
 
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -181,9 +181,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             <div className="mt-2 text-sm text-white/85">
               現在の選択：<span className="font-semibold">{selectedLabel}</span>
             </div>
-            <div className="text-xs text-white/60 mt-2 leading-relaxed">
-              ※ Easyアナウンス AI音声（Piper-Plus）は学習済みONNXモデルをアプリ内で使用します。その他は端末/ブラウザの日本語音声です。
-            </div>
+
           </div>
 
           {/* 読み上げ速度 */}
