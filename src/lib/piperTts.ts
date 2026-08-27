@@ -71,8 +71,14 @@ function getAudioContext(): AudioContext {
 async function resumeAudioContext() {
   const ctx = getAudioContext();
 
-  if (ctx.state === "suspended") {
+  if (ctx.state !== "running") {
     await ctx.resume();
+  }
+
+  if (ctx.state !== "running") {
+    throw new Error(
+      `AudioContextを開始できませんでした。state=${ctx.state}`
+    );
   }
 
   return ctx;
@@ -469,6 +475,5 @@ export function stopPiper() {
 }
 
 export async function prewarmPiper(): Promise<void> {
-  await resumeAudioContext();
   await getEngine();
 }
