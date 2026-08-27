@@ -71,6 +71,16 @@ function normalizeSpeechText(input: string): string {
   t = t.replace(/行方/g, "ゆくえ");
   t = t.replace(/尚/g, "なお");
 
+  // イニングの読みを補正
+  t = t.replace(/1回/g, "いっかい");
+  t = t.replace(/表/g, "おもて");
+
+
+
+  // Easyscore の読みを補正
+  // 表示はそのまま、読み上げ時だけ「イージースコア」にする
+  t = t.replace(/Easyscore/gi, "イージースコア");
+
   // 「お知らせいたします」が Web Speech 側で
   // 「お知らせいた」＋「します」のように不自然に切られるのを防ぐ。
   // 表示文言は変更せず、読み上げ直前だけ「致します」表記にして
