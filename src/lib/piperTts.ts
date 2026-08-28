@@ -23,6 +23,72 @@ export const PIPER_MODELS = {
 
 type PiperProgressListener = (info: PiperProgressInfo) => void;
 
+type PiperDiagnosticListener = (logs: string[]) => void;
+
+let piperDiagnosticLogs: string[] = [];
+let piperDiagnosticListener: PiperDiagnosticListener | null = null;
+
+function formatDiagnosticValue(value: unknown): string {
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function addPiperDiagnostic(
+  message: string,
+  detail?: unknown
+) {
+  const time = new Date().toLocaleTimeString();
+  const line =
+    detail === undefined
+      ? `${time} ${message}`
+      : `${time} ${message} ${formatDiagnosticValue(detail)}`;
+
+  piperDiagnosticLogs = [
+    ...piperDiagnosticLogs.slice(-79),
+    line,
+  ];
+
+  console.log("[Piper-DIAG]", line);
+
+  try {
+    piperDiagnosticListener?.([...piperDiagnosticLogs]);
+  } catch {}
+}
+
+export function setPiperDiagnosticListener(
+  listener: PiperDiagnosticListener | null
+) {
+  piperDiagnosticListener = listener;
+
+  try {
+    listener?.([...piperDiagnosticLogs]);
+  } catch {}
+}
+
+export function getPiperDiagnosticLogs(): string[] {
+  return [...piperDiagnosticLogs];
+}
+
+export function getPiperDiagnosticText(): string {
+  return piperDiagnosticLogs.join("\n");
+}
+
+export function clearPiperDiagnosticLogs() {
+  piperDiagnosticLogs = [];
+  addPiperDiagnostic("[診断] ログをクリアしました");
+}
+
 const MODEL_PATH = "/models/easy-announce/easy_announce.onnx";
 
 let piperProgressListener: PiperProgressListener | null = null;
@@ -65,19 +131,70 @@ function getAudioContext(): AudioContext {
 
   audioContext = new AudioContextCtor();
 
+  addPiperDiagnostic(
+    "[AudioContext] 作成",
+    {
+      state: audioContext.state,
+      sampleRate: audioContext.sampleRate,
+    }
+  );
+
   return audioContext;
 }
 
 async function resumeAudioContext() {
-  const ctx = getAudioContext();
+  let ctx = getAudioContext();
 
-  if (ctx.state !== "running") {
-    await ctx.resume();
+  addPiperDiagnostic(
+    "[AudioContext] resume前",
+    ctx.state
+  );
+
+  try {
+    if (ctx.state === "closed") {
+      addPiperDiagnostic(
+        "[AudioContext] closedのため再作成"
+      );
+
+      audioContext = null;
+      ctx = getAudioContext();
+    }
+
+    if (ctx.state !== "running") {
+      await ctx.resume();
+    }
+  } catch (error) {
+    addPiperDiagnostic(
+      "[AudioContext] resume失敗、再作成",
+      error
+    );
+
+    try {
+      await ctx.close();
+    } catch {}
+
+    audioContext = null;
+    ctx = getAudioContext();
+
+    try {
+      await ctx.resume();
+    } catch (retryError) {
+      addPiperDiagnostic(
+        "[AudioContext] 再作成後のresume失敗",
+        retryError
+      );
+    }
   }
 
+  addPiperDiagnostic(
+    "[AudioContext] resume後",
+    ctx.state
+  );
+
   if (ctx.state !== "running") {
-    throw new Error(
-      `AudioContextを開始できませんでした。state=${ctx.state}`
+    addPiperDiagnostic(
+      "[警告] AudioContextがrunningではありません",
+      ctx.state
     );
   }
 
@@ -115,11 +232,21 @@ async function getEngine() {
 
   console.log("[Piper-Plus] ORT wasmPaths:", ort.env.wasm.wasmPaths);
 
+  addPiperDiagnostic(
+    "[ORT] wasmPaths",
+    String(ort.env.wasm.wasmPaths)
+  );
+
   if (!enginePromise) {
     const modelUrl = getModelUrl();
 
     console.log(
       "[Piper-Plus] model URL:",
+      modelUrl
+    );
+
+    addPiperDiagnostic(
+      "[Piper] 初期化開始",
       modelUrl
     );
 
@@ -140,17 +267,42 @@ async function getEngine() {
           info.progress,
           info.message
         );
+
+        addPiperDiagnostic(
+          "[Piper] progress",
+          {
+            stage: info.stage,
+            progress: info.progress,
+            message: info.message,
+          }
+        );
       },
-    }).catch((error: unknown) => {
-      enginePromise = null;
+    })
+      .then((engine: any) => {
+        addPiperDiagnostic(
+          "[Piper] 初期化完了"
+        );
+        return engine;
+      })
+      .catch((error: unknown) => {
+        enginePromise = null;
 
-      console.error(
-        "[Piper-Plus] initialization failed:",
-        error
-      );
+        console.error(
+          "[Piper-Plus] initialization failed:",
+          error
+        );
 
-      throw error;
-    });
+        addPiperDiagnostic(
+          "[Piper] 初期化失敗",
+          error
+        );
+
+        throw error;
+      });
+  } else {
+    addPiperDiagnostic(
+      "[Piper] 初期化済みエンジンを再利用"
+    );
   }
 
   return enginePromise;
@@ -244,13 +396,32 @@ async function synthesizeChunk(
     return null;
   }
 
-  const result = await engine.synthesize(
-    text,
+  addPiperDiagnostic(
+    "[生成] 開始",
     {
-      language: "ja",
-      lengthScale: 1 / speedScale,
+      text,
+      length: text.length,
+      speedScale,
     }
   );
+
+  let result: any;
+
+  try {
+    result = await engine.synthesize(
+      text,
+      {
+        language: "ja",
+        lengthScale: 1 / speedScale,
+      }
+    );
+  } catch (error) {
+    addPiperDiagnostic(
+      "[生成] 失敗",
+      error
+    );
+    throw error;
+  }
 
   if (myGenerationId !== generationId) {
     return null;
@@ -262,12 +433,29 @@ async function synthesizeChunk(
     );
   }
 
+  const samples =
+    result.samples instanceof Float32Array
+      ? result.samples
+      : new Float32Array(result.samples);
+
+  const sampleRate =
+    Number(result.sampleRate || 22050);
+
+  addPiperDiagnostic(
+    "[生成] 完了",
+    {
+      samples: samples.length,
+      sampleRate,
+      seconds:
+        sampleRate > 0
+          ? Number((samples.length / sampleRate).toFixed(2))
+          : 0,
+    }
+  );
+
   return {
-    samples:
-      result.samples instanceof Float32Array
-        ? result.samples
-        : new Float32Array(result.samples),
-    sampleRate: Number(result.sampleRate || 22050),
+    samples,
+    sampleRate,
   };
 }
 
@@ -278,6 +466,25 @@ async function playSamples(
   myGenerationId: number
 ) {
   const ctx = await resumeAudioContext();
+
+  console.log(
+    "[Piper-Plus] playSamples",
+    {
+      state: ctx.state,
+      samples: samples.length,
+      sampleRate,
+    }
+  );
+
+  addPiperDiagnostic(
+    "[再生] playSamples開始",
+    {
+      state: ctx.state,
+      samples: samples.length,
+      sampleRate,
+      volume,
+    }
+  );
 
   if (myGenerationId !== generationId) {
     return;
@@ -326,6 +533,10 @@ async function playSamples(
   await new Promise<void>(
     (resolve, reject) => {
       source.onended = () => {
+        addPiperDiagnostic(
+          "[再生] 終了"
+        );
+
         if (currentSource === source) {
           currentSource = null;
           currentGain = null;
@@ -335,8 +546,27 @@ async function playSamples(
       };
 
       try {
+        console.log(
+          "[Piper-Plus] source.start",
+          ctx.state
+        );
+
+        addPiperDiagnostic(
+          "[再生] source.start",
+          ctx.state
+        );
+
         source.start();
+
+        addPiperDiagnostic(
+          "[再生] source.start成功"
+        );
       } catch (error) {
+        addPiperDiagnostic(
+          "[再生] source.start失敗",
+          error
+        );
+
         if (currentSource === source) {
           currentSource = null;
           currentGain = null;
@@ -359,13 +589,30 @@ export async function speakPiper(
     return;
   }
 
+  addPiperDiagnostic(
+    "[読み上げ] 開始",
+    {
+      text: cleanText,
+      length: cleanText.length,
+    }
+  );
+
   const myGenerationId =
     ++generationId;
 
   await resumeAudioContext();
 
-  const engine =
-    await getEngine();
+  let engine: any;
+
+  try {
+    engine = await getEngine();
+  } catch (error) {
+    addPiperDiagnostic(
+      "[読み上げ] エンジン取得失敗",
+      error
+    );
+    throw error;
+  }
 
   if (
     myGenerationId !== generationId
@@ -400,6 +647,14 @@ export async function speakPiper(
       : 0.8;
 
   const chunks = splitPiperText(cleanText);
+
+  addPiperDiagnostic(
+    "[読み上げ] チャンク分割",
+    {
+      count: chunks.length,
+      chunks,
+    }
+  );
 
   if (!chunks.length) {
     return;
@@ -454,12 +709,23 @@ export async function speakPiper(
     if (
       myGenerationId !== generationId
     ) {
+      addPiperDiagnostic(
+        "[読み上げ] generationId変更により終了"
+      );
       return;
     }
   }
+
+  addPiperDiagnostic(
+    "[読み上げ] 全チャンク完了"
+  );
 }
 
 export function stopPiper() {
+  addPiperDiagnostic(
+    "[停止] stopPiper"
+  );
+
   generationId++;
 
   try {
@@ -479,5 +745,21 @@ export function stopPiper() {
 }
 
 export async function prewarmPiper(): Promise<void> {
-  await getEngine();
+  addPiperDiagnostic(
+    "[Prewarm] 開始"
+  );
+
+  try {
+    await getEngine();
+
+    addPiperDiagnostic(
+      "[Prewarm] 完了"
+    );
+  } catch (error) {
+    addPiperDiagnostic(
+      "[Prewarm] 失敗",
+      error
+    );
+    throw error;
+  }
 }
