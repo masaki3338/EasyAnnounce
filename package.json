@@ -28,7 +28,8 @@
     "react-dnd-touch-backend": "^16.0.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.6.2",
-    "wanakana": "^5.3.1"
+    "wanakana": "^5.3.1",
+    "@piper-plus/g2p": "0.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.0.28",
@@ -40,5 +41,10 @@
     "typescript": "^5.0.4",
     "vite": "^4.5.14",
     "vite-plugin-pwa": "^1.0.1"
+  },
+  "overrides": {
+    "piper-plus": {
+      "@piper-plus/g2p": "0.4.1"
+    }
   }
 }
