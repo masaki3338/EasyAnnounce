@@ -25,224 +25,25 @@ type PiperProgressListener = (info: PiperProgressInfo) => void;
 
 type PiperDiagnosticListener = (logs: string[]) => void;
 
-let piperDiagnosticLogs: string[] = [];
-let piperDiagnosticListener: PiperDiagnosticListener | null = null;
-
-function formatDiagnosticValue(value: unknown): string {
-  if (value instanceof Error) {
-    return `${value.name}: ${value.message}`;
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+// 診断表示は本番版では無効化。
+// 既存画面から参照されていてもエラーにならないよう、公開関数だけ残す。
+export function showPiperDiagnosticPanel() {}
+export function hidePiperDiagnosticPanel() {}
+export function setPiperDiagnosticListener(
+  _listener: PiperDiagnosticListener | null
+) {}
+export function getPiperDiagnosticLogs(): string[] {
+  return [];
 }
-
-
-const PIPER_DIAG_PANEL_ID = "piper-mobile-diagnostic-panel";
-const PIPER_DIAG_VERSION = "PIPER-DIAG-20260828-01";
-const PIPER_DIAG_TEXT_ID = "piper-mobile-diagnostic-text";
-
-function ensurePiperDiagnosticPanel() {
-  if (typeof document === "undefined") return;
-
-  let panel = document.getElementById(PIPER_DIAG_PANEL_ID);
-  if (panel) return;
-
-  panel = document.createElement("div");
-  panel.id = PIPER_DIAG_PANEL_ID;
-
-  Object.assign(panel.style, {
-    position: "fixed",
-    left: "8px",
-    right: "8px",
-    bottom: "8px",
-    zIndex: "2147483647",
-    maxHeight: "42vh",
-    background: "rgba(0,0,0,0.90)",
-    color: "#fff",
-    borderRadius: "10px",
-    padding: "8px",
-    fontSize: "11px",
-    lineHeight: "1.45",
-    boxSizing: "border-box",
-    fontFamily: "monospace",
-    boxShadow: "0 2px 12px rgba(0,0,0,.35)",
-  } as Partial<CSSStyleDeclaration>);
-
-  const header = document.createElement("div");
-  Object.assign(header.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    marginBottom: "6px",
-  } as Partial<CSSStyleDeclaration>);
-
-  const title = document.createElement("strong");
-  title.textContent = `Piper診断 ${PIPER_DIAG_VERSION}`;
-  title.style.flex = "1";
-
-  const clearButton = document.createElement("button");
-  clearButton.textContent = "クリア";
-  Object.assign(clearButton.style, {
-    border: "0",
-    borderRadius: "6px",
-    padding: "5px 8px",
-    fontSize: "11px",
-  } as Partial<CSSStyleDeclaration>);
-  clearButton.onclick = () => {
-    piperDiagnosticLogs = [];
-    renderPiperDiagnosticPanel();
-  };
-
-  const hideButton = document.createElement("button");
-  hideButton.textContent = "隠す";
-  Object.assign(hideButton.style, {
-    border: "0",
-    borderRadius: "6px",
-    padding: "5px 8px",
-    fontSize: "11px",
-  } as Partial<CSSStyleDeclaration>);
-  hideButton.onclick = () => {
-    panel!.style.display = "none";
-  };
-
-  const body = document.createElement("pre");
-  body.id = PIPER_DIAG_TEXT_ID;
-  Object.assign(body.style, {
-    margin: "0",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
-    overflowY: "auto",
-    maxHeight: "34vh",
-  } as Partial<CSSStyleDeclaration>);
-
-  header.appendChild(title);
-  header.appendChild(clearButton);
-  header.appendChild(hideButton);
-  panel.appendChild(header);
-  panel.appendChild(body);
-
-  document.body.appendChild(panel);
+export function getPiperDiagnosticText(): string {
+  return "";
 }
-
-function renderPiperDiagnosticPanel() {
-  if (typeof document === "undefined") return;
-
-  ensurePiperDiagnosticPanel();
-
-  const panel = document.getElementById(PIPER_DIAG_PANEL_ID);
-  const body = document.getElementById(PIPER_DIAG_TEXT_ID);
-
-  if (panel) {
-    panel.style.display = "block";
-  }
-
-  if (body) {
-    body.textContent = piperDiagnosticLogs.join("\n");
-    body.scrollTop = body.scrollHeight;
-  }
-}
-
-export function showPiperDiagnosticPanel() {
-  renderPiperDiagnosticPanel();
-}
-
-export function hidePiperDiagnosticPanel() {
-  if (typeof document === "undefined") return;
-  const panel = document.getElementById(PIPER_DIAG_PANEL_ID);
-  if (panel) panel.style.display = "none";
-}
-
-
-function startPiperDiagnosticPanelImmediately() {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return;
-  }
-
-  const start = () => {
-    try {
-      ensurePiperDiagnosticPanel();
-
-      if (!piperDiagnosticLogs.some(
-        (line) => line.includes("[起動] 診断版piperTts読み込み済み")
-      )) {
-        const time = new Date().toLocaleTimeString();
-        piperDiagnosticLogs = [
-          `${time} [起動] 診断版piperTts読み込み済み ${PIPER_DIAG_VERSION}`,
-          `${time} [環境] ${navigator.userAgent}`,
-        ];
-      }
-
-      renderPiperDiagnosticPanel();
-    } catch (error) {
-      console.error("[Piper-DIAG] panel startup failed", error);
-    }
-  };
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start, { once: true });
-  } else {
-    start();
-  }
-}
-
-startPiperDiagnosticPanelImmediately();
+export function clearPiperDiagnosticLogs() {}
 
 function addPiperDiagnostic(
-  message: string,
-  detail?: unknown
-) {
-  const time = new Date().toLocaleTimeString();
-  const line =
-    detail === undefined
-      ? `${time} ${message}`
-      : `${time} ${message} ${formatDiagnosticValue(detail)}`;
-
-  piperDiagnosticLogs = [
-    ...piperDiagnosticLogs.slice(-79),
-    line,
-  ];
-
-  console.log("[Piper-DIAG]", line);
-
-  try {
-    piperDiagnosticListener?.([...piperDiagnosticLogs]);
-  } catch {}
-
-  try {
-    renderPiperDiagnosticPanel();
-  } catch {}
-}
-
-export function setPiperDiagnosticListener(
-  listener: PiperDiagnosticListener | null
-) {
-  piperDiagnosticListener = listener;
-
-  try {
-    listener?.([...piperDiagnosticLogs]);
-  } catch {}
-}
-
-export function getPiperDiagnosticLogs(): string[] {
-  return [...piperDiagnosticLogs];
-}
-
-export function getPiperDiagnosticText(): string {
-  return piperDiagnosticLogs.join("\n");
-}
-
-export function clearPiperDiagnosticLogs() {
-  piperDiagnosticLogs = [];
-  addPiperDiagnostic("[診断] ログをクリアしました");
-}
+  _message: string,
+  _detail?: unknown
+) {}
 
 const MODEL_PATH = "/models/easy-announce/easy_announce.onnx";
 
@@ -256,8 +57,6 @@ let currentSource: AudioBufferSourceNode | null = null;
 let currentGain: GainNode | null = null;
 
 let generationId = 0;
-
-// 診断パネルは最初のPiper処理時に自動表示されます。
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -386,9 +185,6 @@ async function getEngine() {
 
   // ★ 本番VercelでもORTを確実に取得
   ort.env.wasm.wasmPaths = "/ort/";
-
-  console.log("[Piper-Plus] ORT wasmPaths:", ort.env.wasm.wasmPaths);
-
   addPiperDiagnostic(
     "[ORT] wasmPaths",
     String(ort.env.wasm.wasmPaths)
@@ -396,11 +192,6 @@ async function getEngine() {
 
   if (!enginePromise) {
     const modelUrl = getModelUrl();
-
-    console.log(
-      "[Piper-Plus] model URL:",
-      modelUrl
-    );
 
     addPiperDiagnostic(
       "[Piper] 初期化開始",
@@ -431,12 +222,6 @@ async function getEngine() {
         } catch {}
 
         // ★ 本番でも確認できるようDEV判定を外す
-        console.log(
-          "[Piper-Plus]",
-          info.stage,
-          info.progress,
-          info.message
-        );
 
         addPiperDiagnostic(
           "[Piper] progress",
@@ -637,15 +422,6 @@ async function playSamples(
 ) {
   const ctx = await resumeAudioContext();
 
-  console.log(
-    "[Piper-Plus] playSamples",
-    {
-      state: ctx.state,
-      samples: samples.length,
-      sampleRate,
-    }
-  );
-
   addPiperDiagnostic(
     "[再生] playSamples開始",
     {
@@ -716,10 +492,6 @@ async function playSamples(
       };
 
       try {
-        console.log(
-          "[Piper-Plus] source.start",
-          ctx.state
-        );
 
         addPiperDiagnostic(
           "[再生] source.start",
