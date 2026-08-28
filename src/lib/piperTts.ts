@@ -407,9 +407,22 @@ async function getEngine() {
       modelUrl
     );
 
+    const wasmG2pUrl = new URL(
+      "/piper-wasm/piper_plus_wasm.js",
+      window.location.origin
+    ).href;
+
+    addPiperDiagnostic(
+      "[Piper] 日本語G2P WASM URL",
+      wasmG2pUrl
+    );
+
+    // piper-plus の実装には wasmG2pUrl が存在するが、
+    // 一部バージョンの型定義には未記載のため any で渡す。
     enginePromise = PiperPlus.initialize({
       model: modelUrl,
       ort,
+      wasmG2pUrl,
       onProgress: (
         info: PiperProgressInfo
       ) => {
