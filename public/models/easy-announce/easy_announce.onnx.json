@@ -2,17 +2,14 @@
   "dataset": "easyannounce",
   "audio": {
     "sample_rate": 22050,
-    "quality": "training_data"
-  },
-  "espeak": {
-    "voice": "ja"
+    "quality": "medium"
   },
   "language": {
-    "code": "ja"
+    "code": "ja-en-zh-es-fr-pt"
   },
   "inference": {
     "noise_scale": 0.4,
-    "length_scale": 1,
+    "length_scale": 1.0,
     "noise_w": 0.5
   },
   "phoneme_type": "multilingual",
@@ -540,8 +537,15 @@
   },
   "num_symbols": 173,
   "num_speakers": 1,
-  "speaker_id_map": {},
-  "piper_version": "2.0.0",
+  "num_languages": 6,
+  "language_id_map": {
+    "ja": 0,
+    "en": 1,
+    "zh": 2,
+    "es": 3,
+    "fr": 4,
+    "pt": 5
+  },
   "prosody_num_symbols": 11,
   "prosody_id_map": {
     "0": [
@@ -578,13 +582,5 @@
       10
     ]
   },
-  "language_id_map": {
-    "ja": 0,
-    "en": 1,
-    "zh": 2,
-    "es": 3,
-    "fr": 4,
-    "pt": 5
-  },
-  "num_languages": 6
+  "speaker_id_map": {}
 }
