@@ -89,10 +89,96 @@ function ortRuntimeAssets(): Plugin {
   };
 }
 
+
+function piperRustWasmAssets(): Plugin {
+  const piperWasmDist = path.resolve(
+    process.cwd(),
+    'node_modules/piper-plus/dist/rust-wasm'
+  );
+
+  const wanted = new Set([
+    'piper_plus_wasm.js',
+    'piper_plus_wasm_bg.wasm',
+  ]);
+
+  return {
+    name: 'easyannounce-piper-rust-wasm-assets',
+
+    // npm run dev / vercel dev:
+    // /piper-wasm/... を node_modules から直接返す。
+    configureServer(server) {
+      server.middlewares.use('/piper-wasm/', (req, res, next) => {
+        try {
+          const pathname = decodeURIComponent(
+            (req.url || '').split('?')[0]
+          );
+          const name = path.basename(pathname);
+
+          if (!wanted.has(name)) {
+            return next();
+          }
+
+          const filePath = path.join(piperWasmDist, name);
+
+          if (!fs.existsSync(filePath)) {
+            res.statusCode = 404;
+            res.end(`Piper Rust WASM runtime not found: ${name}`);
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader(
+            'Content-Type',
+            name.endsWith('.wasm')
+              ? 'application/wasm'
+              : 'text/javascript; charset=utf-8'
+          );
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+          fs.createReadStream(filePath).pipe(res);
+        } catch (error) {
+          next(error as Error);
+        }
+      });
+    },
+
+    // npm run build / Vercel:
+    // dist/piper-wasm/ にJSローダーと約60MBの日本語対応WASMをコピーする。
+    closeBundle() {
+      const outDir = path.resolve(
+        process.cwd(),
+        'dist/piper-wasm'
+      );
+
+      fs.mkdirSync(outDir, {
+        recursive: true,
+      });
+
+      for (const name of wanted) {
+        const source = path.join(piperWasmDist, name);
+        const destination = path.join(outDir, name);
+
+        if (!fs.existsSync(source)) {
+          throw new Error(
+            `必要なPiper Rust WASMファイルが見つかりません: ${source}`
+          );
+        }
+
+        fs.copyFileSync(source, destination);
+      }
+
+      console.log(
+        '[Piper] copied Rust WASM runtime files to dist/piper-wasm'
+      );
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     ortRuntimeAssets(),
+    piperRustWasmAssets(),
 
     VitePWA({
       registerType: 'autoUpdate',
@@ -106,6 +192,7 @@ export default defineConfig({
         ],
         globIgnores: [
           'ort/**',
+          'piper-wasm/**',
         ],
         maximumFileSizeToCacheInBytes:
           10 * 1024 * 1024,
