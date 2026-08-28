@@ -46,6 +46,7 @@ function formatDiagnosticValue(value: unknown): string {
 
 
 const PIPER_DIAG_PANEL_ID = "piper-mobile-diagnostic-panel";
+const PIPER_DIAG_VERSION = "PIPER-DIAG-20260828-01";
 const PIPER_DIAG_TEXT_ID = "piper-mobile-diagnostic-text";
 
 function ensurePiperDiagnosticPanel() {
@@ -84,7 +85,7 @@ function ensurePiperDiagnosticPanel() {
   } as Partial<CSSStyleDeclaration>);
 
   const title = document.createElement("strong");
-  title.textContent = "Piper診断";
+  title.textContent = `Piper診断 ${PIPER_DIAG_VERSION}`;
   title.style.flex = "1";
 
   const clearButton = document.createElement("button");
@@ -158,6 +159,41 @@ export function hidePiperDiagnosticPanel() {
   const panel = document.getElementById(PIPER_DIAG_PANEL_ID);
   if (panel) panel.style.display = "none";
 }
+
+
+function startPiperDiagnosticPanelImmediately() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+
+  const start = () => {
+    try {
+      ensurePiperDiagnosticPanel();
+
+      if (!piperDiagnosticLogs.some(
+        (line) => line.includes("[起動] 診断版piperTts読み込み済み")
+      )) {
+        const time = new Date().toLocaleTimeString();
+        piperDiagnosticLogs = [
+          `${time} [起動] 診断版piperTts読み込み済み ${PIPER_DIAG_VERSION}`,
+          `${time} [環境] ${navigator.userAgent}`,
+        ];
+      }
+
+      renderPiperDiagnosticPanel();
+    } catch (error) {
+      console.error("[Piper-DIAG] panel startup failed", error);
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+}
+
+startPiperDiagnosticPanelImmediately();
 
 function addPiperDiagnostic(
   message: string,
