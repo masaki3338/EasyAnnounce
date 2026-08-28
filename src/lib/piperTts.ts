@@ -44,6 +44,121 @@ function formatDiagnosticValue(value: unknown): string {
   }
 }
 
+
+const PIPER_DIAG_PANEL_ID = "piper-mobile-diagnostic-panel";
+const PIPER_DIAG_TEXT_ID = "piper-mobile-diagnostic-text";
+
+function ensurePiperDiagnosticPanel() {
+  if (typeof document === "undefined") return;
+
+  let panel = document.getElementById(PIPER_DIAG_PANEL_ID);
+  if (panel) return;
+
+  panel = document.createElement("div");
+  panel.id = PIPER_DIAG_PANEL_ID;
+
+  Object.assign(panel.style, {
+    position: "fixed",
+    left: "8px",
+    right: "8px",
+    bottom: "8px",
+    zIndex: "2147483647",
+    maxHeight: "42vh",
+    background: "rgba(0,0,0,0.90)",
+    color: "#fff",
+    borderRadius: "10px",
+    padding: "8px",
+    fontSize: "11px",
+    lineHeight: "1.45",
+    boxSizing: "border-box",
+    fontFamily: "monospace",
+    boxShadow: "0 2px 12px rgba(0,0,0,.35)",
+  } as Partial<CSSStyleDeclaration>);
+
+  const header = document.createElement("div");
+  Object.assign(header.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginBottom: "6px",
+  } as Partial<CSSStyleDeclaration>);
+
+  const title = document.createElement("strong");
+  title.textContent = "Piper診断";
+  title.style.flex = "1";
+
+  const clearButton = document.createElement("button");
+  clearButton.textContent = "クリア";
+  Object.assign(clearButton.style, {
+    border: "0",
+    borderRadius: "6px",
+    padding: "5px 8px",
+    fontSize: "11px",
+  } as Partial<CSSStyleDeclaration>);
+  clearButton.onclick = () => {
+    piperDiagnosticLogs = [];
+    renderPiperDiagnosticPanel();
+  };
+
+  const hideButton = document.createElement("button");
+  hideButton.textContent = "隠す";
+  Object.assign(hideButton.style, {
+    border: "0",
+    borderRadius: "6px",
+    padding: "5px 8px",
+    fontSize: "11px",
+  } as Partial<CSSStyleDeclaration>);
+  hideButton.onclick = () => {
+    panel!.style.display = "none";
+  };
+
+  const body = document.createElement("pre");
+  body.id = PIPER_DIAG_TEXT_ID;
+  Object.assign(body.style, {
+    margin: "0",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    overflowY: "auto",
+    maxHeight: "34vh",
+  } as Partial<CSSStyleDeclaration>);
+
+  header.appendChild(title);
+  header.appendChild(clearButton);
+  header.appendChild(hideButton);
+  panel.appendChild(header);
+  panel.appendChild(body);
+
+  document.body.appendChild(panel);
+}
+
+function renderPiperDiagnosticPanel() {
+  if (typeof document === "undefined") return;
+
+  ensurePiperDiagnosticPanel();
+
+  const panel = document.getElementById(PIPER_DIAG_PANEL_ID);
+  const body = document.getElementById(PIPER_DIAG_TEXT_ID);
+
+  if (panel) {
+    panel.style.display = "block";
+  }
+
+  if (body) {
+    body.textContent = piperDiagnosticLogs.join("\n");
+    body.scrollTop = body.scrollHeight;
+  }
+}
+
+export function showPiperDiagnosticPanel() {
+  renderPiperDiagnosticPanel();
+}
+
+export function hidePiperDiagnosticPanel() {
+  if (typeof document === "undefined") return;
+  const panel = document.getElementById(PIPER_DIAG_PANEL_ID);
+  if (panel) panel.style.display = "none";
+}
+
 function addPiperDiagnostic(
   message: string,
   detail?: unknown
@@ -63,6 +178,10 @@ function addPiperDiagnostic(
 
   try {
     piperDiagnosticListener?.([...piperDiagnosticLogs]);
+  } catch {}
+
+  try {
+    renderPiperDiagnosticPanel();
   } catch {}
 }
 
@@ -101,6 +220,8 @@ let currentSource: AudioBufferSourceNode | null = null;
 let currentGain: GainNode | null = null;
 
 let generationId = 0;
+
+// 診断パネルは最初のPiper処理時に自動表示されます。
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
