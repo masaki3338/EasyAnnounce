@@ -17,9 +17,9 @@
     "lucide-react": "^0.542.0",
     "nodemailer": "^7.0.5",
     "nosleep.js": "^0.12.0",
-    "onnxruntime-web": "1.27.0",
+    "onnxruntime-web": "1.24.3",
     "pdfjs-dist": "3.11.174",
-    "piper-plus": "0.6.0",
+    "piper-plus": "0.3.1",
     "react": "^18.2.0",
     "react-device-detect": "^2.2.3",
     "react-dnd": "^16.0.1",
@@ -28,8 +28,7 @@
     "react-dnd-touch-backend": "^16.0.1",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.6.2",
-    "wanakana": "^5.3.1",
-    "@piper-plus/g2p": "0.4.1"
+    "wanakana": "^5.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.0.28",
@@ -41,10 +40,5 @@
     "typescript": "^5.0.4",
     "vite": "^4.5.14",
     "vite-plugin-pwa": "^1.0.1"
-  },
-  "overrides": {
-    "piper-plus": {
-      "@piper-plus/g2p": "0.4.1"
-    }
   }
 }
