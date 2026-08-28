@@ -338,7 +338,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
   };
 
   const mainMessage =
-    `両チームはウォーミングアップに入って下さい。\n` +
+    `両チームはウォーミングアップに入ってください。\n` +
     `${team1} はトスバッティング、\n` +
     `${team3} はキャッチボールを開始してください。`;
 
