@@ -110,6 +110,11 @@ async function getEngine() {
   ort.env.wasm.proxy = false;
   ort.env.wasm.numThreads = 1;
 
+  // ★ 本番VercelでもORTを確実に取得
+  ort.env.wasm.wasmPaths = "/ort/";
+
+  console.log("[Piper-Plus] ORT wasmPaths:", ort.env.wasm.wasmPaths);
+
   if (!enginePromise) {
     const modelUrl = getModelUrl();
 
@@ -128,14 +133,13 @@ async function getEngine() {
           piperProgressListener?.(info);
         } catch {}
 
-        if (import.meta.env.DEV) {
-          console.log(
-            "[Piper-Plus]",
-            info.stage,
-            info.progress,
-            info.message
-          );
-        }
+        // ★ 本番でも確認できるようDEV判定を外す
+        console.log(
+          "[Piper-Plus]",
+          info.stage,
+          info.progress,
+          info.message
+        );
       },
     }).catch((error: unknown) => {
       enginePromise = null;
