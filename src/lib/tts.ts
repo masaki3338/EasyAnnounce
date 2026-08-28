@@ -87,6 +87,9 @@ function normalizeSpeechText(input: string): string {
   // TTSに一続きの敬語表現として認識させる。
   t = t.replace(/お知らせいたします/g, "お知らせ致します");
 
+
+  t = t.replace(/下さい/g, "ください");
+
   return t;
 }
 
