@@ -283,6 +283,41 @@ function splitPiperText(text: string): string[] {
   let rest = source;
   let first = true;
 
+  // 途中で絶対に切らない語句
+  const protectedWords = [
+    "ください",
+    "行います",
+    "いたします",
+    "お願いします",
+    "お知らせいたします",
+    "お知らせ致します",
+    "代わりまして",
+    "入ります",
+    "入りまして",
+    "そのまま入り",
+  ];
+
+  const moveCutAfterProtectedWord = (
+    text: string,
+    cut: number
+  ): number => {
+    for (const word of protectedWords) {
+      let start = text.indexOf(word);
+
+      while (start !== -1) {
+        const end = start + word.length;
+
+        if (start < cut && cut < end) {
+          return end;
+        }
+
+        start = text.indexOf(word, start + 1);
+      }
+    }
+
+    return cut;
+  };
+
   while (rest.length > 0) {
     const maxLen = first ? 22 : 42;
 
@@ -291,9 +326,15 @@ function splitPiperText(text: string): string[] {
       break;
     }
 
-    const head = rest.slice(0, maxLen + 1);
+    const searchLen = Math.min(
+      rest.length,
+      maxLen + 10
+    );
 
-    // まず文末を優先
+    const head = rest.slice(0, searchLen);
+    let cut = -1;
+
+    // 1. 文末を最優先
     const sentenceBreaks = [
       head.lastIndexOf("。"),
       head.lastIndexOf("！"),
@@ -303,33 +344,109 @@ function splitPiperText(text: string): string[] {
       head.lastIndexOf("\n"),
     ];
 
-    let cut = Math.max(...sentenceBreaks);
+    const sentenceCut = Math.max(...sentenceBreaks);
 
-    // 文末が無ければ読点・空白を使う
-    if (cut < Math.floor(maxLen * 0.45)) {
-      const softBreaks = [
+    if (
+      sentenceCut >=
+      Math.floor(maxLen * 0.4)
+    ) {
+      cut = sentenceCut + 1;
+    }
+
+    // 2. 読点
+    if (cut < 0) {
+      const commaBreaks = [
         head.lastIndexOf("、"),
         head.lastIndexOf("，"),
         head.lastIndexOf(","),
-        head.lastIndexOf(" "),
       ];
-      cut = Math.max(...softBreaks);
+
+      const commaCut = Math.max(...commaBreaks);
+
+      if (
+        commaCut >=
+        Math.floor(maxLen * 0.45)
+      ) {
+        cut = commaCut + 1;
+      }
     }
 
-    // 不自然に短すぎる位置しか無い場合は最大長で切る
-    if (cut < Math.floor(maxLen * 0.35)) {
-      cut = maxLen - 1;
+    // 3. 野球アナウンスで自然に切れる語句
+    if (cut < 0) {
+      const preferredWords = [
+        "ください",
+        "行います",
+        "いたします",
+        "お願いします",
+        "代わりまして",
+        "入ります",
+        "くん",
+        "さん",
+        "選手",
+      ];
+
+      let bestCut = -1;
+
+      for (const word of preferredWords) {
+        const pos = head.lastIndexOf(word);
+
+        if (
+          pos >=
+          Math.floor(maxLen * 0.45)
+        ) {
+          const candidate = pos + word.length;
+
+          if (candidate > bestCut) {
+            bestCut = candidate;
+          }
+        }
+      }
+
+      if (bestCut > 0) {
+        cut = bestCut;
+      }
     }
 
-    // 区切り文字を前チャンク側に含める
-    const end = cut + 1;
-    const chunk = rest.slice(0, end).trim();
+    // 4. 空白
+    if (cut < 0) {
+      const spaceCut = head.lastIndexOf(" ");
+
+      if (
+        spaceCut >=
+        Math.floor(maxLen * 0.5)
+      ) {
+        cut = spaceCut + 1;
+      }
+    }
+
+    // 5. どうしても区切りが無ければ最大文字数付近
+    if (cut < 0) {
+      cut = maxLen;
+    }
+
+    // 「ください」「行います」などの単語途中なら後ろへずらす
+    cut = moveCutAfterProtectedWord(
+      rest,
+      cut
+    );
+
+    cut = Math.max(
+      1,
+      Math.min(cut, rest.length)
+    );
+
+    const chunk = rest
+      .slice(0, cut)
+      .trim();
 
     if (chunk) {
       chunks.push(chunk);
     }
 
-    rest = rest.slice(end).trimStart();
+    rest = rest
+      .slice(cut)
+      .trimStart();
+
     first = false;
   }
 
