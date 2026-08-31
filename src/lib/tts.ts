@@ -497,11 +497,21 @@ export function isSpeaking() {
 export async function prewarmTTS(): Promise<void> {
   try {
     if (getTtsEngine() === "piper") {
-      try {
-        await prewarmPiper();
-      } catch (error) {
+      // iPhone/Android共通:
+      // Piperの初期化完了をアプリ起動処理が無期限に待たないようにする。
+      // 初期化そのものはバックグラウンドで継続し、
+      // 「起動中」の待機だけ最大8秒で解除する。
+      const piperInit = prewarmPiper().catch((error) => {
         console.warn("Piper prewarm failed:", error);
-      }
+      });
+
+      await Promise.race([
+        piperInit,
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 8000);
+        }),
+      ]);
+
       return;
     }
 
@@ -533,7 +543,11 @@ export async function prewarmTTS(): Promise<void> {
 if (typeof window !== "undefined") {
   const startPiperPrewarm = () => {
     if (getTtsEngine() !== "piper") return;
-    void prewarmTTS();
+
+    // 自動prewarmは起動状態とは切り離して完全バックグラウンドで実行する。
+    void prewarmPiper().catch((error) => {
+      console.warn("Background Piper prewarm failed:", error);
+    });
   };
 
   const w = window as typeof window & {
