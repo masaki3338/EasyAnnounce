@@ -1,4 +1,4 @@
-import { prefetchPiper, prewarmPiper, speakPiper, stopPiper } from "./piperTts";
+import { prefetchPiper, speakPiper, stopPiper } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -488,21 +488,9 @@ export function isSpeaking() {
 export async function prewarmTTS(): Promise<void> {
   try {
     if (getTtsEngine() === "piper") {
-      // iPhone/Android共通:
-      // Piperの初期化完了をアプリ起動処理が無期限に待たないようにする。
-      // 初期化そのものはバックグラウンドで継続し、
-      // 「起動中」の待機だけ最大8秒で解除する。
-      const piperInit = prewarmPiper().catch((error) => {
-        console.warn("Piper prewarm failed:", error);
-      });
-
-      await Promise.race([
-        piperInit,
-        new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 8000);
-        }),
-      ]);
-
+      // 安定性優先:
+      // Piperを起動時・バックグラウンドでは初期化しない。
+      // 初回の speakPiper() 呼び出し時に初期化する。
       return;
     }
 
