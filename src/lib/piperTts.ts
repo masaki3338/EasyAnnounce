@@ -123,6 +123,20 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
+/**
+ * iPhone / iPad Safari 用。
+ * ユーザーのタップ中に AudioContext.resume() だけを要求する。
+ * 無音BufferSourceは作らず、Android/PCの再生経路には干渉しない。
+ */
+export function resumePiperAudioFromUserGesture(): void {
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state !== "running") {
+      void ctx.resume().catch(() => {});
+    }
+  } catch {}
+}
+
 async function resumeAudioContext() {
   let ctx = getAudioContext();
 

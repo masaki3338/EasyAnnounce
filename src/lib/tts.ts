@@ -1,4 +1,4 @@
-import { prefetchPiper, speakPiper, stopPiper } from "./piperTts";
+import { prefetchPiper, prewarmPiper, speakPiper, stopPiper, resumePiperAudioFromUserGesture } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -17,6 +17,13 @@ let speaking = false;
 
 function getTtsEngine(): "webspeech" | "piper" {
   return localStorage.getItem("tts:engine") === "piper" ? "piper" : "webspeech";
+}
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iP(hone|ad|od)/.test(ua) ||
+    (/Macintosh/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
 }
 
 
@@ -216,6 +223,12 @@ async function unlockWebSpeech(voiceName?: string) {
 export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
 
+  if (getTtsEngine() === "piper" && isIOSDevice()) {
+    // iOSだけ、ユーザー操作中にAudioContext.resume()を要求する。
+    // Android/Windowsには一切入れない。
+    resumePiperAudioFromUserGesture();
+  }
+
   text = normalizeSpeechText(text);
 
   // ローカル設定の既定値（LS未設定時のフォールバック）
@@ -335,6 +348,10 @@ export async function speakSegments(
   segments: string[],
   options: SpeakOptions = {}
 ) {
+  if (getTtsEngine() === "piper" && isIOSDevice()) {
+    resumePiperAudioFromUserGesture();
+  }
+
   const cleaned = (segments || [])
     .map((s) => normalizeSpeechText(String(s ?? "")).trim())
     .filter(Boolean);
@@ -488,9 +505,9 @@ export function isSpeaking() {
 export async function prewarmTTS(): Promise<void> {
   try {
     if (getTtsEngine() === "piper") {
-      // 安定性優先:
-      // Piperを起動時・バックグラウンドでは初期化しない。
-      // 初回の speakPiper() 呼び出し時に初期化する。
+      // 起動中画面でモデル初期化を最後まで完了させる。
+      // AudioContextは触らないため、iPhoneの自動再生制限には影響しない。
+      await prewarmPiper();
       return;
     }
 
@@ -516,4 +533,3 @@ export async function prewarmTTS(): Promise<void> {
     // ignore
   }
 }
-
