@@ -322,12 +322,40 @@ async function getEngine() {
   ort.env.wasm.proxy = false;
   ort.env.wasm.numThreads = 1;
 
-  // ★ 本番VercelでもORTを確実に取得
-  ort.env.wasm.wasmPaths = "/ort/";
-  addPiperDiagnostic(
-    "[ORT] wasmPaths",
-    String(ort.env.wasm.wasmPaths)
-  );
+  // Vercel / PWA / スマホで ORT が推測したWASM URLを取り違えないよう、
+  // onnxruntime-web 1.27.x の実ファイルを絶対URLで明示する。
+  const origin = window.location.origin;
+  const ortWasmUrl = `${origin}/ort/ort-wasm-simd-threaded.wasm`;
+  const ortMjsUrl = `${origin}/ort/ort-wasm-simd-threaded.mjs`;
+
+  ort.env.wasm.wasmPaths = {
+    wasm: ortWasmUrl,
+    mjs: ortMjsUrl,
+  } as any;
+
+  addPiperDiagnostic("[ORT] wasmPaths explicit", {
+    wasm: ortWasmUrl,
+    mjs: ortMjsUrl,
+  });
+
+  // 診断ログ常時表示版なので、ORT本体も事前に到達確認する。
+  void fetch(ortWasmUrl, { method: "HEAD", cache: "no-store" })
+    .then((r) => addPiperDiagnostic("[ORT WASM HEAD]", {
+      ok: r.ok,
+      status: r.status,
+      length: r.headers.get("content-length"),
+      type: r.headers.get("content-type"),
+    }))
+    .catch((e) => addPiperDiagnostic("[ORT WASM HEAD ERROR]", e));
+
+  void fetch(ortMjsUrl, { method: "HEAD", cache: "no-store" })
+    .then((r) => addPiperDiagnostic("[ORT MJS HEAD]", {
+      ok: r.ok,
+      status: r.status,
+      length: r.headers.get("content-length"),
+      type: r.headers.get("content-type"),
+    }))
+    .catch((e) => addPiperDiagnostic("[ORT MJS HEAD ERROR]", e));
 
   if (!enginePromise) {
     const modelUrl = getModelUrl();
