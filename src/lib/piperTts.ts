@@ -32,14 +32,9 @@ let piperDiagnosticListener: PiperDiagnosticListener | null = null;
 let piperDiagnosticPanel: HTMLDivElement | null = null;
 
 function isPiperDebugEnabled(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("ttsdebug") === "1" ||
-      localStorage.getItem("tts:debug") === "1";
-  } catch {
-    return false;
-  }
+  // 一時的に常時ON。
+  // スマホ実機で ?ttsdebug=1 を付けなくても画面に診断ログを表示する。
+  return typeof window !== "undefined";
 }
 
 function formatDiagnosticDetail(detail: unknown): string {
