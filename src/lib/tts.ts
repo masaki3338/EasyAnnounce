@@ -98,6 +98,14 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+// AI音声(Piper)は元の速度感に合わせる。
+// 読み上げ設定の表示 1.0 = Piper内部 0.6 として扱う。
+const PIPER_SPEED_BASE = 0.6;
+
+function toPiperSpeed(uiSpeed: number): number {
+  return clamp(uiSpeed * PIPER_SPEED_BASE, 0.25, 2.0);
+}
+
 // 長文だけ少し速くする（全音声共通で効かせやすい控えめ設定）
 function getAutoAdjustedRate(text: string, baseRate: number): number {
   const normalized = String(text)
@@ -247,7 +255,8 @@ export async function speak(text: string, options: SpeakOptions = {}) {
     speaking = true;
     try {
       await speakPiper(text, {
-        speedScale: baseRate,
+        // 設定画面 1.0 → Piper内部 0.6
+        speedScale: toPiperSpeed(baseRate),
         volume,
       });
     } finally {
@@ -367,7 +376,8 @@ export async function speakSegments(
     try {
       for (const segment of cleaned) {
         await speakPiper(segment, {
-          speedScale: baseRate,
+          // 設定画面 1.0 → Piper内部 0.6
+          speedScale: toPiperSpeed(baseRate),
           volume,
         });
       }
@@ -455,7 +465,10 @@ export async function prefetchTTS(
       ? clamp(lsSpeed, 0.5, 2.0)
       : 1.0;
 
-  await prefetchPiper(normalized, { speedScale });
+  await prefetchPiper(normalized, {
+    // 実際の読み上げと同じ速度で先読みキャッシュする
+    speedScale: toPiperSpeed(speedScale),
+  });
 }
 
 export function stop() {

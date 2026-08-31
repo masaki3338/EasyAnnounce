@@ -724,7 +724,7 @@ export async function speakPiper(
           Number(
             options.speedScale
           ),
-          0.5,
+          0.25,
           2.0
         )
       : 1.0;
@@ -830,7 +830,7 @@ export async function prefetchPiper(
   if (!cleanText) return;
 
   const speedScale = Number.isFinite(options.speedScale)
-    ? clamp(Number(options.speedScale), 0.5, 2.0)
+    ? clamp(Number(options.speedScale), 0.25, 2.0)
     : 1.0;
 
   try {
