@@ -1,4 +1,4 @@
-import { prewarmPiper, speakPiper, stopPiper } from "./piperTts";
+import { prefetchPiper, prewarmPiper, speakPiper, stopPiper } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -436,6 +436,28 @@ export async function speakSegments(
   });
 }
 
+/**
+ * Piper選択時、近いうちに読む文章を先行生成する。
+ * 例: 次の打者が確定した時や、アナウンス文を表示した時に呼ぶ。
+ */
+export async function prefetchTTS(
+  text: string,
+  options: SpeakOptions = {}
+): Promise<void> {
+  if (!text || !text.trim()) return;
+  if (getTtsEngine() !== "piper") return;
+
+  const normalized = normalizeSpeechText(text);
+  const lsSpeed = Number(localStorage.getItem("tts:speedScale"));
+  const speedScale = Number.isFinite(options.speedScale)
+    ? clamp(Number(options.speedScale), 0.5, 2.0)
+    : Number.isFinite(lsSpeed)
+      ? clamp(lsSpeed, 0.5, 2.0)
+      : 1.0;
+
+  await prefetchPiper(normalized, { speedScale });
+}
+
 export function stop() {
   sessionCounter++;
 
@@ -481,5 +503,24 @@ export async function prewarmTTS(): Promise<void> {
     __wsUnlocked = true;
   } catch {
     // ignore
+  }
+}
+
+// Piperが選択済みなら、画面を先に表示してから空き時間にモデルを準備する。
+// 起動直後に重い処理を走らせてUIを固めないため、requestIdleCallbackを優先。
+if (typeof window !== "undefined") {
+  const startPiperPrewarm = () => {
+    if (getTtsEngine() !== "piper") return;
+    void prewarmTTS();
+  };
+
+  const w = window as typeof window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+  };
+
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(startPiperPrewarm, { timeout: 5000 });
+  } else {
+    window.setTimeout(startPiperPrewarm, 2000);
   }
 }

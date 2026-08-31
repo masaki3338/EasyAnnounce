@@ -58,6 +58,31 @@ let currentGain: GainNode | null = null;
 
 let generationId = 0;
 
+// 生成済み音声を少量だけメモリに保持。
+// 低スペック端末で同じ文言を再度読む時の再推論を避ける。
+const synthesizedCache = new Map<string, SynthesizedChunk>();
+const synthesizedCacheOrder: string[] = [];
+const MAX_SYNTH_CACHE_ITEMS = 8;
+
+function makeSynthCacheKey(text: string, speedScale: number) {
+  return `${speedScale.toFixed(3)}::${text}`;
+}
+
+function putSynthCache(key: string, value: SynthesizedChunk) {
+  if (synthesizedCache.has(key)) {
+    const idx = synthesizedCacheOrder.indexOf(key);
+    if (idx >= 0) synthesizedCacheOrder.splice(idx, 1);
+  }
+
+  synthesizedCache.set(key, value);
+  synthesizedCacheOrder.push(key);
+
+  while (synthesizedCacheOrder.length > MAX_SYNTH_CACHE_ITEMS) {
+    const oldest = synthesizedCacheOrder.shift();
+    if (oldest) synthesizedCache.delete(oldest);
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -468,6 +493,13 @@ async function synthesizeChunk(
     return null;
   }
 
+  const cacheKey = makeSynthCacheKey(text, speedScale);
+  const cached = synthesizedCache.get(cacheKey);
+  if (cached) {
+    addPiperDiagnostic("[生成] キャッシュ使用", { text });
+    return cached;
+  }
+
   addPiperDiagnostic(
     "[生成] 開始",
     {
@@ -525,10 +557,15 @@ async function synthesizeChunk(
     }
   );
 
-  return {
+  const synthesized = {
     samples,
     sampleRate,
   };
+
+  // stop() が途中で呼ばれても、推論自体が完了していれば次回利用できる。
+  putSynthCache(cacheKey, synthesized);
+
+  return synthesized;
 }
 
 async function playSamples(
@@ -778,6 +815,56 @@ export async function speakPiper(
   addPiperDiagnostic(
     "[読み上げ] 全チャンク完了"
   );
+}
+
+/**
+ * 読み上げ予定の文章を先に生成してキャッシュする。
+ * 画面側で「次の打者」などが確定した時に呼ぶと、
+ * 読み上げボタン押下後の待ち時間を短縮できる。
+ */
+export async function prefetchPiper(
+  text: string,
+  options: PiperSpeakOptions = {}
+): Promise<void> {
+  const cleanText = String(text ?? "").trim();
+  if (!cleanText) return;
+
+  const speedScale = Number.isFinite(options.speedScale)
+    ? clamp(Number(options.speedScale), 0.5, 2.0)
+    : 1.0;
+
+  try {
+    const engine = await getEngine();
+    const chunks = splitPiperText(cleanText);
+
+    // 低スペック端末を塞ぎ過ぎないよう、先頭2チャンクまで。
+    for (const chunk of chunks.slice(0, 2)) {
+      const key = makeSynthCacheKey(chunk, speedScale);
+      if (synthesizedCache.has(key)) continue;
+
+      const result = await engine.synthesize(chunk, {
+        language: "ja",
+        lengthScale: 1 / speedScale,
+      });
+
+      if (!result?.samples) continue;
+
+      const samples =
+        result.samples instanceof Float32Array
+          ? result.samples
+          : new Float32Array(result.samples);
+
+      const sampleRate = Number(result.sampleRate || 22050);
+      putSynthCache(key, { samples, sampleRate });
+    }
+  } catch (error) {
+    console.warn("Piper prefetch failed:", error);
+  }
+}
+
+export function clearPiperAudioCache() {
+  synthesizedCache.clear();
+  synthesizedCacheOrder.length = 0;
 }
 
 export function stopPiper() {
