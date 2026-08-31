@@ -799,8 +799,9 @@ useEffect(() => {
 }, [waterBreakMinutes]);
 
 // マウント時に一度だけTTSを事前読み込み
-// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は、
-// 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
+// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は準備を開始するが、
+// iPhone / Android の低スペック端末で初期化が長引いても
+// 「起動中...」を永久表示しない。表示待ちは最大8秒で必ず解除する。
 useEffect(() => {
   if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
   warmedOnceRef.current = true;
@@ -812,15 +813,32 @@ useEffect(() => {
     return;
   }
 
+  let disposed = false;
   setIsTtsStarting(true);
+
+  // App側でも独立した安全装置を持つ。
+  // tts.ts / Piper初期化が返ってこなくても8秒後には画面を使えるようにする。
+  const startupTimeout = window.setTimeout(() => {
+    if (!disposed) {
+      console.warn("[TTS] startup wait timeout: continue in background");
+      setIsTtsStarting(false);
+    }
+  }, 8000);
 
   void prewarmTTS()
     .catch((error) => {
       console.warn("[TTS] prewarm failed:", error);
     })
     .finally(() => {
+      if (disposed) return;
+      window.clearTimeout(startupTimeout);
       setIsTtsStarting(false);
     });
+
+  return () => {
+    disposed = true;
+    window.clearTimeout(startupTimeout);
+  };
 }, []);
 
 
