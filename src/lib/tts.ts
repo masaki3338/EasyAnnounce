@@ -1,4 +1,4 @@
-import { prefetchPiper, prewarmPiper, speakPiper, stopPiper, resumePiperAudioFromUserGesture } from "./piperTts";
+import { prefetchPiper, prewarmPiper, speakPiper, stopPiper } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -17,13 +17,6 @@ let speaking = false;
 
 function getTtsEngine(): "webspeech" | "piper" {
   return localStorage.getItem("tts:engine") === "piper" ? "piper" : "webspeech";
-}
-
-function isIOSDevice(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  return /iP(hone|ad|od)/.test(ua) ||
-    (/Macintosh/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
 }
 
 
@@ -223,12 +216,6 @@ async function unlockWebSpeech(voiceName?: string) {
 export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
 
-  if (getTtsEngine() === "piper" && isIOSDevice()) {
-    // iOSだけ、ユーザー操作中にAudioContext.resume()を要求する。
-    // Android/Windowsには一切入れない。
-    resumePiperAudioFromUserGesture();
-  }
-
   text = normalizeSpeechText(text);
 
   // ローカル設定の既定値（LS未設定時のフォールバック）
@@ -348,10 +335,6 @@ export async function speakSegments(
   segments: string[],
   options: SpeakOptions = {}
 ) {
-  if (getTtsEngine() === "piper" && isIOSDevice()) {
-    resumePiperAudioFromUserGesture();
-  }
-
   const cleaned = (segments || [])
     .map((s) => normalizeSpeechText(String(s ?? "")).trim())
     .filter(Boolean);
@@ -505,9 +488,11 @@ export function isSpeaking() {
 export async function prewarmTTS(): Promise<void> {
   try {
     if (getTtsEngine() === "piper") {
-      // 起動中画面でモデル初期化を最後まで完了させる。
-      // AudioContextは触らないため、iPhoneの自動再生制限には影響しない。
-      await prewarmPiper();
+      try {
+        await prewarmPiper();
+      } catch (error) {
+        console.warn("Piper prewarm failed:", error);
+      }
       return;
     }
 
@@ -531,5 +516,24 @@ export async function prewarmTTS(): Promise<void> {
     __wsUnlocked = true;
   } catch {
     // ignore
+  }
+}
+
+// Piperが選択済みなら、画面を先に表示してから空き時間にモデルを準備する。
+// 起動直後に重い処理を走らせてUIを固めないため、requestIdleCallbackを優先。
+if (typeof window !== "undefined") {
+  const startPiperPrewarm = () => {
+    if (getTtsEngine() !== "piper") return;
+    void prewarmTTS();
+  };
+
+  const w = window as typeof window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+  };
+
+  if (typeof w.requestIdleCallback === "function") {
+    w.requestIdleCallback(startPiperPrewarm, { timeout: 5000 });
+  } else {
+    window.setTimeout(startPiperPrewarm, 2000);
   }
 }
