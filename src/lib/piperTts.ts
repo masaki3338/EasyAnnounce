@@ -25,27 +25,146 @@ type PiperProgressListener = (info: PiperProgressInfo) => void;
 
 type PiperDiagnosticListener = (logs: string[]) => void;
 
-// 診断表示は本番版では無効化。
-// 既存画面から参照されていてもエラーにならないよう、公開関数だけ残す。
-export function showPiperDiagnosticPanel() {}
-export function hidePiperDiagnosticPanel() {}
+// スマホ実機で確認できる簡易診断ログ。
+// URL末尾に ?ttsdebug=1 を付けた時だけ画面右下に表示する。
+const piperDiagnosticLogs: string[] = [];
+let piperDiagnosticListener: PiperDiagnosticListener | null = null;
+let piperDiagnosticPanel: HTMLDivElement | null = null;
+
+function isPiperDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("ttsdebug") === "1" ||
+      localStorage.getItem("tts:debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function formatDiagnosticDetail(detail: unknown): string {
+  if (detail === undefined) return "";
+  if (detail instanceof Error) {
+    return `${detail.name}: ${detail.message}`;
+  }
+  if (typeof detail === "string") return detail;
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return String(detail);
+  }
+}
+
+function refreshPiperDiagnosticPanel() {
+  if (!piperDiagnosticPanel) return;
+  piperDiagnosticPanel.textContent = piperDiagnosticLogs.slice(-80).join("\n");
+  piperDiagnosticPanel.scrollTop = piperDiagnosticPanel.scrollHeight;
+}
+
+export function showPiperDiagnosticPanel() {
+  if (typeof document === "undefined" || piperDiagnosticPanel) return;
+
+  const panel = document.createElement("div");
+  panel.id = "piper-diagnostic-panel";
+  Object.assign(panel.style, {
+    position: "fixed",
+    left: "4px",
+    right: "4px",
+    bottom: "4px",
+    maxHeight: "45vh",
+    overflow: "auto",
+    zIndex: "2147483647",
+    background: "rgba(0,0,0,0.88)",
+    color: "#7CFC00",
+    fontFamily: "monospace",
+    fontSize: "11px",
+    lineHeight: "1.35",
+    whiteSpace: "pre-wrap",
+    padding: "8px",
+    borderRadius: "8px",
+    WebkitOverflowScrolling: "touch",
+    pointerEvents: "auto",
+  });
+
+  document.body.appendChild(panel);
+  piperDiagnosticPanel = panel;
+  refreshPiperDiagnosticPanel();
+}
+
+export function hidePiperDiagnosticPanel() {
+  try {
+    piperDiagnosticPanel?.remove();
+  } catch {}
+  piperDiagnosticPanel = null;
+}
+
 export function setPiperDiagnosticListener(
-  _listener: PiperDiagnosticListener | null
-) {}
+  listener: PiperDiagnosticListener | null
+) {
+  piperDiagnosticListener = listener;
+}
+
 export function getPiperDiagnosticLogs(): string[] {
-  return [];
+  return [...piperDiagnosticLogs];
 }
+
 export function getPiperDiagnosticText(): string {
-  return "";
+  return piperDiagnosticLogs.join("\n");
 }
-export function clearPiperDiagnosticLogs() {}
+
+export function clearPiperDiagnosticLogs() {
+  piperDiagnosticLogs.length = 0;
+  refreshPiperDiagnosticPanel();
+  try {
+    piperDiagnosticListener?.([]);
+  } catch {}
+}
 
 function addPiperDiagnostic(
-  _message: string,
-  _detail?: unknown
-) {}
+  message: string,
+  detail?: unknown
+) {
+  const now = new Date();
+  const stamp = now.toLocaleTimeString("ja-JP", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const suffix = formatDiagnosticDetail(detail);
+  const line = suffix ? `${stamp} ${message} ${suffix}` : `${stamp} ${message}`;
+
+  piperDiagnosticLogs.push(line);
+  if (piperDiagnosticLogs.length > 200) {
+    piperDiagnosticLogs.splice(0, piperDiagnosticLogs.length - 200);
+  }
+
+  console.log("[PiperDiag]", line);
+
+  try {
+    piperDiagnosticListener?.([...piperDiagnosticLogs]);
+  } catch {}
+
+  if (isPiperDebugEnabled()) {
+    showPiperDiagnosticPanel();
+    refreshPiperDiagnosticPanel();
+  }
+}
 
 const MODEL_PATH = "/models/easy-announce/easy_announce.onnx";
+
+if (typeof window !== "undefined" && isPiperDebugEnabled()) {
+  window.setTimeout(() => {
+    addPiperDiagnostic("[環境]", {
+      userAgent: navigator.userAgent,
+      online: navigator.onLine,
+      href: window.location.href,
+      crossOriginIsolated: window.crossOriginIsolated,
+      audioContext: !!(window.AudioContext || (window as any).webkitAudioContext),
+    });
+  }, 0);
+}
 
 let piperProgressListener: PiperProgressListener | null = null;
 let selectedPiperModel: PiperModelId = "easy-announce";
@@ -236,6 +355,27 @@ async function getEngine() {
     // piper-plus の実装には wasmG2pUrl が存在するが、
     // 一部バージョンの型定義には未記載のため any で渡す。
     console.info("[Piper] initialize start", { modelUrl, wasmG2pUrl });
+    addPiperDiagnostic("[Piper] initialize start", { modelUrl, wasmG2pUrl });
+
+    if (isPiperDebugEnabled()) {
+      void fetch(modelUrl, { method: "HEAD", cache: "no-store" })
+        .then((r) => addPiperDiagnostic("[MODEL HEAD]", {
+          ok: r.ok,
+          status: r.status,
+          length: r.headers.get("content-length"),
+          type: r.headers.get("content-type"),
+        }))
+        .catch((e) => addPiperDiagnostic("[MODEL HEAD ERROR]", e));
+
+      void fetch(wasmG2pUrl, { method: "HEAD", cache: "no-store" })
+        .then((r) => addPiperDiagnostic("[G2P HEAD]", {
+          ok: r.ok,
+          status: r.status,
+          length: r.headers.get("content-length"),
+          type: r.headers.get("content-type"),
+        }))
+        .catch((e) => addPiperDiagnostic("[G2P HEAD ERROR]", e));
+    }
 
     enginePromise = PiperPlus.initialize({
       model: modelUrl,
