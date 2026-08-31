@@ -799,8 +799,8 @@ useEffect(() => {
 }, [waterBreakMinutes]);
 
 // マウント時に一度だけTTSを事前読み込み
-// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は、
-// 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
+// Piper初期化は App.tsx から1回だけ開始する。
+// tts.ts 側の自動prewarmは廃止し、スマホで同時/重複初期化を起こさない。
 useEffect(() => {
   if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
   warmedOnceRef.current = true;
@@ -812,15 +812,49 @@ useEffect(() => {
     return;
   }
 
+  let disposed = false;
+  let fallbackTimer = 0;
+
   setIsTtsStarting(true);
 
-  void prewarmTTS()
-    .catch((error) => {
-      console.warn("[TTS] prewarm failed:", error);
-    })
-    .finally(() => {
-      setIsTtsStarting(false);
+  const startPrewarm = async () => {
+    // まず起動中オーバーレイを確実に描画させる。
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
     });
+
+    if (disposed) return;
+
+    // 端末によってPiper初期化Promiseが返らない場合でも
+    // アプリ全体が永久に「起動中」にならないための最終安全装置。
+    // 初期化処理そのものは継続する。
+    fallbackTimer = window.setTimeout(() => {
+      if (!disposed) {
+        console.warn("[TTS] Piper startup timeout (45s). Continue initialization in background.");
+        setIsTtsStarting(false);
+      }
+    }, 45000);
+
+    try {
+      await prewarmTTS();
+    } catch (error) {
+      console.error("[TTS] prewarm failed:", error);
+    } finally {
+      if (!disposed) {
+        if (fallbackTimer) window.clearTimeout(fallbackTimer);
+        setIsTtsStarting(false);
+      }
+    }
+  };
+
+  void startPrewarm();
+
+  return () => {
+    disposed = true;
+    if (fallbackTimer) window.clearTimeout(fallbackTimer);
+  };
 }, []);
 
 
