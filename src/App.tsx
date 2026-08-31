@@ -799,11 +799,10 @@ useEffect(() => {
 }, [waterBreakMinutes]);
 
 // マウント時に一度だけTTSを事前読み込み
-// AI音声選択時はタイトル画面で「起動中...」を表示し、
-// Piperモデル初期化が完了してから操作画面へ進む。
-// ただし、まず2フレーム待って「起動中」画面を確実に描画してから重い初期化を始める。
+// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は、
+// 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
 useEffect(() => {
-  if (warmedOnceRef.current) return;
+  if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
   warmedOnceRef.current = true;
 
   const isPiper = localStorage.getItem("tts:engine") === "piper";
@@ -813,38 +812,15 @@ useEffect(() => {
     return;
   }
 
-  let cancelled = false;
   setIsTtsStarting(true);
 
-  const start = async () => {
-    // Reactの描画を先に完了させる。Windowsで「真っ白/固まったように見える」を避ける。
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => resolve())
-      )
-    );
-
-    if (cancelled) return;
-
-    try {
-      await prewarmTTS();
-      if (!cancelled) {
-        setIsTtsStarting(false);
-      }
-    } catch (error) {
-      console.error("[TTS] prewarm failed:", error);
-      // 初期化失敗時は永久に起動中にせず、アプリは使えるようにする。
-      if (!cancelled) {
-        setIsTtsStarting(false);
-      }
-    }
-  };
-
-  void start();
-
-  return () => {
-    cancelled = true;
-  };
+  void prewarmTTS()
+    .catch((error) => {
+      console.warn("[TTS] prewarm failed:", error);
+    })
+    .finally(() => {
+      setIsTtsStarting(false);
+    });
 }, []);
 
 
