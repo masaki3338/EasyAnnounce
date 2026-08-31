@@ -1,4 +1,4 @@
-import { prefetchPiper, prewarmPiper, speakPiper, stopPiper } from "./piperTts";
+import { prefetchPiper, prewarmPiper, speakPiper, stopPiper, unlockPiperAudioFromUserGesture } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -216,6 +216,11 @@ async function unlockWebSpeech(voiceName?: string) {
 export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
 
+  if (getTtsEngine() === "piper") {
+    // iPhone/iPad Safariではユーザー操作の同期処理中に解除する必要がある。
+    unlockPiperAudioFromUserGesture();
+  }
+
   text = normalizeSpeechText(text);
 
   // ローカル設定の既定値（LS未設定時のフォールバック）
@@ -335,6 +340,10 @@ export async function speakSegments(
   segments: string[],
   options: SpeakOptions = {}
 ) {
+  if (getTtsEngine() === "piper") {
+    unlockPiperAudioFromUserGesture();
+  }
+
   const cleaned = (segments || [])
     .map((s) => normalizeSpeechText(String(s ?? "")).trim())
     .filter(Boolean);
