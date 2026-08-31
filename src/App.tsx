@@ -10,7 +10,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
-import { speak, stop, prewarmTTS } from "./lib/tts";
+import { speak, stop } from "./lib/tts";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -215,9 +215,9 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
-  const [isTtsStarting, setIsTtsStarting] = useState(
-    () => localStorage.getItem("tts:engine") === "piper"
-  );
+  // Piperは起動時に初期化しない。
+  // PC/スマホで初期化処理が固まってアプリ全体が「起動中」のままになるのを防ぐ。
+  const [isTtsStarting] = useState(false);
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -656,7 +656,6 @@ const iosVideoRef = useRef<HTMLVideoElement | null>(null);
 const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
 // App コンポーネント内のどこか（stateの定義付近）に追加
-const warmedOnceRef = useRef(false);
 useEffect(() => {
   setLeagueMode(getLeagueMode());
 }, []);
@@ -798,49 +797,9 @@ useEffect(() => {
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
-// マウント時に一度だけTTSを事前読み込み
-// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は準備を開始するが、
-// iPhone / Android の低スペック端末で初期化が長引いても
-// 「起動中...」を永久表示しない。表示待ちは最大8秒で必ず解除する。
-useEffect(() => {
-  if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
-  warmedOnceRef.current = true;
-
-  const isPiper = localStorage.getItem("tts:engine") === "piper";
-
-  if (!isPiper) {
-    setIsTtsStarting(false);
-    return;
-  }
-
-  let disposed = false;
-  setIsTtsStarting(true);
-
-  // App側でも独立した安全装置を持つ。
-  // tts.ts / Piper初期化が返ってこなくても8秒後には画面を使えるようにする。
-  const startupTimeout = window.setTimeout(() => {
-    if (!disposed) {
-      console.warn("[TTS] startup wait timeout: continue in background");
-      setIsTtsStarting(false);
-    }
-  }, 8000);
-
-  void prewarmTTS()
-    .catch((error) => {
-      console.warn("[TTS] prewarm failed:", error);
-    })
-    .finally(() => {
-      if (disposed) return;
-      window.clearTimeout(startupTimeout);
-      setIsTtsStarting(false);
-    });
-
-  return () => {
-    disposed = true;
-    window.clearTimeout(startupTimeout);
-  };
-}, []);
-
+// Piperは起動時には初期化しない。
+// 初回の「読み上げ」操作時に必要になった時だけ初期化する。
+// これにより、PC/Android/iPhoneで起動処理がPiper初期化に巻き込まれない。
 
 const acquireWakeLock = async () => {
   try {
@@ -1117,29 +1076,6 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {isTtsStarting && (
-      <div
-        className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 text-white"
-        role="status"
-        aria-live="polite"
-        aria-label="起動中"
-      >
-        <div className="flex flex-col items-center gap-4 px-6 text-center">
-          <div
-            className="h-12 w-12 rounded-full border-4 border-white/30 border-t-white animate-spin"
-            aria-hidden="true"
-          />
-          <div>
-            <div className="text-xl font-extrabold tracking-wide">
-              起動中...
-            </div>
-            <p className="mt-2 text-sm text-white/70">
-              AI音声を準備しています
-            </p>
-          </div>
-        </div>
-      </div>
-    )}
     {screen === "menu" && (
       <button
         type="button"
