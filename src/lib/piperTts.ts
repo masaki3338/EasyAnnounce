@@ -235,6 +235,8 @@ async function getEngine() {
 
     // piper-plus の実装には wasmG2pUrl が存在するが、
     // 一部バージョンの型定義には未記載のため any で渡す。
+    console.info("[Piper] initialize start", { modelUrl, wasmG2pUrl });
+
     enginePromise = PiperPlus.initialize({
       model: modelUrl,
       ort,
@@ -259,6 +261,7 @@ async function getEngine() {
       },
     })
       .then((engine: any) => {
+        console.info("[Piper] initialize complete");
         addPiperDiagnostic(
           "[Piper] 初期化完了"
         );

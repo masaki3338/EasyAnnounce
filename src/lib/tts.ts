@@ -518,22 +518,3 @@ export async function prewarmTTS(): Promise<void> {
     // ignore
   }
 }
-
-// Piperが選択済みなら、画面を先に表示してから空き時間にモデルを準備する。
-// 起動直後に重い処理を走らせてUIを固めないため、requestIdleCallbackを優先。
-if (typeof window !== "undefined") {
-  const startPiperPrewarm = () => {
-    if (getTtsEngine() !== "piper") return;
-    void prewarmTTS();
-  };
-
-  const w = window as typeof window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
-  };
-
-  if (typeof w.requestIdleCallback === "function") {
-    w.requestIdleCallback(startPiperPrewarm, { timeout: 5000 });
-  } else {
-    window.setTimeout(startPiperPrewarm, 2000);
-  }
-}
