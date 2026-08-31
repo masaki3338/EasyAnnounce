@@ -123,46 +123,6 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
-/**
- * iPhone / iPad Safari 用 AudioContext アンロック。
- *
- * ユーザーの「読み上げ」タップと同じ同期処理内で呼び、
- * Piper の非同期初期化・推論より前に無音1サンプルを start() する。
- */
-export function unlockPiperAudioFromUserGesture(): void {
-  try {
-    const ctx = getAudioContext();
-
-    if (ctx.state !== "running") {
-      try {
-        void ctx.resume();
-      } catch {}
-    }
-
-    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
-
-    gain.gain.value = 0;
-    source.buffer = buffer;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-
-    source.onended = () => {
-      try { source.disconnect(); } catch {}
-      try { gain.disconnect(); } catch {}
-    };
-
-    source.start(0);
-
-    addPiperDiagnostic("[iOS AudioContext] ユーザー操作でアンロック要求", {
-      state: ctx.state,
-    });
-  } catch (error) {
-    addPiperDiagnostic("[iOS AudioContext] アンロック要求失敗", error);
-  }
-}
-
 async function resumeAudioContext() {
   let ctx = getAudioContext();
 
@@ -211,19 +171,6 @@ async function resumeAudioContext() {
     "[AudioContext] resume後",
     ctx.state
   );
-
-  if (ctx.state === "running") {
-    try {
-      const unlockBuffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
-      const unlockSource = ctx.createBufferSource();
-      unlockSource.buffer = unlockBuffer;
-      unlockSource.connect(ctx.destination);
-      unlockSource.onended = () => {
-        try { unlockSource.disconnect(); } catch {}
-      };
-      unlockSource.start(0);
-    } catch {}
-  }
 
   if (ctx.state !== "running") {
     addPiperDiagnostic(

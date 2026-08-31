@@ -1,4 +1,4 @@
-import { prefetchPiper, prewarmPiper, speakPiper, stopPiper, unlockPiperAudioFromUserGesture } from "./piperTts";
+import { prefetchPiper, prewarmPiper, speakPiper, stopPiper } from "./piperTts";
 // src/lib/tts.ts  — Web Speech API + Easyアナウンス Piper-Plus
 
 type SpeakOptions = {
@@ -216,11 +216,6 @@ async function unlockWebSpeech(voiceName?: string) {
 export async function speak(text: string, options: SpeakOptions = {}) {
   if (!text || !text.trim()) return;
 
-  if (getTtsEngine() === "piper") {
-    // iPhone/iPad Safariではユーザー操作の同期処理中に解除する必要がある。
-    unlockPiperAudioFromUserGesture();
-  }
-
   text = normalizeSpeechText(text);
 
   // ローカル設定の既定値（LS未設定時のフォールバック）
@@ -340,10 +335,6 @@ export async function speakSegments(
   segments: string[],
   options: SpeakOptions = {}
 ) {
-  if (getTtsEngine() === "piper") {
-    unlockPiperAudioFromUserGesture();
-  }
-
   const cleaned = (segments || [])
     .map((s) => normalizeSpeechText(String(s ?? "")).trim())
     .filter(Boolean);
@@ -538,25 +529,3 @@ export async function prewarmTTS(): Promise<void> {
   }
 }
 
-// Piperが選択済みなら、画面を先に表示してから空き時間にモデルを準備する。
-// 起動直後に重い処理を走らせてUIを固めないため、requestIdleCallbackを優先。
-if (typeof window !== "undefined") {
-  const startPiperPrewarm = () => {
-    if (getTtsEngine() !== "piper") return;
-
-    // 自動prewarmは起動状態とは切り離して完全バックグラウンドで実行する。
-    void prewarmPiper().catch((error) => {
-      console.warn("Background Piper prewarm failed:", error);
-    });
-  };
-
-  const w = window as typeof window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
-  };
-
-  if (typeof w.requestIdleCallback === "function") {
-    w.requestIdleCallback(startPiperPrewarm, { timeout: 5000 });
-  } else {
-    window.setTimeout(startPiperPrewarm, 2000);
-  }
-}
