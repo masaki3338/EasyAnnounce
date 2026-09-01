@@ -1,10 +1,13 @@
 // src/components/TtsSettings.tsx  ← 使っている場所に合わせてパス調整OK
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
+import { setSelectedPiperModel } from "../lib/piperTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
-const PIPER_VOICE_VALUE = "__easy_announce_piper__";
-const PIPER_VOICE_LABEL = "AI音声（ウグイス嬢）";
+const PIPER_VOICE_1_VALUE = "__easy_announce_piper_1__";
+const PIPER_VOICE_2_VALUE = "__easy_announce_piper_2__";
+const PIPER_VOICE_1_LABEL = "AI音声（ウグイス嬢1）";
+const PIPER_VOICE_2_LABEL = "AI音声（ウグイス嬢2）";
 
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -38,19 +41,27 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     const v = Number(localStorage.getItem("tts:speedScale"));
     return Number.isFinite(v) ? Math.min(2, Math.max(0.5, v)) : DEFAULT_RATE;
   });
+
   const [pitch, setPitch] = useState<number>(() => {
     const v = Number(localStorage.getItem("tts:pitch"));
     return Number.isFinite(v) ? Math.min(2, Math.max(0.0, v)) : DEFAULT_PITCH;
   });
+
   const [volume, setVolume] = useState<number>(() => {
     const v = Number(localStorage.getItem("tts:volume"));
     return Number.isFinite(v) ? Math.min(1.0, Math.max(0.0, v)) : DEFAULT_VOLUME;
   });
+
   const [selectedName, setSelectedName] = useState<string | "">(() => {
-    return localStorage.getItem("tts:engine") === "piper"
-      ? PIPER_VOICE_VALUE
-      : (localStorage.getItem("tts:webspeech:voiceName") || "");
+    if (localStorage.getItem("tts:engine") === "piper") {
+      return localStorage.getItem("tts:piper:model") === "easy-announce-2"
+        ? PIPER_VOICE_2_VALUE
+        : PIPER_VOICE_1_VALUE;
+    }
+
+    return localStorage.getItem("tts:webspeech:voiceName") || "";
   });
+
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   // 初回：保存が空ならデフォルトを選択
@@ -58,6 +69,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   useEffect(() => {
     if (!ready || onceRef.current) return;
     onceRef.current = true;
+
     if (!selectedName && voices.length > 0) {
       const def = voices.find(v => v.default) || voices[0];
       setSelectedName(def.name);
@@ -66,34 +78,54 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   }, [ready, voices, selectedName]);
 
   const selectedLabel = useMemo(() => {
-    if (selectedName === PIPER_VOICE_VALUE) return PIPER_VOICE_LABEL;
+    if (selectedName === PIPER_VOICE_1_VALUE) return PIPER_VOICE_1_LABEL;
+    if (selectedName === PIPER_VOICE_2_VALUE) return PIPER_VOICE_2_LABEL;
+
     const v = voices.find(v => v.name === selectedName);
     return v ? `${v.name} (${v.lang})` : "未選択";
   }, [voices, selectedName]);
 
-  const pitchUnsupported = selectedName !== PIPER_VOICE_VALUE && isPitchLikelyUnsupported(selectedName || undefined);
+  const isPiperVoice =
+    selectedName === PIPER_VOICE_1_VALUE ||
+    selectedName === PIPER_VOICE_2_VALUE;
+
+  const pitchUnsupported =
+    !isPiperVoice &&
+    isPitchLikelyUnsupported(selectedName || undefined);
 
   const handleSelectVoice = (name: string) => {
     setSelectedName(name);
 
-    if (name === PIPER_VOICE_VALUE) {
+    if (name === PIPER_VOICE_1_VALUE) {
       localStorage.setItem("tts:engine", "piper");
+      localStorage.setItem("tts:piper:model", "easy-announce-1");
+      setSelectedPiperModel("easy-announce-1");
+      return;
+    }
+
+    if (name === PIPER_VOICE_2_VALUE) {
+      localStorage.setItem("tts:engine", "piper");
+      localStorage.setItem("tts:piper:model", "easy-announce-2");
+      setSelectedPiperModel("easy-announce-2");
       return;
     }
 
     localStorage.setItem("tts:engine", "webspeech");
     localStorage.setItem("tts:webspeech:voiceName", name);
   };
+
   const handleSpeedChange = (v: number) => {
     const clamped = Math.min(2.0, Math.max(0.5, v));
     setSpeed(clamped);
     localStorage.setItem("tts:speedScale", String(clamped));
   };
+
   const handlePitchChange = (v: number) => {
     const clamped = Math.min(2.0, Math.max(0.0, v));
     setPitch(clamped);
     localStorage.setItem("tts:pitch", String(clamped));
   };
+
   const handleVolumeChange = (v: number) => {
     const clamped = Math.min(1.0, Math.max(0.0, v));
     setVolume(clamped);
@@ -106,7 +138,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
     setIsSpeaking(true);
     try {
       await speak("ファウルボールの行方にご注意ください", {
-        voiceName: selectedName === PIPER_VOICE_VALUE ? undefined : (selectedName || undefined),
+        voiceName: isPiperVoice ? undefined : (selectedName || undefined),
         speedScale: speed,
         pitch,
         volume,
@@ -117,7 +149,6 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
       setIsSpeaking(false);
     }
   };
-
 
   return (
     <div
@@ -147,7 +178,9 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               🔊 読み上げ設定
             </span>
           </h1>
-          <p className="text-white/70 text-sm mt-1">端末音声またはEasyアナウンスAI音声を選択し、読み上げを調整</p>
+          <p className="text-white/70 text-sm mt-1">
+            端末音声またはEasyアナウンスAI音声を選択し、読み上げを調整
+          </p>
         </div>
 
         {/* カード全体 */}
@@ -170,18 +203,23 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               value={selectedName}
               onChange={(e) => handleSelectVoice(e.target.value)}
             >
-              <option value={PIPER_VOICE_VALUE}>★ {PIPER_VOICE_LABEL}</option>
-              {voices.length === 0 && <option value="">（利用可能な端末音声が見つかりません）</option>}
+              <option value={PIPER_VOICE_1_VALUE}>★ {PIPER_VOICE_1_LABEL}</option>
+              <option value={PIPER_VOICE_2_VALUE}>★ {PIPER_VOICE_2_LABEL}</option>
+
+              {voices.length === 0 && (
+                <option value="">（利用可能な端末音声が見つかりません）</option>
+              )}
+
               {voices.map(v => (
                 <option key={`${v.name}__${v.voiceURI}`} value={v.name}>
                   {v.default ? "★ " : ""}{v.name} ({v.lang})
                 </option>
               ))}
             </select>
+
             <div className="mt-2 text-sm text-white/85">
               現在の選択：<span className="font-semibold">{selectedLabel}</span>
             </div>
-
           </div>
 
           {/* 読み上げ速度 */}
@@ -271,19 +309,20 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               onClick={handleTest}
               disabled={isSpeaking}
               className={`w-full h-12 rounded-2xl text-white font-semibold tracking-wide shadow-lg shadow-black/30 active:scale-[0.99] transition-transform ${
-                isSpeaking ? "bg-gray-500/60 cursor-not-allowed" : "bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500"
+                isSpeaking
+                  ? "bg-gray-500/60 cursor-not-allowed"
+                  : "bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500"
               }`}
               title="現在の設定で読み上げテスト"
             >
               現在の設定でテスト読み上げ
             </button>
+
             <p className="text-[11px] text-white/60 mt-2 leading-relaxed">
               ※ 一部の音声は、ピッチ/音量の反映が弱い・無効の場合があります。
             </p>
           </div>
         </section>
-
-
       </div>
     </div>
   );
