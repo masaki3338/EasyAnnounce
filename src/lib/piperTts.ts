@@ -122,6 +122,41 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
+/**
+ * iPhone / iPad Safari 用:
+ * 読み上げボタンのタップと同じ同期処理内で AudioContext をアンロックする。
+ * Android / Windows では呼ばない。
+ */
+export function unlockPiperAudioForIOS(): void {
+  try {
+    const ctx = getAudioContext();
+
+    if (ctx.state !== "running") {
+      try {
+        void ctx.resume();
+      } catch {}
+    }
+
+    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+
+    gain.gain.value = 0;
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    source.onended = () => {
+      try { source.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    };
+
+    source.start(0);
+  } catch {
+    // 未対応環境では何もしない
+  }
+}
+
 async function resumeAudioContext() {
   let ctx = getAudioContext();
 
