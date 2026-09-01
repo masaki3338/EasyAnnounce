@@ -55,6 +55,18 @@ let audioContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 let currentGain: GainNode | null = null;
 
+// iPhone / iPad Safari は WebAudio の再生制限が厳しいため、
+// iOSだけ HTMLAudioElement を使う専用再生経路を持つ。
+let iosAudioElement: HTMLAudioElement | null = null;
+let iosAudioObjectUrl: string | null = null;
+
+function isIOSDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iP(hone|ad|od)/.test(ua) ||
+    (/Macintosh/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
+}
+
 let generationId = 0;
 
 // 生成済み音声を少量だけメモリに保持。
@@ -124,37 +136,132 @@ function getAudioContext(): AudioContext {
 
 /**
  * iPhone / iPad Safari 用:
- * 読み上げボタンのタップと同じ同期処理内で AudioContext をアンロックする。
- * Android / Windows では呼ばない。
+ * ユーザーのタップと同じ同期処理内で HTMLAudioElement をアンロックする。
+ * 以後、Piperで生成したWAV Blobをこのaudio要素で再生する。
+ * Android / Windows はこの経路を使わない。
  */
 export function unlockPiperAudioForIOS(): void {
-  try {
-    const ctx = getAudioContext();
+  if (!isIOSDevice()) return;
 
-    if (ctx.state !== "running") {
-      try {
-        void ctx.resume();
-      } catch {}
+  try {
+    if (!iosAudioElement) {
+      iosAudioElement = new Audio();
+      iosAudioElement.preload = "auto";
+      iosAudioElement.playsInline = true;
     }
 
-    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
+    // 44-byte WAV header + 1 sample相当の極小無音WAV。
+    // data URI をタップ同期内で play() して、iOSの再生許可を取る。
+    const silentWav =
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
 
-    gain.gain.value = 0;
-    source.buffer = buffer;
-    source.connect(gain);
-    gain.connect(ctx.destination);
+    iosAudioElement.src = silentWav;
+    iosAudioElement.volume = 0;
+    const p = iosAudioElement.play();
+    if (p && typeof p.catch === "function") {
+      void p.catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
+}
 
-    source.onended = () => {
-      try { source.disconnect(); } catch {}
-      try { gain.disconnect(); } catch {}
+function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
+  const bytesPerSample = 2;
+  const dataSize = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(
+      offset,
+      s < 0 ? s * 0x8000 : s * 0x7fff,
+      true
+    );
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function playSamplesIOS(
+  samples: Float32Array,
+  sampleRate: number,
+  volume: number,
+  myGenerationId: number
+): Promise<void> {
+  if (myGenerationId !== generationId) return;
+
+  if (!iosAudioElement) {
+    iosAudioElement = new Audio();
+    iosAudioElement.preload = "auto";
+    iosAudioElement.playsInline = true;
+  }
+
+  try {
+    iosAudioElement.pause();
+  } catch {}
+
+  if (iosAudioObjectUrl) {
+    try { URL.revokeObjectURL(iosAudioObjectUrl); } catch {}
+    iosAudioObjectUrl = null;
+  }
+
+  const blob = float32ToWavBlob(samples, sampleRate);
+  iosAudioObjectUrl = URL.createObjectURL(blob);
+
+  iosAudioElement.src = iosAudioObjectUrl;
+  iosAudioElement.volume = clamp(volume, 0, 1);
+
+  await new Promise<void>((resolve, reject) => {
+    if (!iosAudioElement) return resolve();
+
+    const audio = iosAudioElement;
+
+    const cleanup = () => {
+      audio.onended = null;
+      audio.onerror = null;
     };
 
-    source.start(0);
-  } catch {
-    // 未対応環境では何もしない
-  }
+    audio.onended = () => {
+      cleanup();
+      resolve();
+    };
+
+    audio.onerror = () => {
+      cleanup();
+      reject(new Error("iPhoneでAI音声の再生に失敗しました。"));
+    };
+
+    const p = audio.play();
+    if (p && typeof p.catch === "function") {
+      void p.catch((error) => {
+        cleanup();
+        reject(error);
+      });
+    }
+  });
 }
 
 async function resumeAudioContext() {
@@ -609,6 +716,11 @@ async function playSamples(
   volume: number,
   myGenerationId: number
 ) {
+  if (isIOSDevice()) {
+    await playSamplesIOS(samples, sampleRate, volume, myGenerationId);
+    return;
+  }
+
   const ctx = await resumeAudioContext();
 
   addPiperDiagnostic(
@@ -731,7 +843,11 @@ export async function speakPiper(
   const myGenerationId =
     ++generationId;
 
-  await resumeAudioContext();
+  // Android / Windows は従来どおりWebAudio。
+  // iPhoneは HTMLAudioElement 専用経路なのでここではAudioContextを触らない。
+  if (!isIOSDevice()) {
+    await resumeAudioContext();
+  }
 
   let engine: any;
 
@@ -908,6 +1024,17 @@ export function stopPiper() {
   );
 
   generationId++;
+
+  try {
+    iosAudioElement?.pause();
+  } catch {}
+  if (iosAudioElement) {
+    try { iosAudioElement.currentTime = 0; } catch {}
+  }
+  if (iosAudioObjectUrl) {
+    try { URL.revokeObjectURL(iosAudioObjectUrl); } catch {}
+    iosAudioObjectUrl = null;
+  }
 
   try {
     currentSource?.stop();
