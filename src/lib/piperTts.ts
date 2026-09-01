@@ -12,17 +12,24 @@ type PiperProgressInfo = {
   message?: string;
 };
 
-export type PiperModelId = "easy-announce";
+export type PiperModelId =
+  | "easy-announce-1"
+  | "easy-announce-2";
 
 export const PIPER_MODELS = {
-  "easy-announce": {
-    id: "easy-announce" as PiperModelId,
-    label: "Easyアナウンス AI音声（Piper-Plus）",
+  "easy-announce-1": {
+    id: "easy-announce-1" as PiperModelId,
+    label: "AI音声（ウグイス嬢1）",
+    path: "/models/easy-announce/uguisu1/easy_announce.onnx",
+  },
+  "easy-announce-2": {
+    id: "easy-announce-2" as PiperModelId,
+    label: "AI音声（ウグイス嬢2）",
+    path: "/models/easy-announce/uguisu2/easy_announce.onnx",
   },
 } as const;
 
 type PiperProgressListener = (info: PiperProgressInfo) => void;
-
 type PiperDiagnosticListener = (logs: string[]) => void;
 
 // 本番版: 診断ログ表示は無効
@@ -44,11 +51,21 @@ function addPiperDiagnostic(
   _detail?: unknown
 ) {}
 
-const MODEL_PATH = "/models/easy-announce/easy_announce.onnx";
-
 let piperProgressListener: PiperProgressListener | null = null;
-let selectedPiperModel: PiperModelId = "easy-announce";
 
+function loadSelectedPiperModel(): PiperModelId {
+  try {
+    const saved = localStorage.getItem("tts:piper:model");
+
+    if (saved === "easy-announce-2") {
+      return "easy-announce-2";
+    }
+  } catch {}
+
+  return "easy-announce-1";
+}
+
+let selectedPiperModel: PiperModelId = loadSelectedPiperModel();
 let enginePromise: Promise<any> | null = null;
 
 let audioContext: AudioContext | null = null;
@@ -62,12 +79,23 @@ let iosAudioObjectUrl: string | null = null;
 
 function isIOSDevice(): boolean {
   if (typeof navigator === "undefined") return false;
+
   const ua = navigator.userAgent || "";
+
   return /iP(hone|ad|od)/.test(ua) ||
-    (/Macintosh/.test(ua) && typeof document !== "undefined" && "ontouchend" in document);
+    (
+      /Macintosh/.test(ua) &&
+      typeof document !== "undefined" &&
+      "ontouchend" in document
+    );
 }
 
 let generationId = 0;
+
+type SynthesizedChunk = {
+  samples: Float32Array;
+  sampleRate: number;
+};
 
 // 生成済み音声を少量だけメモリに保持。
 // 低スペック端末で同じ文言を再度読む時の再推論を避ける。
@@ -75,11 +103,18 @@ const synthesizedCache = new Map<string, SynthesizedChunk>();
 const synthesizedCacheOrder: string[] = [];
 const MAX_SYNTH_CACHE_ITEMS = 8;
 
-function makeSynthCacheKey(text: string, speedScale: number) {
-  return `${speedScale.toFixed(3)}::${text}`;
+function makeSynthCacheKey(
+  text: string,
+  speedScale: number
+) {
+  // モデルごとに別キャッシュにする。
+  return `${selectedPiperModel}::${speedScale.toFixed(3)}::${text}`;
 }
 
-function putSynthCache(key: string, value: SynthesizedChunk) {
+function putSynthCache(
+  key: string,
+  value: SynthesizedChunk
+) {
   if (synthesizedCache.has(key)) {
     const idx = synthesizedCacheOrder.indexOf(key);
     if (idx >= 0) synthesizedCacheOrder.splice(idx, 1);
@@ -94,12 +129,21 @@ function putSynthCache(key: string, value: SynthesizedChunk) {
   }
 }
 
-function clamp(value: number, min: number, max: number) {
+function clamp(
+  value: number,
+  min: number,
+  max: number
+) {
   return Math.max(min, Math.min(max, value));
 }
 
 function getModelUrl(): string {
-  return new URL(MODEL_PATH, window.location.origin).href;
+  const model = PIPER_MODELS[selectedPiperModel];
+
+  return new URL(
+    model.path,
+    window.location.origin
+  ).href;
 }
 
 function getAudioContext(): AudioContext {
@@ -137,8 +181,6 @@ function getAudioContext(): AudioContext {
 /**
  * iPhone / iPad Safari 用:
  * ユーザーのタップと同じ同期処理内で HTMLAudioElement をアンロックする。
- * 以後、Piperで生成したWAV Blobをこのaudio要素で再生する。
- * Android / Windows はこの経路を使わない。
  */
 export function unlockPiperAudioForIOS(): void {
   if (!isIOSDevice()) return;
@@ -150,14 +192,14 @@ export function unlockPiperAudioForIOS(): void {
       iosAudioElement.playsInline = true;
     }
 
-    // 44-byte WAV header + 1 sample相当の極小無音WAV。
-    // data URI をタップ同期内で play() して、iOSの再生許可を取る。
     const silentWav =
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
 
     iosAudioElement.src = silentWav;
     iosAudioElement.volume = 0;
+
     const p = iosAudioElement.play();
+
     if (p && typeof p.catch === "function") {
       void p.catch(() => {});
     }
@@ -166,15 +208,24 @@ export function unlockPiperAudioForIOS(): void {
   }
 }
 
-function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
+function float32ToWavBlob(
+  samples: Float32Array,
+  sampleRate: number
+): Blob {
   const bytesPerSample = 2;
   const dataSize = samples.length * bytesPerSample;
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
 
-  const writeString = (offset: number, value: string) => {
+  const writeString = (
+    offset: number,
+    value: string
+  ) => {
     for (let i = 0; i < value.length; i++) {
-      view.setUint8(offset + i, value.charCodeAt(i));
+      view.setUint8(
+        offset + i,
+        value.charCodeAt(i)
+      );
     }
   };
 
@@ -183,26 +234,44 @@ function float32ToWavBlob(samples: Float32Array, sampleRate: number): Blob {
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint32(
+    28,
+    sampleRate * bytesPerSample,
+    true
+  );
   view.setUint16(32, bytesPerSample, true);
   view.setUint16(34, 16, true);
   writeString(36, "data");
   view.setUint32(40, dataSize, true);
 
   let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
+
+  for (
+    let i = 0;
+    i < samples.length;
+    i++, offset += 2
+  ) {
+    const s = Math.max(
+      -1,
+      Math.min(1, samples[i])
+    );
+
     view.setInt16(
       offset,
-      s < 0 ? s * 0x8000 : s * 0x7fff,
+      s < 0
+        ? s * 0x8000
+        : s * 0x7fff,
       true
     );
   }
 
-  return new Blob([buffer], { type: "audio/wav" });
+  return new Blob(
+    [buffer],
+    { type: "audio/wav" }
+  );
 }
 
 async function playSamplesIOS(
@@ -224,44 +293,68 @@ async function playSamplesIOS(
   } catch {}
 
   if (iosAudioObjectUrl) {
-    try { URL.revokeObjectURL(iosAudioObjectUrl); } catch {}
+    try {
+      URL.revokeObjectURL(iosAudioObjectUrl);
+    } catch {}
+
     iosAudioObjectUrl = null;
   }
 
-  const blob = float32ToWavBlob(samples, sampleRate);
-  iosAudioObjectUrl = URL.createObjectURL(blob);
+  const blob = float32ToWavBlob(
+    samples,
+    sampleRate
+  );
 
-  iosAudioElement.src = iosAudioObjectUrl;
-  iosAudioElement.volume = clamp(volume, 0, 1);
+  iosAudioObjectUrl =
+    URL.createObjectURL(blob);
 
-  await new Promise<void>((resolve, reject) => {
-    if (!iosAudioElement) return resolve();
+  iosAudioElement.src =
+    iosAudioObjectUrl;
 
-    const audio = iosAudioElement;
+  iosAudioElement.volume =
+    clamp(volume, 0, 1);
 
-    const cleanup = () => {
-      audio.onended = null;
-      audio.onerror = null;
-    };
+  await new Promise<void>(
+    (resolve, reject) => {
+      if (!iosAudioElement) {
+        resolve();
+        return;
+      }
 
-    audio.onended = () => {
-      cleanup();
-      resolve();
-    };
+      const audio = iosAudioElement;
 
-    audio.onerror = () => {
-      cleanup();
-      reject(new Error("iPhoneでAI音声の再生に失敗しました。"));
-    };
+      const cleanup = () => {
+        audio.onended = null;
+        audio.onerror = null;
+      };
 
-    const p = audio.play();
-    if (p && typeof p.catch === "function") {
-      void p.catch((error) => {
+      audio.onended = () => {
         cleanup();
-        reject(error);
-      });
+        resolve();
+      };
+
+      audio.onerror = () => {
+        cleanup();
+        reject(
+          new Error(
+            "iPhoneでAI音声の再生に失敗しました。"
+          )
+        );
+      };
+
+      const p = audio.play();
+
+      if (
+        p &&
+        typeof p.catch === "function"
+      ) {
+        void p.catch((error) => {
+          cleanup();
+          reject(error);
+        });
+      }
     }
-  });
+  );
 }
 
 async function resumeAudioContext() {
@@ -274,10 +367,6 @@ async function resumeAudioContext() {
 
   try {
     if (ctx.state === "closed") {
-      addPiperDiagnostic(
-        "[AudioContext] closedのため再作成"
-      );
-
       audioContext = null;
       ctx = getAudioContext();
     }
@@ -308,28 +397,30 @@ async function resumeAudioContext() {
     }
   }
 
-  addPiperDiagnostic(
-    "[AudioContext] resume後",
-    ctx.state
-  );
-
-  if (ctx.state !== "running") {
-    addPiperDiagnostic(
-      "[警告] AudioContextがrunningではありません",
-      ctx.state
-    );
-  }
-
   return ctx;
 }
 
 export function setSelectedPiperModel(
   model: PiperModelId | string
 ) {
-  selectedPiperModel =
-    model === "easy-announce"
-      ? "easy-announce"
-      : "easy-announce";
+  const nextModel: PiperModelId =
+    model === "easy-announce-2"
+      ? "easy-announce-2"
+      : "easy-announce-1";
+
+  if (selectedPiperModel !== nextModel) {
+    // 再生中の旧モデル音声を停止。
+    stopPiper();
+
+    selectedPiperModel = nextModel;
+
+    // 旧モデルのエンジンを破棄し、
+    // 次回に新しいONNXを初期化する。
+    enginePromise = null;
+
+    // 別モデルの生成済み音声を残さない。
+    clearPiperAudioCache();
+  }
 
   try {
     localStorage.setItem(
@@ -349,12 +440,14 @@ async function getEngine() {
   ort.env.wasm.proxy = false;
   ort.env.wasm.numThreads = 1;
 
-  // Vercel / PWA / スマホで ORT が推測したWASM URLを取り違えないよう、
-  // ONNX Runtime Web のWASM/MJSを絶対URLで固定する。
-  const origin = window.location.origin;
+  const origin =
+    window.location.origin;
+
   ort.env.wasm.wasmPaths = {
-    wasm: `${origin}/ort/ort-wasm-simd-threaded.wasm`,
-    mjs: `${origin}/ort/ort-wasm-simd-threaded.mjs`,
+    wasm:
+      `${origin}/ort/ort-wasm-simd-threaded.wasm`,
+    mjs:
+      `${origin}/ort/ort-wasm-simd-threaded.mjs`,
   } as any;
 
   if (!enginePromise) {
@@ -362,69 +455,60 @@ async function getEngine() {
 
     addPiperDiagnostic(
       "[Piper] 初期化開始",
-      modelUrl
+      {
+        model: selectedPiperModel,
+        modelUrl,
+      }
     );
 
-    const wasmG2pUrl = new URL(
-      "/piper-wasm/piper_plus_wasm.js",
-      window.location.origin
-    ).href;
+    const wasmG2pUrl =
+      new URL(
+        "/piper-wasm/piper_plus_wasm.js",
+        window.location.origin
+      ).href;
 
-    addPiperDiagnostic(
-      "[Piper] 日本語G2P WASM URL",
-      wasmG2pUrl
-    );
+    enginePromise =
+      PiperPlus.initialize({
+        model: modelUrl,
+        ort,
+        wasmG2pUrl,
+        onProgress: (
+          info: PiperProgressInfo
+        ) => {
+          try {
+            piperProgressListener?.(info);
+          } catch {}
 
-    // piper-plus の実装には wasmG2pUrl が存在するが、
-    // 一部バージョンの型定義には未記載のため any で渡す。
-    enginePromise = PiperPlus.initialize({
-      model: modelUrl,
-      ort,
-      wasmG2pUrl,
-      onProgress: (
-        info: PiperProgressInfo
-      ) => {
-        try {
-          piperProgressListener?.(info);
-        } catch {}
+          addPiperDiagnostic(
+            "[Piper] progress",
+            {
+              stage: info.stage,
+              progress: info.progress,
+              message: info.message,
+            }
+          );
+        },
+      })
+        .then((engine: any) => {
+          addPiperDiagnostic(
+            "[Piper] 初期化完了",
+            selectedPiperModel
+          );
 
-        // ★ 本番でも確認できるようDEV判定を外す
+          return engine;
+        })
+        .catch(
+          (error: unknown) => {
+            enginePromise = null;
 
-        addPiperDiagnostic(
-          "[Piper] progress",
-          {
-            stage: info.stage,
-            progress: info.progress,
-            message: info.message,
+            console.error(
+              "[Piper-Plus] initialization failed:",
+              error
+            );
+
+            throw error;
           }
         );
-      },
-    })
-      .then((engine: any) => {
-        addPiperDiagnostic(
-          "[Piper] 初期化完了"
-        );
-        return engine;
-      })
-      .catch((error: unknown) => {
-        enginePromise = null;
-
-        console.error(
-          "[Piper-Plus] initialization failed:",
-          error
-        );
-
-        addPiperDiagnostic(
-          "[Piper] 初期化失敗",
-          error
-        );
-
-        throw error;
-      });
-  } else {
-    addPiperDiagnostic(
-      "[Piper] 初期化済みエンジンを再利用"
-    );
   }
 
   return enginePromise;
@@ -432,13 +516,10 @@ async function getEngine() {
 
 /**
  * 長文をPiper用に分割する。
- *
- * ポイント:
- * - 1つ目は短めにして、読み上げ開始までの待ち時間を減らす
- * - 「、」「。」など自然な区切りを優先する
- * - 区切りが全くない長文だけ最大文字数で分割する
  */
-function splitPiperText(text: string): string[] {
+function splitPiperText(
+  text: string
+): string[] {
   const source = String(text ?? "")
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+/g, " ")
@@ -450,7 +531,6 @@ function splitPiperText(text: string): string[] {
   let rest = source;
   let first = true;
 
-  // 途中で絶対に切らない語句
   const protectedWords = [
     "ください",
     "行います",
@@ -465,20 +545,31 @@ function splitPiperText(text: string): string[] {
   ];
 
   const moveCutAfterProtectedWord = (
-    text: string,
+    target: string,
     cut: number
   ): number => {
-    for (const word of protectedWords) {
-      let start = text.indexOf(word);
+    for (
+      const word of protectedWords
+    ) {
+      let start =
+        target.indexOf(word);
 
       while (start !== -1) {
-        const end = start + word.length;
+        const end =
+          start + word.length;
 
-        if (start < cut && cut < end) {
+        if (
+          start < cut &&
+          cut < end
+        ) {
           return end;
         }
 
-        start = text.indexOf(word, start + 1);
+        start =
+          target.indexOf(
+            word,
+            start + 1
+          );
       }
     }
 
@@ -486,22 +577,25 @@ function splitPiperText(text: string): string[] {
   };
 
   while (rest.length > 0) {
-    const maxLen = first ? 22 : 42;
+    const maxLen =
+      first ? 22 : 42;
 
     if (rest.length <= maxLen) {
       chunks.push(rest.trim());
       break;
     }
 
-    const searchLen = Math.min(
-      rest.length,
-      maxLen + 10
-    );
+    const searchLen =
+      Math.min(
+        rest.length,
+        maxLen + 10
+      );
 
-    const head = rest.slice(0, searchLen);
+    const head =
+      rest.slice(0, searchLen);
+
     let cut = -1;
 
-    // 1. 文末を最優先
     const sentenceBreaks = [
       head.lastIndexOf("。"),
       head.lastIndexOf("！"),
@@ -511,16 +605,17 @@ function splitPiperText(text: string): string[] {
       head.lastIndexOf("\n"),
     ];
 
-    const sentenceCut = Math.max(...sentenceBreaks);
+    const sentenceCut =
+      Math.max(...sentenceBreaks);
 
     if (
       sentenceCut >=
       Math.floor(maxLen * 0.4)
     ) {
-      cut = sentenceCut + 1;
+      cut =
+        sentenceCut + 1;
     }
 
-    // 2. 読点
     if (cut < 0) {
       const commaBreaks = [
         head.lastIndexOf("、"),
@@ -528,17 +623,18 @@ function splitPiperText(text: string): string[] {
         head.lastIndexOf(","),
       ];
 
-      const commaCut = Math.max(...commaBreaks);
+      const commaCut =
+        Math.max(...commaBreaks);
 
       if (
         commaCut >=
         Math.floor(maxLen * 0.45)
       ) {
-        cut = commaCut + 1;
+        cut =
+          commaCut + 1;
       }
     }
 
-    // 3. 野球アナウンスで自然に切れる語句
     if (cut < 0) {
       const preferredWords = [
         "ください",
@@ -554,14 +650,18 @@ function splitPiperText(text: string): string[] {
 
       let bestCut = -1;
 
-      for (const word of preferredWords) {
-        const pos = head.lastIndexOf(word);
+      for (
+        const word of preferredWords
+      ) {
+        const pos =
+          head.lastIndexOf(word);
 
         if (
           pos >=
           Math.floor(maxLen * 0.45)
         ) {
-          const candidate = pos + word.length;
+          const candidate =
+            pos + word.length;
 
           if (candidate > bestCut) {
             bestCut = candidate;
@@ -574,45 +674,50 @@ function splitPiperText(text: string): string[] {
       }
     }
 
-    // 4. 空白
     if (cut < 0) {
-      const spaceCut = head.lastIndexOf(" ");
+      const spaceCut =
+        head.lastIndexOf(" ");
 
       if (
         spaceCut >=
         Math.floor(maxLen * 0.5)
       ) {
-        cut = spaceCut + 1;
+        cut =
+          spaceCut + 1;
       }
     }
 
-    // 5. どうしても区切りが無ければ最大文字数付近
     if (cut < 0) {
       cut = maxLen;
     }
 
-    // 「ください」「行います」などの単語途中なら後ろへずらす
-    cut = moveCutAfterProtectedWord(
-      rest,
-      cut
-    );
+    cut =
+      moveCutAfterProtectedWord(
+        rest,
+        cut
+      );
 
     cut = Math.max(
       1,
-      Math.min(cut, rest.length)
+      Math.min(
+        cut,
+        rest.length
+      )
     );
 
-    const chunk = rest
-      .slice(0, cut)
-      .trim();
+    const chunk =
+      rest
+        .slice(0, cut)
+        .trim();
 
     if (chunk) {
       chunks.push(chunk);
     }
 
-    rest = rest
-      .slice(cut)
-      .trimStart();
+    rest =
+      rest
+        .slice(cut)
+        .trimStart();
 
     first = false;
   }
@@ -620,60 +725,59 @@ function splitPiperText(text: string): string[] {
   return chunks.filter(Boolean);
 }
 
-type SynthesizedChunk = {
-  samples: Float32Array;
-  sampleRate: number;
-};
-
 async function synthesizeChunk(
   engine: any,
   text: string,
   speedScale: number,
   myGenerationId: number
 ): Promise<SynthesizedChunk | null> {
-  if (myGenerationId !== generationId) {
+  if (
+    myGenerationId !== generationId
+  ) {
     return null;
   }
 
-  const cacheKey = makeSynthCacheKey(text, speedScale);
-  const cached = synthesizedCache.get(cacheKey);
+  const cacheKey =
+    makeSynthCacheKey(
+      text,
+      speedScale
+    );
+
+  const cached =
+    synthesizedCache.get(
+      cacheKey
+    );
+
   if (cached) {
-    addPiperDiagnostic("[生成] キャッシュ使用", { text });
     return cached;
   }
-
-  addPiperDiagnostic(
-    "[生成] 開始",
-    {
-      text,
-      length: text.length,
-      speedScale,
-    }
-  );
 
   let result: any;
 
   try {
-    result = await engine.synthesize(
-      text,
-      {
-        language: "ja",
-        lengthScale: 1 / speedScale,
-      }
-    );
+    result =
+      await engine.synthesize(
+        text,
+        {
+          language: "ja",
+          lengthScale:
+            1 / speedScale,
+        }
+      );
   } catch (error) {
-    addPiperDiagnostic(
-      "[生成] 失敗",
-      error
-    );
     throw error;
   }
 
-  if (myGenerationId !== generationId) {
+  if (
+    myGenerationId !== generationId
+  ) {
     return null;
   }
 
-  if (!result || !result.samples) {
+  if (
+    !result ||
+    !result.samples
+  ) {
     throw new Error(
       "Piper-Plusから音声データが返されませんでした。"
     );
@@ -682,30 +786,24 @@ async function synthesizeChunk(
   const samples =
     result.samples instanceof Float32Array
       ? result.samples
-      : new Float32Array(result.samples);
+      : new Float32Array(
+          result.samples
+        );
 
   const sampleRate =
-    Number(result.sampleRate || 22050);
-
-  addPiperDiagnostic(
-    "[生成] 完了",
-    {
-      samples: samples.length,
-      sampleRate,
-      seconds:
-        sampleRate > 0
-          ? Number((samples.length / sampleRate).toFixed(2))
-          : 0,
-    }
-  );
+    Number(
+      result.sampleRate || 22050
+    );
 
   const synthesized = {
     samples,
     sampleRate,
   };
 
-  // stop() が途中で呼ばれても、推論自体が完了していれば次回利用できる。
-  putSynthCache(cacheKey, synthesized);
+  putSynthCache(
+    cacheKey,
+    synthesized
+  );
 
   return synthesized;
 }
@@ -717,23 +815,22 @@ async function playSamples(
   myGenerationId: number
 ) {
   if (isIOSDevice()) {
-    await playSamplesIOS(samples, sampleRate, volume, myGenerationId);
+    await playSamplesIOS(
+      samples,
+      sampleRate,
+      volume,
+      myGenerationId
+    );
+
     return;
   }
 
-  const ctx = await resumeAudioContext();
+  const ctx =
+    await resumeAudioContext();
 
-  addPiperDiagnostic(
-    "[再生] playSamples開始",
-    {
-      state: ctx.state,
-      samples: samples.length,
-      sampleRate,
-      volume,
-    }
-  );
-
-  if (myGenerationId !== generationId) {
+  if (
+    myGenerationId !== generationId
+  ) {
     return;
   }
 
@@ -749,11 +846,12 @@ async function playSamples(
     currentGain?.disconnect();
   } catch {}
 
-  const buffer = ctx.createBuffer(
-    1,
-    samples.length,
-    sampleRate
-  );
+  const buffer =
+    ctx.createBuffer(
+      1,
+      samples.length,
+      sampleRate
+    );
 
   buffer.copyToChannel(
     samples,
@@ -780,11 +878,9 @@ async function playSamples(
   await new Promise<void>(
     (resolve, reject) => {
       source.onended = () => {
-        addPiperDiagnostic(
-          "[再生] 終了"
-        );
-
-        if (currentSource === source) {
+        if (
+          currentSource === source
+        ) {
           currentSource = null;
           currentGain = null;
         }
@@ -793,24 +889,11 @@ async function playSamples(
       };
 
       try {
-
-        addPiperDiagnostic(
-          "[再生] source.start",
-          ctx.state
-        );
-
         source.start();
-
-        addPiperDiagnostic(
-          "[再生] source.start成功"
-        );
       } catch (error) {
-        addPiperDiagnostic(
-          "[再生] source.start失敗",
-          error
-        );
-
-        if (currentSource === source) {
+        if (
+          currentSource === source
+        ) {
           currentSource = null;
           currentGain = null;
         }
@@ -828,23 +911,11 @@ export async function speakPiper(
   const cleanText =
     String(text ?? "").trim();
 
-  if (!cleanText) {
-    return;
-  }
-
-  addPiperDiagnostic(
-    "[読み上げ] 開始",
-    {
-      text: cleanText,
-      length: cleanText.length,
-    }
-  );
+  if (!cleanText) return;
 
   const myGenerationId =
     ++generationId;
 
-  // Android / Windows は従来どおりWebAudio。
-  // iPhoneは HTMLAudioElement 専用経路なのでここではAudioContextを触らない。
   if (!isIOSDevice()) {
     await resumeAudioContext();
   }
@@ -852,12 +923,9 @@ export async function speakPiper(
   let engine: any;
 
   try {
-    engine = await getEngine();
+    engine =
+      await getEngine();
   } catch (error) {
-    addPiperDiagnostic(
-      "[読み上げ] エンジン取得失敗",
-      error
-    );
     throw error;
   }
 
@@ -893,28 +961,13 @@ export async function speakPiper(
         )
       : 0.8;
 
-  const chunks = splitPiperText(cleanText);
-
-  addPiperDiagnostic(
-    "[読み上げ] チャンク分割",
-    {
-      count: chunks.length,
-      chunks,
-    }
-  );
+  const chunks =
+    splitPiperText(cleanText);
 
   if (!chunks.length) {
     return;
   }
 
-  /*
-   * 低遅延再生:
-   * 1. 最初の短いチャンクだけ生成
-   * 2. できたらすぐ再生
-   * 3. 再生中に次チャンクを先行生成
-   *
-   * これにより長文全体の生成完了を待たずに読み上げを開始できる。
-   */
   let nextChunkPromise =
     synthesizeChunk(
       engine,
@@ -923,7 +976,11 @@ export async function speakPiper(
       myGenerationId
     );
 
-  for (let i = 0; i < chunks.length; i++) {
+  for (
+    let i = 0;
+    i < chunks.length;
+    i++
+  ) {
     const current =
       await nextChunkPromise;
 
@@ -934,9 +991,10 @@ export async function speakPiper(
       return;
     }
 
-    // 現在チャンクを再生する前に、次の生成を開始しておく。
-    // AudioContext再生中に次のPiper推論を進める。
-    if (i + 1 < chunks.length) {
+    if (
+      i + 1 <
+      chunks.length
+    ) {
       nextChunkPromise =
         synthesizeChunk(
           engine,
@@ -956,60 +1014,101 @@ export async function speakPiper(
     if (
       myGenerationId !== generationId
     ) {
-      addPiperDiagnostic(
-        "[読み上げ] generationId変更により終了"
-      );
       return;
     }
   }
-
-  addPiperDiagnostic(
-    "[読み上げ] 全チャンク完了"
-  );
 }
 
 /**
  * 読み上げ予定の文章を先に生成してキャッシュする。
- * 画面側で「次の打者」などが確定した時に呼ぶと、
- * 読み上げボタン押下後の待ち時間を短縮できる。
  */
 export async function prefetchPiper(
   text: string,
   options: PiperSpeakOptions = {}
 ): Promise<void> {
-  const cleanText = String(text ?? "").trim();
+  const cleanText =
+    String(text ?? "").trim();
+
   if (!cleanText) return;
 
-  const speedScale = Number.isFinite(options.speedScale)
-    ? clamp(Number(options.speedScale), 0.25, 2.0)
-    : 1.0;
+  const speedScale =
+    Number.isFinite(
+      options.speedScale
+    )
+      ? clamp(
+          Number(
+            options.speedScale
+          ),
+          0.25,
+          2.0
+        )
+      : 1.0;
 
   try {
-    const engine = await getEngine();
-    const chunks = splitPiperText(cleanText);
+    const engine =
+      await getEngine();
 
-    // 低スペック端末を塞ぎ過ぎないよう、先頭2チャンクまで。
-    for (const chunk of chunks.slice(0, 2)) {
-      const key = makeSynthCacheKey(chunk, speedScale);
-      if (synthesizedCache.has(key)) continue;
+    const chunks =
+      splitPiperText(cleanText);
 
-      const result = await engine.synthesize(chunk, {
-        language: "ja",
-        lengthScale: 1 / speedScale,
-      });
+    for (
+      const chunk of
+      chunks.slice(0, 2)
+    ) {
+      const key =
+        makeSynthCacheKey(
+          chunk,
+          speedScale
+        );
 
-      if (!result?.samples) continue;
+      if (
+        synthesizedCache.has(key)
+      ) {
+        continue;
+      }
+
+      const result =
+        await engine.synthesize(
+          chunk,
+          {
+            language: "ja",
+            lengthScale:
+              1 / speedScale,
+          }
+        );
+
+      if (
+        !result?.samples
+      ) {
+        continue;
+      }
 
       const samples =
         result.samples instanceof Float32Array
           ? result.samples
-          : new Float32Array(result.samples);
+          : new Float32Array(
+              result.samples
+            );
 
-      const sampleRate = Number(result.sampleRate || 22050);
-      putSynthCache(key, { samples, sampleRate });
+      const sampleRate =
+        Number(
+          result.sampleRate ||
+          22050
+        );
+
+      putSynthCache(
+        key,
+        {
+          samples,
+          sampleRate,
+        }
+      );
     }
   } catch (error) {
-    console.warn("Piper prefetch failed:", error);
+    console.warn(
+      "Piper prefetch failed:",
+      error
+    );
   }
 }
 
@@ -1019,20 +1118,25 @@ export function clearPiperAudioCache() {
 }
 
 export function stopPiper() {
-  addPiperDiagnostic(
-    "[停止] stopPiper"
-  );
-
   generationId++;
 
   try {
     iosAudioElement?.pause();
   } catch {}
+
   if (iosAudioElement) {
-    try { iosAudioElement.currentTime = 0; } catch {}
+    try {
+      iosAudioElement.currentTime = 0;
+    } catch {}
   }
+
   if (iosAudioObjectUrl) {
-    try { URL.revokeObjectURL(iosAudioObjectUrl); } catch {}
+    try {
+      URL.revokeObjectURL(
+        iosAudioObjectUrl
+      );
+    } catch {}
+
     iosAudioObjectUrl = null;
   }
 
@@ -1053,21 +1157,9 @@ export function stopPiper() {
 }
 
 export async function prewarmPiper(): Promise<void> {
-  addPiperDiagnostic(
-    "[Prewarm] 開始"
-  );
-
   try {
     await getEngine();
-
-    addPiperDiagnostic(
-      "[Prewarm] 完了"
-    );
   } catch (error) {
-    addPiperDiagnostic(
-      "[Prewarm] 失敗",
-      error
-    );
     throw error;
   }
 }
