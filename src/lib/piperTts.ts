@@ -28,7 +28,7 @@ const PIPER_MODEL_SCAN_MAX = 20;
 const PIPER_MODEL_LABELS: Record<number, string> = {
   1: "AI音声（ウグイス嬢風）",
   2: "AI音声（ハマスタ風）",
-  3: "AI音声（谷保さん風）",
+  3: "AI音声（千葉マリン風）",
 };
 
 
