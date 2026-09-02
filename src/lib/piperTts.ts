@@ -26,9 +26,9 @@ const PIPER_MODEL_SCAN_MAX = 20;
 // 表示名はここだけ変更すればOK。
 // 未定義の番号は「AI音声（ウグイス嬢N）」で自動表示される。
 const PIPER_MODEL_LABELS: Record<number, string> = {
-  1: "AI音声（ウグイス嬢風）",
-  2: "AI音声（ハマスタ風）",
-  3: "AI音声（谷保さん風）",
+  1: "AI音声（ウグイス嬢1）",
+  2: "AI音声（男性）",
+  3: "AI音声（アニメ風）",
 };
 
 
