@@ -1,13 +1,21 @@
 // src/components/TtsSettings.tsx  ← 使っている場所に合わせてパス調整OK
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
-import { setSelectedPiperModel } from "../lib/piperTts";
+import { discoverPiperModels, makePiperModelInfo, setSelectedPiperModel, type PiperModelInfo } from "../lib/piperTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
-const PIPER_VOICE_1_VALUE = "__easy_announce_piper_1__";
-const PIPER_VOICE_2_VALUE = "__easy_announce_piper_2__";
-const PIPER_VOICE_1_LABEL = "AI音声（ウグイス嬢1）";
-const PIPER_VOICE_2_LABEL = "AI音声（ウグイス嬢2）";
+const PIPER_VALUE_PREFIX = "__easy_announce_piper_";
+
+function piperModelToValue(modelId: string): string {
+  const match = modelId.match(/^easy-announce-(\d+)$/);
+  const index = match ? Number(match[1]) : 1;
+  return `${PIPER_VALUE_PREFIX}${index}__`;
+}
+
+function piperValueToModelId(value: string): string | null {
+  const match = value.match(/^__easy_announce_piper_(\d+)__$/);
+  return match ? `easy-announce-${Number(match[1])}` : null;
+}
 
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -30,6 +38,26 @@ type Props = {
 export default function TtsSettings({ onNavigate, onBack }: Props) {
   // 日本語のみ表示（端末/ブラウザが公開する ja 系ボイス）
   const { voices, ready } = useWebSpeechVoices("ja");
+
+  const [piperModels, setPiperModels] = useState<PiperModelInfo[]>([
+    makePiperModelInfo(1),
+    makePiperModelInfo(2),
+  ]);
+
+  // public/models/easy-announce/uguisuN/easy_announce.onnx を自動検出。
+  useEffect(() => {
+    let cancelled = false;
+
+    void discoverPiperModels().then((models) => {
+      if (!cancelled && models.length > 0) {
+        setPiperModels(models);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 既定値（LS未設定時）: 速度1.3 / ピッチ1.0 / 音量0.8
   const DEFAULT_RATE = 1.3;
@@ -54,9 +82,11 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
 
   const [selectedName, setSelectedName] = useState<string | "">(() => {
     if (localStorage.getItem("tts:engine") === "piper") {
-      return localStorage.getItem("tts:piper:model") === "easy-announce-2"
-        ? PIPER_VOICE_2_VALUE
-        : PIPER_VOICE_1_VALUE;
+      const savedModel =
+        localStorage.getItem("tts:piper:model") ||
+        "easy-announce-1";
+
+      return piperModelToValue(savedModel);
     }
 
     return localStorage.getItem("tts:webspeech:voiceName") || "";
@@ -78,16 +108,28 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   }, [ready, voices, selectedName]);
 
   const selectedLabel = useMemo(() => {
-    if (selectedName === PIPER_VOICE_1_VALUE) return PIPER_VOICE_1_LABEL;
-    if (selectedName === PIPER_VOICE_2_VALUE) return PIPER_VOICE_2_LABEL;
+    const piperModelId =
+      piperValueToModelId(selectedName);
+
+    if (piperModelId) {
+      return (
+        piperModels.find(
+          (model) => model.id === piperModelId
+        )?.label ||
+        makePiperModelInfo(
+          Number(
+            piperModelId.replace("easy-announce-", "")
+          ) || 1
+        ).label
+      );
+    }
 
     const v = voices.find(v => v.name === selectedName);
     return v ? `${v.name} (${v.lang})` : "未選択";
-  }, [voices, selectedName]);
+  }, [voices, selectedName, piperModels]);
 
   const isPiperVoice =
-    selectedName === PIPER_VOICE_1_VALUE ||
-    selectedName === PIPER_VOICE_2_VALUE;
+    piperValueToModelId(selectedName) !== null;
 
   const pitchUnsupported =
     !isPiperVoice &&
@@ -96,17 +138,16 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const handleSelectVoice = (name: string) => {
     setSelectedName(name);
 
-    if (name === PIPER_VOICE_1_VALUE) {
-      localStorage.setItem("tts:engine", "piper");
-      localStorage.setItem("tts:piper:model", "easy-announce-1");
-      setSelectedPiperModel("easy-announce-1");
-      return;
-    }
+    const piperModelId =
+      piperValueToModelId(name);
 
-    if (name === PIPER_VOICE_2_VALUE) {
+    if (piperModelId) {
       localStorage.setItem("tts:engine", "piper");
-      localStorage.setItem("tts:piper:model", "easy-announce-2");
-      setSelectedPiperModel("easy-announce-2");
+      localStorage.setItem(
+        "tts:piper:model",
+        piperModelId
+      );
+      setSelectedPiperModel(piperModelId);
       return;
     }
 
@@ -203,8 +244,14 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               value={selectedName}
               onChange={(e) => handleSelectVoice(e.target.value)}
             >
-              <option value={PIPER_VOICE_1_VALUE}>★ {PIPER_VOICE_1_LABEL}</option>
-              <option value={PIPER_VOICE_2_VALUE}>★ {PIPER_VOICE_2_LABEL}</option>
+              {piperModels.map((model) => (
+                <option
+                  key={model.id}
+                  value={piperModelToValue(model.id)}
+                >
+                  ★ {model.label}
+                </option>
+              ))}
 
               {voices.length === 0 && (
                 <option value="">（利用可能な端末音声が見つかりません）</option>
