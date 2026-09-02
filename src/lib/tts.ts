@@ -106,8 +106,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 // AI音声(Piper)は元の速度感に合わせる。
-// 読み上げ設定の表示 1.0 = Piper内部 0.5 として扱う。
-const PIPER_SPEED_BASE = 0.5;
+// 読み上げ設定の表示 1.0 = Piper内部 0.6 として扱う。
+const PIPER_SPEED_BASE = 0.6;
 
 function toPiperSpeed(uiSpeed: number): number {
   return clamp(uiSpeed * PIPER_SPEED_BASE, 0.25, 2.0);
