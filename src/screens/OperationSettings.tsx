@@ -124,6 +124,28 @@ export default function OperationSettings({ onNavigate }: Props) {
       ? "ボーイズリーグ 連盟アナウンスマニュアル"
       : "ポニーリーグ 連盟アナウンスマニュアル";
 
+  // iPhone / iPad の Safari・PWA では、iframe 内の PDF が
+  // 1ページ目しか表示されないことがあるため、iOS だけ標準PDFビューアで開く。
+  const openManual = () => {
+    const ua = navigator.userAgent;
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    if (isIOS) {
+      const manualUrl = `${window.location.origin}/${manualFile}`;
+      const opened = window.open(manualUrl, "_blank");
+
+      // PWA等で新規タブがブロックされた場合のフォールバック
+      if (!opened) {
+        window.location.href = manualUrl;
+      }
+      return;
+    }
+
+    setShowManual(true);
+  };
+
   return (
     <div
       className="min-h-[100svh] bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col items-center px-4 sm:px-6"
@@ -323,8 +345,8 @@ export default function OperationSettings({ onNavigate }: Props) {
         <TileButton
           icon={<span className="text-2xl">📘</span>}
           title="連盟アナウンスマニュアル"
-          desc="PDFをアプリ内で表示"
-          onClick={() => setShowManual(true)}
+          desc="PDFを表示"
+          onClick={openManual}
         />
 
         <TileButton
