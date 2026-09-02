@@ -12,22 +12,105 @@ type PiperProgressInfo = {
   message?: string;
 };
 
-export type PiperModelId =
-  | "easy-announce-1"
-  | "easy-announce-2";
+export type PiperModelId = `easy-announce-${number}`;
 
+export type PiperModelInfo = {
+  id: PiperModelId;
+  index: number;
+  label: string;
+  path: string;
+};
+
+const PIPER_MODEL_SCAN_MAX = 20;
+
+// 表示名はここだけ変更すればOK。
+// 未定義の番号は「AI音声（ウグイス嬢N）」で自動表示される。
+const PIPER_MODEL_LABELS: Record<number, string> = {
+  1: "AI音声（ウグイス嬢風）",
+  2: "AI音声（ハマスタ風）",
+  3: "AI音声（谷保さん風）",
+};
+
+
+export function makePiperModelInfo(index: number): PiperModelInfo {
+  const safeIndex = Math.max(1, Math.floor(index));
+
+  return {
+    id: `easy-announce-${safeIndex}` as PiperModelId,
+    index: safeIndex,
+    label: PIPER_MODEL_LABELS[safeIndex] ?? `AI音声（ウグイス嬢${safeIndex}）`,
+    path: `/models/easy-announce/uguisu${safeIndex}/easy_announce.onnx`,
+  };
+}
+
+// 既存コードとの互換用。
+// 1・2は常に定義し、3以降は discoverPiperModels() で自動検出する。
 export const PIPER_MODELS = {
-  "easy-announce-1": {
-    id: "easy-announce-1" as PiperModelId,
-    label: "AI音声（ウグイス嬢1）",
-    path: "/models/easy-announce/uguisu1/easy_announce.onnx",
-  },
-  "easy-announce-2": {
-    id: "easy-announce-2" as PiperModelId,
-    label: "AI音声（ウグイス嬢2）",
-    path: "/models/easy-announce/uguisu2/easy_announce.onnx",
-  },
+  "easy-announce-1": makePiperModelInfo(1),
+  "easy-announce-2": makePiperModelInfo(2),
 } as const;
+
+let discoveredPiperModelsPromise: Promise<PiperModelInfo[]> | null = null;
+
+/**
+ * public/models/easy-announce/uguisu1 ～ uguisu20 を確認し、
+ * easy_announce.onnx が存在するフォルダだけを返す。
+ *
+ * Vercel / PWA ではフォルダ一覧を直接取得できないため、
+ * 各モデルファイルへ HEAD リクエストして存在確認する。
+ */
+export function discoverPiperModels(
+  maxIndex = PIPER_MODEL_SCAN_MAX
+): Promise<PiperModelInfo[]> {
+  if (discoveredPiperModelsPromise) {
+    return discoveredPiperModelsPromise;
+  }
+
+  discoveredPiperModelsPromise = (async () => {
+    const indexes = Array.from(
+      { length: Math.max(2, maxIndex) },
+      (_, i) => i + 1
+    );
+
+    const checks = await Promise.all(
+      indexes.map(async (index) => {
+        const info = makePiperModelInfo(index);
+
+        try {
+          const url = new URL(
+            info.path,
+            window.location.origin
+          ).href;
+
+          const response = await fetch(url, {
+            method: "HEAD",
+            cache: "no-store",
+          });
+
+          return response.ok ? info : null;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const found = checks
+      .filter((item): item is PiperModelInfo => item !== null)
+      .sort((a, b) => a.index - b.index);
+
+    // 通信失敗時でも、現在運用中の1・2は設定画面から消さない。
+    if (found.length === 0) {
+      return [
+        makePiperModelInfo(1),
+        makePiperModelInfo(2),
+      ];
+    }
+
+    return found;
+  })();
+
+  return discoveredPiperModelsPromise;
+}
 
 type PiperProgressListener = (info: PiperProgressInfo) => void;
 type PiperDiagnosticListener = (logs: string[]) => void;
@@ -53,13 +136,20 @@ function addPiperDiagnostic(
 
 let piperProgressListener: PiperProgressListener | null = null;
 
+function normalizePiperModelId(
+  model: PiperModelId | string | null | undefined
+): PiperModelId {
+  const match = String(model ?? "").match(/^easy-announce-(\d+)$/);
+  const index = match ? Number(match[1]) : 1;
+
+  return `easy-announce-${Math.max(1, Math.floor(index || 1))}` as PiperModelId;
+}
+
 function loadSelectedPiperModel(): PiperModelId {
   try {
-    const saved = localStorage.getItem("tts:piper:model");
-
-    if (saved === "easy-announce-2") {
-      return "easy-announce-2";
-    }
+    return normalizePiperModelId(
+      localStorage.getItem("tts:piper:model")
+    );
   } catch {}
 
   return "easy-announce-1";
@@ -138,7 +228,14 @@ function clamp(
 }
 
 function getModelUrl(): string {
-  const model = PIPER_MODELS[selectedPiperModel];
+  const match =
+    selectedPiperModel.match(/^easy-announce-(\d+)$/);
+
+  const index =
+    match ? Number(match[1]) : 1;
+
+  const model =
+    makePiperModelInfo(index);
 
   return new URL(
     model.path,
@@ -403,10 +500,8 @@ async function resumeAudioContext() {
 export function setSelectedPiperModel(
   model: PiperModelId | string
 ) {
-  const nextModel: PiperModelId =
-    model === "easy-announce-2"
-      ? "easy-announce-2"
-      : "easy-announce-1";
+  const nextModel =
+    normalizePiperModelId(model);
 
   if (selectedPiperModel !== nextModel) {
     // 再生中の旧モデル音声を停止。
