@@ -158,7 +158,6 @@ function loadSelectedPiperModel(): PiperModelId {
 
 let selectedPiperModel: PiperModelId = loadSelectedPiperModel();
 let enginePromise: Promise<any> | null = null;
-let enginePromiseModel: PiperModelId | null = null;
 
 let audioContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
@@ -285,48 +284,28 @@ export function unlockPiperAudioForIOS(): void {
   if (!isIOSDevice()) return;
 
   try {
-    const ctx = getAudioContext();
-
-    // iPhone/iPadはユーザー操作中のresume呼び出しが重要。
-    if (ctx.state !== "running") {
-      try {
-        void ctx.resume();
-      } catch {}
+    if (!iosAudioElement) {
+      iosAudioElement = new Audio();
+      iosAudioElement.preload = "auto";
+      iosAudioElement.playsInline = true;
     }
 
-    // 無音の1サンプルを同じユーザー操作中に流してWebAudioを有効化する。
-    try {
-      const buffer = ctx.createBuffer(
-        1,
-        1,
-        ctx.sampleRate || 22050
-      );
+    // iPhone/iPad Safariでは、ユーザーのタップと同じ同期処理内で
+    // 一度 audio.play() を呼んで再生許可を取る。
+    const silentWav =
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
 
-      const source =
-        ctx.createBufferSource();
+    iosAudioElement.src = silentWav;
+    iosAudioElement.volume = 0;
 
-      const gain =
-        ctx.createGain();
+    const p = iosAudioElement.play();
 
-      gain.gain.value = 0;
-      source.buffer = buffer;
-
-      source.connect(gain);
-      gain.connect(ctx.destination);
-
-      source.onended = () => {
-        try {
-          source.disconnect();
-        } catch {}
-
-        try {
-          gain.disconnect();
-        } catch {}
-      };
-
-      source.start(0);
-    } catch {}
-  } catch {}
+    if (p && typeof p.catch === "function") {
+      void p.catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function float32ToWavBlob(
@@ -403,82 +382,83 @@ async function playSamplesIOS(
 ): Promise<void> {
   if (myGenerationId !== generationId) return;
 
-  const ctx = getAudioContext();
-
-  // 通常は読み上げボタン押下時の unlockPiperAudioForIOS() で
-  // running になっている。念のため停止中なら再開を試す。
-  if (ctx.state !== "running") {
-    try {
-      await ctx.resume();
-    } catch {}
+  if (!iosAudioElement) {
+    iosAudioElement = new Audio();
+    iosAudioElement.preload = "auto";
+    iosAudioElement.playsInline = true;
   }
 
-  if (myGenerationId !== generationId) return;
-
   try {
-    currentSource?.stop();
+    iosAudioElement.pause();
   } catch {}
 
-  try {
-    currentSource?.disconnect();
-  } catch {}
+  if (iosAudioObjectUrl) {
+    try {
+      URL.revokeObjectURL(
+        iosAudioObjectUrl
+      );
+    } catch {}
 
-  try {
-    currentGain?.disconnect();
-  } catch {}
+    iosAudioObjectUrl = null;
+  }
 
-  const buffer = ctx.createBuffer(
-    1,
-    samples.length,
-    sampleRate
-  );
+  const blob =
+    float32ToWavBlob(
+      samples,
+      sampleRate
+    );
 
-  buffer.copyToChannel(
-    samples,
-    0
-  );
+  iosAudioObjectUrl =
+    URL.createObjectURL(blob);
 
-  const source =
-    ctx.createBufferSource();
+  iosAudioElement.src =
+    iosAudioObjectUrl;
 
-  const gain =
-    ctx.createGain();
-
-  gain.gain.value =
+  iosAudioElement.volume =
     clamp(volume, 0, 1);
-
-  source.buffer = buffer;
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-
-  currentSource = source;
-  currentGain = gain;
 
   await new Promise<void>(
     (resolve, reject) => {
-      source.onended = () => {
-        if (
-          currentSource === source
-        ) {
-          currentSource = null;
-          currentGain = null;
-        }
+      if (!iosAudioElement) {
+        resolve();
+        return;
+      }
 
+      const audio =
+        iosAudioElement;
+
+      const cleanup = () => {
+        audio.onended = null;
+        audio.onerror = null;
+      };
+
+      audio.onended = () => {
+        cleanup();
         resolve();
       };
 
-      try {
-        source.start(0);
-      } catch (error) {
-        if (
-          currentSource === source
-        ) {
-          currentSource = null;
-          currentGain = null;
-        }
+      audio.onerror = () => {
+        cleanup();
+        reject(
+          new Error(
+            "iPhoneでAI音声の再生に失敗しました。"
+          )
+        );
+      };
 
-        reject(error);
+      const p =
+        audio.play();
+
+      if (
+        p &&
+        typeof p.catch === "function"
+      ) {
+        void p.catch(
+          (error) => {
+            cleanup();
+            reject(error);
+          }
+        );
       }
     }
   );
@@ -533,22 +513,17 @@ export function setSelectedPiperModel(
   const nextModel =
     normalizePiperModelId(model);
 
-  const changed =
-    selectedPiperModel !== nextModel;
-
-  if (changed) {
+  if (selectedPiperModel !== nextModel) {
     // 再生中の旧モデル音声を停止。
     stopPiper();
 
     selectedPiperModel = nextModel;
 
-    // 重要:
-    // スマホでは旧モデルの初期化中に enginePromise = null とすると、
-    // 旧ONNX初期化が裏で継続したまま新モデル初期化も同時に走り、
-    // CPU/メモリ負荷が急増して数分待ちになることがある。
-    //
-    // ここでは旧初期化を捨てず、getEngine() 側で完了を待ってから
-    // 新モデルへ順番に切り替える。
+    // 旧モデルのエンジンを破棄し、
+    // 次回に新しいONNXを初期化する。
+    enginePromise = null;
+
+    // 別モデルの生成済み音声を残さない。
     clearPiperAudioCache();
   }
 
@@ -558,12 +533,6 @@ export function setSelectedPiperModel(
       selectedPiperModel
     );
   } catch {}
-
-  if (changed) {
-    // 選択した時点で次モデルの準備を開始。
-    // 読み上げボタンを押してから初期化が始まる待ち時間をなくす。
-    void getEngine().catch(() => {});
-  }
 }
 
 export function setPiperProgressListener(
@@ -586,73 +555,16 @@ async function getEngine() {
       `${origin}/ort/ort-wasm-simd-threaded.mjs`,
   } as any;
 
-  const requestedModel =
-    selectedPiperModel;
-
-  // すでに同じモデルを準備中/準備済みなら、そのPromiseを再利用。
-  if (
-    enginePromise &&
-    enginePromiseModel === requestedModel
-  ) {
-    return enginePromise;
-  }
-
-  // 別モデルの初期化が進行中/完了済みなら、
-  // スマホで二重ONNX初期化を走らせないよう先に完了を待つ。
-  if (
-    enginePromise &&
-    enginePromiseModel !== requestedModel
-  ) {
-    const previousPromise =
-      enginePromise;
-
-    try {
-      await previousPromise;
-    } catch {}
-
-    // 待っている間にさらに別の音声が選択された場合は、
-    // 最新の選択モデルでやり直す。
-    if (
-      selectedPiperModel !== requestedModel
-    ) {
-      return getEngine();
-    }
-
-    if (
-      enginePromise === previousPromise
-    ) {
-      enginePromise = null;
-      enginePromiseModel = null;
-    }
-  }
-
-  // 上の待機中に別処理が同じモデルの初期化を開始していたら再利用。
-  if (
-    enginePromise &&
-    enginePromiseModel === selectedPiperModel
-  ) {
-    return enginePromise;
-  }
-
   if (!enginePromise) {
-    const modelAtStart =
-      selectedPiperModel;
+    const modelUrl = getModelUrl();
 
-    const model =
-      makePiperModelInfo(
-        Number(
-          modelAtStart.replace(
-            "easy-announce-",
-            ""
-          )
-        ) || 1
-      );
-
-    const modelUrl =
-      new URL(
-        model.path,
-        window.location.origin
-      ).href;
+    addPiperDiagnostic(
+      "[Piper] 初期化開始",
+      {
+        model: selectedPiperModel,
+        modelUrl,
+      }
+    );
 
     const wasmG2pUrl =
       new URL(
@@ -660,10 +572,7 @@ async function getEngine() {
         window.location.origin
       ).href;
 
-    enginePromiseModel =
-      modelAtStart;
-
-    const promise =
+    enginePromise =
       PiperPlus.initialize({
         model: modelUrl,
         ort,
@@ -688,19 +597,14 @@ async function getEngine() {
         .then((engine: any) => {
           addPiperDiagnostic(
             "[Piper] 初期化完了",
-            modelAtStart
+            selectedPiperModel
           );
 
           return engine;
         })
         .catch(
           (error: unknown) => {
-            if (
-              enginePromise === promise
-            ) {
-              enginePromise = null;
-              enginePromiseModel = null;
-            }
+            enginePromise = null;
 
             console.error(
               "[Piper-Plus] initialization failed:",
@@ -710,9 +614,6 @@ async function getEngine() {
             throw error;
           }
         );
-
-    enginePromise =
-      promise;
   }
 
   return enginePromise;
