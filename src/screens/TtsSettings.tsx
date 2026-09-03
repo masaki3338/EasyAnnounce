@@ -93,6 +93,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   });
 
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showAiVoiceNotice, setShowAiVoiceNotice] = useState(false);
 
   // 初回：保存が空ならデフォルトを選択
   const onceRef = useRef(false);
@@ -148,6 +149,11 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
         piperModelId
       );
       setSelectedPiperModel(piperModelId);
+
+      // AI音声を選択した時は毎回案内を表示
+      // 端末音声 → AI音声、AI音声 → 別のAI音声の両方に対応
+      setShowAiVoiceNotice(true);
+
       return;
     }
 
@@ -371,6 +377,42 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
           </div>
         </section>
       </div>
+
+      {/* AI音声切り替え時の案内 */}
+      {showAiVoiceNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-voice-notice-title"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-slate-800 border border-white/15 shadow-2xl p-5 md:p-6">
+            <h2
+              id="ai-voice-notice-title"
+              className="text-xl font-bold text-white text-center"
+            >
+              AI音声について
+            </h2>
+
+            <div className="mt-4 text-sm md:text-base leading-relaxed text-white/90 space-y-3">
+              <p>
+                AI音声に切り替えると、初回の読み上げ開始まで少し時間がかかります。
+              </p>
+              <p>
+                次回起動時は「AI音声起動中」と表示され、準備完了後にアプリが起動します。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAiVoiceNotice(false)}
+              className="mt-6 w-full h-12 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold shadow-lg active:scale-[0.99] transition-transform"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
