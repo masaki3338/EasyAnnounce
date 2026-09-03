@@ -513,14 +513,17 @@ export function setSelectedPiperModel(
   const nextModel =
     normalizePiperModelId(model);
 
-  if (selectedPiperModel !== nextModel) {
+  const changed =
+    selectedPiperModel !== nextModel;
+
+  if (changed) {
     // 再生中の旧モデル音声を停止。
     stopPiper();
 
     selectedPiperModel = nextModel;
 
     // 旧モデルのエンジンを破棄し、
-    // 次回に新しいONNXを初期化する。
+    // 新しく選んだモデルを初期化できる状態にする。
     enginePromise = null;
 
     // 別モデルの生成済み音声を残さない。
@@ -533,6 +536,12 @@ export function setSelectedPiperModel(
       selectedPiperModel
     );
   } catch {}
+
+  if (changed) {
+    // AI音声へ切り替えた直後から新モデルの初期化を開始する。
+    // 読み上げボタンを押してから初期化を始める待ち時間を減らす。
+    void getEngine().catch(() => {});
+  }
 }
 
 export function setPiperProgressListener(
