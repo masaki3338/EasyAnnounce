@@ -158,6 +158,12 @@ function loadSelectedPiperModel(): PiperModelId {
 
 let selectedPiperModel: PiperModelId = loadSelectedPiperModel();
 let enginePromise: Promise<any> | null = null;
+let enginePromiseModel: PiperModelId | null = null;
+
+// 一度初期化したAI音声モデルは再利用する。
+// 特にiPhoneでAI音声を切り替えるたびにONNXを再初期化して
+// 10秒以上待つのを防ぐ。
+const engineCache = new Map<PiperModelId, Promise<any>>();
 
 let audioContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
@@ -519,11 +525,8 @@ export function setSelectedPiperModel(
 
     selectedPiperModel = nextModel;
 
-    // 旧モデルのエンジンを破棄し、
-    // 次回に新しいONNXを初期化する。
-    enginePromise = null;
-
-    // 別モデルの生成済み音声を残さない。
+    // 生成済み音声キャッシュはモデルごとにキー分けされているが、
+    // メモリ使用量を抑えるため切替時はいったんクリア。
     clearPiperAudioCache();
   }
 
@@ -533,6 +536,10 @@ export function setSelectedPiperModel(
       selectedPiperModel
     );
   } catch {}
+
+  // AI音声を選択した瞬間からモデル準備を開始する。
+  // 読み上げボタンを押してから待つ時間を短くする。
+  void getEngine().catch(() => {});
 }
 
 export function setPiperProgressListener(
@@ -555,68 +562,103 @@ async function getEngine() {
       `${origin}/ort/ort-wasm-simd-threaded.mjs`,
   } as any;
 
-  if (!enginePromise) {
-    const modelUrl = getModelUrl();
+  const requestedModel =
+    selectedPiperModel;
 
-    addPiperDiagnostic(
-      "[Piper] 初期化開始",
-      {
-        model: selectedPiperModel,
-        modelUrl,
-      }
-    );
+  // 一度準備したモデルはそのまま再利用。
+  const cached =
+    engineCache.get(requestedModel);
 
-    const wasmG2pUrl =
-      new URL(
-        "/piper-wasm/piper_plus_wasm.js",
-        window.location.origin
-      ).href;
-
-    enginePromise =
-      PiperPlus.initialize({
-        model: modelUrl,
-        ort,
-        wasmG2pUrl,
-        onProgress: (
-          info: PiperProgressInfo
-        ) => {
-          try {
-            piperProgressListener?.(info);
-          } catch {}
-
-          addPiperDiagnostic(
-            "[Piper] progress",
-            {
-              stage: info.stage,
-              progress: info.progress,
-              message: info.message,
-            }
-          );
-        },
-      })
-        .then((engine: any) => {
-          addPiperDiagnostic(
-            "[Piper] 初期化完了",
-            selectedPiperModel
-          );
-
-          return engine;
-        })
-        .catch(
-          (error: unknown) => {
-            enginePromise = null;
-
-            console.error(
-              "[Piper-Plus] initialization failed:",
-              error
-            );
-
-            throw error;
-          }
-        );
+  if (cached) {
+    enginePromise = cached;
+    enginePromiseModel = requestedModel;
+    return cached;
   }
 
-  return enginePromise;
+  const model =
+    makePiperModelInfo(
+      Number(
+        requestedModel.replace(
+          "easy-announce-",
+          ""
+        )
+      ) || 1
+    );
+
+  const modelUrl =
+    new URL(
+      model.path,
+      window.location.origin
+    ).href;
+
+  const wasmG2pUrl =
+    new URL(
+      "/piper-wasm/piper_plus_wasm.js",
+      window.location.origin
+    ).href;
+
+  const promise =
+    PiperPlus.initialize({
+      model: modelUrl,
+      ort,
+      wasmG2pUrl,
+      onProgress: (
+        info: PiperProgressInfo
+      ) => {
+        try {
+          piperProgressListener?.(info);
+        } catch {}
+
+        addPiperDiagnostic(
+          "[Piper] progress",
+          {
+            stage: info.stage,
+            progress: info.progress,
+            message: info.message,
+          }
+        );
+      },
+    })
+      .then((engine: any) => {
+        addPiperDiagnostic(
+          "[Piper] 初期化完了",
+          requestedModel
+        );
+
+        return engine;
+      })
+      .catch(
+        (error: unknown) => {
+          // 失敗したPromiseはキャッシュに残さず、次回再試行可能にする。
+          engineCache.delete(
+            requestedModel
+          );
+
+          if (
+            enginePromiseModel === requestedModel
+          ) {
+            enginePromise = null;
+            enginePromiseModel = null;
+          }
+
+          console.error(
+            "[Piper-Plus] initialization failed:",
+            error
+          );
+
+          throw error;
+        }
+      );
+
+  engineCache.set(
+    requestedModel,
+    promise
+  );
+
+  enginePromise = promise;
+  enginePromiseModel = requestedModel;
+
+  return promise;
 }
 
 /**
