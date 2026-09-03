@@ -284,48 +284,26 @@ export function unlockPiperAudioForIOS(): void {
   if (!isIOSDevice()) return;
 
   try {
-    const ctx = getAudioContext();
-
-    // iPhone/iPadはユーザー操作中のresume呼び出しが重要。
-    if (ctx.state !== "running") {
-      try {
-        void ctx.resume();
-      } catch {}
+    if (!iosAudioElement) {
+      iosAudioElement = new Audio();
+      iosAudioElement.preload = "auto";
+      iosAudioElement.playsInline = true;
     }
 
-    // 無音の1サンプルを同じユーザー操作中に流してWebAudioを有効化する。
-    try {
-      const buffer = ctx.createBuffer(
-        1,
-        1,
-        ctx.sampleRate || 22050
-      );
+    const silentWav =
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
 
-      const source =
-        ctx.createBufferSource();
+    iosAudioElement.src = silentWav;
+    iosAudioElement.volume = 0;
 
-      const gain =
-        ctx.createGain();
+    const p = iosAudioElement.play();
 
-      gain.gain.value = 0;
-      source.buffer = buffer;
-
-      source.connect(gain);
-      gain.connect(ctx.destination);
-
-      source.onended = () => {
-        try {
-          source.disconnect();
-        } catch {}
-
-        try {
-          gain.disconnect();
-        } catch {}
-      };
-
-      source.start(0);
-    } catch {}
-  } catch {}
+    if (p && typeof p.catch === "function") {
+      void p.catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function float32ToWavBlob(
@@ -402,82 +380,76 @@ async function playSamplesIOS(
 ): Promise<void> {
   if (myGenerationId !== generationId) return;
 
-  const ctx = getAudioContext();
-
-  // 通常は読み上げボタン押下時の unlockPiperAudioForIOS() で
-  // running になっている。念のため停止中なら再開を試す。
-  if (ctx.state !== "running") {
-    try {
-      await ctx.resume();
-    } catch {}
+  if (!iosAudioElement) {
+    iosAudioElement = new Audio();
+    iosAudioElement.preload = "auto";
+    iosAudioElement.playsInline = true;
   }
 
-  if (myGenerationId !== generationId) return;
-
   try {
-    currentSource?.stop();
+    iosAudioElement.pause();
   } catch {}
 
-  try {
-    currentSource?.disconnect();
-  } catch {}
+  if (iosAudioObjectUrl) {
+    try {
+      URL.revokeObjectURL(iosAudioObjectUrl);
+    } catch {}
 
-  try {
-    currentGain?.disconnect();
-  } catch {}
+    iosAudioObjectUrl = null;
+  }
 
-  const buffer = ctx.createBuffer(
-    1,
-    samples.length,
+  const blob = float32ToWavBlob(
+    samples,
     sampleRate
   );
 
-  buffer.copyToChannel(
-    samples,
-    0
-  );
+  iosAudioObjectUrl =
+    URL.createObjectURL(blob);
 
-  const source =
-    ctx.createBufferSource();
+  iosAudioElement.src =
+    iosAudioObjectUrl;
 
-  const gain =
-    ctx.createGain();
-
-  gain.gain.value =
+  iosAudioElement.volume =
     clamp(volume, 0, 1);
-
-  source.buffer = buffer;
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-
-  currentSource = source;
-  currentGain = gain;
 
   await new Promise<void>(
     (resolve, reject) => {
-      source.onended = () => {
-        if (
-          currentSource === source
-        ) {
-          currentSource = null;
-          currentGain = null;
-        }
+      if (!iosAudioElement) {
+        resolve();
+        return;
+      }
 
+      const audio = iosAudioElement;
+
+      const cleanup = () => {
+        audio.onended = null;
+        audio.onerror = null;
+      };
+
+      audio.onended = () => {
+        cleanup();
         resolve();
       };
 
-      try {
-        source.start(0);
-      } catch (error) {
-        if (
-          currentSource === source
-        ) {
-          currentSource = null;
-          currentGain = null;
-        }
+      audio.onerror = () => {
+        cleanup();
+        reject(
+          new Error(
+            "iPhoneでAI音声の再生に失敗しました。"
+          )
+        );
+      };
 
-        reject(error);
+      const p = audio.play();
+
+      if (
+        p &&
+        typeof p.catch === "function"
+      ) {
+        void p.catch((error) => {
+          cleanup();
+          reject(error);
+        });
       }
     }
   );
