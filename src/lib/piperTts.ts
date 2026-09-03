@@ -283,61 +283,48 @@ function getAudioContext(): AudioContext {
 export function unlockPiperAudioForIOS(): void {
   if (!isIOSDevice()) return;
 
-  // iPhone/iPad: ユーザー操作中にWebAudioをアンロック
   try {
     const ctx = getAudioContext();
 
+    // iPhone/iPadはユーザー操作中のresume呼び出しが重要。
     if (ctx.state !== "running") {
       try {
         void ctx.resume();
       } catch {}
     }
 
+    // 無音の1サンプルを同じユーザー操作中に流してWebAudioを有効化する。
     try {
-      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
-      const source = ctx.createBufferSource();
-      const gain = ctx.createGain();
+      const buffer = ctx.createBuffer(
+        1,
+        1,
+        ctx.sampleRate || 22050
+      );
+
+      const source =
+        ctx.createBufferSource();
+
+      const gain =
+        ctx.createGain();
 
       gain.gain.value = 0;
       source.buffer = buffer;
+
       source.connect(gain);
       gain.connect(ctx.destination);
 
       source.onended = () => {
-        try { source.disconnect(); } catch {}
-        try { gain.disconnect(); } catch {}
+        try {
+          source.disconnect();
+        } catch {}
+
+        try {
+          gain.disconnect();
+        } catch {}
       };
 
       source.start(0);
     } catch {}
-  } catch {}
-
-  // iPhone/iPad: HTMLAudioElementも同じユーザー操作中にアンロック
-  try {
-    if (!iosAudioElement) {
-      iosAudioElement = new Audio();
-      iosAudioElement.preload = "auto";
-      iosAudioElement.playsInline = true;
-
-      // Safari/PWAでAudio要素が破棄されにくいようDOMに保持
-      try {
-        iosAudioElement.style.display = "none";
-        iosAudioElement.setAttribute("playsinline", "");
-        iosAudioElement.setAttribute("webkit-playsinline", "");
-        document.body.appendChild(iosAudioElement);
-      } catch {}
-    }
-
-    const silentWav =
-      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
-
-    iosAudioElement.src = silentWav;
-    iosAudioElement.volume = 0;
-
-    const p = iosAudioElement.play();
-    if (p && typeof p.catch === "function") {
-      void p.catch(() => {});
-    }
   } catch {}
 }
 
@@ -407,65 +394,6 @@ function float32ToWavBlob(
   );
 }
 
-async function playSamplesIOSWebAudioFallback(
-  samples: Float32Array,
-  sampleRate: number,
-  volume: number,
-  myGenerationId: number
-): Promise<void> {
-  const ctx = getAudioContext();
-
-  if (ctx.state !== "running") {
-    try {
-      await ctx.resume();
-    } catch {}
-  }
-
-  if (myGenerationId !== generationId) return;
-
-  const buffer = ctx.createBuffer(
-    1,
-    samples.length,
-    sampleRate
-  );
-
-  buffer.copyToChannel(samples, 0);
-
-  const source = ctx.createBufferSource();
-  const gain = ctx.createGain();
-
-  gain.gain.value = clamp(volume, 0, 1);
-  source.buffer = buffer;
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-
-  currentSource = source;
-  currentGain = gain;
-
-  await new Promise<void>((resolve, reject) => {
-    source.onended = () => {
-      if (currentSource === source) {
-        currentSource = null;
-        currentGain = null;
-      }
-
-      resolve();
-    };
-
-    try {
-      source.start(0);
-    } catch (error) {
-      if (currentSource === source) {
-        currentSource = null;
-        currentGain = null;
-      }
-
-      reject(error);
-    }
-  });
-}
-
 async function playSamplesIOS(
   samples: Float32Array,
   sampleRate: number,
@@ -474,93 +402,85 @@ async function playSamplesIOS(
 ): Promise<void> {
   if (myGenerationId !== generationId) return;
 
-  if (!iosAudioElement) {
-    iosAudioElement = new Audio();
-    iosAudioElement.preload = "auto";
-    iosAudioElement.playsInline = true;
+  const ctx = getAudioContext();
+
+  // 通常は読み上げボタン押下時の unlockPiperAudioForIOS() で
+  // running になっている。念のため停止中なら再開を試す。
+  if (ctx.state !== "running") {
+    try {
+      await ctx.resume();
+    } catch {}
   }
+
+  if (myGenerationId !== generationId) return;
 
   try {
-    iosAudioElement.pause();
+    currentSource?.stop();
   } catch {}
 
-  if (iosAudioObjectUrl) {
-    try {
-      URL.revokeObjectURL(iosAudioObjectUrl);
-    } catch {}
+  try {
+    currentSource?.disconnect();
+  } catch {}
 
-    iosAudioObjectUrl = null;
-  }
+  try {
+    currentGain?.disconnect();
+  } catch {}
 
-  const blob = float32ToWavBlob(
-    samples,
+  const buffer = ctx.createBuffer(
+    1,
+    samples.length,
     sampleRate
   );
 
-  iosAudioObjectUrl =
-    URL.createObjectURL(blob);
+  buffer.copyToChannel(
+    samples,
+    0
+  );
 
-  iosAudioElement.src =
-    iosAudioObjectUrl;
+  const source =
+    ctx.createBufferSource();
 
-  iosAudioElement.volume =
+  const gain =
+    ctx.createGain();
+
+  gain.gain.value =
     clamp(volume, 0, 1);
 
-  try {
-    await new Promise<void>(
-      (resolve, reject) => {
-        if (!iosAudioElement) {
-          reject(
-            new Error(
-              "iPhone用Audio要素を作成できませんでした。"
-            )
-          );
-          return;
-        }
+  source.buffer = buffer;
 
-        const audio = iosAudioElement;
+  source.connect(gain);
+  gain.connect(ctx.destination);
 
-        const cleanup = () => {
-          audio.onended = null;
-          audio.onerror = null;
-        };
+  currentSource = source;
+  currentGain = gain;
 
-        audio.onended = () => {
-          cleanup();
-          resolve();
-        };
-
-        audio.onerror = () => {
-          cleanup();
-          reject(
-            new Error(
-              "iPhoneでAI音声の再生に失敗しました。"
-            )
-          );
-        };
-
-        const p = audio.play();
-
+  await new Promise<void>(
+    (resolve, reject) => {
+      source.onended = () => {
         if (
-          p &&
-          typeof p.catch === "function"
+          currentSource === source
         ) {
-          void p.catch((error) => {
-            cleanup();
-            reject(error);
-          });
+          currentSource = null;
+          currentGain = null;
         }
+
+        resolve();
+      };
+
+      try {
+        source.start(0);
+      } catch (error) {
+        if (
+          currentSource === source
+        ) {
+          currentSource = null;
+          currentGain = null;
+        }
+
+        reject(error);
       }
-    );
-  } catch {
-    // HTMLAudioが拒否された場合のみWebAudioへフォールバック
-    await playSamplesIOSWebAudioFallback(
-      samples,
-      sampleRate,
-      volume,
-      myGenerationId
-    );
-  }
+    }
+  );
 }
 
 async function resumeAudioContext() {
