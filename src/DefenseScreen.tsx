@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 const IconMic = () => (
@@ -421,6 +421,33 @@ const playerLabel = (id: number) => {
     (lastKana ) ? `${lastKana}` :
     `ID:${id}`;
   return `${name}`;
+};
+
+// プレーンテキストで作られたアナウンスにも登録ふりがなを優先適用する。
+// 長い名前から置換して、姓だけの置換がフルネームを先に壊さないようにする。
+const applyRegisteredPlayerReadings = (input: string): string => {
+  let out = String(input ?? "");
+
+  const entries = (teamPlayers || [])
+    .flatMap((p: any) => {
+      const ln = String(p?.lastName ?? "").trim();
+      const fn = String(p?.firstName ?? "").trim();
+      const lk = preserveNameReading(String(p?.lastNameKana ?? "").trim());
+      const fk = preserveNameReading(String(p?.firstNameKana ?? "").trim());
+
+      const list: Array<[string, string]> = [];
+      if (ln && fn && (lk || fk)) list.push([`${ln}${fn}`, `${lk}${fk}`]);
+      if (ln && lk) list.push([ln, lk]);
+      return list;
+    })
+    .filter(([from, to]) => !!from && !!to)
+    .sort((a, b) => b[0].length - a[0].length);
+
+  for (const [from, to] of entries) {
+    out = out.split(from).join(to);
+  }
+
+  return out;
 };
 
 // 敬称（名前が取れないときは付けない）
@@ -1106,7 +1133,7 @@ const normalizeForTTS = (input: string) => {
   let t = input;
 
   // <ruby>表示</ruby> → 読み（かな）に置換
-  t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, "$2");
+  t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana));
 
   // 残りのタグは除去
   t = t.replace(/<[^>]+>/g, "");
@@ -1121,7 +1148,7 @@ const normalizeForTTS = (input: string) => {
  const handleSpeak = () => {
    if (announceMessages.length === 0) return;
 
-   let text = normalizeForTTS(announceMessages.join("。"));
+   let text = applyRegisteredPlayerReadings(normalizeForTTS(announceMessages.join("。")));
 
    // ポニーリーグの投球数アナウンスは、
    // 「ピッチャー」→「○○くん、」→「この回の投球数は…」
@@ -1140,7 +1167,7 @@ const normalizeForTTS = (input: string) => {
 
  const handlePitchLimitSpeak = () => {
    if (pitchLimitMessages.length === 0) return;
-   const text = normalizeForTTS(pitchLimitMessages.join("。"));
+   const text = applyRegisteredPlayerReadings(normalizeForTTS(pitchLimitMessages.join("。")));
    void ttsSpeak(text, { progressive: true, cache: true });
  };
 
@@ -2503,7 +2530,7 @@ const handleStop = () => { ttsStop(); };
               {/* 読み上げ（左） */}
               <button
                 type="button"
-                onClick={() => { if (reEntryMessage) void ttsSpeak(reEntryMessage, { progressive:true, cache:true }); }}
+                onClick={() => { if (reEntryMessage) void ttsSpeak(applyRegisteredPlayerReadings(reEntryMessage), { progressive:true, cache:true }); }}
                 className="w-full px-3 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-semibold
                           shadow active:scale-95 inline-flex items-center justify-center gap-2"
               >
@@ -2741,7 +2768,7 @@ if (typeof reEntryTarget?.index === "number") {
                   <div className="flex flex-wrap gap-2 justify-center">
                     <button
                       className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => { if (reEntryMessage) void ttsSpeak(reEntryMessage, { progressive:true, cache:true }); }}
+                      onClick={() => { if (reEntryMessage) void ttsSpeak(applyRegisteredPlayerReadings(reEntryMessage), { progressive:true, cache:true }); }}
                     >
                      
                        読み上げ

@@ -16,7 +16,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
-import { speak, stop } from "./lib/tts";
+import { speak, stop, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 import {
   deriveCurrentGameState,
@@ -64,7 +64,7 @@ function htmlToTtsText(html: string): string {
     const rt = ruby.querySelector("rt")?.textContent?.trim();
     const rb = ruby.querySelector("rb");
     const base = (rb?.textContent ?? ruby.childNodes[0]?.textContent ?? "").trim();
-    const spoken = rt && rt.length > 0 ? rt : base;
+    const spoken = rt && rt.length > 0 ? preserveNameReading(rt) : base;
     const span = doc.createElement("span");
     span.textContent = spoken;
     ruby.replaceWith(span);
@@ -86,7 +86,7 @@ function htmlToTtsText(html: string): string {
 
   // ✅ ルビ → かな（読み上げ用）
   text = text
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "");
 
   // ✅ 「回表／回裏」→「回おもて／回うら」
@@ -1195,8 +1195,8 @@ const formatNameForReEntryAnnounce = (p: any) => {
 
 const formatKanaForReEntryAnnounce = (p: any) => {
   if (!p) return "";
-  const ln = (p.lastNameKana || p.lastName || "").toString();
-  const fn = (p.firstNameKana || p.firstName || "").toString();
+  const ln = preserveNameReading((p.lastNameKana || p.lastName || "").toString());
+  const fn = preserveNameReading((p.firstNameKana || p.firstName || "").toString());
   if (!hasAnyDupLastName) return ln;
   return fn ? `${ln} ${fn}` : ln;
 };
@@ -1220,7 +1220,7 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
     if (!input) return "";
     let t = input;
     // 例：<ruby>山田<rt>やまだ</rt></ruby> → やまだ
-    t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, "$2");
+    t = t.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gms, (_m, _base, kana) => preserveNameReading(kana));
     // rbタグ（使用している場合）：<rb>山田</rb><rt>やまだ</rt> の保険
     t = t.replace(/<\/?rb>/g, "").replace(/<\/?rt>/g, "");
     // 残ったタグは全除去
@@ -1254,7 +1254,7 @@ const RenderName = ({ p, preferLastOnly }: { p: any; preferLastOnly: boolean }) 
 
   // ✅ ルビ → かな（読み上げ用）
   t = t
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "");
 
     return t;
@@ -1272,7 +1272,7 @@ const speakPinchModal = async () => {
   //   - <rt> が空のルビは無視
   //   - 2語連結（姓・名）の <ruby>…</ruby><ruby>…</ruby> にも対応
   let text = raw
-    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, "$2")
+    .replace(/<ruby>\s*([^<]*)\s*<rt>\s*([^<]*)\s*<\/rt>\s*<\/ruby>/g, (_m, _base, kana) => preserveNameReading(kana))
     .replace(/<rt>\s*<\/rt>/g, "")      // 空の rt は除去
     .replace(/<br\s*\/?>/gi, "\n")      // 改行
     .replace(/<[^>]+>/g, " ")           // 残りのタグはスペースに
@@ -9047,14 +9047,14 @@ useEffect(() => {
                         const honorSub = sub.isFemale ? "さん" : "くん";
 
 const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
-  ? `${replaced.lastNameKana ?? replaced.lastName ?? ""}、${replaced.firstNameKana ?? replaced.firstName ?? ""}`
-  : `${replaced.lastNameKana ?? replaced.lastName ?? ""}`;
+  ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}、${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
+  : `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}`;
 
-const toKanaFull = `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`;
+const toKanaFull = `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
 
 const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
-  ? `${sub.lastNameKana ?? sub.lastName ?? ""}、${sub.firstNameKana ?? sub.firstName ?? ""}`
-  : `${sub.lastNameKana ?? sub.lastName ?? ""}`;
+  ? `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`
+  : `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}`;
 
                         const num = (sub.number ?? "").trim();
 

@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
 import {
   deriveCurrentGameState,
   reenterPlayerToPosition,
@@ -39,7 +39,7 @@ function toReadable(root: HTMLElement): string {
   clone.querySelectorAll("ruby").forEach(ruby => {
     const rt = ruby.querySelector("rt");
     if (rt) {
-      ruby.replaceWith(rt.textContent || "");
+      ruby.replaceWith(preserveNameReading(rt.textContent || ""));
     } else {
       ruby.replaceWith(ruby.textContent || "");
     }
