@@ -728,12 +728,21 @@ async function getEngine() {
   const origin =
     window.location.origin;
 
-  ort.env.wasm.wasmPaths = {
-    wasm:
-      `${origin}/ort/ort-wasm-simd-threaded.wasm`,
-    mjs:
-      `${origin}/ort/ort-wasm-simd-threaded.mjs`,
-  } as any;
+  // iPhone/iPad Safariでは threaded 版の初期化負荷が大きくなることがあるため、
+  // 非threadedのSIMD版を使う。Android/PCは従来通りthreaded版。
+  ort.env.wasm.wasmPaths = isIOSDevice()
+    ? ({
+        wasm:
+          `${origin}/ort/ort-wasm-simd.wasm`,
+        mjs:
+          `${origin}/ort/ort-wasm-simd.mjs`,
+      } as any)
+    : ({
+        wasm:
+          `${origin}/ort/ort-wasm-simd-threaded.wasm`,
+        mjs:
+          `${origin}/ort/ort-wasm-simd-threaded.mjs`,
+      } as any);
 
   const requestedModel =
     selectedPiperModel;
@@ -1521,15 +1530,33 @@ export function stopPiper() {
 }
 
 
-// 起動直後の重い処理と競合しないよう、空き時間にモデルファイルだけ先読みする。
-// iPhone/Android/PCで共通だが、初期化済みエンジンを増やす処理ではない。
-if (typeof window !== "undefined") {
+// Android/PCは従来通り空き時間にモデルファイルを先読み。
+// iPhone/iPadは起動中の現在モデル初期化を最優先し、ここでは先読みしない。
+if (
+  typeof window !== "undefined" &&
+  !isIOSDevice()
+) {
   schedulePiperModelFilePrefetch();
 }
 
 export async function prewarmPiper(): Promise<void> {
   try {
     await getEngine();
+
+    // iPhone/iPadは現在選択中モデルの初期化が完全に終わった後、
+    // さらに少し待ってから他モデルのHTTPキャッシュ先読みを開始する。
+    // 起動中に40MB級モデルのGETが競合するのを防ぐ。
+    if (
+      typeof window !== "undefined" &&
+      isIOSDevice()
+    ) {
+      window.setTimeout(
+        () => {
+          schedulePiperModelFilePrefetch();
+        },
+        8000
+      );
+    }
   } catch (error) {
     throw error;
   }
