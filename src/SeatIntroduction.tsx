@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -89,6 +89,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
   const [isHome, setIsHome] = useState(true); // true → 後攻
   const [speaking, setSpeaking] = useState(false);
+  const seatSpeakSessionRef = useRef(0);
   const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
   const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
   const [umpires, setUmpires] = useState<{ role: string; name: string; furigana: string }[]>([]);
@@ -235,8 +236,25 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
   const speakText = () => {
     const honor = (p?: PositionInfo) => p?.honorific || "くん";
+    const fixedKana = (value?: string) =>
+      preserveNameReading(String(value ?? ""));
+
     const fullKana = (p?: PositionInfo) =>
-      `${p?.lastNameKana || p?.lastName || ""} ${p?.firstNameKana || p?.firstName || ""}`.trim();
+      `${fixedKana(p?.lastNameKana || p?.lastName || "")} ${fixedKana(
+        p?.firstNameKana || p?.firstName || ""
+      )}`.trim();
+
+    const ponyKana = (p?: PositionInfo) => {
+      if (!p) return "";
+      const ln = p.lastName || "";
+      const forceFull = ln && dupLastNames.has(ln);
+
+      return forceFull
+        ? `${fixedKana(p.lastNameKana || p.lastName)} ${fixedKana(
+            p.firstNameKana || p.firstName
+          )}`.trim()
+        : fixedKana(p.lastNameKana || p.lastName);
+    };
 
     const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
       const u: any = findUmpireByRole(role);
@@ -250,59 +268,90 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       );
     };
 
-const boysPlayerLines = [
-  `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
-  `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
-  `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
-  `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
-  `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
-  `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
-  `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
-  `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
-  `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
-];
+    const PLAYER_PAUSE_MS = 350;
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-const text =
-  leagueMode === "boys"
-    ? inning === "1回の裏"
-      ? [
-          `${inningReading}、守ります、${teamReading}の`,
-          ...boysPlayerLines,
-        ].join("\n")
-      : [
-          `${inningReading}、まず守ります、${teamReading}の`,
-          ...boysPlayerLines,
-          `審判は球審、${umpireYomi("球審")}`,
-          `塁審、一塁、${umpireYomi("一塁")}`,
-          `二塁、${umpireYomi("二塁")}`,
-          `三塁、${umpireYomi("三塁")}`,
-          `以上四氏でございます。`,
-        ].join("\n")
-    : [
-        `${inningReading}、守ります、${teamReading}のシートをお知らせします。`,
-        ...positionLabels.map(([pos, label]) => {
-          const p = positions[pos];
-          const ln = p?.lastName || "";
-          const forceFull = ln && dupLastNames.has(ln);
-
-          const yomi = forceFull
-            ? `${p?.lastNameKana || ""} ${p?.firstNameKana || ""}`
-            : `${p?.lastNameKana || ""}`;
-
-          return `${label}、${yomi}${p?.honorific || "くん"}`;
-        }),
-      ].join("、") + "です。";
-
+    const mySession = ++seatSpeakSessionRef.current;
     setSpeaking(true);
+
     void (async () => {
       try {
-        await ttsSpeak(text, { progressive: true, cache: true });
+        if (leagueMode === "boys") {
+          const intro =
+            inning === "1回の裏"
+              ? `${inningReading}、守ります、${teamReading}の`
+              : `${inningReading}、まず守ります、${teamReading}の`;
+
+          await ttsSpeak(intro, { progressive: true, cache: true });
+          if (mySession !== seatSpeakSessionRef.current) return;
+
+          const playerLines = [
+            `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
+            `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
+            `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
+            `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
+            `サード、${fullKana(positions["三"])}${honor(positions["三"])}`,
+            `ショート、${fullKana(positions["遊"])}${honor(positions["遊"])}`,
+            `レフト、${fullKana(positions["左"])}${honor(positions["左"])}`,
+            `センター、${fullKana(positions["中"])}${honor(positions["中"])}`,
+            `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
+          ];
+
+          for (const line of playerLines) {
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await ttsSpeak(line, { progressive: true, cache: true });
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await wait(PLAYER_PAUSE_MS);
+          }
+
+          if (inning !== "1回の裏") {
+            const umpireText =
+              `審判は球審、${umpireYomi("球審")}。` +
+              `塁審、一塁、${umpireYomi("一塁")}。` +
+              `二塁、${umpireYomi("二塁")}。` +
+              `三塁、${umpireYomi("三塁")}。` +
+              `以上四氏でございます。`;
+
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await ttsSpeak(umpireText, { progressive: true, cache: true });
+          }
+
+          return;
+        }
+
+        await ttsSpeak(
+          `${inningReading}、守ります、${teamReading}のシートをお知らせします。`,
+          { progressive: true, cache: true }
+        );
+        if (mySession !== seatSpeakSessionRef.current) return;
+
+        for (const [pos, label] of positionLabels) {
+          if (mySession !== seatSpeakSessionRef.current) return;
+
+          const p = positions[pos];
+          const yomi = ponyKana(p);
+
+          await ttsSpeak(
+            `${label}、${yomi}${p?.honorific || "くん"}`,
+            { progressive: true, cache: true }
+          );
+          if (mySession !== seatSpeakSessionRef.current) return;
+
+          await wait(PLAYER_PAUSE_MS);
+        }
+
+        if (mySession !== seatSpeakSessionRef.current) return;
+        await ttsSpeak("です。", { progressive: true, cache: true });
       } finally {
-        setSpeaking(false);
+        if (mySession === seatSpeakSessionRef.current) {
+          setSpeaking(false);
+        }
       }
     })();
   };
   const stopSpeaking = () => {
+    seatSpeakSessionRef.current += 1;
     ttsStop();
     setSpeaking(false);
   };
