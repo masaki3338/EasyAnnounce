@@ -113,124 +113,6 @@ export function discoverPiperModels(
   return discoveredPiperModelsPromise;
 }
 
-
-// -----------------------------------------------------------------------------
-// AI音声モデルのHTTPキャッシュ先読み
-// -----------------------------------------------------------------------------
-// iPhoneではモデル切替時にONNXファイルの取得に時間がかかることがあるため、
-// 起動後の空き時間に uguisuN/easy_announce.onnx を順番に取得して
-// ブラウザのHTTPキャッシュへ入れておく。
-// エンジン自体は初期化しないため、複数ONNXセッションを同時保持しない。
-let piperModelFilePrefetchStarted = false;
-
-async function prefetchPiperModelFile(
-  info: PiperModelInfo
-): Promise<void> {
-  try {
-    const url =
-      new URL(
-        info.path,
-        window.location.origin
-      ).href;
-
-    const response =
-      await fetch(
-        url,
-        {
-          method: "GET",
-          cache: "force-cache",
-        }
-      );
-
-    if (!response.ok) {
-      return;
-    }
-
-    // レスポンスを最後まで読み切ることでHTTPキャッシュへ格納されやすくする。
-    // ArrayBufferは保持せず、そのモデルの取得が終わるごとに解放対象にする。
-    await response.arrayBuffer();
-  } catch {
-    // 先読み失敗は通常の読み上げ処理に影響させない。
-  }
-}
-
-async function prefetchPiperModelFilesInBackground(): Promise<void> {
-  if (
-    piperModelFilePrefetchStarted ||
-    typeof window === "undefined"
-  ) {
-    return;
-  }
-
-  piperModelFilePrefetchStarted = true;
-
-  try {
-    const models =
-      await discoverPiperModels();
-
-    const current =
-      selectedPiperModel;
-
-    // 現在選択中のモデルは起動時prewarmで読み込まれるため、
-    // それ以外を番号順に1つずつ先読みする。
-    const targets =
-      models.filter(
-        (model) =>
-          model.id !== current
-      );
-
-    for (const model of targets) {
-      // スマホで複数モデルを同時ダウンロードしない。
-      await prefetchPiperModelFile(
-        model
-      );
-
-      // UI操作を邪魔しないようモデル間で少し譲る。
-      await new Promise<void>(
-        (resolve) =>
-          window.setTimeout(
-            resolve,
-            250
-          )
-      );
-    }
-  } catch {
-    // noop
-  }
-}
-
-function schedulePiperModelFilePrefetch(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const start = () => {
-    void prefetchPiperModelFilesInBackground();
-  };
-
-  const w =
-    window as typeof window & {
-      requestIdleCallback?: (
-        cb: () => void,
-        opts?: { timeout?: number }
-      ) => number;
-    };
-
-  if (
-    typeof w.requestIdleCallback === "function"
-  ) {
-    w.requestIdleCallback(
-      start,
-      { timeout: 8000 }
-    );
-  } else {
-    window.setTimeout(
-      start,
-      4000
-    );
-  }
-}
-
 type PiperProgressListener = (info: PiperProgressInfo) => void;
 type PiperDiagnosticListener = (logs: string[]) => void;
 
@@ -276,19 +158,6 @@ function loadSelectedPiperModel(): PiperModelId {
 
 let selectedPiperModel: PiperModelId = loadSelectedPiperModel();
 let enginePromise: Promise<any> | null = null;
-let enginePromiseModel: PiperModelId | null = null;
-
-// 一度初期化したAI音声モデルは再利用する。
-// 特にiPhoneでAI音声を切り替えるたびにONNXを再初期化して
-// 10秒以上待つのを防ぐ。
-const engineCache = new Map<PiperModelId, Promise<any>>();
-
-// iPhone/iPadでは複数のPiper/ONNXエンジンを同時保持しない。
-// Safariでモデル切替後に初期化Promiseが止まり、読み上げボタンが
-// 戻らなくなるのを防ぐため、1モデルずつ順番に初期化する。
-let iosEnginePromise: Promise<any> | null = null;
-let iosEngineModel: PiperModelId | null = null;
-let iosInitSerial: Promise<void> = Promise.resolve();
 
 let audioContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
@@ -421,8 +290,8 @@ export function unlockPiperAudioForIOS(): void {
       iosAudioElement.playsInline = true;
     }
 
-    // iPhone/iPad Safariでは、ユーザーのタップと同じ同期処理内で
-    // 一度 audio.play() を呼んで再生許可を取る。
+    // 以前iPhoneで正常動作していた方式:
+    // タップ同期内で極小の無音WAVをplay()して再生許可を取る。
     const silentWav =
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=";
 
@@ -650,8 +519,11 @@ export function setSelectedPiperModel(
 
     selectedPiperModel = nextModel;
 
-    // 生成済み音声キャッシュはモデルごとにキー分けされているが、
-    // メモリ使用量を抑えるため切替時はいったんクリア。
+    // 旧モデルのエンジンを破棄し、
+    // 次回に新しいONNXを初期化する。
+    enginePromise = null;
+
+    // 別モデルの生成済み音声を残さない。
     clearPiperAudioCache();
   }
 
@@ -661,64 +533,12 @@ export function setSelectedPiperModel(
       selectedPiperModel
     );
   } catch {}
-
-  // AI音声を選択した瞬間からモデル準備を開始する。
-  // 読み上げボタンを押してから待つ時間を短くする。
-  void getEngine().catch(() => {});
 }
 
 export function setPiperProgressListener(
   listener: PiperProgressListener | null
 ) {
   piperProgressListener = listener;
-}
-
-async function initializePiperModel(
-  requestedModel: PiperModelId
-): Promise<any> {
-  const model =
-    makePiperModelInfo(
-      Number(
-        requestedModel.replace(
-          "easy-announce-",
-          ""
-        )
-      ) || 1
-    );
-
-  const modelUrl =
-    new URL(
-      model.path,
-      window.location.origin
-    ).href;
-
-  const wasmG2pUrl =
-    new URL(
-      "/piper-wasm/piper_plus_wasm.js",
-      window.location.origin
-    ).href;
-
-  return PiperPlus.initialize({
-    model: modelUrl,
-    ort,
-    wasmG2pUrl,
-    onProgress: (
-      info: PiperProgressInfo
-    ) => {
-      try {
-        piperProgressListener?.(info);
-      } catch {}
-
-      addPiperDiagnostic(
-        "[Piper] progress",
-        {
-          stage: info.stage,
-          progress: info.progress,
-          message: info.message,
-        }
-      );
-    },
-  });
 }
 
 async function getEngine() {
@@ -728,8 +548,6 @@ async function getEngine() {
   const origin =
     window.location.origin;
 
-  // iPhone/Android/PCとも、これまで動作実績のあるthreaded版を使用する。
-  // iPhoneで非threaded SIMD版に切り替えると初期化失敗する環境があるため戻す。
   ort.env.wasm.wasmPaths = {
     wasm:
       `${origin}/ort/ort-wasm-simd-threaded.wasm`,
@@ -737,147 +555,68 @@ async function getEngine() {
       `${origin}/ort/ort-wasm-simd-threaded.mjs`,
   } as any;
 
-  const requestedModel =
-    selectedPiperModel;
+  if (!enginePromise) {
+    const modelUrl = getModelUrl();
 
-  // iPhone/iPad:
-  // 複数モデルのPiperPlus.initialize()を同時に走らせない。
-  // 1つずつ順番に初期化し、現在選択中の1モデルだけ保持する。
-  if (isIOSDevice()) {
-    if (
-      iosEnginePromise &&
-      iosEngineModel === requestedModel
-    ) {
-      return iosEnginePromise;
-    }
+    addPiperDiagnostic(
+      "[Piper] 初期化開始",
+      {
+        model: selectedPiperModel,
+        modelUrl,
+      }
+    );
 
-    const task =
-      iosInitSerial
-        .catch(() => {})
-        .then(async () => {
-          // 待っている間に同じモデルが準備済みになった場合は再利用。
-          if (
-            iosEnginePromise &&
-            iosEngineModel === requestedModel
-          ) {
-            return iosEnginePromise;
-          }
+    const wasmG2pUrl =
+      new URL(
+        "/piper-wasm/piper_plus_wasm.js",
+        window.location.origin
+      ).href;
 
-          const promise =
-            initializePiperModel(
-              requestedModel
-            );
-
-          iosEnginePromise =
-            promise;
-
-          iosEngineModel =
-            requestedModel;
-
-          enginePromise =
-            promise;
-
-          enginePromiseModel =
-            requestedModel;
-
+    enginePromise =
+      PiperPlus.initialize({
+        model: modelUrl,
+        ort,
+        wasmG2pUrl,
+        onProgress: (
+          info: PiperProgressInfo
+        ) => {
           try {
-            const engine =
-              await promise;
+            piperProgressListener?.(info);
+          } catch {}
 
-            addPiperDiagnostic(
-              "[Piper] iOS初期化完了",
-              requestedModel
-            );
-
-            return engine;
-          } catch (error) {
-            if (
-              iosEnginePromise === promise
-            ) {
-              iosEnginePromise = null;
-              iosEngineModel = null;
+          addPiperDiagnostic(
+            "[Piper] progress",
+            {
+              stage: info.stage,
+              progress: info.progress,
+              message: info.message,
             }
+          );
+        },
+      })
+        .then((engine: any) => {
+          addPiperDiagnostic(
+            "[Piper] 初期化完了",
+            selectedPiperModel
+          );
 
-            if (
-              enginePromise === promise
-            ) {
-              enginePromise = null;
-              enginePromiseModel = null;
-            }
+          return engine;
+        })
+        .catch(
+          (error: unknown) => {
+            enginePromise = null;
 
             console.error(
-              "[Piper-Plus] iOS initialization failed:",
+              "[Piper-Plus] initialization failed:",
               error
             );
 
             throw error;
           }
-        });
-
-    // 次のモデル切替は、この初期化が終わってから開始する。
-    iosInitSerial =
-      task.then(
-        () => undefined,
-        () => undefined
-      );
-
-    return task;
-  }
-
-  // Android / PC:
-  // これまで通りモデルごとのエンジンキャッシュを利用する。
-  const cached =
-    engineCache.get(requestedModel);
-
-  if (cached) {
-    enginePromise = cached;
-    enginePromiseModel = requestedModel;
-    return cached;
-  }
-
-  const promise =
-    initializePiperModel(
-      requestedModel
-    )
-      .then((engine: any) => {
-        addPiperDiagnostic(
-          "[Piper] 初期化完了",
-          requestedModel
         );
+  }
 
-        return engine;
-      })
-      .catch(
-        (error: unknown) => {
-          engineCache.delete(
-            requestedModel
-          );
-
-          if (
-            enginePromiseModel === requestedModel
-          ) {
-            enginePromise = null;
-            enginePromiseModel = null;
-          }
-
-          console.error(
-            "[Piper-Plus] initialization failed:",
-            error
-          );
-
-          throw error;
-        }
-      );
-
-  engineCache.set(
-    requestedModel,
-    promise
-  );
-
-  enginePromise = promise;
-  enginePromiseModel = requestedModel;
-
-  return promise;
+  return enginePromise;
 }
 
 /**
@@ -1522,34 +1261,9 @@ export function stopPiper() {
   currentGain = null;
 }
 
-
-// Android/PCは従来通り空き時間にモデルファイルを先読み。
-// iPhone/iPadは起動中の現在モデル初期化を最優先し、ここでは先読みしない。
-if (
-  typeof window !== "undefined" &&
-  !isIOSDevice()
-) {
-  schedulePiperModelFilePrefetch();
-}
-
 export async function prewarmPiper(): Promise<void> {
   try {
     await getEngine();
-
-    // iPhone/iPadは現在選択中モデルの初期化が完全に終わった後、
-    // さらに少し待ってから他モデルのHTTPキャッシュ先読みを開始する。
-    // 起動中に40MB級モデルのGETが競合するのを防ぐ。
-    if (
-      typeof window !== "undefined" &&
-      isIOSDevice()
-    ) {
-      window.setTimeout(
-        () => {
-          schedulePiperModelFilePrefetch();
-        },
-        8000
-      );
-    }
   } catch (error) {
     throw error;
   }
