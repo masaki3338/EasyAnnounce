@@ -728,21 +728,14 @@ async function getEngine() {
   const origin =
     window.location.origin;
 
-  // iPhone/iPad Safariでは threaded 版の初期化負荷が大きくなることがあるため、
-  // 非threadedのSIMD版を使う。Android/PCは従来通りthreaded版。
-  ort.env.wasm.wasmPaths = isIOSDevice()
-    ? ({
-        wasm:
-          `${origin}/ort/ort-wasm-simd.wasm`,
-        mjs:
-          `${origin}/ort/ort-wasm-simd.mjs`,
-      } as any)
-    : ({
-        wasm:
-          `${origin}/ort/ort-wasm-simd-threaded.wasm`,
-        mjs:
-          `${origin}/ort/ort-wasm-simd-threaded.mjs`,
-      } as any);
+  // iPhone/Android/PCとも、これまで動作実績のあるthreaded版を使用する。
+  // iPhoneで非threaded SIMD版に切り替えると初期化失敗する環境があるため戻す。
+  ort.env.wasm.wasmPaths = {
+    wasm:
+      `${origin}/ort/ort-wasm-simd-threaded.wasm`,
+    mjs:
+      `${origin}/ort/ort-wasm-simd-threaded.mjs`,
+  } as any;
 
   const requestedModel =
     selectedPiperModel;
