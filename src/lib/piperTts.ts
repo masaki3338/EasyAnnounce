@@ -158,6 +158,7 @@ function loadSelectedPiperModel(): PiperModelId {
 
 let selectedPiperModel: PiperModelId = loadSelectedPiperModel();
 let enginePromise: Promise<any> | null = null;
+let enginePromiseModel: PiperModelId | null = null;
 
 let audioContext: AudioContext | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
@@ -532,17 +533,22 @@ export function setSelectedPiperModel(
   const nextModel =
     normalizePiperModelId(model);
 
-  if (selectedPiperModel !== nextModel) {
+  const changed =
+    selectedPiperModel !== nextModel;
+
+  if (changed) {
     // 再生中の旧モデル音声を停止。
     stopPiper();
 
     selectedPiperModel = nextModel;
 
-    // 旧モデルのエンジンを破棄し、
-    // 次回に新しいONNXを初期化する。
-    enginePromise = null;
-
-    // 別モデルの生成済み音声を残さない。
+    // 重要:
+    // スマホでは旧モデルの初期化中に enginePromise = null とすると、
+    // 旧ONNX初期化が裏で継続したまま新モデル初期化も同時に走り、
+    // CPU/メモリ負荷が急増して数分待ちになることがある。
+    //
+    // ここでは旧初期化を捨てず、getEngine() 側で完了を待ってから
+    // 新モデルへ順番に切り替える。
     clearPiperAudioCache();
   }
 
@@ -552,6 +558,12 @@ export function setSelectedPiperModel(
       selectedPiperModel
     );
   } catch {}
+
+  if (changed) {
+    // 選択した時点で次モデルの準備を開始。
+    // 読み上げボタンを押してから初期化が始まる待ち時間をなくす。
+    void getEngine().catch(() => {});
+  }
 }
 
 export function setPiperProgressListener(
@@ -574,16 +586,73 @@ async function getEngine() {
       `${origin}/ort/ort-wasm-simd-threaded.mjs`,
   } as any;
 
-  if (!enginePromise) {
-    const modelUrl = getModelUrl();
+  const requestedModel =
+    selectedPiperModel;
 
-    addPiperDiagnostic(
-      "[Piper] 初期化開始",
-      {
-        model: selectedPiperModel,
-        modelUrl,
-      }
-    );
+  // すでに同じモデルを準備中/準備済みなら、そのPromiseを再利用。
+  if (
+    enginePromise &&
+    enginePromiseModel === requestedModel
+  ) {
+    return enginePromise;
+  }
+
+  // 別モデルの初期化が進行中/完了済みなら、
+  // スマホで二重ONNX初期化を走らせないよう先に完了を待つ。
+  if (
+    enginePromise &&
+    enginePromiseModel !== requestedModel
+  ) {
+    const previousPromise =
+      enginePromise;
+
+    try {
+      await previousPromise;
+    } catch {}
+
+    // 待っている間にさらに別の音声が選択された場合は、
+    // 最新の選択モデルでやり直す。
+    if (
+      selectedPiperModel !== requestedModel
+    ) {
+      return getEngine();
+    }
+
+    if (
+      enginePromise === previousPromise
+    ) {
+      enginePromise = null;
+      enginePromiseModel = null;
+    }
+  }
+
+  // 上の待機中に別処理が同じモデルの初期化を開始していたら再利用。
+  if (
+    enginePromise &&
+    enginePromiseModel === selectedPiperModel
+  ) {
+    return enginePromise;
+  }
+
+  if (!enginePromise) {
+    const modelAtStart =
+      selectedPiperModel;
+
+    const model =
+      makePiperModelInfo(
+        Number(
+          modelAtStart.replace(
+            "easy-announce-",
+            ""
+          )
+        ) || 1
+      );
+
+    const modelUrl =
+      new URL(
+        model.path,
+        window.location.origin
+      ).href;
 
     const wasmG2pUrl =
       new URL(
@@ -591,7 +660,10 @@ async function getEngine() {
         window.location.origin
       ).href;
 
-    enginePromise =
+    enginePromiseModel =
+      modelAtStart;
+
+    const promise =
       PiperPlus.initialize({
         model: modelUrl,
         ort,
@@ -616,14 +688,19 @@ async function getEngine() {
         .then((engine: any) => {
           addPiperDiagnostic(
             "[Piper] 初期化完了",
-            selectedPiperModel
+            modelAtStart
           );
 
           return engine;
         })
         .catch(
           (error: unknown) => {
-            enginePromise = null;
+            if (
+              enginePromise === promise
+            ) {
+              enginePromise = null;
+              enginePromiseModel = null;
+            }
 
             console.error(
               "[Piper-Plus] initialization failed:",
@@ -633,6 +710,9 @@ async function getEngine() {
             throw error;
           }
         );
+
+    enginePromise =
+      promise;
   }
 
   return enginePromise;
