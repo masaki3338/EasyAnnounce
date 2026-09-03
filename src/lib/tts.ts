@@ -45,6 +45,25 @@ function toHalfWidthDigits(s: string) {
 }
 
 /**
+ * 選手名など「登録した読みをそのまま読ませたい語」をTTS向けに固定する。
+ *
+ * 日本語TTSでは、ひらがなの「は」が助詞と判定され、
+ * 例:「おりはら」→「おりわら」のように発音されることがある。
+ * 選手名の読みだけをカタカナにして渡すことで、助詞判定を避ける。
+ *
+ * 表示用の文字列は変更しない。読み上げ用文字列を作る時だけ使用する。
+ *
+ * 例:
+ *   preserveNameReading("おりはら") -> "オリハラ"
+ *   preserveNameReading("ささき しゅんぺい") -> "ササキ シュンペイ"
+ */
+export function preserveNameReading(input: string): string {
+  return String(input ?? "").replace(/[ぁ-ゖ]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) + 0x60)
+  );
+}
+
+/**
  * 読み上げ直前の文章を野球アナウンス向けに正規化する
  * - 例: "4番" / "４番" / "4 番" → "よばん"
  */
