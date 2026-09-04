@@ -401,6 +401,15 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               <p>
                 次回起動時は「AI音声起動中」と表示され、準備完了後にアプリが起動します。
               </p>
+
+              <div className="mt-4 rounded-2xl border border-amber-300/70 bg-amber-400/15 px-4 py-3 text-amber-100 shadow-inner">
+                <p className="font-bold">
+                  ⚠ 端末の性能によっては、AI音声の読み上げに遅延が発生する場合があります。
+                </p>
+                <p className="mt-1 text-amber-50/90">
+                  その場合は、AI音声でなく端末音声をご利用ください。
+                </p>
+              </div>
             </div>
 
             <button
