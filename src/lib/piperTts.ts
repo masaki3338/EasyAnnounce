@@ -802,7 +802,9 @@ function splitPiperText(
     }
 
     if (cut < 0) {
-      cut = maxLen;
+      // 自然な区切りが見つからない場合は、
+      // 単語の途中で固定文字数分割せず、残りをそのまま読む。
+      cut = rest.length;
     }
 
     cut =
