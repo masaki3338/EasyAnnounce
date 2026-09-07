@@ -331,18 +331,19 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
           const p = positions[pos];
           const yomi = ponyKana(p);
+          const isLastPlayer = pos === "右";
 
           await ttsSpeak(
-            `${label}、${yomi}${p?.honorific || "くん"}`,
+            `${label}、${yomi}${p?.honorific || "くん"}${isLastPlayer ? "です。" : ""}`,
             { progressive: true, cache: true }
           );
           if (mySession !== seatSpeakSessionRef.current) return;
 
-          await wait(PLAYER_PAUSE_MS);
+          // 最後の「ライト、○○くんです。」は一続きで読み上げるため待機しない
+          if (!isLastPlayer) {
+            await wait(PLAYER_PAUSE_MS);
+          }
         }
-
-        if (mySession !== seatSpeakSessionRef.current) return;
-        await ttsSpeak("です。", { progressive: true, cache: true });
       } finally {
         if (mySession === seatSpeakSessionRef.current) {
           setSpeaking(false);
