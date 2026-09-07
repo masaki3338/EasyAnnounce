@@ -656,6 +656,8 @@ function splitPiperText(
     "入ります",
     "入りまして",
     "そのまま入り",
+    "くんです",
+    "さんです",
   ];
 
   const moveCutAfterProtectedWord = (
@@ -870,10 +872,17 @@ async function synthesizeChunk(
 
   let result: any;
 
+  // シート紹介など文末の「くんです／さんです」で
+  // Piper内部の不自然な間が入るのを防ぐ。
+  // 表示文言・他の読み上げ文言は変更しない。
+  const synthText = text
+    .replace(/くんです(?=[。！？!?]|$)/g, "クンデス")
+    .replace(/さんです(?=[。！？!?]|$)/g, "サンデス");
+
   try {
     result =
       await engine.synthesize(
-        text,
+        synthText,
         {
           language: "ja",
           lengthScale:
@@ -1183,9 +1192,13 @@ export async function prefetchPiper(
         continue;
       }
 
+      const synthText = chunk
+        .replace(/くんです(?=[。！？!?]|$)/g, "クンデス")
+        .replace(/さんです(?=[。！？!?]|$)/g, "サンデス");
+
       const result =
         await engine.synthesize(
-          chunk,
+          synthText,
           {
             language: "ja",
             lengthScale:
