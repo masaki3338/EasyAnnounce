@@ -124,12 +124,12 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-// AI音声(Piper)は元の速度感に合わせる。
-// 読み上げ設定の表示 1.0 = Piper内部 0.6 として扱う。
-const PIPER_SPEED_BASE = 0.6;
+// AI音声(Piper)は表示上の読み上げ速度より常に0.3遅くする。
+// 例: 表示 1.0 → AI音声 0.5、表示 1.1 → AI音声 0.6
+const PIPER_SPEED_OFFSET = 0.5;
 
 function toPiperSpeed(uiSpeed: number): number {
-  return clamp(uiSpeed * PIPER_SPEED_BASE, 0.25, 2.0);
+  return clamp(uiSpeed - PIPER_SPEED_OFFSET, 0.25, 2.0);
 }
 
 // 長文だけ少し速くする（全音声共通で効かせやすい控えめ設定）

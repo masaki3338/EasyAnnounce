@@ -26,10 +26,10 @@ const PIPER_MODEL_SCAN_MAX = 20;
 // 表示名はここだけ変更すればOK。
 // 未定義の番号は「AI音声（ウグイス嬢N）」で自動表示される。
 const PIPER_MODEL_LABELS: Record<number, string> = {
-  1: "AI音声（ウグイス嬢風）",
-  2: "AI音声（ハマスタ風）",
-  3: "AI音声（千葉マリン風）",
-  4: "AI音声（男性）",
+  1: "AI音声（スタジアムA）",
+  2: "AI音声（スタジアムB）",
+  3: "AI音声（スタジアムC）",
+  4: "AI音声（はっきり）",
 };
 
 
@@ -744,7 +744,7 @@ function splitPiperText(
 
       if (
         commaCut >=
-        Math.floor(maxLen * 0.45)
+        Math.floor(maxLen * (first ? 0.25 : 0.45))
       ) {
         cut =
           commaCut + 1;
@@ -804,9 +804,15 @@ function splitPiperText(
     }
 
     if (cut < 0) {
-      // 自然な区切りが見つからない場合は、
-      // 単語の途中で固定文字数分割せず、残りをそのまま読む。
-      cut = rest.length;
+      // 自然な区切りが近くに見つからない場合も、
+      // 単語の途中では切らず、maxLen以降にある最初の句読点まで伸ばす。
+      // これにより長文全体を1チャンクにせず、最初の読み上げ開始を早くする。
+      const nextNaturalBreak = rest.slice(maxLen).search(/[。！？!?、，,\n]/);
+
+      cut =
+        nextNaturalBreak >= 0
+          ? maxLen + nextNaturalBreak + 1
+          : rest.length;
     }
 
     cut =
