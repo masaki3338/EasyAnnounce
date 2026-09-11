@@ -97,6 +97,10 @@ function normalizeSpeechText(input: string): string {
   t = t.replace(/行方/g, "ゆくえ");
   t = t.replace(/尚/g, "なお");
 
+  // OpenJTalkで「ノック時間」が別アクセント句になるため、
+  // 読み上げ時だけカタカナ化して一続きのアクセント句にする。
+  t = t.replace(/ノック時間/g, "ノックジカン");
+
   // イニングの読みを補正
   t = t.replace(/1回/g, "いっかい");
   t = t.replace(/表/g, "おもて");
