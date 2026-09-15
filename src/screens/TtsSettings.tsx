@@ -1,21 +1,12 @@
 // src/components/TtsSettings.tsx  ← 使っている場所に合わせてパス調整OK
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
-import { discoverPiperModels, makePiperModelInfo, setSelectedPiperModel, type PiperModelInfo } from "../lib/piperTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
-const PIPER_VALUE_PREFIX = "__easy_announce_piper_";
-
-function piperModelToValue(modelId: string): string {
-  const match = modelId.match(/^easy-announce-(\d+)$/);
-  const index = match ? Number(match[1]) : 1;
-  return `${PIPER_VALUE_PREFIX}${index}__`;
-}
-
-function piperValueToModelId(value: string): string | null {
-  const match = value.match(/^__easy_announce_piper_(\d+)__$/);
-  return match ? `easy-announce-${Number(match[1])}` : null;
-}
+const MATCHA_VALUE = "__easy_announce_matcha__";
+const MATCHA_LABEL = "AI音声（Matcha）";
+const DEFAULT_TEST_TEXT =
+  "1番、ショート、佐々木かえでくん。ショート、佐々木くん、背番号0。";
 
 const IconBack = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden>
@@ -39,25 +30,6 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   // 日本語のみ表示（端末/ブラウザが公開する ja 系ボイス）
   const { voices, ready } = useWebSpeechVoices("ja");
 
-  const [piperModels, setPiperModels] = useState<PiperModelInfo[]>([
-    makePiperModelInfo(1),
-    makePiperModelInfo(2),
-  ]);
-
-  // public/models/easy-announce/uguisuN/easy_announce.onnx を自動検出。
-  useEffect(() => {
-    let cancelled = false;
-
-    void discoverPiperModels().then((models) => {
-      if (!cancelled && models.length > 0) {
-        setPiperModels(models);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // 既定値（LS未設定時）: 速度1.3 / ピッチ1.0 / 音量0.8
   const DEFAULT_RATE = 1.3;
@@ -81,12 +53,15 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   });
 
   const [selectedName, setSelectedName] = useState<string | "">(() => {
-    if (localStorage.getItem("tts:engine") === "piper") {
-      const savedModel =
-        localStorage.getItem("tts:piper:model") ||
-        "easy-announce-1";
+    const engine = localStorage.getItem("tts:engine");
 
-      return piperModelToValue(savedModel);
+    if (engine === "matcha") {
+      return MATCHA_VALUE;
+    }
+
+    if (engine === "piper") {
+      localStorage.setItem("tts:engine", "matcha");
+      return MATCHA_VALUE;
     }
 
     return localStorage.getItem("tts:webspeech:voiceName") || "";
@@ -94,6 +69,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showAiVoiceNotice, setShowAiVoiceNotice] = useState(false);
+  const [testText, setTestText] = useState(DEFAULT_TEST_TEXT);
 
   // 初回：保存が空ならデフォルトを選択
   const onceRef = useRef(false);
@@ -109,51 +85,31 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   }, [ready, voices, selectedName]);
 
   const selectedLabel = useMemo(() => {
-    const piperModelId =
-      piperValueToModelId(selectedName);
-
-    if (piperModelId) {
-      return (
-        piperModels.find(
-          (model) => model.id === piperModelId
-        )?.label ||
-        makePiperModelInfo(
-          Number(
-            piperModelId.replace("easy-announce-", "")
-          ) || 1
-        ).label
-      );
+    if (selectedName === MATCHA_VALUE) {
+      return MATCHA_LABEL;
     }
 
     const v = voices.find(v => v.name === selectedName);
     return v ? `${v.name} (${v.lang})` : "未選択";
-  }, [voices, selectedName, piperModels]);
+  }, [voices, selectedName]);
 
-  const isPiperVoice =
-    piperValueToModelId(selectedName) !== null;
+  const isMatchaVoice =
+    selectedName === MATCHA_VALUE;
+
+  const isAiVoice = isMatchaVoice;
 
   const pitchUnsupported =
-    !isPiperVoice &&
+    !isAiVoice &&
     isPitchLikelyUnsupported(selectedName || undefined);
 
   const handleSelectVoice = (name: string) => {
     setSelectedName(name);
 
-    const piperModelId =
-      piperValueToModelId(name);
-
-    if (piperModelId) {
-      localStorage.setItem("tts:engine", "piper");
-      localStorage.setItem(
-        "tts:piper:model",
-        piperModelId
-      );
-      setSelectedPiperModel(piperModelId);
+    if (name === MATCHA_VALUE) {
+      localStorage.setItem("tts:engine", "matcha");
 
       // AI音声を選択した時は毎回案内を表示
-      // 端末音声 → AI音声、AI音声 → 別のAI音声の両方に対応
       setShowAiVoiceNotice(true);
-
       return;
     }
 
@@ -182,16 +138,33 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const handleTest = async () => {
     if (isSpeaking) return;
 
+    const text = testText.trim();
+    if (!text) {
+      window.alert("テスト文章を入力してください。");
+      return;
+    }
+
     setIsSpeaking(true);
     try {
-      await speak("ファウルボールの行方にご注意ください", {
-        voiceName: isPiperVoice ? undefined : (selectedName || undefined),
+      await speak(text, {
+        voiceName: isAiVoice ? undefined : (selectedName || undefined),
         speedScale: speed,
         pitch,
         volume,
       });
-    } catch {
-      // noop
+    } catch (error) {
+      console.error("[TTS settings] test speak failed:", error);
+
+      if (isMatchaVoice) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(error);
+
+        window.alert(
+          `Matcha音声の読み上げに失敗しました。\n\n${message}`
+        );
+      }
     } finally {
       setIsSpeaking(false);
     }
@@ -250,14 +223,10 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               value={selectedName}
               onChange={(e) => handleSelectVoice(e.target.value)}
             >
-              {piperModels.map((model) => (
-                <option
-                  key={model.id}
-                  value={piperModelToValue(model.id)}
-                >
-                  ★ {model.label}
-                </option>
-              ))}
+              <option value={MATCHA_VALUE}>
+                ★ {MATCHA_LABEL}
+              </option>
+
 
               {voices.length === 0 && (
                 <option value="">（利用可能な端末音声が見つかりません）</option>
@@ -324,6 +293,12 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
               className={`w-full accent-fuchsia-400 ${pitchUnsupported ? "opacity-70" : ""}`}
             />
 
+            {isMatchaVoice && (
+              <p className="text-xs text-white/60 mt-2 leading-relaxed">
+                ※ Matcha音声では、この「声の高さ」設定は使用しません。
+              </p>
+            )}
+
             {pitchUnsupported && (
               <p className="text-xs text-amber-300 mt-2 leading-relaxed">
                 ※ この音声はピッチが反映されない場合があります。別の日本語音声をお試しください。
@@ -357,22 +332,63 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
           </div>
 
           {/* テスト読み上げ */}
-          <div className="mt-6">
+          <div className="rounded-2xl bg-gradient-to-b from-white/5 to-white/[0.03] border border-white/10 p-4 md:p-5 shadow-md shadow-black/20 mt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-2xl bg-cyan-500/20 ring-1 ring-inset ring-cyan-300/30 shadow-inner">
+                  📝
+                </span>
+                <h2 className="text-lg md:text-xl font-bold tracking-wide">
+                  テスト文章
+                </h2>
+              </div>
+            </div>
+
+            <textarea
+              value={testText}
+              onChange={(e) => setTestText(e.target.value)}
+              rows={4}
+              spellCheck={false}
+              className="w-full resize-y min-h-[104px] rounded-2xl bg-white text-gray-900 p-3 md:p-4 text-base leading-relaxed shadow-inner focus:outline-none focus:ring-4 focus:ring-cyan-400/40"
+              placeholder="読み上げを確認したい文章を入力してください"
+              aria-label="テスト読み上げ文章"
+            />
+
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTestText(DEFAULT_TEST_TEXT)}
+                disabled={isSpeaking}
+                className="shrink-0 px-4 h-10 rounded-xl bg-white/10 border border-white/15 text-sm font-semibold text-white/90 active:scale-[0.98] disabled:opacity-50"
+              >
+                比較文に戻す
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTestText("")}
+                disabled={isSpeaking}
+                className="shrink-0 px-4 h-10 rounded-xl bg-white/10 border border-white/15 text-sm font-semibold text-white/90 active:scale-[0.98] disabled:opacity-50"
+              >
+                クリア
+              </button>
+            </div>
+
             <button
               onClick={handleTest}
-              disabled={isSpeaking}
-              className={`w-full h-12 rounded-2xl text-white font-semibold tracking-wide shadow-lg shadow-black/30 active:scale-[0.99] transition-transform ${
-                isSpeaking
+              disabled={isSpeaking || !testText.trim()}
+              className={`w-full h-12 mt-4 rounded-2xl text-white font-semibold tracking-wide shadow-lg shadow-black/30 active:scale-[0.99] transition-transform ${
+                isSpeaking || !testText.trim()
                   ? "bg-gray-500/60 cursor-not-allowed"
                   : "bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500"
               }`}
               title="現在の設定で読み上げテスト"
             >
-              現在の設定でテスト読み上げ
+              {isSpeaking ? "読み上げ中..." : "現在の設定でテスト読み上げ"}
             </button>
 
             <p className="text-[11px] text-white/60 mt-2 leading-relaxed">
-              ※ 一部の音声は、ピッチ/音量の反映が弱い・無効の場合があります。
+              ※ 入力した文章を、現在選択している音声・速度・音量で読み上げます。
             </p>
           </div>
         </section>
