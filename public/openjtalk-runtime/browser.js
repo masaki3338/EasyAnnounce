@@ -3,6 +3,7 @@ var nextId = 1;
 var pending = /* @__PURE__ */ new Map();
 var worker = new Worker(new URL("./browser/worker.js", import.meta.url), { type: "module" });
 var REQUEST_TIMEOUT_MS = 2e4;
+var CONFIGURE_TIMEOUT_MS = 6e4;
 var workerFailure = null;
 worker.addEventListener("error", (event) => {
   workerFailure = new Error(`openjtalkjs browser worker failed to load: ${event.message || "unknown error"}`);
@@ -29,11 +30,12 @@ function callWorker(method, args) {
   const id = nextId++;
   const request = { id, method, args };
   return new Promise((resolve, reject) => {
+    const timeoutMs = method === "configure" ? CONFIGURE_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
     const timer = setTimeout(() => {
       if (!pending.has(id)) return;
       pending.delete(id);
-      reject(new Error(`openjtalkjs browser worker timed out after ${REQUEST_TIMEOUT_MS}ms while calling ${method}`));
-    }, REQUEST_TIMEOUT_MS);
+      reject(new Error(`openjtalkjs browser worker timed out after ${timeoutMs}ms while calling ${method}`));
+    }, timeoutMs);
     pending.set(id, {
       resolve: (value) => {
         clearTimeout(timer);
