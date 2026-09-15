@@ -16,7 +16,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
-import { speak, stop, preserveNameReading } from "./lib/tts";
+import { speak, stop, prefetchTTS, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 import {
   deriveCurrentGameState,
@@ -6829,9 +6829,22 @@ setAnnouncementHTMLOverrideStr(""); // 通常はオーバーライド無し
 
 // クリック直前に現在の文面を温める
 const prefetchCurrent = () => {
-  const text = (announcementOverride || announcement || "").trim(); // ← その画面の“読み上げ文”に合わせて
-  window.prefetchTTS?.(text);
+  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+  const text = normalizeJapaneseTime(htmlToTtsText(html));
+  if (text) void prefetchTTS(text);
 };
+
+useEffect(() => {
+  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+  const text = normalizeJapaneseTime(htmlToTtsText(html));
+  if (!text) return;
+
+  const timer = window.setTimeout(() => {
+    void prefetchTTS(text);
+  }, 60);
+
+  return () => window.clearTimeout(timer);
+}, [announcementHTMLOverrideStr, announcementHTMLStr]);
 
 // 「アナウンス文言エリア」を読み上げ（連打ロック付き）
 const handleRead = async () => {

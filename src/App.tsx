@@ -10,7 +10,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
-import { speak, stop, prewarmTTS } from "./lib/tts";
+import { speak, stop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -215,9 +215,10 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
-  const [isTtsStarting, setIsTtsStarting] = useState(
-    () => localStorage.getItem("tts:engine") === "piper"
-  );
+  const [isTtsStarting, setIsTtsStarting] = useState(() => {
+    const engine = localStorage.getItem("tts:engine");
+    return engine === "matcha" || engine === "piper"; // 旧Piper設定も移行時は起動準備
+  });
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -641,6 +642,27 @@ const boysOtherOptions: OtherOptionItem[] = [
 
 const getOtherOptions = () =>
   leagueMode === "boys" ? boysOtherOptions : ponyOtherOptions;
+
+// 試合終了アナウンスはポップアップ表示時点で先読みする。
+useEffect(() => {
+  if (!showEndGamePopup) return;
+
+  const text =
+    (endGameAnnouncementSpeak || endGameAnnouncement || "").trim();
+
+  if (!text) return;
+
+  const timer = window.setTimeout(() => {
+    void prefetchTTS(text);
+  }, 40);
+
+  return () => window.clearTimeout(timer);
+}, [
+  showEndGamePopup,
+  endGameAnnouncementSpeak,
+  endGameAnnouncement,
+]);
+
   // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
   const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
   const ann = endGameAnnouncement ?? "";
@@ -799,15 +821,19 @@ useEffect(() => {
 }, [waterBreakMinutes]);
 
 // マウント時に一度だけTTSを事前読み込み
-// EasyアナウンスAI音声（Piper-Plus）が選択されている場合は、
+// EasyアナウンスAI音声（Matcha）が選択されている場合は、
 // 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
 useEffect(() => {
   if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
   warmedOnceRef.current = true;
 
-  const isPiper = localStorage.getItem("tts:engine") === "piper";
+  const ttsEngine = localStorage.getItem("tts:engine");
+  if (ttsEngine === "piper") {
+    try { localStorage.setItem("tts:engine", "matcha"); } catch {}
+  }
+  const isAiTts = ttsEngine === "matcha" || ttsEngine === "piper";
 
-  if (!isPiper) {
+  if (!isAiTts) {
     setIsTtsStarting(false);
     return;
   }
@@ -1101,25 +1127,30 @@ return (
   <>
     {isTtsStarting && (
       <div
-        className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 text-white"
+        className="
+          fixed z-[10000]
+          top-[max(10px,env(safe-area-inset-top))]
+          right-3
+          pointer-events-none
+          rounded-full
+          bg-slate-950/85
+          border border-white/15
+          px-3 py-2
+          text-white
+          shadow-lg
+          flex items-center gap-2
+        "
         role="status"
         aria-live="polite"
-        aria-label="起動中"
+        aria-label="AI音声準備中"
       >
-        <div className="flex flex-col items-center gap-4 px-6 text-center">
-          <div
-            className="h-12 w-12 rounded-full border-4 border-white/30 border-t-white animate-spin"
-            aria-hidden="true"
-          />
-          <div>
-            <div className="text-xl font-extrabold tracking-wide">
-              起動中...
-            </div>
-            <p className="mt-2 text-sm text-white/70">
-              AI音声を準備しています
-            </p>
-          </div>
-        </div>
+        <div
+          className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin"
+          aria-hidden="true"
+        />
+        <span className="text-xs font-semibold">
+          AI音声準備中
+        </span>
       </div>
     )}
     {screen === "menu" && (
@@ -1639,7 +1670,7 @@ return (
                       speakAnnouncement = displayAnnouncement;
                     } else {
                       displayAnnouncement =
-                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}でした。\n` +
+                        `ただいまの試合は、ご覧のように、${totalTop}対${totalBottom}でした。\n` +
                         `審判員の皆様、ありがとうございました。\n` +
                         `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                         `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -1687,7 +1718,7 @@ return (
                       speakAnnouncement = displayAnnouncement;
                     } else {
                       displayAnnouncement =
-                        `ただいまの試合は、ご覧のように${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
+                        `ただいまの試合は、ご覧のように ${totalTop}対${totalBottom}で${winnerName}が勝ちました。\n` +
                         `審判員の皆様、ありがとうございました。\n` +
                         `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                         `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2007,7 +2038,7 @@ return (
                 `なおこの試合の終了時刻は${formatted}です。`;
             } else {
               displayAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}でした。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}でした。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2056,7 +2087,7 @@ return (
                 `なおこの試合の終了時刻は${formatted}です。`;
             } else {
               displayAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2065,7 +2096,7 @@ return (
                 `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
               speakAnnouncement =
-                `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
                 `審判員の皆様、ありがとうございました。\n` +
                 `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                 `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2416,7 +2447,7 @@ return (
                   `なおこの試合の終了時刻は${formatted}です。`;
               } else {
                 displayAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}でした。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}でした。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2465,7 +2496,7 @@ return (
                   `なおこの試合の終了時刻は${formatted}です。`;
               } else {
                 displayAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeam}が勝ちました。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +
@@ -2474,7 +2505,7 @@ return (
                   `球審、EasyScore担当、公式記録員、球場役員もお集まりください。\n`;
 
                 speakAnnouncement =
-                  `ただいまの試合は、ご覧のように${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
+                  `ただいまの試合は、ご覧のように ${totalMyScore}対${totalOpponentScore}で${myTeamReading}が勝ちました。\n` +
                   `審判員の皆様、ありがとうございました。\n` +
                   `健闘しました両チームの選手に、盛大な拍手をお願いいたします。\n` +
                   `尚、この試合の終了時刻は ${formatted}です。\n` +

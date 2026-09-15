@@ -1157,7 +1157,7 @@ const normalizeForTTS = (input: string) => {
    if (!isBoys) {
      text = text.replace(
        /ピッチャー(.+?)(くん|さん)、この回のとうきゅうすうは/g,
-       "ピッチャー、$1$2、この回のとうきゅうすうは"
+       "ピッチャー、$1$2、この回のとうきゅうすうは、"
      );
    }
 

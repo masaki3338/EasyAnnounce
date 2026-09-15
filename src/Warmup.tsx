@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 import { pageStyle } from "./styles/pageStyle";
 
 /* ====== ミニSVGアイコン（依存なし） ====== */
@@ -343,9 +343,28 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `${team3} はキャッチボールを開始してください。`;
 
   const mainSpeak =
-    `りょうチームはウォーミングアップに入ってください。\n` +
+    `りょうチームはウォーミングアップニ入ってください。\n` +
     `${team1Read}はトスバッティング、\n` +
     `${team3Read}はキャッチボールを開始してください。`;
+
+  useEffect(() => {
+    // 画面表示後は、まず本アナウンスを最優先で先読みする。
+    // 「交代」「終了」はその後に回し、本アナウンスの生成を邪魔しない。
+    const mainTimer = window.setTimeout(() => {
+      void prefetchTTS(mainSpeak);
+    }, 40);
+
+    const subTimer = window.setTimeout(() => {
+      void prefetchTTS("りょうチーム、交代してください。");
+      void prefetchTTS("ウォーミングアップを終了してください。");
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(mainTimer);
+      window.clearTimeout(subTimer);
+    };
+  }, [mainSpeak]);
+
 
   return (
       <div 

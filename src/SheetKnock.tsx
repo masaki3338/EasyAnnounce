@@ -1,7 +1,7 @@
 // SheetKnock.tsx（全文置き換え）
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS  } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
@@ -551,8 +551,20 @@ const mainDisplayMessage =
 
 const mainSpeakMessage =
   isHome === "後攻"
-    ? `${activeTeamReading}はシートノックに入ってください。\nノック時間、は${knockMinutes}分以内です。`
-    : `${activeTeamReading}はシートノックに入ってください。\nノック時間、は同じく${knockMinutes}分以内です。`;
+    ? `${activeTeamReading}はシートノックに入ってください。\nノック時間は、${knockMinutes}分以内です。`
+    : `${activeTeamReading}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
+
+useEffect(() => {
+  const texts = [prepSpeakMessage, mainSpeakMessage].filter(
+    (value): value is string => !!value
+  );
+  if (!texts.length) return;
+  const timer = window.setTimeout(() => {
+    texts.forEach((text) => { void prefetchTTS(text); });
+  }, 80);
+  return () => window.clearTimeout(timer);
+}, [prepSpeakMessage, mainSpeakMessage]);
+
 
 
   const hasTimingHint = isHome === "先攻";

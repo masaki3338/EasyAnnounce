@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 /* === ミニSVGアイコン（依存なし） === */
 const IconBack = () => (
@@ -484,6 +484,35 @@ clone.querySelectorAll("ruby").forEach((rb) => {
     });
     return lines.join("\n");
   };
+
+  // スタメン発表文が画面に完成したら、専用Workerへ先読みを依頼する。
+  // 推論はWorker側で行うため、ここで画面操作をブロックしない。
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const text = getVisibleAnnounceText();
+      if (text) void prefetchTTS(text);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    teamPlayers,
+    assignments,
+    battingOrder,
+    extraPositionMap,
+    homeTeamName,
+    homeTeamFurigana,
+    awayTeamName,
+    firstBaseTeamName,
+    thirdBaseTeamName,
+    firstBaseTeamFurigana,
+    thirdBaseTeamFurigana,
+    umpires,
+    gameNumber,
+    tournamentName,
+    isHomeTeamFirstAttack,
+    isTwoUmpires,
+    leagueMode,
+  ]);
 
   /* === 読み上げ操作 === */
 const handleSpeak = () => {

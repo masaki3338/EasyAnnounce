@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import {
   deriveCurrentGameState,
   reenterPlayerToPosition,
@@ -38,11 +38,12 @@ function toReadable(root: HTMLElement): string {
   // ルビは「かな」を優先
   clone.querySelectorAll("ruby").forEach(ruby => {
     const rt = ruby.querySelector("rt");
-    if (rt) {
-      ruby.replaceWith(preserveNameReading(rt.textContent || ""));
-    } else {
-      ruby.replaceWith(ruby.textContent || "");
-    }
+    const next = ruby.nextElementSibling;
+    const nextIsRuby = next?.tagName?.toLowerCase() === "ruby";
+    const reading = rt
+      ? preserveNameReading(rt.textContent || "")
+      : (ruby.textContent || "");
+    ruby.replaceWith(reading + (nextIsRuby ? "、" : ""));
   });
 
   // テキスト化
@@ -6659,6 +6660,40 @@ return normalText;
   dupLastNamesTick,
   pitcherCountAnnouncement,
 ]);
+
+useEffect(() => {
+  const html =
+    typeof announcementText === "object" && announcementText
+      ? (announcementText as any).speakText || ""
+      : "";
+
+  if (!html) return;
+
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  let text = toReadable(temp)
+    .replace(/に入ります/g, "に、はいります")
+    .replace(/へ入ります/g, "へはいります")
+    .replace(/が\s*入り/g, "がはいり")
+    .replace(/へ\s*入り/g, "へはいり")
+    .replace(/に\s*入り/g, "にはいり")
+    .replace(/そのまま\s*入り/g, "そのまま、はいり")
+    .replace(/\u00A0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "。")
+    .replace(/。。+/g, "。")
+    .trim();
+
+  if (text && !/[。！？]$/.test(text)) text += "。";
+
+  const timer = window.setTimeout(() => {
+    void prefetchTTS(text);
+  }, 80);
+
+  return () => window.clearTimeout(timer);
+}, [announcementText]);
+
 
 useEffect(() => {
   if (dirty) return; // ★手動で守備を触ったら、自動配置で上書きしない

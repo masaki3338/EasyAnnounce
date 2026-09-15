@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS } from "./lib/tts";
 
 type Props = {
   onBack: () => void;
@@ -453,6 +453,17 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
       : `${selfTeamLabel}、ノック時間のお知らせはありません。`;
 
   const endMessage = `${selfTeamLabel}、ノックを終了してください。`;
+
+  useEffect(() => {
+    const texts = [guideMessage, startMessage, oneMinuteMessage, endMessage].filter(
+      (value): value is string => !!value
+    );
+    const timer = window.setTimeout(() => {
+      texts.forEach((text) => { void prefetchTTS(text); });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [guideMessage, startMessage, oneMinuteMessage, endMessage]);
+
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);

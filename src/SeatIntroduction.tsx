@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -427,6 +427,35 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         })
         .join("<br />") + "です。";
 
+
+  useEffect(() => {
+    if (!teamReading || Object.keys(positions).length === 0) return;
+
+    const fixedKana = (value?: string) =>
+      preserveNameReading(String(value ?? ""));
+
+    const firstPitcher = positions["投"];
+    const pitcherName = leagueMode === "boys"
+      ? `${fixedKana(firstPitcher?.lastNameKana || firstPitcher?.lastName || "")}、${fixedKana(firstPitcher?.firstNameKana || firstPitcher?.firstName || "")}`.replace(/、$/, "")
+      : fixedKana(firstPitcher?.lastNameKana || firstPitcher?.lastName || "");
+
+    const intro =
+      leagueMode === "boys"
+        ? `${inningReading}、${inning === "1回の裏" ? "守ります" : "まず守ります"}、${teamReading}の`
+        : `${inningReading}、守ります、${teamReading}のシートをお知らせします。`;
+
+    const firstLine =
+      leagueMode === "boys"
+        ? `ピッチャーは、${pitcherName}${firstPitcher?.honorific || "くん"}`
+        : `ピッチャー、${pitcherName}${firstPitcher?.honorific || "くん"}`;
+
+    const timer = window.setTimeout(() => {
+      void prefetchTTS(intro);
+      void prefetchTTS(firstLine);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [teamReading, positions, leagueMode, inningReading, inning]);
 
   if (!teamName) {
     return (
