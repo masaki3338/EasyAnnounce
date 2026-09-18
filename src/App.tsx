@@ -215,10 +215,13 @@ const BottomTab: React.FC<{
 
 const App = () => {
   const [screen, setScreen] = useState<ScreenType>("menu");
+  // AI音声の準備状態は表示だけ。準備中でも全操作・読み上げボタンを使用可能。
   const [isTtsStarting, setIsTtsStarting] = useState(() => {
     const engine = localStorage.getItem("tts:engine");
-    return engine === "matcha" || engine === "piper"; // 旧Piper設定も移行時は起動準備
+    return engine === "matcha" || engine === "piper";
   });
+  const [showTtsReady, setShowTtsReady] = useState(false);
+  const warmedOnceRef = useRef(false);
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -247,6 +250,23 @@ const App = () => {
   const [showManualPopup, setShowManualPopup] = useState(false);
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showNoContinueModal, setShowNoContinueModal] = useState(false);
+
+  // 継続試合モーダルは固定文なので、表示した時点でMatcha音声を先読みする。
+  // 読み上げボタンを押してから1文目を生成する待ち時間をなくす。
+  useEffect(() => {
+    if (!showContinuationModal) return;
+
+    const text =
+      "この試合は、ただ今で打ち切り、継続試合となります。\n" +
+      "明日以降に中断した時点から再開いたします。\n" +
+      "あしからずご了承くださいませ。";
+
+    const timer = window.setTimeout(() => {
+      void prefetchTTS(text);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [showContinuationModal]);
   const [showSuspendPopup, setShowSuspendPopup] = useState(false);
   const [showSuspendedGamePopup, setShowSuspendedGamePopup] = useState(false);
   const [showBoysManualPopup, setShowBoysManualPopup] = useState(false);
@@ -678,7 +698,6 @@ const iosVideoRef = useRef<HTMLVideoElement | null>(null);
 const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
 // App コンポーネント内のどこか（stateの定義付近）に追加
-const warmedOnceRef = useRef(false);
 useEffect(() => {
   setLeagueMode(getLeagueMode());
 }, []);
@@ -820,33 +839,27 @@ useEffect(() => {
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
-// マウント時に一度だけTTSを事前読み込み
-// EasyアナウンスAI音声（Matcha）が選択されている場合は、
-// 準備中オーバーレイを表示し、モデル読込＋初回推論まで先に済ませる。
+
+// AI音声の起動準備状態を右上に表示する。
+// tts.ts側でも0msで準備を開始しているが、prewarmMatcha()はPromise共有なので二重実行されない。
 useEffect(() => {
-  if (warmedOnceRef.current) return; // dev StrictMode の二重実行ガード
+  if (warmedOnceRef.current) return;
   warmedOnceRef.current = true;
 
-  const ttsEngine = localStorage.getItem("tts:engine");
-  if (ttsEngine === "piper") {
-    try { localStorage.setItem("tts:engine", "matcha"); } catch {}
-  }
-  const isAiTts = ttsEngine === "matcha" || ttsEngine === "piper";
+  const engine = localStorage.getItem("tts:engine");
+  const isAi = engine === "matcha" || engine === "piper";
 
-  if (!isAiTts) {
+  if (!isAi) {
     setIsTtsStarting(false);
     return;
   }
 
   setIsTtsStarting(true);
-
-  void prewarmTTS()
-    .catch((error) => {
-      console.warn("[TTS] prewarm failed:", error);
-    })
-    .finally(() => {
-      setIsTtsStarting(false);
-    });
+  void prewarmTTS().finally(() => {
+    setIsTtsStarting(false);
+    setShowTtsReady(true);
+    window.setTimeout(() => setShowTtsReady(false), 1200);
+  });
 }, []);
 
 
@@ -1125,31 +1138,23 @@ const handleSpeak = async () => {
 
 return (
   <>
-    {isTtsStarting && (
+    {(isTtsStarting || showTtsReady) && (
       <div
-        className="
-          fixed z-[10000]
-          top-[max(10px,env(safe-area-inset-top))]
-          right-3
-          pointer-events-none
-          rounded-full
-          bg-slate-950/85
-          border border-white/15
-          px-3 py-2
-          text-white
-          shadow-lg
-          flex items-center gap-2
-        "
+        className={`fixed z-[10000] top-[max(10px,env(safe-area-inset-top))] right-3 pointer-events-none rounded-full border px-3 py-2 text-white shadow-lg flex items-center gap-2 ${
+          isTtsStarting
+            ? "bg-slate-950/85 border-white/15"
+            : "bg-emerald-700/90 border-emerald-200/30"
+        }`}
         role="status"
         aria-live="polite"
-        aria-label="AI音声準備中"
       >
-        <div
-          className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin"
-          aria-hidden="true"
-        />
+        {isTtsStarting ? (
+          <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
+        ) : (
+          <span className="text-sm" aria-hidden="true">✓</span>
+        )}
         <span className="text-xs font-semibold">
-          AI音声準備中
+          {isTtsStarting ? "AI音声準備中" : "AI音声準備完了"}
         </span>
       </div>
     )}

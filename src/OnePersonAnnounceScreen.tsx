@@ -16,7 +16,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useDrag, useDrop } from "react-dnd";
 import { useNavigate } from "react-router-dom";
-import { speak, stop, prefetchTTS, preserveNameReading } from "./lib/tts";
+import { speak, stop, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 import {
   deriveCurrentGameState,
@@ -982,6 +982,24 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
 
   const [announcementHTMLStr, setAnnouncementHTMLStr] = useState<string>("");
   const [announcementHTMLOverrideStr, setAnnouncementHTMLOverrideStr] = useState<string>("");
+
+  // Matchaは読み上げボタンを押してから生成を始めると初回が遅くなるため、
+  // アナウンス文が画面に表示された時点で先読みを開始する。
+  // 既存の onTouchStart/onMouseDown 先読みも保険として残す。
+  useEffect(() => {
+    const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
+    if (!html) return;
+
+    let text = htmlToTtsText(html);
+    text = normalizeJapaneseTime(text);
+    if (!text) return;
+
+    const timer = window.setTimeout(() => {
+      window.prefetchTTS?.(text);
+    }, 30);
+
+    return () => window.clearTimeout(timer);
+  }, [announcementHTMLStr, announcementHTMLOverrideStr]);
   const [tiebreakAnno, setTiebreakAnno] = useState<string | null>(null);
   const [scoreOverwrite, setScoreOverwrite] = useState(true);
   const [showIntentionalWalkPopup, setShowIntentionalWalkPopup] = useState(false);
@@ -6284,10 +6302,10 @@ const snapshot =
   if (score > 0) {
     if (leagueMode === "boys") {
       setPopupMessage(`この回の得点は${score}点。`);
-      setPopupSpeakMessage(`この回の得点は${score}点。`);
+      setPopupSpeakMessage(`この回の得点は、${score}点。`);
     } else {
       setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-      setPopupSpeakMessage(`${teamReading}、この回の得点は${score}点です。`);
+      setPopupSpeakMessage(`${teamReading}、この回の得点は、${score}点です。`);
     }
 
   if (isConfiguredGroundMaintenance(inning, isTop)) {
@@ -6829,22 +6847,9 @@ setAnnouncementHTMLOverrideStr(""); // 通常はオーバーライド無し
 
 // クリック直前に現在の文面を温める
 const prefetchCurrent = () => {
-  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
-  const text = normalizeJapaneseTime(htmlToTtsText(html));
-  if (text) void prefetchTTS(text);
+  const text = (announcementOverride || announcement || "").trim(); // ← その画面の“読み上げ文”に合わせて
+  window.prefetchTTS?.(text);
 };
-
-useEffect(() => {
-  const html = announcementHTMLOverrideStr || announcementHTMLStr || "";
-  const text = normalizeJapaneseTime(htmlToTtsText(html));
-  if (!text) return;
-
-  const timer = window.setTimeout(() => {
-    void prefetchTTS(text);
-  }, 60);
-
-  return () => window.clearTimeout(timer);
-}, [announcementHTMLOverrideStr, announcementHTMLStr]);
 
 // 「アナウンス文言エリア」を読み上げ（連打ロック付き）
 const handleRead = async () => {
