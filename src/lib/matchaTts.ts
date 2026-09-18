@@ -2,7 +2,7 @@
 // Easyアナウンス Matcha-TTS-JP + Vocos
 //
 // public 配置:
-//   /models/easy-announce/matcha/easy_announce_matcha_step3.onnx
+//   /models/easy-announce/matcha/TANIHO.onnx / UGUISU.onnx
 //   /models/easy-announce/matcha/vocos-22khz-univ.onnx
 //
 // Matcha-TTS-JP 学習時:
@@ -21,13 +21,15 @@ type MatchaSpeakOptions = {
   volume?: number;
 };
 
-type SynthesizedAudio = {
+export type MatchaPcmAudio = {
   samples: Float32Array;
   sampleRate: number;
 };
 
+type SynthesizedAudio = MatchaPcmAudio;
+
 const MATCHA_MODEL_URL =
-  "/models/easy-announce/matcha/easy_announce_matcha_step3.onnx";
+  "/models/easy-announce/matcha/TANIHO.onnx / UGUISU.onnx";
 
 const VOCOS_MODEL_URL =
   "/models/easy-announce/matcha/vocos-22khz-univ.onnx";
@@ -72,8 +74,237 @@ let iosAudioObjectUrl: string | null = null;
 
 let generationId = 0;
 
+// 読み上げボタン押下相当（speakMatcha開始）から最初の再生要求までを計測。
+// 高速化の効果確認用。動作には影響しない。
+let activeSpeakStartedAt = 0;
+let activeSpeakGenerationId = 0;
+let activeFirstAudioLogged = false;
+
+function markFirstAudioStart(myGenerationId: number, backend: string) {
+  if (
+    activeSpeakGenerationId !== myGenerationId ||
+    activeFirstAudioLogged ||
+    activeSpeakStartedAt <= 0
+  ) {
+    return;
+  }
+
+  activeFirstAudioLogged = true;
+  console.log("[TTS LATENCY] first audio start", {
+    backend,
+    ms: Math.round((performance.now() - activeSpeakStartedAt) * 10) / 10,
+  });
+}
+
+
 const synthesizedCache = new Map<string, SynthesizedAudio>();
 const synthesizedCacheOrder: string[] = [];
+
+// -----------------------------------------------------------------------------
+// 永続キャッシュ（IndexedDB）
+// -----------------------------------------------------------------------------
+// 一度生成したMatcha音声をブラウザ再起動後も再利用する。
+// Float32のまま保存すると容量が大きいため、保存時だけPCM16へ圧縮する。
+// モデルを学習し直した場合は PERSISTENT_CACHE_VERSION を変更すれば
+// 古い音声キャッシュを自動的に無効化できる。
+const PERSISTENT_CACHE_VERSION = "20260918-v1";
+const PERSISTENT_DB_NAME = "easy-announce-matcha-cache";
+const PERSISTENT_DB_VERSION = 1;
+const PERSISTENT_STORE = "audio";
+const MAX_PERSISTENT_CACHE_ITEMS = 120;
+
+type PersistentAudioRecord = {
+  key: string;
+  sampleRate: number;
+  pcm16Buffer: ArrayBuffer;
+  updatedAt: number;
+};
+
+let persistentDbPromise: Promise<IDBDatabase | null> | null = null;
+
+function openPersistentCacheDb(): Promise<IDBDatabase | null> {
+  if (persistentDbPromise) return persistentDbPromise;
+
+  persistentDbPromise = new Promise((resolve) => {
+    if (typeof indexedDB === "undefined") {
+      resolve(null);
+      return;
+    }
+
+    try {
+      const request = indexedDB.open(
+        PERSISTENT_DB_NAME,
+        PERSISTENT_DB_VERSION
+      );
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(PERSISTENT_STORE)) {
+          const store = db.createObjectStore(
+            PERSISTENT_STORE,
+            { keyPath: "key" }
+          );
+          store.createIndex("updatedAt", "updatedAt");
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        console.warn("[MatchaCache] IndexedDB open failed", request.error);
+        resolve(null);
+      };
+      request.onblocked = () => resolve(null);
+    } catch (error) {
+      console.warn("[MatchaCache] IndexedDB unavailable", error);
+      resolve(null);
+    }
+  });
+
+  return persistentDbPromise;
+}
+
+function floatToPcm16(samples: Float32Array): Int16Array {
+  const out = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const x = Math.max(-1, Math.min(1, samples[i]));
+    out[i] = x < 0
+      ? Math.round(x * 32768)
+      : Math.round(x * 32767);
+  }
+  return out;
+}
+
+function pcm16ToFloat(samples: Int16Array): Float32Array {
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    out[i] = samples[i] < 0
+      ? samples[i] / 32768
+      : samples[i] / 32767;
+  }
+  return out;
+}
+
+async function getPersistentCache(
+  key: string
+): Promise<SynthesizedAudio | null> {
+  const db = await openPersistentCacheDb();
+  if (!db) return null;
+
+  return await new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PERSISTENT_STORE, "readonly");
+      const store = tx.objectStore(PERSISTENT_STORE);
+      const request = store.get(key);
+
+      request.onsuccess = () => {
+        const record = request.result as PersistentAudioRecord | undefined;
+        if (!record?.pcm16Buffer) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const pcm16 = new Int16Array(record.pcm16Buffer);
+          const audio: SynthesizedAudio = {
+            samples: pcm16ToFloat(pcm16),
+            sampleRate: Number(record.sampleRate) || SAMPLE_RATE,
+          };
+
+          console.log("[MatchaCache] persistent hit", {
+            keyLength: key.length,
+            samples: audio.samples.length,
+          });
+
+          resolve(audio);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function prunePersistentCache(): Promise<void> {
+  const db = await openPersistentCacheDb();
+  if (!db) return;
+
+  try {
+    const items = await new Promise<Array<{ key: string; updatedAt: number }>>(
+      (resolve) => {
+        const tx = db.transaction(PERSISTENT_STORE, "readonly");
+        const store = tx.objectStore(PERSISTENT_STORE);
+        const request = store.getAll();
+
+        request.onsuccess = () => {
+          const list = (request.result || []).map((row: PersistentAudioRecord) => ({
+            key: row.key,
+            updatedAt: Number(row.updatedAt) || 0,
+          }));
+          resolve(list);
+        };
+        request.onerror = () => resolve([]);
+      }
+    );
+
+    if (items.length <= MAX_PERSISTENT_CACHE_ITEMS) return;
+
+    items.sort((a, b) => a.updatedAt - b.updatedAt);
+    const remove = items.slice(
+      0,
+      items.length - MAX_PERSISTENT_CACHE_ITEMS
+    );
+
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(PERSISTENT_STORE, "readwrite");
+      const store = tx.objectStore(PERSISTENT_STORE);
+      for (const item of remove) store.delete(item.key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+  } catch {}
+}
+
+async function putPersistentCache(
+  key: string,
+  audio: SynthesizedAudio
+): Promise<void> {
+  const db = await openPersistentCacheDb();
+  if (!db) return;
+
+  try {
+    const pcm16 = floatToPcm16(audio.samples);
+    // IDBへ渡すBufferは独立コピーにして、再生用samplesへ影響させない。
+    const pcm16Buffer = pcm16.buffer.slice(0);
+
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(PERSISTENT_STORE, "readwrite");
+      const store = tx.objectStore(PERSISTENT_STORE);
+
+      const record: PersistentAudioRecord = {
+        key,
+        sampleRate: audio.sampleRate,
+        pcm16Buffer,
+        updatedAt: Date.now(),
+      };
+
+      store.put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+
+    // 保存処理の本線を遅くしないよう削除整理は非同期。
+    void prunePersistentCache();
+  } catch (error) {
+    console.warn("[MatchaCache] save failed", error);
+  }
+}
+
 
 // 同一チャンクの二重生成を防ぐ。
 // 画面表示時のprefetch中に「読み上げ」を押した場合は、
@@ -83,6 +314,33 @@ const synthesisInFlight = new Map<
   Promise<SynthesizedAudio | null>
 >();
 
+
+type MatchaModelId = "taniho" | "uguisu";
+
+function getSelectedMatchaModelId(): MatchaModelId {
+  try {
+    // 現在の読み上げ設定で使われている旧互換キーをそのまま利用。
+    // easy-announce-1 = 谷保さん
+    // easy-announce-2 = ウグイス嬢
+    // 現在の読み上げ設定画面は tts:matcha:voice に
+    // "taniho" / "uguisu" を保存する。
+    // 旧キーも後方互換のため残す。
+    const saved =
+      localStorage.getItem("tts:matcha:voice") ||
+      localStorage.getItem("tts:matcha:model") ||
+      localStorage.getItem("tts:piper:model") ||
+      "";
+
+    if (
+      saved === "easy-announce-2" ||
+      saved === "uguisu"
+    ) {
+      return "uguisu";
+    }
+  } catch {}
+
+  return "taniho";
+}
 
 type InferenceWorkerResponse =
   | { type: "ready"; id: number }
@@ -152,8 +410,8 @@ function getInferenceWorker(): Worker {
 
 function postInferenceWorker(
   message:
-    | { type: "init" }
-    | { type: "synthesize"; ids: number[]; speedScale: number }
+    | { type: "init"; modelId: MatchaModelId }
+    | { type: "synthesize"; ids: number[]; speedScale: number; modelId: MatchaModelId }
 ): Promise<SynthesizedAudio | null> {
   const worker = getInferenceWorker();
   const id = ++inferenceWorkerSeq;
@@ -164,11 +422,16 @@ function postInferenceWorker(
   });
 }
 
-async function initInferenceWorker(): Promise<void> {
-  await postInferenceWorker({ type: "init" });
+async function initInferenceWorker(
+  modelId: MatchaModelId
+): Promise<void> {
+  await postInferenceWorker({
+    type: "init",
+    modelId,
+  });
 }
 
-const MAX_CACHE_ITEMS = 18;
+const MAX_CACHE_ITEMS = 64; // Phase 2: 打順全体の先読みを保持
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -214,10 +477,8 @@ function configureOrt() {
     typeof self !== "undefined" &&
     self.crossOriginIsolated === true;
 
-  ort.env.wasm.numThreads =
-    canUseThreads
-      ? Math.max(1, Math.min(2, cores))
-      : 1;
+  // 安定動作優先。実推論Workerと同じく1スレッド固定。
+  ort.env.wasm.numThreads = 1;
 
   if (typeof window !== "undefined") {
     const origin = window.location.origin;
@@ -339,9 +600,27 @@ async function getOpenJTalkReady(): Promise<void> {
       }
 
 
+      // Blob Worker 内では "/openjtalkjs/..." のような
+      // ルート相対URLを基準解決できず、fetch() が失敗する。
+      // Workerへ渡す時点で完全な絶対URLへ変換しておく。
+      const origin = window.location.origin;
+      const dicUrl = new URL(
+        `${OPENJTALK_ASSET_BASE}/dic`,
+        origin
+      ).href.replace(/\/$/, "");
+      const voiceUrl = new URL(
+        `${OPENJTALK_ASSET_BASE}/voice.htsvoice`,
+        origin
+      ).href;
+
+      console.log("[Matcha] OpenJTalk absolute assets", {
+        dicUrl,
+        voiceUrl,
+      });
+
       await openJTalkBrowserModule.configure({
-        dicUrl: `${OPENJTALK_ASSET_BASE}/dic`,
-        voiceUrl: `${OPENJTALK_ASSET_BASE}/voice.htsvoice`,
+        dicUrl,
+        voiceUrl,
       });
 
     })().catch((error: unknown) => {
@@ -504,6 +783,67 @@ function fullContextLabelsToPhonemes(
   return results;
 }
 
+
+// 「8番（はちばん）」の語頭 /h/ が弱く「わちばん」のように聞こえる場合の補正。
+// 文字列に空白や読点は入れず、OpenJTalkが返した音素列の /h/ だけを少し長くする。
+// prosody記号は無視して h-a-ch-i-b-a-N の並びを検出する。
+function strengthenHachibanOnset(
+  phonemes: string[],
+  sourceText: string
+): string[] {
+  if (!/(?:8番|はちばん|ハチバン)/.test(sourceText)) {
+    return phonemes;
+  }
+
+  const prosody = new Set(["^", "$", "?", "_", "#", "[", "]"]);
+
+  const nextSpeech = (start: number, count: number) => {
+    const items: Array<{ index: number; phoneme: string }> = [];
+    for (let i = start; i < phonemes.length && items.length < count; i++) {
+      if (!prosody.has(phonemes[i])) {
+        items.push({ index: i, phoneme: phonemes[i] });
+      }
+    }
+    return items;
+  };
+
+  for (let i = 0; i < phonemes.length; i++) {
+    if (phonemes[i] !== "h") continue;
+
+    const seq = nextSpeech(i, 7);
+    const sounds = seq.map((x) => x.phoneme);
+
+    if (
+      sounds[0] === "h" &&
+      sounds[1] === "a" &&
+      sounds[2] === "ch" &&
+      sounds[3] === "i" &&
+      sounds[4] === "b" &&
+      sounds[5] === "a" &&
+      sounds[6] === "N"
+    ) {
+      // /h/ を1個だけ重ねて息成分を強める。
+      // pauや句読点は追加しないので、「はち」と「ばん」の間は増やさない。
+      const out = [...phonemes];
+      out.splice(i, 0, "h");
+
+      console.log("[Matcha pronunciation] strengthen 8番 onset", {
+        before: phonemes.slice(Math.max(0, i - 3), Math.min(phonemes.length, i + 12)),
+        after: out.slice(Math.max(0, i - 3), Math.min(out.length, i + 13)),
+      });
+
+      return out;
+    }
+  }
+
+  console.warn("[Matcha pronunciation] 8番 phoneme pattern not found", {
+    text: sourceText,
+    phonemes,
+  });
+
+  return phonemes;
+}
+
 async function textToMatchaIds(
   text: string
 ): Promise<number[]> {
@@ -534,11 +874,14 @@ async function textToMatchaIds(
     );
   }
 
-  const phonemes =
+  let phonemes =
     fullContextLabelsToPhonemes(
       labels
     );
 
+  // 8番だけ、語頭の /h/ を音素レベルで補強する。
+  // 「はち」と「ばん」の間には pau / 空白を入れない。
+  phonemes = strengthenHachibanOnset(phonemes, text);
 
   const ids: number[] = [];
 
@@ -576,9 +919,10 @@ async function textToMatchaIds(
 
 function makeCacheKey(
   text: string,
-  speedScale: number
+  speedScale: number,
+  modelId: MatchaModelId = getSelectedMatchaModelId()
 ) {
-  return `${speedScale.toFixed(3)}::${text}`;
+  return `${PERSISTENT_CACHE_VERSION}::${modelId}::${speedScale.toFixed(3)}::${text}`;
 }
 
 function putCache(
@@ -921,19 +1265,51 @@ async function synthesizeMatchaChunkInternal(
   speedScale: number,
   _myGenerationId: number | null
 ): Promise<SynthesizedAudio | null> {
-  const key = makeCacheKey(text, speedScale);
+  const modelId = getSelectedMatchaModelId();
+  const key = makeCacheKey(text, speedScale, modelId);
   const cached = synthesizedCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    console.log("[TTS PERF] memory cache hit", {
+      modelId,
+      textLength: text.length,
+    });
+    return cached;
+  }
+
+  // 永続キャッシュ確認とG2Pを同時に開始する。
+  // キャッシュが無かった場合、従来はIndexedDB確認後にG2Pを始めていたため、
+  // その分だけ初回生成開始が遅れていた。
+  const persistentStart = performance.now();
+  const g2pStart = performance.now();
+
+  const g2pPromise = textToMatchaIds(text).then(
+    (ids) => ({ ok: true as const, ids }),
+    (error) => ({ ok: false as const, error })
+  );
+
+  const persistent = await getPersistentCache(key);
+  if (persistent) {
+    putCache(key, persistent);
+    console.log("[TTS CACHE] PERSISTENT HIT", {
+      modelId,
+      textLength: text.length,
+      textPreview: text.slice(0, 36),
+      loadMs: Math.round((performance.now() - persistentStart) * 10) / 10,
+    });
+    return persistent;
+  }
 
   // OpenJTalkだけメイン側で実行。
   // Matcha/Vocos/ISTFTは専用Workerへ渡す。
-  let ids: number[];
-  try {
-    ids = await textToMatchaIds(text);
-  } catch (error) {
-    console.error("[Matcha] G2P failed:", error);
-    throw error;
+  const totalStart = performance.now();
+
+  const g2pResult = await g2pPromise;
+  if ("error" in g2pResult) {
+    console.error("[Matcha] G2P failed:", g2pResult.error);
+    throw g2pResult.error;
   }
+  const ids = g2pResult.ids;
+  const g2pMs = performance.now() - g2pStart;
 
   let synthesized: SynthesizedAudio | null;
   try {
@@ -941,6 +1317,7 @@ async function synthesizeMatchaChunkInternal(
       type: "synthesize",
       ids,
       speedScale,
+      modelId,
     });
   } catch (error) {
     console.error("[Matcha] worker inference failed:", error);
@@ -948,7 +1325,19 @@ async function synthesizeMatchaChunkInternal(
   }
 
   if (!synthesized) return null;
+
   putCache(key, synthesized);
+
+  // 再生開始を遅らせないよう、IndexedDB保存は待たない。
+  void putPersistentCache(key, synthesized);
+
+  console.log("[TTS PERF] synthesis completed", {
+    modelId,
+    textLength: text.length,
+    g2pMs: Math.round(g2pMs * 10) / 10,
+    totalMs: Math.round((performance.now() - totalStart) * 10) / 10,
+  });
+
   return synthesized;
 }
 
@@ -957,17 +1346,37 @@ async function synthesizeMatchaChunk(
   speedScale: number,
   myGenerationId: number | null
 ): Promise<SynthesizedAudio | null> {
-  const key = makeCacheKey(text, speedScale);
+  const modelId = getSelectedMatchaModelId();
+  const key = makeCacheKey(text, speedScale, modelId);
 
   const cached = synthesizedCache.get(key);
   if (cached) {
+    console.log("[TTS CACHE] MEMORY HIT", {
+      modelId,
+      speedScale: Number(speedScale.toFixed(3)),
+      textLength: text.length,
+      textPreview: text.slice(0, 36),
+    });
     return cached;
   }
 
   const existing = synthesisInFlight.get(key);
   if (existing) {
+    console.log("[TTS CACHE] IN-FLIGHT", {
+      modelId,
+      speedScale: Number(speedScale.toFixed(3)),
+      textLength: text.length,
+      textPreview: text.slice(0, 36),
+    });
     return existing;
   }
+
+  console.log("[TTS CACHE] MISS", {
+    modelId,
+    speedScale: Number(speedScale.toFixed(3)),
+    textLength: text.length,
+    textPreview: text.slice(0, 36),
+  });
 
   // 生成処理そのものはgenerationIdでキャンセルしない。
   // 途中まで進んだ先読みを読み上げボタン押下で捨てないため。
@@ -1020,30 +1429,30 @@ function splitMatchaText(
 
   if (!source) return [];
 
-  // 試合終了アナウンス冒頭は、最初の「。」まで必ず1チャンク。
-  // 「ただいまの試合は、」だけで切ると初回だけ大きな無音が出るため。
-  const endGameOpeningMatch = source.match(
-    /^(ただいまの試合は、ご覧のように[^。！？!?]+[。！？!?])/
-  );
+  // バッター紹介は「打順・守備位置・氏名」の途中で絶対に分割しない。
+  // 例:
+  // 「さんばん、セカンド、タナカ フウトくん、セカンド、タナカくん、背番号4。」
+  //
+  // 従来の takeFastFirstPhrase() では
+  // 「さんばん、セカンド、」だけが先に生成・再生され、
+  // 氏名部分の生成待ちで大きな無音が発生することがあった。
+  //
+  // OffenseScreen側で全文を事前生成してからボタンを有効化するため、
+  // ここでは短いバッター紹介を1チャンクのまま保持する。
+  const batterPositionPattern =
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)/;
 
-  if (endGameOpeningMatch) {
-    const fixedEndGameSentence =
-      endGameOpeningMatch[1].trim();
+  const batterOrderPattern =
+    /(いち|に|さん|よ|ご|ろく|なな|はち|きゅう)\s*ばん/;
 
-    const restAfterEndGame =
-      source
-        .slice(fixedEndGameSentence.length)
-        .trimStart();
+  const looksLikeBatterIntroduction =
+    source.length <= 110 &&
+    batterOrderPattern.test(source) &&
+    batterPositionPattern.test(source) &&
+    /(くん|さん)/.test(source);
 
-    const fixedChunks = [fixedEndGameSentence];
-
-    if (restAfterEndGame) {
-      fixedChunks.push(
-        ...splitMatchaText(restAfterEndGame)
-      );
-    }
-
-    return fixedChunks;
+  if (looksLikeBatterIntroduction) {
+    return [source];
   }
 
   // 投球数アナウンスは選手名・球数が変わっても1文1チャンク。
@@ -1424,6 +1833,8 @@ async function playSamplesIOS(
         );
       };
 
+      markFirstAudioStart(myGenerationId, "html-audio");
+
       const promise =
         element.play();
 
@@ -1513,6 +1924,7 @@ async function playSamplesWebAudio(
       };
 
       try {
+        markFirstAudioStart(myGenerationId, "web-audio");
         source.start();
       } catch (error) {
         if (
@@ -1550,6 +1962,211 @@ async function playSamples(
   );
 }
 
+
+// -----------------------------------------------------------------------------
+// 分割キャッシュ結合再生
+// 回先頭の「○回の表/裏」「チーム名の攻撃は」「打者紹介」を別々に先読みし、
+// 再生時はPCMを1本へ結合してから再生する。
+// HTMLAudio/WebAudioを複数回playしないため、部品間に大きな待ち時間を作らない。
+// -----------------------------------------------------------------------------
+function trimJoinSilence(
+  audio: SynthesizedAudio,
+  trimStart: boolean,
+  trimEnd: boolean
+): SynthesizedAudio {
+  const samples = audio.samples;
+  if (!samples.length) return audio;
+
+  // 音声本体を削らないよう低めの閾値 + 約30msの余白を残す。
+  const threshold = 0.0012;
+  const keep = Math.max(1, Math.round(audio.sampleRate * 0.03));
+  let start = 0;
+  let end = samples.length;
+
+  if (trimStart) {
+    let first = 0;
+    while (first < samples.length && Math.abs(samples[first]) < threshold) first++;
+    start = Math.max(0, first - keep);
+  }
+
+  if (trimEnd) {
+    let last = samples.length - 1;
+    while (last >= start && Math.abs(samples[last]) < threshold) last--;
+    end = Math.min(samples.length, last + 1 + keep);
+  }
+
+  if (end <= start) return audio;
+  return {
+    samples: samples.slice(start, end),
+    sampleRate: audio.sampleRate,
+  };
+}
+
+function joinSynthesizedAudios(
+  audios: SynthesizedAudio[],
+  joinSilenceMs = 35
+): SynthesizedAudio | null {
+  const valid = audios.filter((a) => a && a.samples.length > 0);
+  if (!valid.length) return null;
+
+  const sampleRate = valid[0].sampleRate;
+  if (valid.some((a) => a.sampleRate !== sampleRate)) {
+    throw new Error('分割音声のサンプルレートが一致しません。');
+  }
+
+  const prepared = valid.map((audio, index) =>
+    trimJoinSilence(
+      audio,
+      index > 0,
+      index < valid.length - 1
+    )
+  );
+
+  const gapSamples = Math.max(0, Math.round(sampleRate * joinSilenceMs / 1000));
+  const total = prepared.reduce((sum, a) => sum + a.samples.length, 0) +
+    gapSamples * Math.max(0, prepared.length - 1);
+  const joined = new Float32Array(total);
+
+  let offset = 0;
+  prepared.forEach((audio, index) => {
+    joined.set(audio.samples, offset);
+    offset += audio.samples.length;
+    if (index < prepared.length - 1) offset += gapSamples;
+  });
+
+  return { samples: joined, sampleRate };
+}
+
+async function synthesizeWholeForJoin(
+  text: string,
+  speedScale: number,
+  myGenerationId: number
+): Promise<SynthesizedAudio | null> {
+  const chunks = splitMatchaText(text);
+  if (!chunks.length) return null;
+
+  const chunkAudios: SynthesizedAudio[] = [];
+  for (const chunk of chunks) {
+    const audio = await synthesizeMatchaChunk(chunk, speedScale, myGenerationId);
+    if (!audio) return null;
+    chunkAudios.push(audio);
+  }
+
+  // 1部品内で複数チャンクになった場合も、1本にしてから外側で結合する。
+  return joinSynthesizedAudios(chunkAudios, 45);
+}
+
+
+// -----------------------------------------------------------------------------
+// 外部PCM（固定MP3をdecodeした音声など）とMatcha生成音声を1本に結合するためのAPI。
+// tts.ts の speakJoinedTTS() から使用する。
+// -----------------------------------------------------------------------------
+export async function synthesizeMatchaPcmForJoin(
+  text: string,
+  options: MatchaSpeakOptions = {}
+): Promise<MatchaPcmAudio | null> {
+  const cleanText = String(text ?? '').trim();
+  if (!cleanText) return null;
+
+  const speedScale = Number.isFinite(options.speedScale)
+    ? clamp(Number(options.speedScale), 0.5, 2.0)
+    : 1.0;
+
+  // 生成自体はキャッシュ/in-flight共有を使う。再生generationはここでは進めない。
+  return synthesizeWholeForJoin(cleanText, speedScale, generationId);
+}
+
+export async function playJoinedMatchaPcm(
+  audios: MatchaPcmAudio[],
+  options: MatchaSpeakOptions = {},
+  joinSilenceMs = 35
+): Promise<void> {
+  const valid = (audios || []).filter((a) => a && a.samples?.length > 0);
+  if (!valid.length) return;
+
+  const myGenerationId = ++generationId;
+  activeSpeakStartedAt = performance.now();
+  activeSpeakGenerationId = myGenerationId;
+  activeFirstAudioLogged = false;
+
+  if (isIOSDevice()) {
+    unlockMatchaAudioForIOS();
+  } else {
+    await resumeAudioContext();
+  }
+
+  const volume = Number.isFinite(options.volume)
+    ? clamp(Number(options.volume), 0, 1)
+    : 0.8;
+
+  const joined = joinSynthesizedAudios(valid, joinSilenceMs);
+  if (!joined) return;
+
+  console.log('[TTS JOIN] mixed PCM ready', {
+    parts: valid.length,
+    samples: joined.samples.length,
+    durationSec: Math.round((joined.samples.length / joined.sampleRate) * 100) / 100,
+  });
+
+  await playSamples(joined, volume, myGenerationId);
+}
+
+export async function speakMatchaJoined(
+  parts: string[],
+  options: MatchaSpeakOptions = {}
+): Promise<void> {
+  const cleanParts = (parts || [])
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean);
+
+  if (!cleanParts.length) return;
+
+  const myGenerationId = ++generationId;
+  activeSpeakStartedAt = performance.now();
+  activeSpeakGenerationId = myGenerationId;
+  activeFirstAudioLogged = false;
+
+  if (isIOSDevice()) {
+    unlockMatchaAudioForIOS();
+  } else {
+    await resumeAudioContext();
+  }
+
+  const speedScale = Number.isFinite(options.speedScale)
+    ? clamp(Number(options.speedScale), 0.5, 2.0)
+    : 1.0;
+  const volume = Number.isFinite(options.volume)
+    ? clamp(Number(options.volume), 0, 1)
+    : 0.8;
+
+  console.log('[TTS JOIN] start', {
+    parts: cleanParts.length,
+    modelId: getSelectedMatchaModelId(),
+    previews: cleanParts.map((p) => p.slice(0, 28)),
+  });
+
+  const audios: SynthesizedAudio[] = [];
+  for (const part of cleanParts) {
+    if (myGenerationId !== generationId) return;
+    const audio = await synthesizeWholeForJoin(part, speedScale, myGenerationId);
+    if (!audio) return;
+    audios.push(audio);
+  }
+
+  if (myGenerationId !== generationId) return;
+
+  const joined = joinSynthesizedAudios(audios, 35);
+  if (!joined) return;
+
+  console.log('[TTS JOIN] ready', {
+    parts: audios.length,
+    samples: joined.samples.length,
+    durationSec: Math.round((joined.samples.length / joined.sampleRate) * 100) / 100,
+  });
+
+  await playSamples(joined, volume, myGenerationId);
+}
+
 export async function speakMatcha(
   text: string,
   options: MatchaSpeakOptions = {}
@@ -1561,6 +2178,10 @@ export async function speakMatcha(
 
   const myGenerationId =
     ++generationId;
+
+  activeSpeakStartedAt = performance.now();
+  activeSpeakGenerationId = myGenerationId;
+  activeFirstAudioLogged = false;
 
   if (isIOSDevice()) {
     unlockMatchaAudioForIOS();
@@ -1672,8 +2293,18 @@ export async function prefetchMatcha(
       : 1.0;
 
   try {
+    const prefetchStartedAt = performance.now();
+    const modelId = getSelectedMatchaModelId();
     const chunks =
       splitMatchaText(cleanText);
+
+    console.log("[TTS PREFETCH] Matcha start", {
+      modelId,
+      speedScale: Number(speedScale.toFixed(3)),
+      chunks: chunks.length,
+      textLength: cleanText.length,
+      textPreview: cleanText.slice(0, 42),
+    });
 
     // 短いアナウンスは全チャンク先読み。
     // スタメン発表などの長文は「最初に再生する1チャンク」だけを
@@ -1691,7 +2322,8 @@ export async function prefetchMatcha(
       const key =
         makeCacheKey(
           chunk,
-          speedScale
+          speedScale,
+          getSelectedMatchaModelId()
         );
 
       if (
@@ -1706,6 +2338,14 @@ export async function prefetchMatcha(
         null
       );
     }
+
+    console.log("[TTS PREFETCH] Matcha ready", {
+      modelId,
+      speedScale: Number(speedScale.toFixed(3)),
+      chunks: prefetchChunks.length,
+      totalMs: Math.round((performance.now() - prefetchStartedAt) * 10) / 10,
+      textPreview: cleanText.slice(0, 42),
+    });
   } catch (error) {
     console.warn(
       "[Matcha] prefetch failed:",
@@ -1718,17 +2358,28 @@ export async function prewarmMatcha(): Promise<void> {
   if (prewarmMatchaPromise) return prewarmMatchaPromise;
 
   prewarmMatchaPromise = (async () => {
-    // OpenJTalk準備とWorker内モデル読込を並行。
+    const modelId = getSelectedMatchaModelId();
+    const startedAt = performance.now();
+
+    console.log("[TTS PREWARM] start", { modelId });
+
+    // Phase 1高速化:
+    // OpenJTalk準備（メイン側）と、1スレッドWorker内のMatcha/Vocos Session作成を
+    // 同時に開始する。Worker内部のMatcha→Vocosは従来どおり直列のまま。
+    // 4スレッド化は行わない。
     await Promise.all([
       getOpenJTalkReady(),
-      initInferenceWorker(),
+      initInferenceWorker(modelId),
     ]);
 
-    // 初回推論もWorker内で済ませる。
-    const key = makeCacheKey("あ。", 1.0);
-    if (!synthesizedCache.has(key)) {
-      await synthesizeMatchaChunk("あ。", 1.0, null);
-    }
+    // ダミー「あ。」推論は行わない。
+    // 画面側prefetchTTS()で「実際に次に読む文章」を最優先で生成し、
+    // ダミー推論が実文の生成を塞ぐのを防ぐ。
+
+    console.log("[TTS PREWARM] ready", {
+      modelId,
+      totalMs: Math.round((performance.now() - startedAt) * 10) / 10,
+    });
   })().catch((error) => {
     prewarmMatchaPromise = null;
     throw error;
@@ -1737,18 +2388,7 @@ export async function prewarmMatcha(): Promise<void> {
   return prewarmMatchaPromise;
 }
 
-// Matchaが選択済みなら、画面の初回描画を邪魔しない範囲で
-// Workerとモデルの準備だけ早めに開始する。
-if (typeof window !== "undefined") {
-  window.setTimeout(() => {
-    try {
-      const engine = localStorage.getItem("tts:engine");
-      if (engine === "matcha" || engine === "piper") {
-        void prewarmMatcha().catch(() => {});
-      }
-    } catch {}
-  }, 0);
-}
+// 自動起動は tts.ts 側で、React初回描画後にバックグラウンド開始する。
 
 export function stopMatcha() {
   generationId++;
@@ -1789,8 +2429,37 @@ export function stopMatcha() {
   currentGain = null;
 }
 
+export function notifyMatchaVoiceChanged(): void {
+  // 音声切替後は選択した声を改めてバックグラウンド準備する。
+  // キャッシュキー自体にもmodelIdが含まれるが、メモリ使用量を抑えるため一度整理する。
+  clearMatchaAudioCache();
+  prewarmMatchaPromise = null;
+
+  void prewarmMatcha().catch((error) => {
+    console.warn("[TTS PREWARM] voice switch prewarm failed:", error);
+  });
+}
+
 export function clearMatchaAudioCache() {
   synthesizedCache.clear();
   synthesizedCacheOrder.length = 0;
   synthesisInFlight.clear();
+}
+
+// 学習モデルを差し替えた時など、保存済み音声も完全削除したい場合に使用。
+export async function clearPersistentMatchaAudioCache(): Promise<void> {
+  const db = await openPersistentCacheDb();
+  if (!db) return;
+
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(PERSISTENT_STORE, "readwrite");
+      tx.objectStore(PERSISTENT_STORE).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
 }
