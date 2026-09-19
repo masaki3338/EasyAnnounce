@@ -6,8 +6,8 @@ import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 const MATCHA_TANIHO_VALUE = "__easy_announce_matcha_taniho__";
 const MATCHA_UGUISU_VALUE = "__easy_announce_matcha_uguisu__";
 
-const MATCHA_TANIHO_LABEL = "AI音声（谷保さん）";
-const MATCHA_UGUISU_LABEL = "AI音声（ウグイス嬢）";
+const MATCHA_TANIHO_LABEL = "AI音声｜谷保恵美さん";
+const MATCHA_UGUISU_LABEL = "AI音声｜ウグイス嬢";
 
 const DEFAULT_TEST_TEXT =
   "ファウルボールの行方には十分ご注意ください";
@@ -239,7 +239,7 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             </div>
             {isMatchaVoice && (
               <p className="mt-2 text-xs text-white/60 leading-relaxed">
-                固定文言は選択中のAI音声用MP3を優先し、それ以外をMatchaで読み上げます。
+                ⚠️AI音声は、本人の音声ではありません。イメージをもとに制作したAI音声です。
               </p>
             )}
           </div>
