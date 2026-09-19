@@ -70,7 +70,7 @@ const historyData: HistoryItem[] = [
     ],
   },
   {
-    date: "2026.08.30",
+    date: "2026.09.24",
     version: "Version 1.05",
     details: ["読み上げ設定画面でAI音声の選択追加"],
   },
