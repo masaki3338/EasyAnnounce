@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
-import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import {
   deriveCurrentGameState,
   reenterPlayerToPosition,
@@ -91,6 +91,74 @@ text = text.replace(
   );
 
   return text;
+}
+
+// 守備交代モーダル専用：
+// 先読みと本番読み上げで必ず同じ完成文字列を使う。
+function buildDefenseAnnouncementSpeakText(html: string): string {
+  if (!html) return "";
+
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  let text = toReadable(temp);
+
+  text = text
+    .replace(/に入ります/g, "に、はいります")
+    .replace(/へ入ります/g, "へはいります")
+    .replace(/が\s*入り/g, "がはいり")
+    .replace(/へ\s*入り/g, "へはいり")
+    .replace(/に\s*入り/g, "にはいり")
+    .replace(/そのまま\s*入り/g, "そのまま、はいり")
+    .replace(/\u00A0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "。")
+    .replace(/。。+/g, "。")
+    .trim();
+
+  if (text && !/[。！？]$/.test(text)) text += "。";
+
+  return text;
+}
+
+// 読み上げ開始を速くするため、長い交代アナウンスを短いまとまりに分ける。
+// 文言は変えず、句点/読点の位置だけを境界として利用する。
+function splitDefenseAnnouncementSpeakParts(text: string): string[] {
+  const source = String(text ?? "").trim();
+  if (!source) return [];
+
+  const sentences =
+    source.match(/[^。！？]+[。！？]?/g)?.map((s) => s.trim()).filter(Boolean) ?? [source];
+
+  const result: string[] = [];
+
+  for (const sentence of sentences) {
+    if (sentence.length <= 42) {
+      result.push(sentence);
+      continue;
+    }
+
+    const clauses = sentence.match(/[^、]+、?/g)?.map((s) => s.trim()).filter(Boolean) ?? [sentence];
+    let current = "";
+
+    for (const clause of clauses) {
+      if (!current) {
+        current = clause;
+        continue;
+      }
+
+      if ((current + clause).length <= 42) {
+        current += clause;
+      } else {
+        result.push(current);
+        current = clause;
+      }
+    }
+
+    if (current) result.push(current);
+  }
+
+  return result.filter(Boolean);
 }
 
 
@@ -4557,6 +4625,7 @@ const preventRef = useRef<(e: Event) => void>();
 
   // === VOICEVOX 読み上げ制御用 ===
   const [speaking, setSpeaking] = useState(false);
+  const defenseAnnouncementPrefetchVersionRef = useRef(0);
 
   // 初回マウント時に VOICEVOX をウォームアップ
   useEffect(() => {
@@ -4597,39 +4666,38 @@ const speakVisibleAnnouncement = () => {
   const html = announcementText?.speakText || "";
   if (!html) return;
 
-  const temp = document.createElement("div");
-  temp.innerHTML = html;
+  const text = buildDefenseAnnouncementSpeakText(html);
+  if (!text) return;
 
-  let text = toReadable(temp);
+  const parts = splitDefenseAnnouncementSpeakParts(text);
+  if (!parts.length) return;
 
-  text = text
-    .replace(/に入ります/g, "に、はいります")
-    .replace(/へ入ります/g, "へはいります")
-    .replace(/が\s*入り/g, "がはいり")
-    .replace(/へ\s*入り/g, "へはいり")
-    .replace(/に\s*入り/g, "にはいり")
-    .replace(/そのまま\s*入り/g, "そのまま、はいり");
-
-  text = text
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "。")
-    .replace(/。。+/g, "。")
-    .trim();
-
-  if (text && !/[。！？]$/.test(text)) text += "。";
+  const speakOptions = {
+    progressive: true,
+    cache: true,
+    disableFixedBattingAndPositions: true,
+  } as const;
 
   ttsStop();
   setSpeaking(true);
+
   void (async () => {
     try {
-      await ttsSpeak(text, { progressive: true, cache: true });
+      // 先頭だけ先に再生する。
+      // 先読み中なら同じキャッシュキー/IN-FLIGHTをそのまま共有するため、
+      // 長文全体の準備完了を待たずに音声を開始できる。
+      await ttsSpeak(parts[0], speakOptions);
+
+      // 残りはPCM結合で連続再生。
+      // バックグラウンド先読み済みの部分はキャッシュHITする。
+      if (parts.length > 1) {
+        await speakJoinedTTS(parts.slice(1), speakOptions);
+      }
     } finally {
       setSpeaking(false);
     }
   })();
 };
-
 
 
 
@@ -6678,30 +6746,44 @@ useEffect(() => {
 
   if (!html) return;
 
-  const temp = document.createElement("div");
-  temp.innerHTML = html;
+  const text = buildDefenseAnnouncementSpeakText(html);
+  const parts = splitDefenseAnnouncementSpeakParts(text);
+  if (!parts.length) return;
 
-  let text = toReadable(temp)
-    .replace(/に入ります/g, "に、はいります")
-    .replace(/へ入ります/g, "へはいります")
-    .replace(/が\s*入り/g, "がはいり")
-    .replace(/へ\s*入り/g, "へはいり")
-    .replace(/に\s*入り/g, "にはいり")
-    .replace(/そのまま\s*入り/g, "そのまま、はいり")
-    .replace(/\u00A0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\s*\n\s*/g, "。")
-    .replace(/。。+/g, "。")
-    .trim();
+  const version = ++defenseAnnouncementPrefetchVersionRef.current;
 
-  if (text && !/[。！？]$/.test(text)) text += "。";
+  // 守備配置を触っている途中は少しだけdebounce。
+  // モーダルが開いた時は現在の完成文を即座に先読み開始する。
+  const delayMs = showSaveModal ? 0 : 180;
 
   const timer = window.setTimeout(() => {
-    void prefetchTTS(text);
-  }, 80);
+    void (async () => {
+      const options = {
+        disableFixedBattingAndPositions: true,
+      } as const;
 
-  return () => window.clearTimeout(timer);
-}, [announcementText]);
+      try {
+        // 最初に聞こえる部分を最優先。
+        await prefetchTTS(parts[0], options);
+
+        if (version !== defenseAnnouncementPrefetchVersionRef.current) return;
+
+        // 残りは1つずつ。途中で内容が変わったら古い文の続きは生成しない。
+        for (let i = 1; i < parts.length; i++) {
+          await prefetchTTS(parts[i], options);
+
+          if (version !== defenseAnnouncementPrefetchVersionRef.current) return;
+        }
+      } catch (error) {
+        console.warn("[TTS PREFETCH][DefenseChange] failed", error);
+      }
+    })();
+  }, delayMs);
+
+  return () => {
+    window.clearTimeout(timer);
+  };
+}, [announcementText, showSaveModal]);
 
 
 useEffect(() => {

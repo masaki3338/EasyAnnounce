@@ -485,15 +485,143 @@ clone.querySelectorAll("ruby").forEach((rb) => {
     return lines.join("\n");
   };
 
-  // スタメン発表文が画面に完成したら、専用Workerへ先読みを依頼する。
-  // 推論はWorker側で行うため、ここで画面操作をブロックしない。
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const text = getVisibleAnnounceText();
-      if (text) void prefetchTTS(text);
-    }, 80);
+  // 画面表示用テキストから、実際にTTSへ渡す文章を1か所で作る。
+  // 重要: 先読みと本番読み上げで完全に同じ文字列を使い、
+  // Matchaのキャッシュキーを一致させる。
+  const buildSpeakText = (source: string): string =>
+    String(source ?? "")
+      // 「先攻/後攻 チーム名」の直後で一度文を閉じる。
+      // 例:
+      // 「先攻、東京武蔵ポニー。\n1番、ショート…」
+      // として、チーム名の直後から1番へ詰めて読まないようにする。
+      // 表示文は変更せず、読み上げだけ自然な間を入れる。
+      .replace(
+        /(^|\n)((?:先攻|続きまして、?\s*後攻|対しまして、?\s*後攻)[^\n]*)\n(?=\s*1番)/g,
+        "$1$2。\n"
+      )
 
-    return () => window.clearTimeout(timer);
+      // 「1番ショート」→「1番、ショート」
+      .replace(/([0-9]+)番\s*/g, "$1番、")
+
+      // 守備位置の直後だけ区切る
+      .replace(
+        /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
+        "$1、"
+      )
+
+      // 「先攻 チーム名」は従来どおり少し区切る。
+      // 「続きまして、後攻 チーム名」は「後攻」の後に読点を入れない。
+      // 「続きまして、」の自然な間だけを残し、後攻→チーム名を詰めて読む。
+      .replace(/(先攻|後攻)\s+/g, "$1、")
+      .replace(/続きまして、\s*後攻、/g, "続きまして、後攻 ")
+
+      // 「苗字くん 背番号1」→「苗字くん、背番号1」
+      .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
+
+      // 単独の 0 は「れい」ではなく「ゼロ」
+      .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
+
+      // 句読点の重複を軽く整理
+      .replace(/、、+/g, "、")
+      .trim();
+
+  // Matcha側の「最初の短句を先に作る」ルールと同じ条件で、
+  // 読み上げ開始に必要な最初の1チャンクだけを抽出する。
+  // ここを最優先でキャッシュすることで、長いスタメン全文の生成完了を待たずに
+  // 読み上げを開始できるようにする。
+  const getPriorityFirstPhrase = (source: string): string => {
+    const s = String(source ?? "").trim();
+    const minFirst = 8;
+    const maxFirst = 24;
+
+    if (!s) return "";
+    if (s.length <= maxFirst) return s;
+
+    for (let i = minFirst - 1; i < Math.min(s.length, maxFirst); i++) {
+      if (/[、。！？!?]/.test(s[i])) {
+        return s.slice(0, i + 1).trim();
+      }
+    }
+
+    return "";
+  };
+
+  const getFirstAnnouncementLine = (source: string): string =>
+    String(source ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) || "";
+
+  // 同じ完成文を何度も先読みしない。
+  const lastPrefetchedSpeakTextRef = useRef("");
+  const prefetchGenerationRef = useRef(0);
+
+  // スタメン発表は全文が長いため、先読み順を3段階にする。
+  //
+  // 1) 最初の短句   … 最優先。読み上げ開始を速くする
+  // 2) 冒頭1行     … 最初の文章中で待ち時間が出にくくする
+  // 3) 残り全文     … その後バックグラウンドでキャッシュする
+  //
+  // 全文を最初から順番に生成していた時のように、
+  // 「長い先読み処理の途中なのでボタンを押しても最初の音がまだ無い」
+  // という状態をできるだけ避ける。
+  useEffect(() => {
+    if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
+
+    const generation = ++prefetchGenerationRef.current;
+
+    // 最初の短句は描画直後に最優先で開始。
+    const priorityTimer = window.setTimeout(() => {
+      const visibleText = getVisibleAnnounceText();
+      const speakText = buildSpeakText(visibleText);
+      if (!speakText || speakText === lastPrefetchedSpeakTextRef.current) return;
+
+      lastPrefetchedSpeakTextRef.current = speakText;
+
+      const firstPhrase = getPriorityFirstPhrase(speakText);
+      const firstLine = getFirstAnnouncementLine(speakText);
+
+      void (async () => {
+        if (firstPhrase) {
+          console.log("[TTS PREFETCH][StartingLineup] first phrase start", {
+            text: firstPhrase,
+          });
+          await prefetchTTS(firstPhrase);
+          if (generation !== prefetchGenerationRef.current) return;
+          console.log("[TTS PREFETCH][StartingLineup] first phrase ready", {
+            text: firstPhrase,
+          });
+        }
+
+        // 最初の1行も先に完成させる。
+        if (firstLine && firstLine !== firstPhrase) {
+          console.log("[TTS PREFETCH][StartingLineup] first line start", {
+            textLength: firstLine.length,
+            preview: firstLine.slice(0, 60),
+          });
+          await prefetchTTS(firstLine);
+          if (generation !== prefetchGenerationRef.current) return;
+          console.log("[TTS PREFETCH][StartingLineup] first line ready", {
+            textLength: firstLine.length,
+          });
+        }
+
+        // 先頭が使えるようになった後で、残り全文をバックグラウンド先読み。
+        console.log("[TTS PREFETCH][StartingLineup] full start", {
+          textLength: speakText.length,
+        });
+        void prefetchTTS(speakText).then(() => {
+          if (generation !== prefetchGenerationRef.current) return;
+          console.log("[TTS PREFETCH][StartingLineup] full ready", {
+            textLength: speakText.length,
+          });
+        });
+      })();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(priorityTimer);
+    };
   }, [
     teamPlayers,
     assignments,
@@ -517,37 +645,22 @@ clone.querySelectorAll("ruby").forEach((rb) => {
   /* === 読み上げ操作 === */
 const handleSpeak = () => {
   if (isSpeakingRef.current) return;
-  isSpeakingRef.current = true;
-  handleStop(); // 念のため直前に全停止
 
-  let text = getVisibleAnnounceText();
+  // 念のため直前に全停止してから、新しい読み上げを開始する。
+  handleStop();
+  isSpeakingRef.current = true;
+
+  const visibleText = getVisibleAnnounceText();
+  const text = buildSpeakText(visibleText);
   if (!text) {
     isSpeakingRef.current = false;
     return;
   }
 
-  // 読み上げだけ最小限の区切りを入れる
-  text = text
-    // 「1番ショート」→「1番、ショート」
-    .replace(/([0-9]+)番\s*/g, "$1番、")
-
-    // 守備位置の直後だけ区切る
-    .replace(
-      /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
-      "$1、"
-    )
-    
-    // 「先攻 チーム名」「後攻 チーム名」を少し空けて読む
-    .replace(/(先攻|後攻)\s+/g, "$1、")
-
-    // 「苗字くん 背番号1」→「苗字くん、背番号1」
-    .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
-
-    // 単独の 0 は「れい」ではなく「ゼロ」
-    .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
-
-    // 句読点の重複を軽く整理
-    .replace(/、、+/g, "、");
+  console.log("[TTS CACHE][StartingLineup] play exact text", {
+    prefetched: text === lastPrefetchedSpeakTextRef.current,
+    textLength: text.length,
+  });
 
   setSpeaking(true);
   void ttsSpeak(text).finally(() => {
@@ -555,6 +668,7 @@ const handleSpeak = () => {
     isSpeakingRef.current = false;
   });
 };
+
 
   const handleStop = () => {
    ttsStop();                 // ← sessionCounter が進むので連鎖が止まる

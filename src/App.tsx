@@ -10,7 +10,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { useKeepScreenAwake } from "./hooks/useKeepScreenAwake";
 
-import { speak, stop, prefetchTTS, prewarmTTS } from "./lib/tts";
+import { speak, speakJoinedTTS, stop, prefetchTTS, prewarmTTS } from "./lib/tts";
 
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
@@ -236,6 +236,46 @@ const App = () => {
 
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");       // 表示用
   const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState(""); // 読み上げ用
+
+  // ✅ 試合終了時刻：
+  // 「〇時〇分です」を1本で生成するとイントネーションが不自然になりやすいため、
+  // 読み上げ時だけ「〇時」＋「〇分です」に分けてPCM結合する。
+  // 表示文そのものは変更しない。
+  const buildEndGameAnnouncementParts = (value?: string | null): string[] => {
+    const source = String(value ?? "").trim();
+    if (!source) return [];
+
+    const match = source.match(
+      /(終了時刻は\s*)(\d{1,2})時\s*(\d{1,2})分/
+    );
+
+    if (!match || match.index == null) {
+      return [source];
+    }
+
+    const beforeIndex = match.index;
+    const afterIndex = beforeIndex + match[0].length;
+
+    const hour = String(parseInt(match[2], 10));
+    const minute = String(parseInt(match[3], 10));
+
+    const before =
+      source.slice(0, beforeIndex) +
+      `${match[1]}${hour}時`;
+
+    const after =
+      `${minute}分` +
+      source.slice(afterIndex);
+
+    return [before.trim(), after.trim()].filter(Boolean);
+  };
+
+  const prefetchEndGameAnnouncement = async (value?: string | null) => {
+    const parts = buildEndGameAnnouncementParts(value);
+    for (const part of parts) {
+      await prefetchTTS(part);
+    }
+  };
   const [showEndGameSimpleModal, setShowEndGameSimpleModal] = useState(false);
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   // 🔒 熱中症アナウンス 連打ロック
@@ -664,6 +704,7 @@ const getOtherOptions = () =>
   leagueMode === "boys" ? boysOtherOptions : ponyOtherOptions;
 
 // 試合終了アナウンスはポップアップ表示時点で先読みする。
+// 終了時刻は「〇時」＋「〇分です」に分け、本番と同じ単位で先読みする。
 useEffect(() => {
   if (!showEndGamePopup) return;
 
@@ -673,7 +714,9 @@ useEffect(() => {
   if (!text) return;
 
   const timer = window.setTimeout(() => {
-    void prefetchTTS(text);
+    void prefetchEndGameAnnouncement(text).catch((error) => {
+      console.warn("[TTS PREFETCH][EndGame] failed", error);
+    });
   }, 40);
 
   return () => window.clearTimeout(timer);
@@ -2969,7 +3012,19 @@ return (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(endGameAnnouncementSpeak || endGameAnnouncement);
+                  const text =
+                    (endGameAnnouncementSpeak || endGameAnnouncement || "").trim();
+                  if (!text) return;
+
+                  const parts = buildEndGameAnnouncementParts(text);
+
+                  if (parts.length <= 1) {
+                    await speak(parts[0] || text);
+                  } else {
+                    // 「〇時」→「〇分です」の境目だけ、
+                    // speakJoinedTTS の短い接続間隔で自然につなぐ。
+                    await speakJoinedTTS(parts);
+                  }
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
