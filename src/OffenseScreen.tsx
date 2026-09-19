@@ -111,6 +111,10 @@ function htmlToTtsText(html: string): string {
     "$1、"
   );
 
+  // 背番号の直後に短い間を入れる（表示文言は変更しない）
+  // 例: 「背番号12」→ 読み上げ時だけ「背番号、12」
+  text = text.replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1");
+
 
 
   // ✅ 「4番」→「よばん」（14番/40番などは変更しない）
@@ -3222,7 +3226,7 @@ const buildBatterVoiceBodyText = (
     body =
       `${orderNo}番、${posName ? `${posName}、` : ""}${fullKana}${honorific}、` +
       `${posName ? `${posName}、` : ""}${lastOrFullKana}${honorific}` +
-      (number ? `、背番号${number}。` : "。");
+      (number ? `、背番号、${number}。` : "。");
   } else if (isBoys) {
     // ボーイズ2周り目：既存仕様どおり背番号なし
     body =
@@ -3231,7 +3235,7 @@ const buildBatterVoiceBodyText = (
     // ポニー2周り目：苗字 + 背番号
     body =
       `${orderNo}番、${posName ? `${posName}、` : ""}${lastOrFullKana}${honorific}` +
-      (number ? `、背番号${number}。` : "。");
+      (number ? `、背番号、${number}。` : "。");
   }
 
   return normalizeJapaneseTime(body);

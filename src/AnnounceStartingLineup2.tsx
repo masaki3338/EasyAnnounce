@@ -490,16 +490,6 @@ clone.querySelectorAll("ruby").forEach((rb) => {
   // Matchaのキャッシュキーを一致させる。
   const buildSpeakText = (source: string): string =>
     String(source ?? "")
-      // 「先攻/後攻 チーム名」の直後で一度文を閉じる。
-      // 例:
-      // 「先攻、東京武蔵ポニー。\n1番、ショート…」
-      // として、チーム名の直後から1番へ詰めて読まないようにする。
-      // 表示文は変更せず、読み上げだけ自然な間を入れる。
-      .replace(
-        /(^|\n)((?:先攻|続きまして、?\s*後攻|対しまして、?\s*後攻)[^\n]*)\n(?=\s*1番)/g,
-        "$1$2。\n"
-      )
-
       // 「1番ショート」→「1番、ショート」
       .replace(/([0-9]+)番\s*/g, "$1番、")
 
@@ -509,18 +499,11 @@ clone.querySelectorAll("ruby").forEach((rb) => {
         "$1、"
       )
 
-      // 「先攻 チーム名」は従来どおり少し区切る。
-      // 「続きまして、後攻 チーム名」は「後攻」の後に読点を入れない。
-      // 「続きまして、」の自然な間だけを残し、後攻→チーム名を詰めて読む。
+      // 「先攻 チーム名」「後攻 チーム名」を少し空けて読む
       .replace(/(先攻|後攻)\s+/g, "$1、")
-      .replace(/続きまして、\s*後攻、/g, "続きまして、後攻 ")
 
       // 「苗字くん 背番号1」→「苗字くん、背番号1」
       .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
-
-      // 背番号の直後に短い間を入れる（画面表示は変更しない）
-      // 例: 「背番号12」→ 読み上げ時だけ「背番号、12」
-      .replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1")
 
       // 単独の 0 は「れい」ではなく「ゼロ」
       .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
@@ -529,103 +512,35 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       .replace(/、、+/g, "、")
       .trim();
 
-  // Matcha側の「最初の短句を先に作る」ルールと同じ条件で、
-  // 読み上げ開始に必要な最初の1チャンクだけを抽出する。
-  // ここを最優先でキャッシュすることで、長いスタメン全文の生成完了を待たずに
-  // 読み上げを開始できるようにする。
-  const getPriorityFirstPhrase = (source: string): string => {
-    const s = String(source ?? "").trim();
-    const minFirst = 8;
-    const maxFirst = 24;
-
-    if (!s) return "";
-    if (s.length <= maxFirst) return s;
-
-    for (let i = minFirst - 1; i < Math.min(s.length, maxFirst); i++) {
-      if (/[、。！？!?]/.test(s[i])) {
-        return s.slice(0, i + 1).trim();
-      }
-    }
-
-    return "";
-  };
-
-  const getFirstAnnouncementLine = (source: string): string =>
-    String(source ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .find(Boolean) || "";
-
   // 同じ完成文を何度も先読みしない。
   const lastPrefetchedSpeakTextRef = useRef("");
-  const prefetchGenerationRef = useRef(0);
 
-  // スタメン発表は全文が長いため、先読み順を3段階にする。
-  //
-  // 1) 最初の短句   … 最優先。読み上げ開始を速くする
-  // 2) 冒頭1行     … 最初の文章中で待ち時間が出にくくする
-  // 3) 残り全文     … その後バックグラウンドでキャッシュする
-  //
-  // 全文を最初から順番に生成していた時のように、
-  // 「長い先読み処理の途中なのでボタンを押しても最初の音がまだ無い」
-  // という状態をできるだけ避ける。
+  // スタメン発表文が画面に完成したら、実際に読み上げる文章そのものを先読みする。
+  // 従来は「画面の生テキスト」を先読みし、ボタン押下時だけ読点を追加していたため、
+  // キャッシュキーが一致せず、押してから再生成されることがあった。
   useEffect(() => {
+    // 最低限のスタメン情報が揃う前の中途半端な文章は先読みしない。
     if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
 
-    const generation = ++prefetchGenerationRef.current;
-
-    // 最初の短句は描画直後に最優先で開始。
-    const priorityTimer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       const visibleText = getVisibleAnnounceText();
       const speakText = buildSpeakText(visibleText);
       if (!speakText || speakText === lastPrefetchedSpeakTextRef.current) return;
 
       lastPrefetchedSpeakTextRef.current = speakText;
+      console.log("[TTS PREFETCH][StartingLineup] exact start", {
+        textLength: speakText.length,
+        preview: speakText.replace(/\s+/g, " ").slice(0, 60),
+      });
 
-      const firstPhrase = getPriorityFirstPhrase(speakText);
-      const firstLine = getFirstAnnouncementLine(speakText);
-
-      void (async () => {
-        if (firstPhrase) {
-          console.log("[TTS PREFETCH][StartingLineup] first phrase start", {
-            text: firstPhrase,
-          });
-          await prefetchTTS(firstPhrase);
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] first phrase ready", {
-            text: firstPhrase,
-          });
-        }
-
-        // 最初の1行も先に完成させる。
-        if (firstLine && firstLine !== firstPhrase) {
-          console.log("[TTS PREFETCH][StartingLineup] first line start", {
-            textLength: firstLine.length,
-            preview: firstLine.slice(0, 60),
-          });
-          await prefetchTTS(firstLine);
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] first line ready", {
-            textLength: firstLine.length,
-          });
-        }
-
-        // 先頭が使えるようになった後で、残り全文をバックグラウンド先読み。
-        console.log("[TTS PREFETCH][StartingLineup] full start", {
+      void prefetchTTS(speakText).then(() => {
+        console.log("[TTS PREFETCH][StartingLineup] exact ready", {
           textLength: speakText.length,
         });
-        void prefetchTTS(speakText).then(() => {
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] full ready", {
-            textLength: speakText.length,
-          });
-        });
-      })();
+      });
     }, 0);
 
-    return () => {
-      window.clearTimeout(priorityTimer);
-    };
+    return () => window.clearTimeout(timer);
   }, [
     teamPlayers,
     assignments,

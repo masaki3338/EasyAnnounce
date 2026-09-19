@@ -43,7 +43,9 @@ function toReadable(root: HTMLElement): string {
     const reading = rt
       ? preserveNameReading(rt.textContent || "")
       : (ruby.textContent || "");
-    ruby.replaceWith(reading + (nextIsRuby ? "、" : ""));
+    // 苗字と名前が連続する場合は、読点ほど長く空けず
+    // 半角スペース1個だけ入れて短い間を残す。
+    ruby.replaceWith(reading + (nextIsRuby ? " " : ""));
   });
 
   // テキスト化
@@ -110,6 +112,9 @@ function buildDefenseAnnouncementSpeakText(html: string): string {
     .replace(/へ\s*入り/g, "へはいり")
     .replace(/に\s*入り/g, "にはいり")
     .replace(/そのまま\s*入り/g, "そのまま、はいり")
+    // 「○番に○○くん」→ 読み上げ時だけ「○番に、○○くん」
+    // 「○番に」の後へ短い間を入れる。画面表示は変更しない。
+    .replace(/([1-9１-９])番に\s*/g, "$1番に、")
     .replace(/\u00A0/g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\s*\n\s*/g, "。")
@@ -4675,7 +4680,7 @@ const speakVisibleAnnouncement = () => {
   const speakOptions = {
     progressive: true,
     cache: true,
-    disableFixedBattingAndPositions: true,
+    defenseContextAwareFixed: true,
   } as const;
 
   ttsStop();
@@ -6576,11 +6581,26 @@ const baseSpeakText = generateAnnouncementText(
   dhDisableSnapshot
 );
 
-const displayText = [baseDisplayText, pitcherCountAnnouncement]
+// 守備交代アナウンス共通整形：
+// 「（守備位置）へ、」は「へ」を省き、「（守備位置）、」にする。
+// 表示用・読み上げ用の両方へ同じ変換をかける。
+const removeHeBeforeCommaAfterPosition = (value: string): string =>
+  String(value ?? "").replace(
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)へ\s*、/g,
+    "$1、"
+  );
+
+const normalizedBaseDisplayText =
+  removeHeBeforeCommaAfterPosition(baseDisplayText);
+
+const normalizedBaseSpeakText =
+  removeHeBeforeCommaAfterPosition(baseSpeakText);
+
+const displayText = [normalizedBaseDisplayText, pitcherCountAnnouncement]
   .filter(Boolean)
   .join("<br />");
 
-const speakText = [baseSpeakText, pitcherCountAnnouncement]
+const speakText = [normalizedBaseSpeakText, pitcherCountAnnouncement]
   .filter(Boolean)
   .join(" ");
 
@@ -6759,7 +6779,7 @@ useEffect(() => {
   const timer = window.setTimeout(() => {
     void (async () => {
       const options = {
-        disableFixedBattingAndPositions: true,
+        defenseContextAwareFixed: true,
       } as const;
 
       try {
