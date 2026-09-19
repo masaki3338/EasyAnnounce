@@ -990,7 +990,7 @@ const formatKanaForReEntryAnnounce = (p: any) => {
   const ln = preserveNameReading((p.lastNameKana || p.lastName || "").toString());
   const fn = preserveNameReading((p.firstNameKana || p.firstName || "").toString());
   if (!hasAnyDupLastName) return ln;
-  return fn ? `${ln}、${fn}` : ln;
+  return fn ? `${ln} ${fn}` : ln;
 };
 
 
@@ -2998,14 +2998,14 @@ const buildRunnerModalSpeakText = (): string => {
     const honorSub = sub.isFemale ? "さん" : "くん";
 
     const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
-      ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}、${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
+      ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))} ${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
       : `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}`;
 
     const toKanaFull =
-      `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
+      `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
 
     const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
-      ? `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`
+      ? `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`
       : `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}`;
 
     const num = String(sub.number ?? "").trim();
@@ -3067,14 +3067,14 @@ const buildPinchModalSpeakText = (): string => {
   const honorSub = sub.isFemale ? "さん" : "くん";
 
   const fromKana = dupLastNames.has(String(replaced.lastName ?? "").trim())
-    ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}、${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
+    ? `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))} ${preserveNameReading(String(replaced.firstNameKana ?? replaced.firstName ?? ""))}`
     : `${preserveNameReading(String(replaced.lastNameKana ?? replaced.lastName ?? ""))}`;
 
   const toKanaFull =
-    `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
+    `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`;
 
   const toKanaLast = dupLastNames.has(String(sub.lastName ?? "").trim())
-    ? `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}、${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`
+    ? `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))} ${preserveNameReading(String(sub.firstNameKana ?? sub.firstName ?? ""))}`
     : `${preserveNameReading(String(sub.lastNameKana ?? sub.lastName ?? ""))}`;
 
   const num = (sub.number ?? "").trim();
@@ -5158,9 +5158,13 @@ useEffect(() => {
         };
 
           const kanaForReEntry = (p: any) => {
-            const ln = String(p?.lastNameKana ?? p?.lastName ?? "").trim();
-            const fn = String(p?.firstNameKana ?? p?.firstName ?? "").trim();
-            return isDupLastName(p) ? `${ln}${fn}` : ln; // 同姓対象だけフル
+            const ln = preserveNameReading(
+              String(p?.lastNameKana ?? p?.lastName ?? "").trim()
+            );
+            const fn = preserveNameReading(
+              String(p?.firstNameKana ?? p?.firstName ?? "").trim()
+            );
+            return isDupLastName(p) && fn ? `${ln} ${fn}` : ln; // 同姓対象だけフル
           };
 
           if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return;

@@ -5302,28 +5302,29 @@ const restoreSnapshot = async (s: DefenseSnapshot) => {
 };
 
 const normalizeIdList = (raw: unknown): number[] => {
-  if (!Array.isArray(raw)) return [];
+  // 保存時期によって number[] / string[] / Set / { ids: [] } の形があるため吸収する。
+  const source =
+    Array.isArray(raw)
+      ? raw
+      : raw instanceof Set
+        ? Array.from(raw)
+        : raw && typeof raw === "object" && Array.isArray((raw as any).ids)
+          ? (raw as any).ids
+          : [];
 
   return Array.from(
     new Set(
-      raw
+      source
         .map((v) => Number(v))
         .filter(Number.isFinite)
     )
   );
 };
 
-const getCurrentDefenseTeamId = async () => {
+const getCurrentDefenseTeamIds = async (): Promise<string[]> => {
   const team = await localForage.getItem<any>("team");
   const matchInfo = await localForage.getItem<any>("matchInfo");
   const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
-
-  const normalTeamId =
-    team?.id ||
-    team?.teamId ||
-    team?.team?.id ||
-    team?.originalTeamId ||
-    null;
 
   // 1人用モードでは localForage の "team" が自チーム固定になることがあるため、
   // 守備交代対象のベンチ側からチームIDを補完して、ベンチ外選手を正しく除外する。
@@ -5333,29 +5334,85 @@ const getCurrentDefenseTeamId = async () => {
     onePersonCtx?.benchSide ||
     null;
 
-  const onePersonTeamId =
+  const sideTeam =
     defenseSide === "first" || defenseSide === "1塁側"
-      ? matchInfo?.firstBaseTeamId
+      ? matchInfo?.firstBaseTeam ?? matchInfo?.firstTeam ?? null
       : defenseSide === "third" || defenseSide === "3塁側"
-        ? matchInfo?.thirdBaseTeamId
+        ? matchInfo?.thirdBaseTeam ?? matchInfo?.thirdTeam ?? null
         : null;
 
-  return onePersonTeamId || normalTeamId;
+  const sideTeamId =
+    defenseSide === "first" || defenseSide === "1塁側"
+      ? matchInfo?.firstBaseTeamId ?? matchInfo?.firstTeamId
+      : defenseSide === "third" || defenseSide === "3塁側"
+        ? matchInfo?.thirdBaseTeamId ?? matchInfo?.thirdTeamId
+        : null;
+
+  // 画面の世代ごとに保存されているIDの場所が異なるため、候補をすべて拾う。
+  const candidates = [
+    sideTeamId,
+    sideTeam?.id,
+    sideTeam?.teamId,
+    onePersonCtx?.teamId,
+    onePersonCtx?.defenseTeamId,
+    onePersonCtx?.targetTeamId,
+    team?.id,
+    team?.teamId,
+    team?.team?.id,
+    team?.originalTeamId,
+  ];
+
+  return Array.from(
+    new Set(
+      candidates
+        .filter((id) => id !== null && id !== undefined && String(id).trim() !== "")
+        .map((id) => String(id))
+    )
+  );
 };
 
 const loadCurrentDefenseBenchOutIds = async () => {
-  const teamId = await getCurrentDefenseTeamId();
+  const teamIds = await getCurrentDefenseTeamIds();
+  const onePersonCtx = await localForage.getItem<any>("onePersonDefenseChangeContext");
+  const side =
+    onePersonCtx?.defenseSide === "first" || onePersonCtx?.defenseSide === "third"
+      ? onePersonCtx.defenseSide
+      : onePersonCtx?.targetSide === "first" || onePersonCtx?.targetSide === "third"
+        ? onePersonCtx.targetSide
+        : null;
 
-  const rawByTeam = teamId
-    ? await localForage.getItem<number[]>(`startingBenchOutIds_${teamId}`)
-    : null;
+  // 現行・旧版の保存キーを順に確認する。
+  const keys = [
+    ...(side
+      ? [
+          `onePerson.${side}.startingBenchOutIds`,
+          `onePerson.${side}.benchOutIds`,
+          `startingBenchOutIds_${side}`,
+        ]
+      : []),
+    ...teamIds.flatMap((teamId) => [
+      `startingBenchOutIds_${teamId}`,
+      `benchOutIds_${teamId}`,
+    ]),
+  ];
+
+  for (const key of keys) {
+    const ids = normalizeIdList(await localForage.getItem(key));
+    if (ids.length > 0) return ids;
+  }
+
+  // StartingLineup.tsx が実際に保存している共通キー。
+  // 通常モードではこの値が「出場しない選手」の正式な一覧になる。
+  const startingBenchOutIds = normalizeIdList(
+    await localForage.getItem("startingBenchOutIds")
+  );
+  if (startingBenchOutIds.length > 0) return startingBenchOutIds;
 
   // OnePersonAnnounceScreen 側から守備交代画面を開く直前に保存する保険キー。
   // チームID解決に失敗しても、対象チームのベンチ外選手を除外できるようにする。
-  const rawFallback = await localForage.getItem<number[]>("defenseChangeBenchOutIds");
+  const rawFallback = await localForage.getItem("defenseChangeBenchOutIds");
 
-  const byTeam = normalizeIdList(rawByTeam);
-  return byTeam.length > 0 ? byTeam : normalizeIdList(rawFallback);
+  return normalizeIdList(rawFallback);
 };
 
 // 新しい操作の前に履歴へ積む（永続化対応）
@@ -6859,7 +6916,8 @@ useEffect(() => {
         if (!Number.isFinite(id)) return false;
         if (assignedIdsNow.includes(id)) return false;
 
-        return !benchOutIds.includes(id) || forcedReturnedUsedBenchIds.has(id);
+        // 「出場しない選手」は、補正対象になっていても絶対に表示しない。
+        return !benchOutIds.includes(id);
       })
     );
   })();

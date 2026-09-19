@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./App";
-import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 
 /* === ミニSVGアイコン（依存なし） === */
 const IconBack = () => (
@@ -380,12 +380,19 @@ setGameNumber(String(mi.matchNumber || ""));
   const renderFullName = (p: Player) => (<>{renderFurigana(p.lastName, p.lastNameKana)}{renderFurigana(p.firstName, p.firstNameKana)}</>);
   const renderLastName = (p: Player) => renderFurigana(p.lastName, p.lastNameKana);
   const getSpokenFullName = (p: Player) => {
-    const last = (p.lastNameKana || p.lastName || "").trim();
-    const first = (p.firstNameKana || p.firstName || "").trim();
-    return `${last}${first}${getHonorific(p)}`;
+    const last = preserveNameReading(
+      (p.lastNameKana || p.lastName || "").trim()
+    );
+    const first = preserveNameReading(
+      (p.firstNameKana || p.firstName || "").trim()
+    );
+    const full = first ? `${last} ${first}` : last;
+    return `${full}${getHonorific(p)}`;
   };
   const getSpokenLastName = (p: Player) => {
-    const last = (p.lastNameKana || p.lastName || "").trim();
+    const last = preserveNameReading(
+      (p.lastNameKana || p.lastName || "").trim()
+    );
     return `${last}${getHonorific(p)}`;
   };
 
@@ -470,9 +477,12 @@ clone.querySelectorAll("ruby").forEach((rb) => {
 
   // 次も ruby なら「苗字 + 名前」の可能性が高いので、
   // 読み上げ用にだけ少し区切る
+  const spoken = kana
+    ? preserveNameReading(kana)
+    : fallback;
+
   const textNode = document.createTextNode(
-    //(kana || fallback) + (nextIsRuby ? "　" : "")
-    (kana || fallback) + (nextIsRuby ? "、" : "")
+    spoken + (nextIsRuby ? " " : "")
   );
 
   rb.replaceWith(textNode);
