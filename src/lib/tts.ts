@@ -26,10 +26,20 @@ type SpeakOptions = {
   pitch?: number;
   volume?: number;
 
-  // 守備交代画面専用：
-  // 打順(0001～0009)・守備位置(0010～0019)の固定MP3だけ使わず、
-  // その部分はMatcha生成音声で読む。他の固定MP3は従来通り使用する。
+  // 旧互換：
+  // 打順(0001～0009)・守備位置(0010～0019)をまとめて固定MP3除外。
   disableFixedBattingAndPositions?: boolean;
+
+  // 守備交代画面用（旧設定）：
+  // 守備位置(0010～0019)だけ固定MP3を使わず、Matcha生成音声で読む。
+  disableFixedPositions?: boolean;
+
+  // 守備交代画面用（推奨）：
+  // 前後の文脈を見て、打順/守備位置の固定MP3を使い分ける。
+  // ・守備位置の直後が「の」「に」「へ」→ 固定MP3を使わない
+  // ・打順の直後が「に」→ 固定MP3を使わない
+  // ・それ以外 → 固定MP3を使う
+  defenseContextAwareFixed?: boolean;
 };
 
 let sessionCounter = 0;
@@ -89,6 +99,7 @@ const FIXED_AUDIO_ENTRIES: ReadonlyArray<FixedAudioEntry> = [
   { text: "選手の交代をお知らせいたします", files: ["0383"] },
   { text: "シートの変更をお知らせいたします", files: ["0384"] },
   { text: "選手の交代並びにシートの変更をお知らせいたします", files: ["0385"] },  
+  { text: "以上に代わります", files: ["427"] },
 
   // 次の試合アナウンス
   { text: "本日の第一試合、両チームのメンバー交換を行います。", files: ["440"] },
@@ -328,12 +339,54 @@ type HybridSegment =
   | { type: "tts"; text: string }
   | { type: "fixed"; text: string; files: string[] };
 
-// 守備交代画面では打順(0001～0009)と守備位置(0010～0019)だけ固定MP3を除外する。
+// 打順(0001～0009) + 守備位置(0010～0019)
 function isBattingOrPositionFixedEntry(entry: FixedAudioEntry): boolean {
   return entry.files.some((baseName) => {
     const n = Number(baseName);
     return Number.isFinite(n) && n >= 1 && n <= 19;
   });
+}
+
+// 守備位置(0010～0019)だけ
+function isPositionFixedEntry(entry: FixedAudioEntry): boolean {
+  return entry.files.some((baseName) => {
+    const n = Number(baseName);
+    return Number.isFinite(n) && n >= 10 && n <= 19;
+  });
+}
+
+function isBattingFixedEntry(entry: FixedAudioEntry): boolean {
+  return entry.files.some((baseName) => {
+    const n = Number(baseName);
+    return Number.isFinite(n) && n >= 1 && n <= 9;
+  });
+}
+
+// 守備交代モーダル専用。
+// 固定文言の直後の「空白等を除いた次の1文字」を見て、
+// 打順/守備位置を固定MP3にするか判定する。
+function shouldSkipDefenseContextFixed(
+  entry: FixedAudioEntry,
+  compactSourceText: string,
+  compactMatchStart: number,
+  compactMatchLength: number
+): boolean {
+  const nextChar =
+    compactSourceText.charAt(compactMatchStart + compactMatchLength) || "";
+
+  // 1番～9番 + 「に」
+  // 例: 「9番に○○くんが入り」→ 「9番に」を一続きでMatcha生成
+  if (isBattingFixedEntry(entry) && nextChar === "に") {
+    return true;
+  }
+
+  // 守備位置 + 「の」「に」「へ」
+  // 例: 「ピッチャーの○○くん」「センターに入ります」「ライトへ」
+  if (isPositionFixedEntry(entry) && /[のにへ]/.test(nextChar)) {
+    return true;
+  }
+
+  return false;
 }
 
 // 固定文言の照合では、改行・半角/全角空白・ゼロ幅文字を無視する。
@@ -360,7 +413,12 @@ function compactFixedMatchText(value: string): {
 
 function splitByFixedAudio(
   originalText: string,
-  options: Pick<SpeakOptions, "disableFixedBattingAndPositions"> = {}
+  options: Pick<
+    SpeakOptions,
+    | "disableFixedBattingAndPositions"
+    | "disableFixedPositions"
+    | "defenseContextAwareFixed"
+  > = {}
 ): HybridSegment[] {
   const source = String(originalText ?? "");
   const result: HybridSegment[] = [];
@@ -391,6 +449,13 @@ function splitByFixedAudio(
         continue;
       }
 
+      if (
+        options.disableFixedPositions &&
+        isPositionFixedEntry(entry)
+      ) {
+        continue;
+      }
+
       const compactEntry = compactFixedMatchText(entry.text).text;
       if (!compactEntry) continue;
 
@@ -400,6 +465,18 @@ function splitByFixedAudio(
       );
 
       if (compactIndex < 0) continue;
+
+      if (
+        options.defenseContextAwareFixed &&
+        shouldSkipDefenseContextFixed(
+          entry,
+          compactSource.text,
+          compactIndex,
+          compactEntry.length
+        )
+      ) {
+        continue;
+      }
 
       const compactEndIndex = compactIndex + compactEntry.length - 1;
       const originalStart = compactSource.originalIndexes[compactIndex];
