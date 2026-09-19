@@ -25,6 +25,11 @@ type SpeakOptions = {
   voiceName?: string;
   pitch?: number;
   volume?: number;
+
+  // 守備交代画面専用：
+  // 打順(0001～0009)・守備位置(0010～0019)の固定MP3だけ使わず、
+  // その部分はMatcha生成音声で読む。他の固定MP3は従来通り使用する。
+  disableFixedBattingAndPositions?: boolean;
 };
 
 let sessionCounter = 0;
@@ -40,28 +45,85 @@ let __wsUnlocked = false;
 let fixedAudioElement: HTMLAudioElement | null = null;
 let fixedAudioFinish: (() => void) | null = null;
 
+// 固定MP3は生成TTSより少し大きく聞こえるため、固定音声だけ約12%下げる。
+// 1.0に戻せば補正なし。必要なら 0.85～0.95 の範囲で微調整可能。
+const FIXED_AUDIO_VOLUME_SCALE = 0.88;
+
 type FixedAudioEntry = {
   text: string;
   files: string[];
 };
 
 const FIXED_AUDIO_ENTRIES: ReadonlyArray<FixedAudioEntry> = [
+
+  // 打順アナウンス
+  { text: "1番", files: ["0001"] },
+  { text: "2番", files: ["0002"] },
+  { text: "3番", files: ["0003"] },
+  { text: "4番", files: ["0004"] },
+  { text: "5番", files: ["0005"] },
+  { text: "6番", files: ["0006"] },
+  { text: "7番", files: ["0007"] },
   { text: "8番", files: ["0008"] },
+  { text: "9番", files: ["0009"] },
+  // 守備位置アナウンス
+  { text: "ピッチャー", files: ["0010"] },
+  { text: "キャッチャー", files: ["0011"] },
+  { text: "ファースト", files: ["0012"] },
+  { text: "セカンド", files: ["0013"] },
+  { text: "サード", files: ["0014"] },
+  { text: "ショート", files: ["0015"] },
+  { text: "レフト", files: ["0016"] },
+  { text: "センター", files: ["0017"] },
+  { text: "ライト", files: ["0018"] },  
+  { text: "指名打者", files: ["0019"] },  
+
+  { text: "ファウルボールの行方には十分ご注意ください", files: ["0378"] },
+
+  { text: "この回の投球数は", files: ["0381"] },
+  { text: "この回のとうきゅうすうは", files: ["0381"] },
+  { text: "合計投球数は", files: ["0380"] },
+  { text: "トータル", files: ["424"] },
+  
+  // 守備位置交代アナウンス
+  { text: "選手の交代をお知らせいたします", files: ["0383"] },
+  { text: "シートの変更をお知らせいたします", files: ["0384"] },
+  { text: "選手の交代並びにシートの変更をお知らせいたします", files: ["0385"] },  
+
+  // 次の試合アナウンス
+  { text: "本日の第一試合、両チームのメンバー交換を行います。", files: ["440"] },
+  { text: "本日の第2試合の両チームは、4回終了後、メンバー交換を行います", files: ["441"] },
+  { text: "本日の第3試合の両チームは、4回終了後、メンバー交換を行います", files: ["442"] },
+  { text: "両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください", files: ["401"] },
+  { text: "ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください", files: ["402"] },
+  { text: "メンバーチェックと道具チェックはシートノックの間に行います", files: ["439"] },
+  // ウォーミングアップ  
+  { text: "両チームはウォーミングアップに入ってください", files: ["0325"] },
+  { text: "りょうチームはウォーミングアップニ入ってください。", files: ["0325"] },
+  // 呼び出し元で「両」が読み仮名「りょう」に変換済みでも
+  // 同じ固定MP3を確実に使用する。
+  { text: "両チーム、交代してください", files: ["0328"] },
+  { text: "りょうチーム、交代してください", files: ["0328"] },
+  { text: "ウォーミングアップを終了してください", files: ["0329"] },
+  // シートノック
+  { text: "シートノックの準備に入ってください", files: ["0330"] },
+  { text: "ノックを終了してください", files: ["0334"] },
+  // グラウンド整備  
+  { text: "両チームはグランド整備をお願いします", files: ["0396"] },
+  { text: "グランド整備、ありがとうございました", files: ["0397"] },
+  // その他
   { text: "この試合は、ただ今で打ち切り、継続試合となります。明日以降に中断した時点から再開いたします。あしからずご了承くださいませ", files: ["413"] },
   { text: "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください", files: ["425"] },
-  { text: "シートノックの準備に入ってください", files: ["0330"] },
-  { text: "ファウルボールの行方には十分ご注意ください", files: ["0378"] },
-  { text: "ファールボールの行方には十分ご注意ください", files: ["0378"] },
-  // 現行録音番号0379を優先。旧番号0329も残してフォールバック。
-  { text: "ウォーミングアップを終了してください", files: ["0379", "0329"] },
-  { text: "ノックを終了してください", files: ["0334"] },
+  // 試合終了アナウンス
   { text: "ただいまの試合は、ご覧のように", files: ["426"] },
   { text: "なおこの試合の終了時刻は", files: ["416"] },
   { text: "審判員の皆様、ありがとうございました", files: ["417"] },
   { text: "健闘しました両チームの選手に、盛大な拍手をお願いいたします", files: ["418"] },
-  { text: "両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください", files: ["419"] },
-  { text: "これより、ピッチングレコードの確認を行います", files: ["420"] },
+  { text: "これより、ピッチングレコードの確認を行います", files: ["419"] },
+  { text: "両チームの監督、キャプテンはピッチングレコードを記載の上、バックネット前にお集まりください", files: ["420"] },
   { text: "球審、EasyScore担当、公式記録員、球場役員もお集まりください", files: ["421"] },
+  { text: "第2試合のグランド整備は、第2試合のシートノック終了後に行います。第1試合の選手は、グランド整備ご協力をよろしくお願いいたします。", files: ["443"] },
+  { text: "第3試合のグランド整備は、第3試合のシートノック終了後に行います。第2試合の選手は、グランド整備ご協力をよろしくお願いいたします。", files: ["444"] },
 ];
 
 function getSelectedMatchaVoice(): "taniho" | "uguisu" {
@@ -150,6 +212,11 @@ async function decodeFixedAudioToPcm(baseName: string): Promise<MatchaPcmAudio |
       }
 
       const samples = resampleMonoLinear(mono, decoded.sampleRate, JOIN_SAMPLE_RATE);
+
+      // 結合再生時も固定MP3だけ同じ音量補正をかける。
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] *= FIXED_AUDIO_VOLUME_SCALE;
+      }
       console.log('[TTS JOIN FIXED] decoded', {
         voice: getSelectedMatchaVoice(),
         src,
@@ -215,7 +282,7 @@ async function playFixedAudioFile(
   const src = getFixedAudioSrc(baseName);
   const audio = new Audio(src);
   audio.preload = "auto";
-  audio.volume = clamp(volume, 0, 1);
+  audio.volume = clamp(volume * FIXED_AUDIO_VOLUME_SCALE, 0, 1);
   fixedAudioElement = audio;
 
   await new Promise<void>((resolve, reject) => {
@@ -261,44 +328,136 @@ type HybridSegment =
   | { type: "tts"; text: string }
   | { type: "fixed"; text: string; files: string[] };
 
-function splitByFixedAudio(originalText: string): HybridSegment[] {
+// 守備交代画面では打順(0001～0009)と守備位置(0010～0019)だけ固定MP3を除外する。
+function isBattingOrPositionFixedEntry(entry: FixedAudioEntry): boolean {
+  return entry.files.some((baseName) => {
+    const n = Number(baseName);
+    return Number.isFinite(n) && n >= 1 && n <= 19;
+  });
+}
+
+// 固定文言の照合では、改行・半角/全角空白・ゼロ幅文字を無視する。
+// 画面側で文の間に \n や空白が入っても、複数文の固定MP3を確実に拾う。
+function compactFixedMatchText(value: string): {
+  text: string;
+  originalIndexes: number[];
+} {
+  const source = String(value ?? "");
+  let compact = "";
+  const originalIndexes: number[] = [];
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+
+    if (/[\s\u3000\u200B\uFEFF]/.test(ch)) continue;
+
+    compact += ch;
+    originalIndexes.push(i);
+  }
+
+  return { text: compact, originalIndexes };
+}
+
+function splitByFixedAudio(
+  originalText: string,
+  options: Pick<SpeakOptions, "disableFixedBattingAndPositions"> = {}
+): HybridSegment[] {
   const source = String(originalText ?? "");
   const result: HybridSegment[] = [];
-  let cursor = 0;
+  const compactSource = compactFixedMatchText(source);
 
-  while (cursor < source.length) {
-    let bestIndex = -1;
+  let sourceCursor = 0;
+
+  while (sourceCursor < source.length) {
+    let compactCursor = 0;
+
+    while (
+      compactCursor < compactSource.originalIndexes.length &&
+      compactSource.originalIndexes[compactCursor] < sourceCursor
+    ) {
+      compactCursor++;
+    }
+
+    let bestOriginalStart = -1;
+    let bestOriginalEnd = -1;
     let bestEntry: FixedAudioEntry | null = null;
+    let bestCompactLength = -1;
 
     for (const entry of FIXED_AUDIO_ENTRIES) {
-      const index = source.indexOf(entry.text, cursor);
-      if (index < 0) continue;
+      if (
+        options.disableFixedBattingAndPositions &&
+        isBattingOrPositionFixedEntry(entry)
+      ) {
+        continue;
+      }
+
+      const compactEntry = compactFixedMatchText(entry.text).text;
+      if (!compactEntry) continue;
+
+      const compactIndex = compactSource.text.indexOf(
+        compactEntry,
+        compactCursor
+      );
+
+      if (compactIndex < 0) continue;
+
+      const compactEndIndex = compactIndex + compactEntry.length - 1;
+      const originalStart = compactSource.originalIndexes[compactIndex];
+      const originalEnd =
+        compactSource.originalIndexes[compactEndIndex] + 1;
 
       if (
-        bestIndex < 0 ||
-        index < bestIndex ||
-        (index === bestIndex && bestEntry && entry.text.length > bestEntry.text.length)
+        bestOriginalStart < 0 ||
+        originalStart < bestOriginalStart ||
+        (
+          originalStart === bestOriginalStart &&
+          compactEntry.length > bestCompactLength
+        )
       ) {
-        bestIndex = index;
+        bestOriginalStart = originalStart;
+        bestOriginalEnd = originalEnd;
         bestEntry = entry;
+        bestCompactLength = compactEntry.length;
       }
     }
 
-    if (bestIndex < 0 || !bestEntry) {
-      result.push({ type: "tts", text: source.slice(cursor) });
+    if (
+      bestOriginalStart < 0 ||
+      bestOriginalEnd < 0 ||
+      !bestEntry
+    ) {
+      result.push({
+        type: "tts",
+        text: source.slice(sourceCursor),
+      });
       break;
     }
 
-    if (bestIndex > cursor) {
-      result.push({ type: "tts", text: source.slice(cursor, bestIndex) });
+    if (bestOriginalStart > sourceCursor) {
+      result.push({
+        type: "tts",
+        text: source.slice(sourceCursor, bestOriginalStart),
+      });
     }
+
+    const matchedOriginalText = source.slice(
+      bestOriginalStart,
+      bestOriginalEnd
+    );
+
+    console.log("[TTS FIXED MATCH]", {
+      text: bestEntry.text,
+      files: bestEntry.files,
+      matchedOriginalText,
+    });
 
     result.push({
       type: "fixed",
-      text: bestEntry.text,
+      text: matchedOriginalText,
       files: [...bestEntry.files],
     });
-    cursor = bestIndex + bestEntry.text.length;
+
+    sourceCursor = bestOriginalEnd;
   }
 
   return result;
@@ -651,7 +810,81 @@ export async function speak(
 
       // 固定文言が含まれる場合は、その部分だけMP3を最優先で再生。
       // 固定MP3が無い/再生失敗の場合は、その部分もMatchaへフォールバック。
-      const segments = splitByFixedAudio(originalText);
+      const segments = splitByFixedAudio(originalText, options);
+
+      // 投球数アナウンス専用：
+      // 0381「この回の投球数は」や 424「トータル」を固定MP3で再生したあと、
+      // 「〇球です」を別再生すると、MP3末尾無音＋次音声開始処理で間が長くなる。
+      // そこで投球数アナウンス全体をPCMへ揃えて1回で再生する。
+      const hasPitchCountFixedSegment = segments.some(
+        (segment) =>
+          segment.type === "fixed" &&
+          segment.files.some(
+            (baseName) =>
+              baseName === "0381" ||
+              baseName === "0380" ||
+              baseName === "424"
+          )
+      );
+
+      if (hasPitchCountFixedSegment && segments.length > 1) {
+        const pcmParts: MatchaPcmAudio[] = [];
+
+        for (const segment of segments) {
+          if (mySession !== sessionCounter) return;
+
+          if (segment.type === "fixed") {
+            let fixedPcm: MatchaPcmAudio | null = null;
+
+            for (const baseName of segment.files) {
+              fixedPcm = await decodeFixedAudioToPcm(baseName);
+              if (fixedPcm) {
+                console.log("[TTS PITCH JOIN FIXED] use", {
+                  voice: getSelectedMatchaVoice(),
+                  src: getFixedAudioSrc(baseName),
+                  text: segment.text,
+                });
+                break;
+              }
+            }
+
+            if (fixedPcm) {
+              pcmParts.push(fixedPcm);
+              continue;
+            }
+            // 固定MP3取得失敗時は、同じ文言をMatchaへフォールバック。
+          }
+
+          // 固定MP3の直後に「、〇球です」のような先頭読点が残ると
+          // OpenJTalk側でpause扱いになり、つなぎが長くなるため読み上げ時だけ除去。
+          const normalized = normalizeSpeechText(segment.text)
+            .replace(/^[\s、，,]+/, "")
+            .trim();
+
+          if (!normalized || !hasSpeakableCharacters(normalized)) continue;
+
+          const pcm = await synthesizeMatchaPcmForJoin(normalized, {
+            speedScale: common.baseRate,
+            volume: common.volume,
+          });
+
+          if (pcm) pcmParts.push(pcm);
+        }
+
+        if (pcmParts.length) {
+          // つなぎは10ms。通常の35msより短くし、
+          // 「投球数は→〇球です」「トータル→〇球です」を自然に連続させる。
+          await playJoinedMatchaPcm(
+            pcmParts,
+            {
+              speedScale: common.baseRate,
+              volume: common.volume,
+            },
+            10
+          );
+          return;
+        }
+      }
 
       for (const segment of segments) {
         if (mySession !== sessionCounter) return;
@@ -736,7 +969,7 @@ export async function speakJoinedTTS(
   // 例: 「8番」が先に「はちばん」へ変換されると FIXED_AUDIO_ENTRIES に一致しなくなるため。
   const hybridSegments: HybridSegment[] = [];
   for (const part of originalParts) {
-    hybridSegments.push(...splitByFixedAudio(part));
+    hybridSegments.push(...splitByFixedAudio(part, options));
   }
 
   console.log('[TTS JOIN] request', {
@@ -829,7 +1062,7 @@ export async function prefetchTTS(
   if (getTtsEngine() !== "matcha") return;
 
   const common = loadCommonOptions(options);
-  const segments = splitByFixedAudio(originalText);
+  const segments = splitByFixedAudio(originalText, options);
   const prefetchStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
 
   console.log("[TTS PREFETCH] request", {
