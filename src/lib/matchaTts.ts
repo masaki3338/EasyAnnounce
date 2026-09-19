@@ -851,6 +851,16 @@ function strengthenHachibanOnset(
   return phonemes;
 }
 
+// OpenJTalk は文頭が「、」「。」などの短いポーズだと
+// JPCommonLabel_insert_pause(): First mora should not be short pause.
+// の警告を出す。
+// 表示文や文中の句読点は変更せず、OpenJTalkへ渡す直前の文頭だけ整える。
+function sanitizeOpenJTalkInput(input: string): string {
+  return String(input ?? "")
+    .replace(/^[\s\u3000、。，．,.！？!?・…]+/u, "")
+    .trimStart();
+}
+
 async function textToMatchaIds(
   text: string
 ): Promise<number[]> {
@@ -865,9 +875,25 @@ async function textToMatchaIds(
     );
   }
 
+  const openJTalkText = sanitizeOpenJTalkInput(text);
+
+  if (!openJTalkText) {
+    console.warn("[Matcha] OpenJTalk input became empty after leading-pause cleanup", {
+      originalText: text,
+    });
+    return [];
+  }
+
+  if (openJTalkText !== text) {
+    console.log("[Matcha] removed leading pause punctuation", {
+      before: text.slice(0, 24),
+      after: openJTalkText.slice(0, 24),
+    });
+  }
+
   const labelsResult =
     await openJTalkBrowserModule.extractFullContextAsync(
-      text
+      openJTalkText
     );
 
   const labels =
@@ -888,7 +914,7 @@ async function textToMatchaIds(
 
   // 8番だけ、語頭の /h/ を音素レベルで補強する。
   // 「はち」と「ばん」の間には pau / 空白を入れない。
-  phonemes = strengthenHachibanOnset(phonemes, text);
+  phonemes = strengthenHachibanOnset(phonemes, openJTalkText);
 
   const ids: number[] = [];
 
@@ -1514,6 +1540,23 @@ function splitMatchaText(
   const hardMaxLength = 52;
   const minUsefulLength = 14;
 
+  // 選手名は画面側で登録ふりがなをカタカナ化して渡す。
+  // 「姓 名くん/さん」または「姓くん/さん」を検出し、
+  // チャンク分割位置が氏名の途中へ入らないよう保護する。
+  //
+  // 例:
+  //   オクムラ マサキくん
+  //   オクムラくん
+  //
+  // 半角スペースは残すため、姓と名の間には短い語境界があり、
+  // 読点ほど長い間にはならない。
+  const protectedPlayerNames = Array.from(
+    source.matchAll(
+      /[ァ-ヶヷヸヹヺー]{1,24}(?: [ァ-ヶヷヸヹヺー]{1,24})?(?:くん|さん|投手)/g
+    ),
+    (match) => match[0]
+  );
+
   const protectedPhrases = [
     "りょうチームはウォーミングアップニ入ってください。",
     "ノック時間は",
@@ -1525,10 +1568,38 @@ function splitMatchaText(
     "第3試合",
     "第4試合",
     "第5試合",
+    ...protectedPlayerNames,
   ];
 
-  const movePastProtectedPhrase = (target: string, cut: number): number => {
+  const adjustCutForProtectedPhrase = (
+    target: string,
+    cut: number
+  ): number => {
+    // 選手名の途中にcutが来た場合は、可能なら「名前の手前」で切る。
+    // これにより名前を分断せず、名前の末尾までチャンクを長く伸ばさない。
+    for (const phrase of protectedPlayerNames) {
+      let pos = target.indexOf(phrase);
+      while (pos >= 0) {
+        const phraseEnd = pos + phrase.length;
+
+        if (pos < cut && cut < phraseEnd) {
+          // 名前の前に十分な長さがあるなら、名前の直前で切る。
+          if (pos >= minUsefulLength) {
+            return pos;
+          }
+
+          // 文頭近くから名前が始まる場合だけ、名前の末尾まで含める。
+          return phraseEnd;
+        }
+
+        pos = target.indexOf(phrase, pos + 1);
+      }
+    }
+
+    // 従来からある固定保護フレーズは従来どおり末尾まで含める。
     for (const phrase of protectedPhrases) {
+      if (protectedPlayerNames.includes(phrase)) continue;
+
       let pos = target.indexOf(phrase);
       while (pos >= 0) {
         const phraseEnd = pos + phrase.length;
@@ -1536,6 +1607,7 @@ function splitMatchaText(
         pos = target.indexOf(phrase, pos + 1);
       }
     }
+
     return cut;
   };
 
@@ -1575,8 +1647,28 @@ function splitMatchaText(
       if (space >= minUsefulLength) cut = space + 1;
     }
 
-    cut = movePastProtectedPhrase(rest, cut);
-    cut = Math.max(1, Math.min(cut, hardMaxLength, rest.length));
+    // 保護語の途中では切らない。
+    // 選手名は原則として名前の「手前」で切るため、
+    // 固定MP3の後に続く生成チャンクが不必要に長くならない。
+    cut = adjustCutForProtectedPhrase(rest, cut);
+
+    // 通常は従来どおり52文字以内。
+    // 文頭近くに長い選手名がある場合だけ、その名前を切らないため
+    // 最小限の超過を許可する。
+    if (cut > hardMaxLength) {
+      const beginsWithProtectedPlayerName = protectedPlayerNames.some(
+        (phrase) => {
+          const pos = rest.indexOf(phrase);
+          return pos >= 0 && pos < minUsefulLength && pos < hardMaxLength && pos + phrase.length === cut;
+        }
+      );
+
+      if (!beginsWithProtectedPlayerName) {
+        cut = hardMaxLength;
+      }
+    }
+
+    cut = Math.max(1, Math.min(cut, rest.length));
 
     const chunk = rest.slice(0, cut).trim();
     if (chunk) chunks.push(chunk);
