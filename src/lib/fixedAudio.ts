@@ -69,6 +69,12 @@ export type HybridSegment =
 let currentFixedAudio: HTMLAudioElement | null = null;
 let playToken = 0;
 
+// 固定MP3は速度優先でHTMLAudioを直接再生する。
+// Matcha側の正規化後音量に近づけるため、固定文だけ軽く音量補正。
+// まだ固定文が大きければ 0.92 → 0.88、
+// 小さければ 0.92 → 0.96 のように調整する。
+const FIXED_AUDIO_VOLUME_GAIN = 0.82;
+
 function canonicalize(input: string): string {
   return String(input ?? "")
     .replace(/\r\n?/g, "\n")
@@ -231,14 +237,23 @@ export async function playFixedAudio(
 
   audio.preload = "auto";
   audio.playsInline = true;
-  audio.volume = Math.max(0, Math.min(1, volume));
+  audio.volume = Math.max(
+    0,
+    Math.min(
+      1,
+      volume * FIXED_AUDIO_VOLUME_GAIN
+    )
+  );
   const src = urlFor(id);
   audio.src = src;
 
-  console.log("[FixedMP3] play", {
+  const startedAt = performance.now();
+
+  console.log("[FixedMP3] play direct", {
     id,
     folder: getFixedAudioFolder(),
     src,
+    volume: audio.volume,
   });
 
   return await new Promise<boolean>((resolve) => {
@@ -259,7 +274,13 @@ export async function playFixedAudio(
       resolve(ok && myToken === playToken);
     };
 
-    audio.onended = () => finish(true);
+    audio.onended = () => {
+      console.log("[FixedMP3] ended", {
+        id,
+        ms: Math.round((performance.now() - startedAt) * 10) / 10,
+      });
+      finish(true);
+    };
     audio.onerror = () => {
       console.warn("[FixedMP3] failed", {
         id,

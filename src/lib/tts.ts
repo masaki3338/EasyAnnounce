@@ -47,7 +47,7 @@ let fixedAudioFinish: (() => void) | null = null;
 
 // 固定MP3は生成TTSより少し大きく聞こえるため、固定音声だけ約12%下げる。
 // 1.0に戻せば補正なし。必要なら 0.85～0.95 の範囲で微調整可能。
-const FIXED_AUDIO_VOLUME_SCALE = 0.88;
+const FIXED_AUDIO_VOLUME_SCALE = 0.80;
 
 type FixedAudioEntry = {
   text: string;

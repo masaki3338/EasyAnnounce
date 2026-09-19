@@ -15,6 +15,13 @@
 // その後、Matcha-TTS-JP symbols.py のIDへ変換し add_blank=true を適用する。
 
 import * as ort from "onnxruntime-web/wasm";
+import {
+  connectSpeechOutput,
+  float32ToWavBlob as pipelineFloat32ToWavBlob,
+  getSharedAudioContext,
+  prepareSpeechPcm,
+  resumeSharedAudioContext,
+} from "./audioPipeline";
 
 type MatchaSpeakOptions = {
   speedScale?: number;
@@ -1582,143 +1589,18 @@ function splitMatchaText(
 }
 
 function getAudioContext(): AudioContext {
-  if (
-    audioContext &&
-    audioContext.state !== "closed"
-  ) {
-    return audioContext;
-  }
-
-  const Ctor =
-    window.AudioContext ||
-    (
-      window as typeof window & {
-        webkitAudioContext?: typeof AudioContext;
-      }
-    ).webkitAudioContext;
-
-  if (!Ctor) {
-    throw new Error(
-      "AudioContextを利用できません。"
-    );
-  }
-
-  audioContext =
-    new Ctor();
-
-  return audioContext;
+  return getSharedAudioContext();
 }
 
 async function resumeAudioContext(): Promise<AudioContext> {
-  const context =
-    getAudioContext();
-
-  if (
-    context.state !== "running"
-  ) {
-    try {
-      await context.resume();
-    } catch {}
-  }
-
-  return context;
+  return resumeSharedAudioContext();
 }
 
 function float32ToWavBlob(
   samples: Float32Array,
   sampleRate: number
 ): Blob {
-  const bytesPerSample = 2;
-  const dataSize =
-    samples.length *
-    bytesPerSample;
-
-  const buffer =
-    new ArrayBuffer(
-      44 + dataSize
-    );
-
-  const view =
-    new DataView(buffer);
-
-  const writeString = (
-    offset: number,
-    value: string
-  ) => {
-    for (
-      let i = 0;
-      i < value.length;
-      i++
-    ) {
-      view.setUint8(
-        offset + i,
-        value.charCodeAt(i)
-      );
-    }
-  };
-
-  writeString(0, "RIFF");
-  view.setUint32(
-    4,
-    36 + dataSize,
-    true
-  );
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(
-    24,
-    sampleRate,
-    true
-  );
-  view.setUint32(
-    28,
-    sampleRate *
-      bytesPerSample,
-    true
-  );
-  view.setUint16(
-    32,
-    bytesPerSample,
-    true
-  );
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(
-    40,
-    dataSize,
-    true
-  );
-
-  let offset = 44;
-
-  for (
-    let i = 0;
-    i < samples.length;
-    i++, offset += 2
-  ) {
-    const sample =
-      clamp(
-        samples[i],
-        -1,
-        1
-      );
-
-    view.setInt16(
-      offset,
-      sample < 0
-        ? sample * 0x8000
-        : sample * 0x7fff,
-      true
-    );
-  }
-
-  return new Blob(
-    [buffer],
-    { type: "audio/wav" }
-  );
+  return pipelineFloat32ToWavBlob(samples, sampleRate);
 }
 
 export function unlockMatchaAudioForIOS(): void {
@@ -1794,10 +1676,16 @@ async function playSamplesIOS(
     iosAudioObjectUrl = null;
   }
 
-  const blob =
-    float32ToWavBlob(
+  const preparedAudio =
+    prepareSpeechPcm(
       audio.samples,
       audio.sampleRate
+    );
+
+  const blob =
+    float32ToWavBlob(
+      preparedAudio.samples,
+      preparedAudio.sampleRate
     );
 
   iosAudioObjectUrl =
@@ -1879,36 +1767,40 @@ async function playSamplesWebAudio(
     currentGain?.disconnect();
   } catch {}
 
-  const buffer =
-    context.createBuffer(
-      1,
-      audio.samples.length,
+  const preparedAudio =
+    prepareSpeechPcm(
+      audio.samples,
       audio.sampleRate
     );
 
+  const buffer =
+    context.createBuffer(
+      1,
+      preparedAudio.samples.length,
+      preparedAudio.sampleRate
+    );
+
   buffer.copyToChannel(
-    audio.samples,
+    preparedAudio.samples,
     0
   );
 
   const source =
     context.createBufferSource();
 
-  const gain =
-    context.createGain();
-
-  gain.gain.value =
-    clamp(volume, 0, 1);
-
   source.buffer = buffer;
 
-  source.connect(gain);
-  gain.connect(
-    context.destination
-  );
+  // 固定MP3と同じ共通出力チェーン
+  // Gain → 軽いCompressor → destination
+  const output =
+    connectSpeechOutput(
+      context,
+      source,
+      volume
+    );
 
   currentSource = source;
-  currentGain = gain;
+  currentGain = output.gain;
 
   await new Promise<void>(
     (resolve, reject) => {
@@ -1919,6 +1811,8 @@ async function playSamplesWebAudio(
           currentSource = null;
           currentGain = null;
         }
+
+        try { output.disconnect(); } catch {}
 
         resolve();
       };
@@ -1933,6 +1827,8 @@ async function playSamplesWebAudio(
           currentSource = null;
           currentGain = null;
         }
+
+        try { output.disconnect(); } catch {}
 
         reject(error);
       }
