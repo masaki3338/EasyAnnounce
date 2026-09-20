@@ -258,13 +258,15 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
     const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
       const u: any = findUmpireByRole(role);
+      if (!u) return "";
+
       return (
         u?.furigana ||
         u?.nameKana ||
         u?.kana ||
         u?.reading ||
         u?.name ||
-        "未設定"
+        ""
       );
     };
 
@@ -296,7 +298,11 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
           // 選手紹介は1人ずつ別再生せず、PCMで1本に結合して連続再生する。
           // これにより「選手名 → 次の守備位置」の再生切替待ちをなくす。
-          await speakJoinedTTS(playerLines, { progressive: true, cache: true });
+          await speakJoinedTTS(playerLines, {
+            progressive: true,
+            cache: true,
+            seatIntroductionContextAwareFixed: true,
+          });
           if (mySession !== seatSpeakSessionRef.current) return;
 
           if (inning !== "1回の裏") {
@@ -330,7 +336,11 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
         // PONYも9人分をPCM結合して連続再生。
         // 「○○くん」から次の「キャッチャー／ファースト…」までの間を短くする。
-        await speakJoinedTTS(ponyPlayerLines, { progressive: true, cache: true });
+        await speakJoinedTTS(ponyPlayerLines, {
+          progressive: true,
+          cache: true,
+          seatIntroductionContextAwareFixed: true,
+        });
         if (mySession !== seatSpeakSessionRef.current) return;
       } finally {
         if (mySession === seatSpeakSessionRef.current) {
@@ -356,7 +366,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
   const umpireHTML = (role: "球審" | "一塁" | "二塁" | "三塁") => {
     const u: any = findUmpireByRole(role);
-    if (!u) return "（未設定）";
+    if (!u) return "（　）";
 
     const name =
       u?.name ||
@@ -371,7 +381,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       u?.reading ||
       "";
 
-    if (!name) return "（未設定）";
+    if (!name) return "（　）";
     return `<ruby>${name}<rt>${furigana}</rt></ruby>`;
   };
 
@@ -469,7 +479,9 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         // speakJoinedTTS() と完全に同じ文字列を使うためキャッシュがそのまま効く。
         await prefetchTTS(intro);
         for (const line of playerLines) {
-          await prefetchTTS(line);
+          await prefetchTTS(line, {
+            seatIntroductionContextAwareFixed: true,
+          });
         }
       })();
     }, 80);
