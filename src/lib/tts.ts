@@ -40,6 +40,11 @@ type SpeakOptions = {
   // ・打順の直後が「に」→ 固定MP3を使わない
   // ・それ以外 → 固定MP3を使う
   defenseContextAwareFixed?: boolean;
+
+  // シート紹介画面用：
+  // 守備位置の直後が「は」の場合だけ固定MP3を使わない。
+  // 例: 「ピッチャーは、○○くん」→「ピッチャーは」をMatchaで自然に読む
+  seatIntroductionContextAwareFixed?: boolean;
 };
 
 let sessionCounter = 0;
@@ -88,7 +93,17 @@ const FIXED_AUDIO_ENTRIES: ReadonlyArray<FixedAudioEntry> = [
   { text: "ライト", files: ["0018"] },  
   { text: "指名打者", files: ["0019"] },  
 
+  // 来場者向け注意アナウンス：3文まとめて445.mp3を最優先
+  // 改行・空白は固定文照合時に無視されるため、表示上3行でも一致する。
+  { text: "ご来場の皆様にお願いをいたします。試合中、スタンドに入りますファウルボールは大変危険でございます。打球の行方には十分ご注意ください。", files: ["445"] },
+  { text: "ごらいじょうのみなさまにおねがいをいたします。しあいちゅう、スタンドにはいりますファウルボールはたいへんきけんでございます。だきゅうのゆくえにはじゅうぶんごちゅういください。", files: ["445"] },
+
   { text: "ファウルボールの行方には十分ご注意ください", files: ["0378"] },
+  { text: "ご来場の皆様にお願いをいたします", files: ["0375"] },
+  { text: "スタンドに入りますファウルボールは大変危険でございます", files: ["0376"] },
+  { text: "打球の行方には十分ご注意ください", files: ["0377"] },
+
+
 
   { text: "この回の投球数は", files: ["0381"] },
   { text: "この回のとうきゅうすうは", files: ["0381"] },
@@ -365,6 +380,48 @@ function isBattingFixedEntry(entry: FixedAudioEntry): boolean {
 // 守備交代モーダル専用。
 // 固定文言の直後の「空白等を除いた次の1文字」を見て、
 // 打順/守備位置を固定MP3にするか判定する。
+// 守備位置名が選手名の一部として使われている場合は固定MP3を使わない。
+// 例:
+//   「ライトくん」
+//   「ライト タロウくん」
+//   「オオライトくん」
+// compactFixedMatchText() 後なので、姓と名の間の空白は除かれている。
+function shouldSkipPositionFixedInsidePlayerName(
+  entry: FixedAudioEntry,
+  compactSourceText: string,
+  compactMatchStart: number,
+  compactMatchLength: number
+): boolean {
+  if (!isPositionFixedEntry(entry)) return false;
+
+  const prevChar =
+    compactSourceText.charAt(compactMatchStart - 1) || "";
+
+  const nextChar =
+    compactSourceText.charAt(compactMatchStart + compactMatchLength) || "";
+
+  // 前後がカタカナなら、名前の一部である可能性が高い。
+  // 例: オオライトくん / ライトタロウくん
+  const isKatakana = (ch: string) =>
+    /^[ァ-ヶヷヸヹヺー]$/.test(ch);
+
+  if (isKatakana(prevChar) || isKatakana(nextChar)) {
+    return true;
+  }
+
+  // 守備位置名の直後が敬称なら、その語自体が選手名。
+  // 例: ライトくん / ライトさん
+  const tail = compactSourceText.slice(
+    compactMatchStart + compactMatchLength
+  );
+
+  if (/^(?:くん|さん)/.test(tail)) {
+    return true;
+  }
+
+  return false;
+}
+
 function shouldSkipDefenseContextFixed(
   entry: FixedAudioEntry,
   compactSourceText: string,
@@ -387,6 +444,23 @@ function shouldSkipDefenseContextFixed(
   }
 
   return false;
+}
+
+
+function shouldSkipSeatIntroductionContextFixed(
+  entry: FixedAudioEntry,
+  compactSourceText: string,
+  compactMatchStart: number,
+  compactMatchLength: number
+): boolean {
+  if (!isPositionFixedEntry(entry)) return false;
+
+  const nextChar =
+    compactSourceText.charAt(compactMatchStart + compactMatchLength) || "";
+
+  // シート紹介では「ピッチャーは、○○くん」のような
+  // 「守備位置 + は」を一続きでMatcha生成したい。
+  return nextChar === "は";
 }
 
 // 固定文言の照合では、改行・半角/全角空白・ゼロ幅文字を無視する。
@@ -418,6 +492,7 @@ function splitByFixedAudio(
     | "disableFixedBattingAndPositions"
     | "disableFixedPositions"
     | "defenseContextAwareFixed"
+    | "seatIntroductionContextAwareFixed"
   > = {}
 ): HybridSegment[] {
   const source = String(originalText ?? "");
@@ -466,9 +541,34 @@ function splitByFixedAudio(
 
       if (compactIndex < 0) continue;
 
+      // 選手名の一部に守備位置名が含まれる場合は、
+      // 画面を問わず固定MP3を使わずMatcha生成へ回す。
+      if (
+        shouldSkipPositionFixedInsidePlayerName(
+          entry,
+          compactSource.text,
+          compactIndex,
+          compactEntry.length
+        )
+      ) {
+        continue;
+      }
+
       if (
         options.defenseContextAwareFixed &&
         shouldSkipDefenseContextFixed(
+          entry,
+          compactSource.text,
+          compactIndex,
+          compactEntry.length
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        options.seatIntroductionContextAwareFixed &&
+        shouldSkipSeatIntroductionContextFixed(
           entry,
           compactSource.text,
           compactIndex,
@@ -889,6 +989,36 @@ export async function speak(
       // 固定MP3が無い/再生失敗の場合は、その部分もMatchaへフォールバック。
       const segments = splitByFixedAudio(originalText, options);
 
+      // ボタン押下時の追加prefetchは、
+      // 「先頭が固定MP3で、その再生時間を作成文生成に使える場合」だけ行う。
+      // 作成文だけの文章では、ここでprefetchを開始せず
+      // そのままspeakMatcha()へ渡して最短で再生を開始する。
+      if (segments[0]?.type === "fixed") {
+        const firstGeneratedSegment = segments.find(
+          (segment) =>
+            segment.type === "tts" &&
+            hasSpeakableCharacters(segment.text)
+        );
+
+        if (firstGeneratedSegment && firstGeneratedSegment.type === "tts") {
+          const normalizedFirstGenerated = normalizeSpeechText(
+            firstGeneratedSegment.text
+          )
+            .replace(/^[\s、。，．,.！？!?・…]+/u, "")
+            .trim();
+
+          if (
+            normalizedFirstGenerated &&
+            hasSpeakableCharacters(normalizedFirstGenerated)
+          ) {
+            void prefetchMatcha(normalizedFirstGenerated, {
+              speedScale: common.baseRate,
+              volume: common.volume,
+            });
+          }
+        }
+      }
+
       // 投球数アナウンス専用：
       // 0381「この回の投球数は」や 424「トータル」を固定MP3で再生したあと、
       // 「〇球です」を別再生すると、MP3末尾無音＋次音声開始処理で間が長くなる。
@@ -963,10 +1093,43 @@ export async function speak(
         }
       }
 
-      for (const segment of segments) {
+      for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+        const segment = segments[segmentIndex];
         if (mySession !== sessionCounter) return;
 
         if (segment.type === "fixed") {
+          // 固定MP3を再生している時間を利用して、
+          // この固定文の後に来る最初の作成文だけ先読みする。
+          // awaitしないので固定MP3の開始は遅らせない。
+          const nextGeneratedSegment = segments
+            .slice(segmentIndex + 1)
+            .find(
+              (candidate) =>
+                candidate.type === "tts" &&
+                hasSpeakableCharacters(candidate.text)
+            );
+
+          if (
+            nextGeneratedSegment &&
+            nextGeneratedSegment.type === "tts"
+          ) {
+            const normalizedNextGenerated = normalizeSpeechText(
+              nextGeneratedSegment.text
+            )
+              .replace(/^[\s、。，．,.！？!?・…]+/u, "")
+              .trim();
+
+            if (
+              normalizedNextGenerated &&
+              hasSpeakableCharacters(normalizedNextGenerated)
+            ) {
+              void prefetchMatcha(normalizedNextGenerated, {
+                speedScale: common.baseRate,
+                volume: common.volume,
+              });
+            }
+          }
+
           let played = false;
 
           for (const baseName of segment.files) {
@@ -1149,36 +1312,74 @@ export async function prefetchTTS(
     textPreview: originalText.replace(/\s+/g, " ").slice(0, 48),
   });
 
-  // 固定MP3はHTTPキャッシュへ先読み。
-  // MP3が存在しない場合だけMatcha側のフォールバック音声も生成しておく。
-  for (const segment of segments) {
-    if (segment.type === "fixed") {
-      let fixedAvailable = false;
-      for (const baseName of segment.files) {
-        if (await prefetchFixedAudioFile(baseName)) {
-          fixedAvailable = true;
-          break;
-        }
-      }
+  // 最重要:
+  // 作成文のMatcha生成を固定MP3のfetch/decodeより先に開始する。
+  // これにより「8番 → ピッチャー → 選手名」のような混在文でも、
+  // 選手名の生成が固定MP3準備の後回しにならない。
+  const generatedPrefetches: Promise<void>[] = [];
+  const fixedPrefetches: Promise<void>[] = [];
 
-      if (fixedAvailable) {
-        // 結合再生ではdecode待ちも削りたいので、HTTPキャッシュだけでなくPCMも先に作る。
+  for (const segment of segments) {
+    if (segment.type === "tts") {
+      const normalized = normalizeSpeechText(segment.text)
+        .replace(/^[\s、。，．,.！？!?・…]+/u, "")
+        .trim();
+
+      if (!normalized || !hasSpeakableCharacters(normalized)) continue;
+
+      // ここで即開始。awaitは後でまとめて行う。
+      generatedPrefetches.push(
+        prefetchMatcha(normalized, {
+          speedScale: common.baseRate,
+          volume: common.volume,
+        })
+      );
+
+      continue;
+    }
+
+    // 固定MP3のHTTP先読み・decodeはMatchaと並行で実施。
+    fixedPrefetches.push(
+      (async () => {
+        let fixedAvailable = false;
+
+        for (const baseName of segment.files) {
+          if (await prefetchFixedAudioFile(baseName)) {
+            fixedAvailable = true;
+            break;
+          }
+        }
+
+        if (!fixedAvailable) {
+          // MP3が無い場合のフォールバック用Matchaも準備。
+          const normalized = normalizeSpeechText(segment.text)
+            .replace(/^[\s、。，．,.！？!?・…]+/u, "")
+            .trim();
+
+          if (normalized && hasSpeakableCharacters(normalized)) {
+            await prefetchMatcha(normalized, {
+              speedScale: common.baseRate,
+              volume: common.volume,
+            });
+          }
+          return;
+        }
+
+        // 結合再生用PCM化はバックグラウンド。
         for (const baseName of segment.files) {
           const pcm = await decodeFixedAudioToPcm(baseName);
           if (pcm) break;
         }
-        continue;
-      }
-    }
-
-    const normalized = normalizeSpeechText(segment.text).trim();
-    if (!normalized || !hasSpeakableCharacters(normalized)) continue;
-
-    await prefetchMatcha(normalized, {
-      speedScale: common.baseRate,
-      volume: common.volume,
-    });
+      })()
+    );
   }
+
+  // 作成文を最優先。
+  await Promise.all(generatedPrefetches);
+
+  // prefetchTTS()全体としては固定文準備も完了させる。
+  // ただしここに来る時点でMatcha生成は既に始まっている。
+  await Promise.all(fixedPrefetches);
 
   const finishedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   console.log("[TTS PREFETCH] ready", {
