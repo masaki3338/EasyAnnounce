@@ -1743,31 +1743,6 @@ async function playSamplesIOS(
     return;
   }
 
-  if (!iosAudioElement) {
-    iosAudioElement =
-      new Audio();
-
-    iosAudioElement.preload =
-      "auto";
-
-    iosAudioElement.playsInline =
-      true;
-  }
-
-  try {
-    iosAudioElement.pause();
-  } catch {}
-
-  if (iosAudioObjectUrl) {
-    try {
-      URL.revokeObjectURL(
-        iosAudioObjectUrl
-      );
-    } catch {}
-
-    iosAudioObjectUrl = null;
-  }
-
   const preparedAudio =
     prepareSpeechPcm(
       audio.samples,
@@ -1780,57 +1755,158 @@ async function playSamplesIOS(
       preparedAudio.sampleRate
     );
 
-  iosAudioObjectUrl =
-    URL.createObjectURL(blob);
-
-  iosAudioElement.src =
-    iosAudioObjectUrl;
-
-  iosAudioElement.volume =
-    clamp(volume, 0, 1);
-
-  await new Promise<void>(
-    (resolve, reject) => {
-      const element =
-        iosAudioElement!;
-
-      const cleanup = () => {
-        element.onended = null;
-        element.onerror = null;
-      };
-
-      element.onended = () => {
-        cleanup();
-        resolve();
-      };
-
-      element.onerror = () => {
-        cleanup();
-        reject(
-          new Error(
-            "iPhoneでMatcha音声の再生に失敗しました。"
-          )
-        );
-      };
-
-      markFirstAudioStart(myGenerationId, "html-audio");
-
-      const promise =
-        element.play();
-
-      if (
-        promise &&
-        typeof promise.catch === "function"
-      ) {
-        void promise.catch(
-          (error) => {
-            cleanup();
-            reject(error);
-          }
-        );
-      }
+  const playAttempt = async (
+    attempt: number
+  ): Promise<void> => {
+    if (
+      myGenerationId !== generationId
+    ) {
+      return;
     }
-  );
+
+    try {
+      iosAudioElement?.pause();
+    } catch {}
+
+    if (iosAudioObjectUrl) {
+      try {
+        URL.revokeObjectURL(
+          iosAudioObjectUrl
+        );
+      } catch {}
+
+      iosAudioObjectUrl = null;
+    }
+
+    // iOS Safariの一時的なHTMLAudio状態を引き継がないよう、
+    // 毎回Audio要素を作り直す。
+    iosAudioElement =
+      new Audio();
+
+    iosAudioElement.preload =
+      "auto";
+
+    iosAudioElement.playsInline =
+      true;
+
+    iosAudioObjectUrl =
+      URL.createObjectURL(blob);
+
+    iosAudioElement.src =
+      iosAudioObjectUrl;
+
+    iosAudioElement.volume =
+      clamp(volume, 0, 1);
+
+    const element =
+      iosAudioElement;
+
+    await new Promise<void>(
+      (resolve, reject) => {
+        const cleanup = () => {
+          element.onended = null;
+          element.onerror = null;
+        };
+
+        element.onended = () => {
+          cleanup();
+          resolve();
+        };
+
+        element.onerror = () => {
+          const mediaError = element.error;
+
+          console.warn("[Matcha iOS] HTMLAudio playback failed", {
+            attempt,
+            mediaErrorCode: mediaError?.code ?? null,
+            mediaErrorMessage: mediaError?.message ?? null,
+            readyState: element.readyState,
+            networkState: element.networkState,
+            blobSize: blob.size,
+            blobType: blob.type,
+          });
+
+          cleanup();
+          reject(
+            new Error(
+              "iPhoneでMatcha音声の再生に失敗しました。"
+            )
+          );
+        };
+
+        try {
+          markFirstAudioStart(
+            myGenerationId,
+            attempt === 1
+              ? "html-audio"
+              : "html-audio-retry"
+          );
+
+          const promise =
+            element.play();
+
+          if (
+            promise &&
+            typeof promise.catch === "function"
+          ) {
+            void promise.catch(
+              (error) => {
+                console.warn("[Matcha iOS] element.play() rejected", {
+                  attempt,
+                  error,
+                  readyState: element.readyState,
+                  networkState: element.networkState,
+                  blobSize: blob.size,
+                  blobType: blob.type,
+                });
+
+                cleanup();
+                reject(error);
+              }
+            );
+          }
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      }
+    );
+  };
+
+  try {
+    await playAttempt(1);
+  } catch (firstError) {
+    if (
+      myGenerationId !== generationId
+    ) {
+      return;
+    }
+
+    console.warn(
+      "[Matcha iOS] first playback failed; retry once",
+      firstError
+    );
+
+    await new Promise<void>(
+      (resolve) => window.setTimeout(resolve, 0)
+    );
+
+    try {
+      await playAttempt(2);
+      console.log(
+        "[Matcha iOS] retry playback succeeded"
+      );
+    } catch (retryError) {
+      console.error(
+        "[Matcha iOS] retry playback failed",
+        retryError
+      );
+
+      throw new Error(
+        "iPhoneでMatcha音声の再生に失敗しました。"
+      );
+    }
+  }
 }
 
 async function playSamplesWebAudio(
