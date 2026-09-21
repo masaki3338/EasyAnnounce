@@ -560,31 +560,24 @@ clone.querySelectorAll("ruby").forEach((rb) => {
     return "";
   };
 
-  const getFirstAnnouncementLine = (source: string): string =>
-    String(source ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .find(Boolean) || "";
-
   // 同じ完成文を何度も先読みしない。
   const lastPrefetchedSpeakTextRef = useRef("");
   const prefetchGenerationRef = useRef(0);
 
-  // スタメン発表は全文が長いため、先読み順を3段階にする。
+  // スタメン発表は全文が長いため、
+  // 表示時には「読み上げ開始に必要な最初の短句」だけ先読みする。
   //
-  // 1) 最初の短句   … 最優先。読み上げ開始を速くする
-  // 2) 冒頭1行     … 最初の文章中で待ち時間が出にくくする
-  // 3) 残り全文     … その後バックグラウンドでキャッシュする
+  // 冒頭1行や全文まで先読みすると、1スレッドのMatcha Workerが
+  // 長い生成処理で埋まり、読み上げボタンを押した時に
+  // 実再生がその処理待ちになることがある。
   //
-  // 全文を最初から順番に生成していた時のように、
-  // 「長い先読み処理の途中なのでボタンを押しても最初の音がまだ無い」
-  // という状態をできるだけ避ける。
+  // 残りは speakMatcha() の progressive 再生に任せ、
+  // 「ボタン押下 → 最初の音」の速さを最優先にする。
   useEffect(() => {
     if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
 
     const generation = ++prefetchGenerationRef.current;
 
-    // 最初の短句は描画直後に最優先で開始。
     const priorityTimer = window.setTimeout(() => {
       const visibleText = getVisibleAnnounceText();
       const speakText = buildSpeakText(visibleText);
@@ -593,44 +586,19 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       lastPrefetchedSpeakTextRef.current = speakText;
 
       const firstPhrase = getPriorityFirstPhrase(speakText);
-      const firstLine = getFirstAnnouncementLine(speakText);
+      if (!firstPhrase) return;
 
-      void (async () => {
-        if (firstPhrase) {
-          console.log("[TTS PREFETCH][StartingLineup] first phrase start", {
-            text: firstPhrase,
-          });
-          await prefetchTTS(firstPhrase);
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] first phrase ready", {
-            text: firstPhrase,
-          });
-        }
+      console.log("[TTS PREFETCH][StartingLineup] first phrase start", {
+        text: firstPhrase,
+      });
 
-        // 最初の1行も先に完成させる。
-        if (firstLine && firstLine !== firstPhrase) {
-          console.log("[TTS PREFETCH][StartingLineup] first line start", {
-            textLength: firstLine.length,
-            preview: firstLine.slice(0, 60),
-          });
-          await prefetchTTS(firstLine);
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] first line ready", {
-            textLength: firstLine.length,
-          });
-        }
+      void prefetchTTS(firstPhrase).then(() => {
+        if (generation !== prefetchGenerationRef.current) return;
 
-        // 先頭が使えるようになった後で、残り全文をバックグラウンド先読み。
-        console.log("[TTS PREFETCH][StartingLineup] full start", {
-          textLength: speakText.length,
+        console.log("[TTS PREFETCH][StartingLineup] first phrase ready", {
+          text: firstPhrase,
         });
-        void prefetchTTS(speakText).then(() => {
-          if (generation !== prefetchGenerationRef.current) return;
-          console.log("[TTS PREFETCH][StartingLineup] full ready", {
-            textLength: speakText.length,
-          });
-        });
-      })();
+      });
     }, 0);
 
     return () => {

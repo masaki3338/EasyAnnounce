@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, preserveNameReading } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -192,8 +192,9 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     return () => { ttsStop(); setSpeaking(false); };
   }, []);
 
-  // 初回だけ VOICEVOX を温めて初回の待ち時間を短縮
-  useEffect(() => { void prewarmTTS(); }, []);
+  // Matchaの起動時prewarmはtts.ts側で共通実行する。
+  // この画面で重ねてprewarmすると、読み上げボタン直後の実再生と
+  // 1スレッドWorkerを取り合うことがあるため、ここでは実行しない。
 
   // 審判の役割名は保存元によって
   // 「一塁」「1塁」「一塁審」「塁審（一塁）」など表記が異なるため正規化して検索する
@@ -444,66 +445,9 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         .join("<br />") + "です。";
 
 
-  useEffect(() => {
-    if (!teamReading || Object.keys(positions).length === 0) return;
-
-    const fixedKana = (value?: string) =>
-      preserveNameReading(String(value ?? ""));
-
-    const fullKana = (p?: PositionInfo) =>
-      `${fixedKana(p?.lastNameKana || p?.lastName || "")} ${fixedKana(
-        p?.firstNameKana || p?.firstName || ""
-      )}`.trim();
-
-    const ponyKana = (p?: PositionInfo) => {
-      if (!p) return "";
-      const ln = p.lastName || "";
-      const forceFull = ln && dupLastNames.has(ln);
-
-      return forceFull
-        ? `${fixedKana(p.lastNameKana || p.lastName)} ${fixedKana(
-            p.firstNameKana || p.firstName
-          )}`.trim()
-        : fixedKana(p.lastNameKana || p.lastName);
-    };
-
-    const intro =
-      leagueMode === "boys"
-        ? `${inningReading}、${inning === "1回の裏" ? "守ります" : "まず守ります"}、${teamReading}の`
-        : `${inningReading}、守ります、${teamReading}のシートをお知らせします。`;
-
-    const playerLines =
-      leagueMode === "boys"
-        ? [
-            `ピッチャーは、${fullKana(positions["投"])}${positions["投"]?.honorific || "くん"}`,
-            `キャッチャー、${fullKana(positions["捕"])}${positions["捕"]?.honorific || "くん"}`,
-            `ファースト、${fullKana(positions["一"])}${positions["一"]?.honorific || "くん"}`,
-            `セカンド、${fullKana(positions["二"])}${positions["二"]?.honorific || "くん"}`,
-            `サード、${fullKana(positions["三"])}${positions["三"]?.honorific || "くん"}`,
-            `ショート、${fullKana(positions["遊"])}${positions["遊"]?.honorific || "くん"}`,
-            `レフト、${fullKana(positions["左"])}${positions["左"]?.honorific || "くん"}`,
-            `センター、${fullKana(positions["中"])}${positions["中"]?.honorific || "くん"}`,
-            `ライト、${fullKana(positions["右"])}${positions["右"]?.honorific || "くん"}`,
-          ]
-        : positionLabels.map(([pos, label]) => {
-            const p = positions[pos];
-            const isLastPlayer = pos === "右";
-            return `${label}、${ponyKana(p)}${p?.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
-          });
-
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        // まず冒頭を優先し、その後9人分を順番に先読みする。
-        // speakJoinedTTS() と完全に同じ文字列を使うためキャッシュがそのまま効く。
-        await prefetchTTS(intro);
-        for (const line of playerLines) {
-          await prefetchTTS(line);
-        }
-      })();
-    }, 80);
-
-    return () => window.clearTimeout(timer);
-  }, [teamReading, positions, leagueMode, inningReading, inning, dupLastNames]);
+  // シート紹介画面では画面表示時のprefetchを行わない。
+  // tts.ts側の共通prewarmだけを利用し、
+  // 読み上げボタン押下時の実音声生成を最優先する。
 
   if (!teamName) {
     return (

@@ -454,10 +454,28 @@ const playBeeps = async (
   }, []);
 
 // VOICEVOX優先の読み上げ（状態フラグも更新）
+const KNOCK_NOTICE_PAUSE_MS = 100;
+
 const handleSpeak = async (text: string, key: string) => {
-  setReadingKey(key);          // 押したカードを「再生中」に
-  await ttsSpeak(text);        // VOICEVOX→失敗時WebSpeech
-  setReadingKey(null);         // 再生終了後に解除（※VOX完了イベントは取らないので“押下でON→終わりでOFF”の簡易管理）
+  setReadingKey(key);
+
+  try {
+    if (key === "2min" && noticeMinutes > 0) {
+      const prefix = "ノック時間、残り";
+      const minutesPart = `${noticeMinutes}分です`;
+
+      await ttsSpeak(prefix);
+      await new Promise<void>((resolve) =>
+        window.setTimeout(resolve, KNOCK_NOTICE_PAUSE_MS)
+      );
+      await ttsSpeak(minutesPart);
+      return;
+    }
+
+    await ttsSpeak(text);
+  } finally {
+    setReadingKey(null);
+  }
 };
 
 // 停止（VOICEVOX <audio> と WebSpeech を両方止める）
@@ -558,12 +576,16 @@ useEffect(() => {
   const texts = [prepSpeakMessage, mainSpeakMessage].filter(
     (value): value is string => !!value
   );
-  if (!texts.length) return;
+
   const timer = window.setTimeout(() => {
+    // 通常の案内文だけ先読みする。
+    // 残り時間案内の分割後2文は追加先読みしない。
+    // ボタン押下時の読み上げ開始を優先する。
     texts.forEach((text) => { void prefetchTTS(text); });
   }, 80);
+
   return () => window.clearTimeout(timer);
-}, [prepSpeakMessage, mainSpeakMessage]);
+}, [prepSpeakMessage, mainSpeakMessage, noticeMinutes]);
 
 
 

@@ -320,9 +320,24 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
     load();
   }, []);
 
+  const KNOCK_NOTICE_PAUSE_MS = 100;
+
   const handleSpeak = async (text: string, key: string) => {
     try {
       setReadingKey(key);
+
+      if (key === "1min" && noticeMinutes > 0) {
+        const prefix = `${selfTeamLabel}、ノック時間、あと`;
+        const minutesPart = `${noticeMinutes}分です。`;
+
+        await ttsSpeak(prefix);
+        await new Promise<void>((resolve) =>
+          window.setTimeout(resolve, KNOCK_NOTICE_PAUSE_MS)
+        );
+        await ttsSpeak(minutesPart);
+        return;
+      }
+
       await ttsSpeak(text);
     } finally {
       setReadingKey(null);
@@ -459,6 +474,10 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
       (value): value is string => !!value
     );
     const timer = window.setTimeout(() => {
+      // 通常の案内文だけ先読みする。
+      // 残り時間案内の分割後2文はここでは追加先読みしない。
+      // 1スレッドのMatcha Workerを占有して、
+      // 読み上げボタン押下後の開始を遅らせないため。
       texts.forEach((text) => { void prefetchTTS(text); });
     }, 80);
     return () => window.clearTimeout(timer);
