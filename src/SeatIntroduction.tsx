@@ -258,17 +258,23 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
     const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
       const u: any = findUmpireByRole(role);
-      if (!u) return "";
-
       return (
         u?.furigana ||
         u?.nameKana ||
         u?.kana ||
         u?.reading ||
         u?.name ||
-        ""
+        "未設定"
       );
     };
+
+    // iPhone / iPad は、9人分を1本の長いWAVへ結合すると
+    // Safariで再生エラーになる場合があるため、短い音声を連続再生する。
+    const isIOSSeatIntro =
+      typeof navigator !== "undefined" &&
+      (/iP(hone|ad|od)/.test(navigator.userAgent || "") ||
+        (/Macintosh/.test(navigator.userAgent || "") &&
+          Number((navigator as any).maxTouchPoints || 0) > 1));
 
     const mySession = ++seatSpeakSessionRef.current;
     setSpeaking(true);
@@ -296,13 +302,19 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
             `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
           ];
 
-          // 選手紹介は1人ずつ別再生せず、PCMで1本に結合して連続再生する。
-          // これにより「選手名 → 次の守備位置」の再生切替待ちをなくす。
-          await speakJoinedTTS(playerLines, {
-            progressive: true,
-            cache: true,
-            seatIntroductionContextAwareFixed: true,
-          });
+          if (isIOSSeatIntro) {
+            // iPhone/iPad：
+            // 9人分を1本の長いWAVへ結合するとSafariで再生失敗することがある。
+            // 先読み済み音声を1人ずつ、追加の待機時間なしで続けて再生する。
+            for (const line of playerLines) {
+              if (mySession !== seatSpeakSessionRef.current) return;
+              await ttsSpeak(line, { progressive: true, cache: true });
+            }
+          } else {
+            // Android / PC：
+            // 9人分をPCMで1本に結合し、「名前 → 次の守備位置」の間を最小化する。
+            await speakJoinedTTS(playerLines, { progressive: true, cache: true });
+          }
           if (mySession !== seatSpeakSessionRef.current) return;
 
           if (inning !== "1回の裏") {
@@ -334,13 +346,19 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           return `${label}、${yomi}${p?.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
         });
 
-        // PONYも9人分をPCM結合して連続再生。
-        // 「○○くん」から次の「キャッチャー／ファースト…」までの間を短くする。
-        await speakJoinedTTS(ponyPlayerLines, {
-          progressive: true,
-          cache: true,
-          seatIntroductionContextAwareFixed: true,
-        });
+        if (isIOSSeatIntro) {
+          // iPhone/iPad：
+          // 長い結合WAVを避け、先読み済みの1人分ずつを待機なしで連続再生する。
+          // 以前入っていた200ms待機は入れない。
+          for (const line of ponyPlayerLines) {
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await ttsSpeak(line, { progressive: true, cache: true });
+          }
+        } else {
+          // Android / PC：
+          // 9人分をPCM結合し、「○○くん → 次の守備位置」の間を最小化する。
+          await speakJoinedTTS(ponyPlayerLines, { progressive: true, cache: true });
+        }
         if (mySession !== seatSpeakSessionRef.current) return;
       } finally {
         if (mySession === seatSpeakSessionRef.current) {
@@ -366,7 +384,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
   const umpireHTML = (role: "球審" | "一塁" | "二塁" | "三塁") => {
     const u: any = findUmpireByRole(role);
-    if (!u) return "（　）";
+    if (!u) return "（未設定）";
 
     const name =
       u?.name ||
@@ -381,7 +399,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       u?.reading ||
       "";
 
-    if (!name) return "（　）";
+    if (!name) return "（未設定）";
     return `<ruby>${name}<rt>${furigana}</rt></ruby>`;
   };
 
@@ -479,9 +497,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         // speakJoinedTTS() と完全に同じ文字列を使うためキャッシュがそのまま効く。
         await prefetchTTS(intro);
         for (const line of playerLines) {
-          await prefetchTTS(line, {
-            seatIntroductionContextAwareFixed: true,
-          });
+          await prefetchTTS(line);
         }
       })();
     }, 80);
