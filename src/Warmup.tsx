@@ -552,11 +552,31 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       {/* モーダル（タイマー終了） */}
       {showEndModal1 && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
-            <p className="text-lg font-semibold mb-4 whitespace-nowrap">タイマー（1回目）が終了しました。</p>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-[calc(100%_-_2rem)] max-w-sm text-gray-900">
+            <p className="text-xl font-bold mb-5 leading-relaxed">両チーム 交代してください。</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                className={`px-4 py-3 rounded-xl text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center gap-2 ${
+                  readingKey === "timer1-end" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                onClick={() => handleSpeak("りょうチーム、交代してください。", "timer1-end")}
+              >
+                <IconMic /> 読み上げ
+              </button>
+              <button
+                className="px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95"
+                onClick={handleStop}
+                disabled={readingKey !== "timer1-end"}
+              >
+                停止
+              </button>
+            </div>
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
-              onClick={() => setShowEndModal1(false)}
+              className="w-full bg-gray-200 text-gray-900 px-4 py-3 rounded-xl hover:bg-gray-300 font-semibold active:scale-95"
+              onClick={() => {
+                handleStop();
+                setShowEndModal1(false);
+              }}
             >
               OK
             </button>
@@ -565,11 +585,31 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       )}
       {showEndModal2 && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-auto max-w-[90vw] text-gray-900">
-            <p className="text-lg font-semibold mb-4 whitespace-nowrap">タイマー（2回目）が終了しました。</p>
+          <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-[calc(100%_-_2rem)] max-w-sm text-gray-900">
+            <p className="text-xl font-bold mb-5 leading-relaxed">ウォーミングアップを終了してください。</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                className={`px-4 py-3 rounded-xl text-white font-semibold shadow active:scale-95 inline-flex items-center justify-center gap-2 ${
+                  readingKey === "timer2-end" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                onClick={() => handleSpeak("ウォーミングアップを終了してください。", "timer2-end")}
+              >
+                <IconMic /> 読み上げ
+              </button>
+              <button
+                className="px-4 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 text-white font-semibold shadow active:scale-95"
+                onClick={handleStop}
+                disabled={readingKey !== "timer2-end"}
+              >
+                停止
+              </button>
+            </div>
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:scale-95"
-              onClick={() => setShowEndModal2(false)}
+              className="w-full bg-gray-200 text-gray-900 px-4 py-3 rounded-xl hover:bg-gray-300 font-semibold active:scale-95"
+              onClick={() => {
+                handleStop();
+                setShowEndModal2(false);
+              }}
             >
               OK
             </button>
