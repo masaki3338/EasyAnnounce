@@ -98,6 +98,7 @@ const AnnounceStartingLineup: React.FC<{
   const announceBoxRef = useRef<HTMLDivElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const isSpeakingRef = useRef(false);
+  const speakSessionRef = useRef(0);
 
   const startingIds = battingOrder.map((e) => e.id);
   const [benchOutIds, setBenchOutIds] = useState<number[]>([]);
@@ -539,40 +540,25 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       .replace(/、、+/g, "、")
       .trim();
 
-  // Matcha側の「最初の短句を先に作る」ルールと同じ条件で、
-  // 読み上げ開始に必要な最初の1チャンクだけを抽出する。
-  // ここを最優先でキャッシュすることで、長いスタメン全文の生成完了を待たずに
-  // 読み上げを開始できるようにする。
-  const getPriorityFirstPhrase = (source: string): string => {
-    const s = String(source ?? "").trim();
-    const minFirst = 8;
-    const maxFirst = 24;
-
-    if (!s) return "";
-    if (s.length <= maxFirst) return s;
-
-    for (let i = minFirst - 1; i < Math.min(s.length, maxFirst); i++) {
-      if (/[、。！？!?]/.test(s[i])) {
-        return s.slice(0, i + 1).trim();
-      }
-    }
-
-    return "";
-  };
+  // 画面上の1行（選手1人分）単位に分割する。
+  // 長いヘッダーや審判文だけは句点単位にも分け、1回の生成を短くする。
+  const getSpeakParts = (source: string): string[] =>
+    buildSpeakText(source)
+      .split(/\n+/)
+      .flatMap((line) =>
+        line.length > 80
+          ? (line.match(/[^。！？!?]+[。！？!?]?/g) ?? [line])
+          : [line]
+      )
+      .map((part) => part.trim())
+      .filter(Boolean);
 
   // 同じ完成文を何度も先読みしない。
   const lastPrefetchedSpeakTextRef = useRef("");
   const prefetchGenerationRef = useRef(0);
 
-  // スタメン発表は全文が長いため、
-  // 表示時には「読み上げ開始に必要な最初の短句」だけ先読みする。
-  //
-  // 冒頭1行や全文まで先読みすると、1スレッドのMatcha Workerが
-  // 長い生成処理で埋まり、読み上げボタンを押した時に
-  // 実再生がその処理待ちになることがある。
-  //
-  // 残りは speakMatcha() の progressive 再生に任せ、
-  // 「ボタン押下 → 最初の音」の速さを最優先にする。
+  // 最初の2パートだけを読み上げ前に準備する。
+  // 3パート目以降は、再生中に次のパートを順次先読みする。
   useEffect(() => {
     if (!teamPlayers.length || !battingOrder.length || !homeTeamName) return;
 
@@ -584,21 +570,14 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       if (!speakText || speakText === lastPrefetchedSpeakTextRef.current) return;
 
       lastPrefetchedSpeakTextRef.current = speakText;
+      const parts = getSpeakParts(visibleText);
+      if (!parts.length) return;
 
-      const firstPhrase = getPriorityFirstPhrase(speakText);
-      if (!firstPhrase) return;
-
-      console.log("[TTS PREFETCH][StartingLineup] first phrase start", {
-        text: firstPhrase,
-      });
-
-      void prefetchTTS(firstPhrase).then(() => {
+      void (async () => {
+        await prefetchTTS(parts[0]);
         if (generation !== prefetchGenerationRef.current) return;
-
-        console.log("[TTS PREFETCH][StartingLineup] first phrase ready", {
-          text: firstPhrase,
-        });
-      });
+        if (parts[1]) await prefetchTTS(parts[1]);
+      })();
     }, 0);
 
     return () => {
@@ -630,22 +609,33 @@ const handleSpeak = () => {
 
   // 念のため直前に全停止してから、新しい読み上げを開始する。
   handleStop();
+  const session = ++speakSessionRef.current;
   isSpeakingRef.current = true;
 
   const visibleText = getVisibleAnnounceText();
-  const text = buildSpeakText(visibleText);
-  if (!text) {
+  const parts = getSpeakParts(visibleText);
+  if (!parts.length) {
     isSpeakingRef.current = false;
     return;
   }
 
-  console.log("[TTS CACHE][StartingLineup] play exact text", {
-    prefetched: text === lastPrefetchedSpeakTextRef.current,
-    textLength: text.length,
-  });
-
   setSpeaking(true);
-  void ttsSpeak(text).finally(() => {
+  void (async () => {
+    for (let i = 0; i < parts.length; i += 1) {
+      if (session !== speakSessionRef.current) return;
+
+      // 現在の行を再生している間に、次の選手の音声を作っておく。
+      const nextReady = parts[i + 1]
+        ? prefetchTTS(parts[i + 1])
+        : Promise.resolve();
+
+      // 1人分は途中分割せずに再生し、氏名の途中に生成待ちを入れない。
+      await ttsSpeak(parts[i], { progressive: false, cache: true });
+      if (session !== speakSessionRef.current) return;
+      await nextReady;
+    }
+  })().finally(() => {
+    if (session !== speakSessionRef.current) return;
     setSpeaking(false);
     isSpeakingRef.current = false;
   });
@@ -653,6 +643,7 @@ const handleSpeak = () => {
 
 
   const handleStop = () => {
+   speakSessionRef.current += 1;
    ttsStop();                 // ← sessionCounter が進むので連鎖が止まる
    isSpeakingRef.current = false;
    setSpeaking(false);

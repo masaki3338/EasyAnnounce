@@ -321,24 +321,32 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   }, []);
 
   const KNOCK_NOTICE_PAUSE_MS = 100;
+  const knockNoticePrefix = `${selfTeamLabel}、ノック時間、あと`;
+  const knockNoticeMinutesPart = `${noticeMinutes}分です。`;
+
+  const prefetchTimerModalAudio = async () => {
+    if (noticeMinutes > 0) {
+      // モーダルの読み上げで実際に使う2文を、この順番で先に生成する。
+      await prefetchTTS(knockNoticePrefix);
+      await prefetchTTS(knockNoticeMinutesPart);
+    }
+    await prefetchTTS(`${selfTeamLabel}、ノックを終了してください。`);
+  };
 
   const handleSpeak = async (text: string, key: string) => {
     try {
       setReadingKey(key);
 
       if (key === "1min" && noticeMinutes > 0) {
-        const prefix = `${selfTeamLabel}、ノック時間、あと`;
-        const minutesPart = `${noticeMinutes}分です。`;
-
-        await ttsSpeak(prefix);
+        await ttsSpeak(knockNoticePrefix, { progressive: true, cache: true });
         await new Promise<void>((resolve) =>
           window.setTimeout(resolve, KNOCK_NOTICE_PAUSE_MS)
         );
-        await ttsSpeak(minutesPart);
+        await ttsSpeak(knockNoticeMinutesPart, { progressive: true, cache: true });
         return;
       }
 
-      await ttsSpeak(text);
+      await ttsSpeak(text, { progressive: true, cache: true });
     } finally {
       setReadingKey(null);
     }
@@ -350,6 +358,8 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   };
 
   const startTimer = () => {
+    // タイマー作動中に確実に生成を終えられるよう、開始時にも先読みする。
+    void prefetchTimerModalAudio();
     if (timeLeft === 0) setTimeLeft(knockMinutes * 60);
     setTimerActive(true);
     warned1Min.current = false;
@@ -470,19 +480,32 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
   const endMessage = `${selfTeamLabel}、ノックを終了してください。`;
 
   useEffect(() => {
-    const texts = [guideMessage, startMessage, oneMinuteMessage, endMessage].filter(
-      (value): value is string => !!value
-    );
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      // 通常の案内文だけ先読みする。
-      // 残り時間案内の分割後2文はここでは追加先読みしない。
-      // 1スレッドのMatcha Workerを占有して、
-      // 読み上げボタン押下後の開始を遅らせないため。
-      texts.forEach((text) => { void prefetchTTS(text); });
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [guideMessage, startMessage, oneMinuteMessage, endMessage]);
+      void (async () => {
+        // タイマーモーダル用を最優先で順番に生成する。
+        await prefetchTimerModalAudio();
+        if (cancelled) return;
 
+        // 通常アナウンスは通知用音声の準備後に先読みする。
+        const normalTexts = [guideMessage, startMessage, oneMinuteMessage].filter(
+          (value): value is string => !!value
+        );
+        normalTexts.forEach((text) => { void prefetchTTS(text); });
+      })();
+    }, 40);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    guideMessage,
+    startMessage,
+    oneMinuteMessage,
+    noticeMinutes,
+    knockNoticePrefix,
+    knockNoticeMinutesPart,
+  ]);
 
   const hasTimingHint = isHome === "先攻";
   const stepNum = (n: number) => n + (hasTimingHint ? 1 : 0);
@@ -752,10 +775,30 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
             <p id="one-min-title" className="text-2xl sm:text-3xl font-extrabold leading-relaxed mb-6">
               {oneMinuteMessage}
             </p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
+                  readingKey === "1min" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                onClick={() => handleSpeak(oneMinuteMessage, "1min")}
+              >
+                <IconMic />
+                <span>読み上げ</span>
+              </button>
+              <button
+                className="w-full px-4 py-3 text-white bg-gray-600 hover:bg-gray-700 rounded-xl shadow font-semibold active:scale-95 disabled:opacity-50"
+                onClick={handleStop}
+                disabled={readingKey !== "1min"}
+              >
+                停止
+              </button>
+            </div>
             <button
-              className="min-w-28 text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
-              onClick={() => setShowOneMinModal(false)}
-              autoFocus
+              className="w-full text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
+              onClick={() => {
+                handleStop();
+                setShowOneMinModal(false);
+              }}
             >
               OK
             </button>
@@ -780,10 +823,30 @@ const BoysSheetKnock: React.FC<Props> = ({ onBack }) => {
             <p id="end-title" className="text-2xl sm:text-3xl font-extrabold leading-relaxed mb-6">
               {endMessage}
             </p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                className={`w-full px-4 py-3 text-white rounded-xl shadow font-semibold active:scale-95 flex items-center justify-center gap-2 ${
+                  readingKey === "end-modal" ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+                onClick={() => handleSpeak(endMessage, "end-modal")}
+              >
+                <IconMic />
+                <span>読み上げ</span>
+              </button>
+              <button
+                className="w-full px-4 py-3 text-white bg-gray-600 hover:bg-gray-700 rounded-xl shadow font-semibold active:scale-95 disabled:opacity-50"
+                onClick={handleStop}
+                disabled={readingKey !== "end-modal"}
+              >
+                停止
+              </button>
+            </div>
             <button
-              className="min-w-28 text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
-              onClick={() => setShowEndModal(false)}
-              autoFocus
+              className="w-full text-lg font-bold bg-white text-red-700 px-6 py-3 rounded-2xl hover:bg-red-50 active:scale-95 shadow"
+              onClick={() => {
+                handleStop();
+                setShowEndModal(false);
+              }}
             >
               OK
             </button>

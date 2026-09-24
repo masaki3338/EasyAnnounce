@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import localForage from 'localforage';
-import { speak as ttsSpeak, stop as ttsStop, prewarmTTS, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 
 const IconMic = () => (
@@ -1145,8 +1145,68 @@ const normalizeForTTS = (input: string) => {
 };
 
 
+// 合計投球数の案内だけ、姓と名を別パーツにして短い間を入れる。
+// 表示用の announceMessages は変更しない。
+const buildAnnouncementSpeakParts = (messages: string[]): string[] =>
+  messages.flatMap((message) => {
+    if (!message.includes("合計投球数")) {
+      const text = applyRegisteredPlayerReadings(normalizeForTTS(message));
+      return text ? [text] : [];
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(message, "text/html");
+    const rubies = Array.from(doc.querySelectorAll("ruby"));
+
+    // フルネーム（姓・名それぞれの ruby）がある場合だけ分割する。
+    if (rubies.length < 2) {
+      const text = applyRegisteredPlayerReadings(normalizeForTTS(message));
+      return text ? [text] : [];
+    }
+
+    const rubyReading = (ruby: Element) => {
+      const reading = ruby.querySelector("rt")?.textContent?.trim();
+      const base = Array.from(ruby.childNodes)
+        .filter((node) => node.nodeName.toLowerCase() !== "rt")
+        .map((node) => node.textContent ?? "")
+        .join("")
+        .trim();
+      return preserveNameReading(reading || base);
+    };
+
+    const lastName = rubyReading(rubies[0]);
+    const firstName = rubyReading(rubies[1]);
+    rubies.forEach((ruby) => ruby.remove());
+    const suffix = applyRegisteredPlayerReadings(
+      normalizeForTTS(doc.body.textContent ?? "")
+    );
+
+    return [lastName, `${firstName}${suffix}`].filter(Boolean);
+  });
+
+useEffect(() => {
+  if (announceMessages.length === 0) return;
+  const parts = buildAnnouncementSpeakParts(announceMessages);
+  void (async () => {
+    for (const part of parts) {
+      await prefetchTTS(part);
+    }
+  })();
+}, [announceMessages]);
+
+
  const handleSpeak = () => {
    if (announceMessages.length === 0) return;
+
+   const parts = buildAnnouncementSpeakParts(announceMessages);
+   const hasSplitFullName =
+     parts.length > announceMessages.length &&
+     announceMessages.some((message) => message.includes("合計投球数"));
+
+   if (hasSplitFullName) {
+     void speakJoinedTTS(parts, { progressive: false, cache: true });
+     return;
+   }
 
    let text = applyRegisteredPlayerReadings(normalizeForTTS(announceMessages.join("。")));
 

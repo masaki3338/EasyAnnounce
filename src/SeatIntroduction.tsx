@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, preserveNameReading } from "./lib/tts";
+import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -130,6 +130,15 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const inningReading =
     inning === "1回の裏" ? "いっかいのうら" : "いっかいのおもて";
 
+  // 読み上げボタンで最初に再生する文章。
+  // 先読み時と実再生時で完全に同じ文字列を使い、キャッシュを確実に一致させる。
+  const seatIntroFirstText =
+    leagueMode === "boys"
+      ? inning === "1回の裏"
+        ? `${inningReading}、守ります、${teamReading}の`
+        : `${inningReading}、まず守ります、${teamReading}の`
+      : `${inningReading}、守ります、${teamReading}のシートをお知らせします。`;
+
   useEffect(() => {
     const loadData = async () => {
  const team = await localForage.getItem<any>("team");
@@ -191,6 +200,17 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     loadData();
     return () => { ttsStop(); setSpeaking(false); };
   }, []);
+
+  useEffect(() => {
+    if (!teamReading) return;
+
+    const timer = window.setTimeout(() => {
+      // 最初の一文だけを優先して生成し、ボタン押下後すぐ再生できるようにする。
+      void prefetchTTS(seatIntroFirstText);
+    }, 40);
+
+    return () => window.clearTimeout(timer);
+  }, [teamReading, seatIntroFirstText]);
 
   // Matchaの起動時prewarmはtts.ts側で共通実行する。
   // この画面で重ねてprewarmすると、読み上げボタン直後の実再生と
@@ -259,14 +279,19 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
     const umpireYomi = (role: "球審" | "一塁" | "二塁" | "三塁") => {
       const u: any = findUmpireByRole(role);
-      return (
+      const registeredName = String(
+        u?.name || u?.umpireName || u?.displayName || ""
+      ).trim();
+
+      if (!registeredName || registeredName === "未設定") return "";
+
+      return String(
         u?.furigana ||
         u?.nameKana ||
         u?.kana ||
         u?.reading ||
-        u?.name ||
-        "未設定"
-      );
+        registeredName
+      ).trim();
     };
 
     // iPhone / iPad は、9人分を1本の長いWAVへ結合すると
@@ -283,16 +308,13 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     void (async () => {
       try {
         if (leagueMode === "boys") {
-          const intro =
-            inning === "1回の裏"
-              ? `${inningReading}、守ります、${teamReading}の`
-              : `${inningReading}、まず守ります、${teamReading}の`;
-
-          await ttsSpeak(intro, { progressive: true, cache: true });
+          await ttsSpeak(seatIntroFirstText, { progressive: true, cache: true });
           if (mySession !== seatSpeakSessionRef.current) return;
 
           const playerLines = [
-            `ピッチャーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
+            // 表示は「ピッチャーは」のまま。読み上げ用だけひらがなにして
+            // 「ピッチャー」の固定文一致を確実に回避する。
+            `ぴっちゃーは、${fullKana(positions["投"])}${honor(positions["投"])}`,
             `キャッチャー、${fullKana(positions["捕"])}${honor(positions["捕"])}`,
             `ファースト、${fullKana(positions["一"])}${honor(positions["一"])}`,
             `セカンド、${fullKana(positions["二"])}${honor(positions["二"])}`,
@@ -313,30 +335,43 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
             }
           } else {
             // Android / PC：
-            // 9人分をPCMで1本に結合し、「名前 → 次の守備位置」の間を最小化する。
-            await speakJoinedTTS(playerLines, { progressive: true, cache: true });
+            // 「ぴっちゃーは」は固定文に一致しないため、文全体を通常生成する。
+            // 2人目以降だけ固定文対応の結合処理へ渡す。
+            await ttsSpeak(playerLines[0], { progressive: true, cache: true });
+            if (mySession !== seatSpeakSessionRef.current) return;
+            await speakJoinedTTS(playerLines.slice(1), { progressive: true, cache: true });
           }
           if (mySession !== seatSpeakSessionRef.current) return;
 
           if (inning !== "1回の裏") {
-            const umpireText =
-              `審判は球審、${umpireYomi("球審")}。` +
-              `塁審、一塁、${umpireYomi("一塁")}。` +
-              `二塁、${umpireYomi("二塁")}。` +
-              `三塁、${umpireYomi("三塁")}。` +
-              `以上四氏でございます。`;
+            const configuredUmpires = [
+              { role: "球審" as const, label: "球審" },
+              { role: "一塁" as const, label: "塁審、一塁" },
+              { role: "二塁" as const, label: "二塁" },
+              { role: "三塁" as const, label: "三塁" },
+            ]
+              .map(({ role, label }) => ({ label, reading: umpireYomi(role) }))
+              .filter(({ reading }) => !!reading);
 
-            if (mySession !== seatSpeakSessionRef.current) return;
-            await ttsSpeak(umpireText, { progressive: true, cache: true });
+            // 未設定の審判は役割・名前とも読み上げ文から除外する。
+            if (configuredUmpires.length > 0) {
+              const umpireText =
+                `審判は${configuredUmpires
+                  .map(({ label, reading }) => `${label}、${reading}。`)
+                  .join("")}` +
+                (configuredUmpires.length === 4
+                  ? "以上四氏でございます。"
+                  : "以上でございます。");
+
+              if (mySession !== seatSpeakSessionRef.current) return;
+              await ttsSpeak(umpireText, { progressive: true, cache: true });
+            }
           }
 
           return;
         }
 
-        await ttsSpeak(
-          `${inningReading}、守ります、${teamReading}のシートをお知らせします。`,
-          { progressive: true, cache: true }
-        );
+        await ttsSpeak(seatIntroFirstText, { progressive: true, cache: true });
         if (mySession !== seatSpeakSessionRef.current) return;
 
         const ponyPlayerLines = positionLabels.map(([pos, label]) => {
@@ -385,7 +420,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
   const umpireHTML = (role: "球審" | "一塁" | "二塁" | "三塁") => {
     const u: any = findUmpireByRole(role);
-    if (!u) return "（未設定）";
+    if (!u) return "（　）";
 
     const name =
       u?.name ||
@@ -400,7 +435,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       u?.reading ||
       "";
 
-    if (!name) return "（未設定）";
+    if (!name || String(name).trim() === "未設定") return "（　）";
     return `<ruby>${name}<rt>${furigana}</rt></ruby>`;
   };
 
@@ -445,9 +480,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         .join("<br />") + "です。";
 
 
-  // シート紹介画面では画面表示時のprefetchを行わない。
-  // tts.ts側の共通prewarmだけを利用し、
-  // 読み上げボタン押下時の実音声生成を最優先する。
+  // 導入文だけを優先先読みし、選手紹介部分は従来どおり実再生時に処理する。
 
   if (!teamName) {
     return (

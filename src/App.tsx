@@ -222,6 +222,7 @@ const App = () => {
   });
   const [showTtsReady, setShowTtsReady] = useState(false);
   const warmedOnceRef = useRef(false);
+  const startGreetingPrefetchKeyRef = useRef("");
     // ✅ アプリ終了用
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
@@ -882,6 +883,137 @@ useEffect(() => {
   // waterBreakRunning は依存配列に入れない
 }, [waterBreakMinutes]);
 
+
+// 試合開始挨拶は大会名・試合番号・対戦カードの生成に数秒かかる場合がある。
+// StartGreeting画面に入ってからでは遅いため、matchInfo/team が存在した時点で
+// 画面に関係なく「実際に読む全文」をそのまま先読みする。
+useEffect(() => {
+  if (leagueMode === "boys") return;
+  if (localStorage.getItem("tts:engine") !== "matcha") return;
+
+  let cancelled = false;
+  let checking = false;
+  let retryCount = 0;
+  let retryTimer: number | null = null;
+
+  const tryPrefetchStartGreeting = async (): Promise<boolean> => {
+    if (cancelled || checking) return false;
+    checking = true;
+
+    try {
+      const [team, matchInfo] = await Promise.all([
+        localForage.getItem<any>("team"),
+        localForage.getItem<any>("matchInfo"),
+      ]);
+
+      if (cancelled) return false;
+
+      const tournamentName = String(matchInfo?.tournamentName ?? "").trim();
+      const matchNumber = String(matchInfo?.matchNumber ?? "1").trim() || "1";
+      const opponentName = String(matchInfo?.opponentTeam ?? "").trim();
+      const opponentFurigana = String(
+        matchInfo?.opponentTeamFurigana ?? ""
+      ).trim();
+
+      const teamName = String(team?.name ?? "").trim();
+      const teamFurigana = String(
+        team?.furigana ?? team?.nameFurigana ?? team?.nameKana ?? ""
+      ).trim();
+
+      const benchSide =
+        matchInfo?.benchSide === "3塁側" ? "3塁側" : "1塁側";
+
+      if (!tournamentName || !teamName || !opponentName) {
+        return false;
+      }
+
+      const team1stRead =
+        benchSide === "1塁側"
+          ? (teamFurigana || teamName)
+          : (opponentFurigana || opponentName);
+
+      const team3rdRead =
+        benchSide === "3塁側"
+          ? (teamFurigana || teamName)
+          : (opponentFurigana || opponentName);
+
+      // 実際の読み上げと同じ全文。
+      // tts.ts 側で固定MP3・大会名・対戦カードへ分解されるため、
+      // 本番と完全に同じキャッシュを先に作れる。
+      const fullStartGreeting =
+        `おまたせいたしました。` +
+        `${tournamentName}。` +
+        `ほんじつの だい${matchNumber}しあい、` +
+        `${team1stRead}たい${team3rdRead}のしあい、` +
+        `まもなくかいしでございます。`;
+
+      const voice =
+        localStorage.getItem("tts:matcha:voice") ||
+        localStorage.getItem("tts:matchaVoice") ||
+        "taniho";
+      const speed = localStorage.getItem("tts:speedScale") || "1";
+
+      const key = `full-v2::${voice}::${speed}::${fullStartGreeting}`;
+      if (startGreetingPrefetchKeyRef.current === key) {
+        return true;
+      }
+
+      startGreetingPrefetchKeyRef.current = key;
+
+      console.log("[APP PREFETCH][StartGreeting FULL] start", {
+        screen,
+        tournamentName,
+        matchNumber,
+        team1stRead,
+        team3rdRead,
+      });
+
+      try {
+        await prefetchTTS(fullStartGreeting);
+
+        console.log("[APP PREFETCH][StartGreeting FULL] ready", {
+          tournamentName,
+          matchNumber,
+          team1stRead,
+          team3rdRead,
+        });
+
+        return true;
+      } catch (error) {
+        console.warn("[APP PREFETCH][StartGreeting FULL] failed", error);
+        if (!cancelled) {
+          startGreetingPrefetchKeyRef.current = "";
+        }
+        return false;
+      }
+    } finally {
+      checking = false;
+    }
+  };
+
+  const run = async () => {
+    const ready = await tryPrefetchStartGreeting();
+    if (cancelled || ready) return;
+
+    // アプリ起動直後はlocalForageへ試合情報がまだ保存されていない場合がある。
+    // 最大20秒だけ再確認し、見つかった瞬間に生成を開始する。
+    retryCount += 1;
+    if (retryCount >= 20) return;
+
+    retryTimer = window.setTimeout(() => {
+      void run();
+    }, 1000);
+  };
+
+  void run();
+
+  return () => {
+    cancelled = true;
+    if (retryTimer !== null) {
+      window.clearTimeout(retryTimer);
+    }
+  };
+}, [screen, leagueMode]);
 
 // AI音声の起動準備状態を右上に表示する。
 // tts.ts側でも0msで準備を開始しているが、prewarmMatcha()はPromise共有なので二重実行されない。
@@ -3791,7 +3923,11 @@ return (
 
           {/* 雨天中断 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">雨天中断</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                雨天中断
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               ご覧のような天候の為、試合を一時中断いたします。{'\n'}
             </p>
@@ -3820,7 +3956,11 @@ return (
 
           {/* 雷での中断 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">雷での中断</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                雷での中断
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。{'\n'}
               スタンドの皆様も安全な場所に避難をお願い致します。
@@ -3851,7 +3991,11 @@ return (
 
           {/* 中断→再開 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">中断→再開</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                中断→再開
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               大変長らくお待たせをしております。{'\n'}
               ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。
@@ -3882,7 +4026,11 @@ return (
 
           {/* 中断→中止 */}
           <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
-            <div className="text-red-700 font-extrabold mb-2">中断→中止</div>
+            <div className="mb-3">
+              <span className="inline-flex items-center rounded-full border border-red-700 bg-red-700 px-3 py-1 text-xs font-extrabold tracking-wide text-white shadow-sm">
+                中断→中止
+              </span>
+            </div>
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
               ご覧のような天候状態の為、本日の試合は中止とさせていただきます。
             </p>

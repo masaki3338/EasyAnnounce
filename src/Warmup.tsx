@@ -151,6 +151,49 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
   const timer1Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timer2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // タイマー終了モーダル表示時の通知音（シートノック画面と同じ方式）
+  const playBeeps = async (
+    count = 4,
+    freq = 900,
+    durationSec = 0.14,
+    gapSec = 0.09,
+    volume = 0.22
+  ) => {
+    try {
+      const AudioCtx =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+
+      const ctx = new AudioCtx();
+      if ((ctx as any).state === "suspended" && (ctx as any).resume) {
+        await (ctx as any).resume();
+      }
+
+      const now = ctx.currentTime;
+      for (let i = 0; i < count; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = freq;
+
+        const t0 = now + i * (durationSec + gapSec);
+        gain.gain.setValueAtTime(0, t0);
+        gain.gain.linearRampToValueAtTime(volume, t0 + 0.005);
+        gain.gain.setValueAtTime(volume, t0 + durationSec - 0.02);
+        gain.gain.linearRampToValueAtTime(0, t0 + durationSec);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + durationSec + 0.02);
+      }
+
+      window.setTimeout(() => {
+        try { ctx.close(); } catch {}
+      }, (count * (durationSec + gapSec) + 0.3) * 1000);
+    } catch {}
+  };
+
   useEffect(() => {
     const load = async () => {
       const matchInfo = await localForage.getItem("matchInfo");
@@ -330,6 +373,18 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     }
     return () => clearInterval(timer2Ref.current!);
   }, [timer2Active]);
+
+  useEffect(() => {
+    if (showEndModal1) {
+      void playBeeps(4, 900, 0.14, 0.09, 0.22);
+    }
+  }, [showEndModal1]);
+
+  useEffect(() => {
+    if (showEndModal2) {
+      void playBeeps(4, 900, 0.14, 0.09, 0.22);
+    }
+  }, [showEndModal2]);
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);

@@ -2403,17 +2403,42 @@ const [shouldNavigateAfterPopup, setShouldNavigateAfterPopup] = useState(false);
 const [popupMessage, setPopupMessage] = useState("");             // 表示用
 const [popupSpeakMessage, setPopupSpeakMessage] = useState("");  // 読み上げ用
 
+// 得点文を短い単位へ分け、長い全文の生成待ちを避ける。
+const buildScoreSpeakParts = (value: string): string[] => {
+  const source = String(value ?? "").trim();
+  if (!source) return [];
 
-// ✅ 得点モーダル：表示された時点で完成済みの読み上げ文を先読みする。
-// 読み上げボタンと同じ popupSpeakMessage || popupMessage を使うため、
-// 先読みと本番のキャッシュキーがずれない。
+  const marker = "この回の得点は";
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return [source];
+
+  const teamPart = source
+    .slice(0, markerIndex)
+    .replace(/[、,\s]+$/g, "")
+    .trim();
+  const scorePart = source
+    .slice(markerIndex + marker.length)
+    .replace(/^[、,\s]+/g, "")
+    .trim();
+
+  return [teamPart, marker, scorePart].filter(Boolean);
+};
+
+const prefetchScoreAnnouncement = async (value: string) => {
+  for (const part of buildScoreSpeakParts(value)) {
+    await prefetchTTS(part);
+  }
+};
+
+
+// 得点モーダル表示時にも、読み上げ時と同じ分割単位で先読みする。
 useEffect(() => {
   if (!showScorePopup) return;
 
   const text = (popupSpeakMessage || popupMessage || "").trim();
   if (!text) return;
 
-  void prefetchTTS(text).catch((error) => {
+  void prefetchScoreAnnouncement(text).catch((error) => {
     console.warn("[TTS PREFETCH][ScoreModal] failed", error);
   });
 }, [
@@ -2425,6 +2450,61 @@ useEffect(() => {
 const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
 const [pitchAnnounceText, setPitchAnnounceText] = useState("");
 const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
+
+// 合計投球数のフルネームだけ、読み上げ時に苗字と名前を分ける。
+// 表示用HTMLは変更しない。
+const buildPitchAnnounceSpeakParts = (html: string): string[] => {
+  const source = String(html ?? "").trim();
+  if (!source) return [];
+
+  return source
+    .split(/\n+/)
+    .flatMap((line) => {
+      if (!line.includes("合計投球数")) {
+        const text = htmlToTtsText(line);
+        return text ? [text] : [];
+      }
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(line, "text/html");
+      const rubies = Array.from(doc.querySelectorAll("ruby"));
+
+      // rubyFull() の「苗字」「名前」が別々のrubyになっている時だけ分割する。
+      if (rubies.length < 2) {
+        const text = htmlToTtsText(line);
+        return text ? [text] : [];
+      }
+
+      const rubyReading = (ruby: Element) => {
+        const rt = ruby.querySelector("rt")?.textContent?.trim();
+        const rb = ruby.querySelector("rb")?.textContent?.trim();
+        const base = (rb ?? ruby.childNodes[0]?.textContent ?? "").trim();
+        return rt ? preserveNameReading(rt) : base;
+      };
+
+      const lastName = rubyReading(rubies[0]);
+      const firstName = rubyReading(rubies[1]);
+
+      rubies.forEach((ruby) => ruby.remove());
+      const suffix = (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+
+      return [lastName, `${firstName}${suffix}`].filter(Boolean);
+    })
+    .filter(Boolean);
+};
+
+// モーダルを開いている間に、本番と同じ分割単位で先読みする。
+useEffect(() => {
+  if (!showPitchAnnounceModal || !pitchAnnounceText) return;
+
+  const parts = buildPitchAnnounceSpeakParts(pitchAnnounceText);
+  void (async () => {
+    for (const part of parts) {
+      await prefetchTTS(part);
+    }
+  })();
+}, [showPitchAnnounceModal, pitchAnnounceText]);
+
 const [inputScore, setInputScore] = useState("");
 const [editInning, setEditInning] = useState<number | null>(null);
 const [editTopBottom, setEditTopBottom] = useState<"top" | "bottom" | null>(null);
@@ -6387,11 +6467,15 @@ const snapshot =
 
   if (score > 0) {
     if (leagueMode === "boys") {
+      const scoreSpeakText = `この回の得点は、${score}点。`;
       setPopupMessage(`この回の得点は${score}点。`);
-      setPopupSpeakMessage(`この回の得点は、${score}点。`);
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
     } else {
+      const scoreSpeakText = `${teamReading}、この回の得点は、${score}点です。`;
       setPopupMessage(`${teamName}、この回の得点は${score}点です。`);
-      setPopupSpeakMessage(`${teamReading}、この回の得点は、${score}点です。`);
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
     }
 
   if (isConfiguredGroundMaintenance(inning, isTop)) {
@@ -6403,8 +6487,10 @@ const snapshot =
   } else {
     // ★ ボーイズリーグは0点でも得点モーダルを表示
     if (leagueMode === "boys") {
+      const scoreSpeakText = "この回の得点は 無得点";
       setPopupMessage("この回の得点は 無得点");
-      setPopupSpeakMessage("この回の得点は 無得点");
+      setPopupSpeakMessage(scoreSpeakText);
+      void prefetchScoreAnnouncement(scoreSpeakText);
 
     if (isConfiguredGroundMaintenance(inning, isTop)) {
       setPendingGroundPopup(true);
@@ -8759,7 +8845,14 @@ useEffect(() => {
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         <button
                           onClick={async () => {
-                            await speak(popupSpeakMessage || popupMessage);
+                            const text = popupSpeakMessage || popupMessage;
+                            const parts = buildScoreSpeakParts(text);
+
+                            if (parts.length > 1) {
+                              await speakJoinedTTS(parts, { progressive: false, cache: true });
+                            } else {
+                              await speak(text);
+                            }
                           }}
                           className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                                     inline-flex items-center justify-center gap-2"
@@ -11168,7 +11261,13 @@ useEffect(() => {
                 <button
                   type="button"
                   onClick={async () => {
-                    await speak(htmlToTtsText(pitchAnnounceText));
+                    const parts = buildPitchAnnounceSpeakParts(pitchAnnounceText);
+
+                    if (parts.length > 1) {
+                      await speakJoinedTTS(parts, { progressive: false, cache: true });
+                    } else if (parts[0]) {
+                      await speak(parts[0]);
+                    }
                   }}
                   className="rounded-xl bg-blue-600 py-3 font-bold text-white shadow active:scale-95"
                 >
