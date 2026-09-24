@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { speak } from "../lib/tts";
-import { notifyMatchaVoiceChanged } from "../lib/matchaTts";
+import {
+  benchmarkMatchaPerformance,
+  notifyMatchaVoiceChanged,
+  type MatchaPerformanceProgress,
+  type MatchaPerformanceResult,
+} from "../lib/matchaTts";
 import { useWebSpeechVoices } from "../hooks/useWebSpeechVoices";
 
 const MATCHA_TANIHO_VALUE = "__easy_announce_matcha_taniho__";
@@ -93,6 +98,13 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showAiVoiceNotice, setShowAiVoiceNotice] = useState(false);
   const [testText, setTestText] = useState(DEFAULT_TEST_TEXT);
+  const [aiPerformance, setAiPerformance] =
+    useState<MatchaPerformanceResult | null>(null);
+  const [isCheckingAiPerformance, setIsCheckingAiPerformance] =
+    useState(false);
+  const [aiPerformanceProgress, setAiPerformanceProgress] =
+    useState<MatchaPerformanceProgress | null>(null);
+  const [aiPerformanceError, setAiPerformanceError] = useState("");
 
   const onceRef = useRef(false);
   useEffect(() => {
@@ -122,25 +134,62 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
   const pitchUnsupported =
     !isMatchaVoice && isPitchLikelyUnsupported(selectedName || undefined);
 
+  const runAiPerformanceCheck = async () => {
+    if (isCheckingAiPerformance) return;
+
+    setIsCheckingAiPerformance(true);
+    setAiPerformance(null);
+    setAiPerformanceProgress("preparing");
+    setAiPerformanceError("");
+
+    try {
+      const result = await benchmarkMatchaPerformance((progress) => {
+        setAiPerformanceProgress(progress);
+      });
+      setAiPerformance(result);
+      setAiPerformanceProgress("complete");
+    } catch (error) {
+      console.error("[TTS settings] AI performance check failed:", error);
+      setAiPerformance(null);
+      setAiPerformanceProgress(null);
+      setAiPerformanceError(
+        "AI音声の動作チェックに失敗しました。もう一度お試しください。"
+      );
+    } finally {
+      setIsCheckingAiPerformance(false);
+    }
+  };
+
   const handleSelectVoice = (name: string) => {
     setSelectedName(name);
 
     if (name === MATCHA_TANIHO_VALUE) {
       saveMatchaVoice("taniho");
       notifyMatchaVoiceChanged();
+      setAiPerformance(null);
+      setAiPerformanceProgress("preparing");
+      setAiPerformanceError("");
       setShowAiVoiceNotice(true);
+      void runAiPerformanceCheck();
       return;
     }
 
     if (name === MATCHA_UGUISU_VALUE) {
       saveMatchaVoice("uguisu");
       notifyMatchaVoiceChanged();
+      setAiPerformance(null);
+      setAiPerformanceProgress("preparing");
+      setAiPerformanceError("");
       setShowAiVoiceNotice(true);
+      void runAiPerformanceCheck();
       return;
     }
 
     localStorage.setItem("tts:engine", "webspeech");
     localStorage.setItem("tts:webspeech:voiceName", name);
+    setShowAiVoiceNotice(false);
+    setAiPerformanceProgress(null);
+    setAiPerformanceError("");
   };
 
   const handleSpeedChange = (v: number) => {
@@ -244,6 +293,42 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
             )}
           </div>
 
+          {isMatchaVoice && aiPerformance && !showAiVoiceNotice && (
+            <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5 mt-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base md:text-lg font-bold">
+                    📱 AI音声 動作チェック結果
+                  </h2>
+                  <p className={`text-sm mt-1 font-semibold ${
+                    aiPerformance.level === "good"
+                      ? "text-emerald-300"
+                      : aiPerformance.level === "warning"
+                      ? "text-amber-300"
+                      : "text-rose-300"
+                  }`}>
+                    {aiPerformance.level === "good"
+                      ? `✅ 使用できます（約${(aiPerformance.generationMs / 1000).toFixed(1)}秒）`
+                      : aiPerformance.level === "warning"
+                      ? `⚠️ 遅延する場合があります（約${(aiPerformance.generationMs / 1000).toFixed(1)}秒）`
+                      : `⛔ 端末音声を推奨します（約${(aiPerformance.generationMs / 1000).toFixed(1)}秒）`}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAiVoiceNotice(true);
+                    void runAiPerformanceCheck();
+                  }}
+                  className="shrink-0 px-3 h-10 rounded-xl bg-cyan-600/80 hover:bg-cyan-500 border border-cyan-300/20 text-white text-sm font-semibold"
+                >
+                  再チェック
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-2xl bg-white/5 border border-white/10 p-4 md:p-5 mt-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg md:text-xl font-bold">⏩ 読み上げ速度</h2>
@@ -337,34 +422,198 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
         </section>
       </div>
 
-      {showAiVoiceNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" role="dialog" aria-modal="true">
+      {showAiVoiceNotice && isMatchaVoice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="w-full max-w-md rounded-3xl bg-slate-800 border border-white/15 shadow-2xl p-5 md:p-6">
-            <h2 className="text-xl font-bold text-white text-center">AI音声について</h2>
-            <div className="mt-4 rounded-2xl border border-amber-300/70 bg-amber-400/15 px-4 py-4 text-amber-50 shadow-inner">
+            <h2 className="text-xl font-bold text-white text-center">
+              AI音声について
+            </h2>
+
+            <div className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-400/10 px-4 py-3 text-amber-50">
               <div className="flex items-start gap-3">
-                <span
-                  className="shrink-0 text-2xl leading-none"
-                  aria-hidden="true"
-                >
+                <span className="shrink-0 text-2xl leading-none" aria-hidden="true">
                   ⚠️
                 </span>
-                <div className="text-sm md:text-base leading-relaxed">
-                  <p>
-                    AI音声は端末の処理能力によって、読み上げボタンを押したあと遅延が発生することがあります。
-                  </p>
-                  <p className="mt-2 font-semibold">
-                    その場合はAI音声以外を選択してください。
-                  </p>
-                </div>
+                <p className="text-sm leading-relaxed">
+                  AI音声は、本人の音声ではありません。イメージをもとに制作したAI音声です。
+                </p>
               </div>
             </div>
+
+            <div className="mt-4 rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-bold text-white">
+                  📱 この端末でAI音声をチェック
+                </div>
+
+                {isCheckingAiPerformance && (
+                  <div className="text-xs font-semibold text-cyan-100">
+                    チェック中
+                  </div>
+                )}
+              </div>
+
+              {isCheckingAiPerformance && (
+                <>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-cyan-300 transition-all duration-300"
+                      style={{
+                        width:
+                          aiPerformanceProgress === "preparing"
+                            ? "15%"
+                            : aiPerformanceProgress === "g2p"
+                            ? "40%"
+                            : aiPerformanceProgress === "inference"
+                            ? "70%"
+                            : aiPerformanceProgress === "judging"
+                            ? "90%"
+                            : aiPerformanceProgress === "complete"
+                            ? "100%"
+                            : "5%",
+                      }}
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="h-5 w-5 rounded-full border-2 border-cyan-200/30 border-t-cyan-200 animate-spin" />
+                    <div className="text-sm font-semibold text-cyan-50">
+                      {aiPerformanceProgress === "preparing"
+                        ? "AIモデルを準備しています..."
+                        : aiPerformanceProgress === "g2p"
+                        ? "文章をAI音声用データに変換しています..."
+                        : aiPerformanceProgress === "inference"
+                        ? "AI音声を生成しています..."
+                        : aiPerformanceProgress === "judging"
+                        ? "この端末で快適に使えるか判定しています..."
+                        : "チェックしています..."}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2 text-xs">
+                    <div className={
+                      aiPerformanceProgress === "preparing"
+                        ? "text-cyan-100 font-semibold"
+                        : "text-emerald-300"
+                    }>
+                      {aiPerformanceProgress === "preparing" ? "●" : "✓"} AIモデルの準備
+                    </div>
+
+                    <div className={
+                      aiPerformanceProgress === "g2p"
+                        ? "text-cyan-100 font-semibold"
+                        : ["inference", "judging", "complete"].includes(aiPerformanceProgress || "")
+                        ? "text-emerald-300"
+                        : "text-white/35"
+                    }>
+                      {["inference", "judging", "complete"].includes(aiPerformanceProgress || "")
+                        ? "✓"
+                        : "●"}{" "}
+                      文章の変換
+                    </div>
+
+                    <div className={
+                      aiPerformanceProgress === "inference"
+                        ? "text-cyan-100 font-semibold"
+                        : ["judging", "complete"].includes(aiPerformanceProgress || "")
+                        ? "text-emerald-300"
+                        : "text-white/35"
+                    }>
+                      {["judging", "complete"].includes(aiPerformanceProgress || "")
+                        ? "✓"
+                        : "●"}{" "}
+                      AI音声の生成
+                    </div>
+
+                    <div className={
+                      aiPerformanceProgress === "judging"
+                        ? "text-cyan-100 font-semibold"
+                        : aiPerformanceProgress === "complete"
+                        ? "text-emerald-300"
+                        : "text-white/35"
+                    }>
+                      {aiPerformanceProgress === "complete" ? "✓" : "●"} 端末性能の判定
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!isCheckingAiPerformance && aiPerformance?.level === "good" && (
+                <div className="mt-3 rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 text-emerald-50">
+                  <div className="font-bold">
+                    ✅ この端末ではAI音声を使用できます
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed">
+                    AI音声の生成時間は約
+                    {(aiPerformance.generationMs / 1000).toFixed(1)}
+                    秒でした。読み上げ開始の遅延は比較的小さいと判断しました。
+                  </p>
+                </div>
+              )}
+
+              {!isCheckingAiPerformance && aiPerformance?.level === "warning" && (
+                <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 py-3 text-amber-50">
+                  <div className="font-bold">
+                    ⚠️ AI音声の読み上げが遅れる場合があります
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed">
+                    AI音声の生成時間は約
+                    {(aiPerformance.generationMs / 1000).toFixed(1)}
+                    秒でした。試合中に待ち時間が気になる場合は、AI音声以外の端末音声を選択してください。
+                  </p>
+                </div>
+              )}
+
+              {!isCheckingAiPerformance && aiPerformance?.level === "slow" && (
+                <div className="mt-3 rounded-xl border border-rose-300/60 bg-rose-500/20 px-4 py-3 text-rose-50">
+                  <div className="font-bold">
+                    ⛔ この端末ではAI音声の使用をおすすめしません
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed">
+                    この端末ではAI音声の処理能力が不足しているため、
+                    AI音声を選択して読み上げると大きな遅延が発生する可能性があります。
+                  </p>
+                  <p className="mt-2 text-sm font-bold">
+                    AI音声以外の端末音声を選択してください。
+                  </p>
+                  <p className="mt-2 text-xs text-rose-100/80">
+                    測定したAI音声生成時間：約
+                    {(aiPerformance.generationMs / 1000).toFixed(1)}秒
+                  </p>
+                </div>
+              )}
+
+              {!isCheckingAiPerformance && aiPerformanceError && (
+                <div className="mt-3 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 py-3 text-sm text-amber-50">
+                  {aiPerformanceError}
+                  <button
+                    type="button"
+                    onClick={() => void runAiPerformanceCheck()}
+                    className="mt-3 w-full h-10 rounded-xl bg-cyan-600 text-white font-semibold"
+                  >
+                    もう一度チェック
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => setShowAiVoiceNotice(false)}
-              className="mt-6 w-full h-12 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold shadow-lg"
+              disabled={isCheckingAiPerformance}
+              className={`mt-5 w-full h-12 rounded-2xl text-white font-bold shadow-lg ${
+                isCheckingAiPerformance
+                  ? "bg-gray-500/60 cursor-not-allowed"
+                  : "bg-gradient-to-r from-sky-600 to-blue-600"
+              }`}
             >
-              OK
+              {isCheckingAiPerformance
+                ? "チェック完了までお待ちください"
+                : "OK"}
             </button>
           </div>
         </div>
