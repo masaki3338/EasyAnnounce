@@ -35,6 +35,32 @@ export type MatchaPcmAudio = {
 
 type SynthesizedAudio = MatchaPcmAudio;
 
+export type MatchaPerformanceLevel = "good" | "warning" | "slow";
+
+export type MatchaPerformanceProgress =
+  | "preparing"
+  | "g2p"
+  | "inference"
+  | "judging"
+  | "complete";
+
+export type MatchaPerformanceResult = {
+  level: MatchaPerformanceLevel;
+  generationMs: number;
+  g2pMs: number;
+  inferenceMs: number;
+  prepareMs: number;
+  audioDurationMs: number;
+  rtf: number;
+  modelId: "taniho" | "uguisu";
+  hardwareConcurrency: number;
+  deviceMemoryGb: number | null;
+  crossOriginIsolated: boolean;
+};
+
+const MATCHA_PERFORMANCE_BENCHMARK_TEXT =
+  "ライトの山田くんに代わりまして";
+
 const MATCHA_MODEL_URL =
   "/models/easy-announce/matcha/TANIHO.onnx / UGUISU.onnx";
 
@@ -851,6 +877,88 @@ function strengthenHachibanOnset(
   return phonemes;
 }
 
+// -----------------------------------------------------------------------------
+// 発音補助：無音(pau)を入れず、1本の音声のままアクセント句境界 # だけを追加。
+// 「秋季大会」→「たいけー」、「だいいちしあい」→「しあー」のような
+// 母音のつぶれを抑えつつ、別音声生成による不自然な間を作らない。
+// -----------------------------------------------------------------------------
+function needsPronunciationPhraseBoundary(sourceText: string): boolean {
+  return (
+    /(?:秋季大会|しゅうきたいかい|シュウキタイカイ)/.test(sourceText) ||
+    /だい(?:いち|に|さん|よん|ご|ろく|なな|はち|きゅう)しあい/.test(sourceText)
+  );
+}
+
+function insertPronunciationPhraseBoundary(
+  phonemes: string[],
+  sourceText: string
+): string[] {
+  if (!needsPronunciationPhraseBoundary(sourceText)) {
+    return phonemes;
+  }
+
+  const prosody = new Set(["^", "$", "?", "_", "#", "[", "]"]);
+  const speechItems = phonemes
+    .map((phoneme, index) => ({ phoneme, index }))
+    .filter((item) => !prosody.has(item.phoneme));
+
+  const insertionIndexes: number[] = [];
+
+  const addBoundaryBeforeSequence = (sequence: string[]) => {
+    for (let i = 0; i <= speechItems.length - sequence.length; i++) {
+      let matched = true;
+
+      for (let j = 0; j < sequence.length; j++) {
+        if (speechItems[i + j].phoneme !== sequence[j]) {
+          matched = false;
+          break;
+        }
+      }
+
+      if (!matched) continue;
+
+      const targetIndex = speechItems[i].index;
+      const prevSpeechIndex = i > 0 ? speechItems[i - 1].index : -1;
+      const between = phonemes.slice(prevSpeechIndex + 1, targetIndex);
+
+      if (!between.includes("#")) {
+        insertionIndexes.push(targetIndex);
+      }
+    }
+  };
+
+  if (/(?:秋季大会|しゅうきたいかい|シュウキタイカイ)/.test(sourceText)) {
+    // 「たいかい」= t a i k a i の直前
+    addBoundaryBeforeSequence(["t", "a", "i", "k", "a", "i"]);
+  }
+
+  if (/だい(?:いち|に|さん|よん|ご|ろく|なな|はち|きゅう)しあい/.test(sourceText)) {
+    // 「しあい」= sh i a i の直前
+    addBoundaryBeforeSequence(["sh", "i", "a", "i"]);
+  }
+
+  if (!insertionIndexes.length) {
+    console.warn("[Matcha pronunciation] phrase boundary target not found", {
+      text: sourceText,
+    });
+    return phonemes;
+  }
+
+  const out = [...phonemes];
+  const uniqueIndexes = [...new Set(insertionIndexes)].sort((a, b) => b - a);
+
+  for (const index of uniqueIndexes) {
+    out.splice(index, 0, "#");
+  }
+
+  console.log("[Matcha pronunciation] inserted phrase boundary", {
+    text: sourceText,
+    count: uniqueIndexes.length,
+  });
+
+  return out;
+}
+
 // OpenJTalk は文頭が「、」「。」などの短いポーズだと
 // JPCommonLabel_insert_pause(): First mora should not be short pause.
 // の警告を出す。
@@ -916,6 +1024,9 @@ async function textToMatchaIds(
   // 「はち」と「ばん」の間には pau / 空白を入れない。
   phonemes = strengthenHachibanOnset(phonemes, openJTalkText);
 
+  // 無音は追加せず、アクセント句境界 # だけで語の境目を補助する。
+  phonemes = insertPronunciationPhraseBoundary(phonemes, openJTalkText);
+
   const ids: number[] = [];
 
   for (const phoneme of phonemes) {
@@ -955,7 +1066,14 @@ function makeCacheKey(
   speedScale: number,
   modelId: MatchaModelId = getSelectedMatchaModelId()
 ) {
-  return `${PERSISTENT_CACHE_VERSION}::${modelId}::${speedScale.toFixed(3)}::${text}`;
+  // 発音補助対象だけ旧音声キャッシュを使わない。
+  // その他のキャッシュはそのまま維持する。
+  const pronunciationRuleSuffix =
+    needsPronunciationPhraseBoundary(text)
+      ? "::pron-boundary-v3"
+      : "";
+
+  return `${PERSISTENT_CACHE_VERSION}${pronunciationRuleSuffix}::${modelId}::${speedScale.toFixed(3)}::${text}`;
 }
 
 function putCache(
@@ -2036,14 +2154,19 @@ async function playSamples(
 function trimJoinSilence(
   audio: SynthesizedAudio,
   trimStart: boolean,
-  trimEnd: boolean
+  trimEnd: boolean,
+  keepSilenceMs = 30
 ): SynthesizedAudio {
   const samples = audio.samples;
   if (!samples.length) return audio;
 
-  // 音声本体を削らないよう低めの閾値 + 約30msの余白を残す。
+  // 通常結合は従来どおり約30ms残す。
+  // 発音補助のごく短い語境界では 5ms 程度まで縮められるようにする。
   const threshold = 0.0012;
-  const keep = Math.max(1, Math.round(audio.sampleRate * 0.03));
+  const keep = Math.max(
+    1,
+    Math.round(audio.sampleRate * Math.max(0, keepSilenceMs) / 1000)
+  );
   let start = 0;
   let end = samples.length;
 
@@ -2068,7 +2191,8 @@ function trimJoinSilence(
 
 function joinSynthesizedAudios(
   audios: SynthesizedAudio[],
-  joinSilenceMs = 35
+  joinSilenceMs = 35,
+  edgeKeepSilenceMs = 30
 ): SynthesizedAudio | null {
   const valid = audios.filter((a) => a && a.samples.length > 0);
   if (!valid.length) return null;
@@ -2082,7 +2206,8 @@ function joinSynthesizedAudios(
     trimJoinSilence(
       audio,
       index > 0,
-      index < valid.length - 1
+      index < valid.length - 1,
+      edgeKeepSilenceMs
     )
   );
 
@@ -2143,7 +2268,8 @@ export async function synthesizeMatchaPcmForJoin(
 export async function playJoinedMatchaPcm(
   audios: MatchaPcmAudio[],
   options: MatchaSpeakOptions = {},
-  joinSilenceMs = 35
+  joinSilenceMs = 35,
+  edgeKeepSilenceMs = 30
 ): Promise<void> {
   const valid = (audios || []).filter((a) => a && a.samples?.length > 0);
   if (!valid.length) return;
@@ -2163,7 +2289,7 @@ export async function playJoinedMatchaPcm(
     ? clamp(Number(options.volume), 0, 1)
     : 0.8;
 
-  const joined = joinSynthesizedAudios(valid, joinSilenceMs);
+  const joined = joinSynthesizedAudios(valid, joinSilenceMs, edgeKeepSilenceMs);
   if (!joined) return;
 
   console.log('[TTS JOIN] mixed PCM ready', {
@@ -2453,6 +2579,87 @@ export async function prewarmMatcha(): Promise<void> {
 }
 
 // 自動起動は tts.ts 側で、React初回描画後にバックグラウンド開始する。
+
+export async function benchmarkMatchaPerformance(
+  onProgress?: (progress: MatchaPerformanceProgress) => void
+): Promise<MatchaPerformanceResult> {
+  const modelId = getSelectedMatchaModelId();
+
+  onProgress?.("preparing");
+  const prepareStartedAt = performance.now();
+  await prewarmMatcha();
+  const prepareMs = performance.now() - prepareStartedAt;
+
+  const generationStartedAt = performance.now();
+
+  onProgress?.("g2p");
+  const g2pStartedAt = performance.now();
+  const ids = await textToMatchaIds(MATCHA_PERFORMANCE_BENCHMARK_TEXT);
+  const g2pMs = performance.now() - g2pStartedAt;
+
+  if (!ids.length) {
+    throw new Error("AI音声の性能チェック用テキストを音素へ変換できませんでした。");
+  }
+
+  onProgress?.("inference");
+  const inferenceStartedAt = performance.now();
+  const audio = await postInferenceWorker({
+    type: "synthesize",
+    ids,
+    speedScale: 1.3,
+    modelId,
+  });
+  const inferenceMs = performance.now() - inferenceStartedAt;
+  const generationMs = performance.now() - generationStartedAt;
+
+  if (!audio || !audio.samples?.length) {
+    throw new Error("AI音声の性能チェック用音声を生成できませんでした。");
+  }
+
+  onProgress?.("judging");
+
+  const audioDurationMs =
+    (audio.samples.length / Math.max(1, audio.sampleRate)) * 1000;
+  const rtf =
+    audioDurationMs > 0
+      ? generationMs / audioDurationMs
+      : 999;
+
+  // Easyアナウンスの即時読み上げ用途を想定した暫定基準。
+  const level: MatchaPerformanceLevel =
+    generationMs <= 1800
+      ? "good"
+      : generationMs <= 3200
+      ? "warning"
+      : "slow";
+
+  const nav = navigator as Navigator & {
+    deviceMemory?: number;
+  };
+
+  const result: MatchaPerformanceResult = {
+    level,
+    generationMs: Math.round(generationMs * 10) / 10,
+    g2pMs: Math.round(g2pMs * 10) / 10,
+    inferenceMs: Math.round(inferenceMs * 10) / 10,
+    prepareMs: Math.round(prepareMs * 10) / 10,
+    audioDurationMs: Math.round(audioDurationMs * 10) / 10,
+    rtf: Math.round(rtf * 1000) / 1000,
+    modelId,
+    hardwareConcurrency: navigator.hardwareConcurrency || 1,
+    deviceMemoryGb:
+      Number.isFinite(nav.deviceMemory)
+        ? Number(nav.deviceMemory)
+        : null,
+    crossOriginIsolated:
+      typeof self !== "undefined" &&
+      self.crossOriginIsolated === true,
+  };
+
+  console.log("[TTS DEVICE CHECK]", result);
+  onProgress?.("complete");
+  return result;
+}
 
 export function stopMatcha() {
   generationId++;
