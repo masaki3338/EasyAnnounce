@@ -1,7 +1,7 @@
 // SheetKnock.tsx（全文置き換え）
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
-import { speak as ttsSpeak, stop as ttsStop, prefetchTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 // これを SheetKnock.tsx の先頭 import 群の直後に追加
@@ -224,6 +224,7 @@ const SheetKnock: React.FC<Props> = ({ onBack }) => {
   const [opponentTeamName, setOpponentTeamName] = useState("");
   const [announcementMode, setAnnouncementMode] =
     useState<"normal" | "single">("normal");
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const [firstTeamName, setFirstTeamName] = useState("");
   const [thirdTeamName, setThirdTeamName] = useState("");
@@ -383,17 +384,18 @@ const playBeeps = async (
 
   useEffect(() => {
     const load = async () => {
-      const team = await localForage.getItem("team");
-      const matchInfo = await localForage.getItem("matchInfo");
+      try {
+        const team = await localForage.getItem("team");
+        const matchInfo = await localForage.getItem("matchInfo");
 
-      if (team && typeof team === "object") {
+        if (team && typeof team === "object") {
         const t = team as any;
         setTeamName(t.name || "");
         setTeamReading(t.furigana || t.kana || t.reading || t.name || "");
       }
 
-      if (matchInfo && typeof matchInfo === "object") {
-        const info = matchInfo as any;
+        if (matchInfo && typeof matchInfo === "object") {
+          const info = matchInfo as any;
 
         if (info.announcementMode === "single") {
           const side = info.sheetKnockSide ?? "home";
@@ -448,9 +450,18 @@ const playBeeps = async (
           setIsHome(info.isHome === true ? "後攻" : "先攻");
           setOpponentTeamName(info.opponentTeam || "");
         }
+        }
+      } finally {
+        setDataLoaded(true);
       }
     };
     load();
+  }, []);
+
+  // Matcha/Vocos/OpenJTalk を画面表示直後に共通準備。
+  // UIは待たせず、読み上げボタンが押される前に初期化を進める。
+  useEffect(() => {
+    void prewarmTTS();
   }, []);
 
 // VOICEVOX優先の読み上げ（状態フラグも更新）
@@ -572,24 +583,47 @@ const mainSpeakMessage =
     : `${activeTeamReading}はシートノックに入ってください。\nノック時間は同じく${knockMinutes}分以内です。`;
 
 useEffect(() => {
-  const texts = [
-    prepSpeakMessage,
-    mainSpeakMessage,
-    noticeMinutes > 0 ? knockNoticePrefix : null,
-    noticeMinutes > 0 ? knockNoticeMinutesPart : null,
-    "ノックを終了してください。",
-  ].filter(
-    (value): value is string => !!value
-  );
+  if (!dataLoaded) return;
+  if (!activeTeamReading.trim()) return;
+
+  let cancelled = false;
+
+  const runPrefetch = async () => {
+    // 最重要:
+    // 「チーム名～」から始まる本アナウンスを最優先で完全に先読みする。
+    // これが終わるまで他のMatcha生成を開始しない。
+    await prefetchTTS(mainSpeakMessage);
+
+    if (cancelled) return;
+
+    if (prepSpeakMessage) {
+      await prefetchTTS(prepSpeakMessage);
+    }
+
+    if (cancelled) return;
+
+    if (noticeMinutes > 0) {
+      await prefetchTTS(knockNoticePrefix);
+      if (cancelled) return;
+
+      await prefetchTTS(knockNoticeMinutesPart);
+      if (cancelled) return;
+    }
+
+    await prefetchTTS("ノックを終了してください。");
+  };
 
   const timer = window.setTimeout(() => {
-    // 通常の案内文に加え、残り時間案内の分割後2文と終了案内も先読みする。
-    // タイマーのモーダルで読み上げボタンを押した直後に再生しやすくする。
-    texts.forEach((text) => { void prefetchTTS(text); });
-  }, 80);
+    void runPrefetch();
+  }, 0);
 
-  return () => window.clearTimeout(timer);
+  return () => {
+    cancelled = true;
+    window.clearTimeout(timer);
+  };
 }, [
+  dataLoaded,
+  activeTeamReading,
   prepSpeakMessage,
   mainSpeakMessage,
   noticeMinutes,

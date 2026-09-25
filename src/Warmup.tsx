@@ -403,12 +403,17 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
     `${team3Read}はキャッチボールを開始してください。`;
 
   useEffect(() => {
-    // 画面表示後は、まず本アナウンスを最優先で先読みする。
-    // 「交代」「終了」はその後に回し、本アナウンスの生成を邪魔しない。
+    // team/opponent の読み込み前に空文字を含む文章を先読みすると、
+    // 1スレッド/低性能端末では本当に必要な音声生成を邪魔する。
+    // チーム名の読み上げ文字が両方確定してから本アナウンスを先読みする。
+    if (!team1Read.trim() || !team3Read.trim()) return;
+
+    // 画面表示後は、本アナウンスを最優先で先読みする。
     const mainTimer = window.setTimeout(() => {
       void prefetchTTS(mainSpeak);
     }, 40);
 
+    // 固定文は後回し。メインの動的文章の生成を邪魔しない。
     const subTimer = window.setTimeout(() => {
       void prefetchTTS("りょうチーム、交代してください。");
       void prefetchTTS("ウォーミングアップを終了してください。");
@@ -418,7 +423,7 @@ const Warmup: React.FC<{ onBack: () => void; onNavigate?: (screen: ScreenType) =
       window.clearTimeout(mainTimer);
       window.clearTimeout(subTimer);
     };
-  }, [mainSpeak]);
+  }, [mainSpeak, team1Read, team3Read]);
 
 
   return (

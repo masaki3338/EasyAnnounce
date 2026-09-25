@@ -114,7 +114,7 @@ function buildDefenseAnnouncementSpeakText(html: string): string {
     .replace(/が\s*入り/g, "がはいり")
     .replace(/へ\s*入り/g, "へはいり")
     .replace(/に\s*入り/g, "にハイリ")
-    .replace(/そのまま\s*入り/g, "そのまま、はいり")
+    .replace(/そのまま\s*入り/g, "そのままハイリ")
     // 「○番に○○くん」は選手名まで同じ生成単位で読む。
     // ここに読点を入れると「○番に」と選手名が別チャンクになり、
     // 選手名の開始待ちが発生するため、半角スペースだけ残す。
@@ -125,10 +125,9 @@ function buildDefenseAnnouncementSpeakText(html: string): string {
     .replace(/。。+/g, "。")
     .trim();
 
-  // 交代アナウンス内の打順はすべてカタカナ読みへ統一する。
-  // 例: 1番→イチバン、4番→ヨバン、8番→ハチバン
-  // disableFixedBattingAndPositions=true と組み合わせ、
-  // 「8番」だけの固定MP3へ分割せずMatchaで一続きに生成する。
+  // 打順は単独なら固定MP3を使う。
+  // ただし「4番に」「8番に」のように「に」が直後に続く場合だけ、
+  // 固定MP3へ分割せずMatchaで一続きに読ませるためカタカナ読みに変える。
   const battingOrderReadings: Record<string, string> = {
     "1": "イチバン",
     "2": "ニバン",
@@ -142,8 +141,9 @@ function buildDefenseAnnouncementSpeakText(html: string): string {
   };
   const normalizeDigit = (digit: string) =>
     String("１２３４５６７８９".indexOf(digit) + 1 || digit);
+
   text = text.replace(
-    /([1-9１-９])番/g,
+    /([1-9１-９])番(?=\s*に)/g,
     (_match, digit: string) => {
       const normalized = normalizeDigit(digit);
       return battingOrderReadings[normalized] ?? `${normalized}番`;
@@ -160,24 +160,25 @@ function buildDefenseAnnouncementSpeakText(html: string): string {
     .replace(/に\s*[、,]\s*はいります/g, "にハイリマス")
     .replace(/に\s*[、,]\s*ハイリマス/g, "にハイリマス");
 
-  // 守備位置の直後に助詞「の」「に」が続く場合は、位置名だけの固定音声を使わない。
-  // 守備位置はすべてカタカナ表記の方がMatchaで安定するため統一する。
-  // 固定MP3の除外は disableFixedBattingAndPositions で共通制御する。
-  const positionReadings: Record<string, string> = {
-    ピッチャー: "ピッチャー",
-    キャッチャー: "キャッチャー",
-    ファースト: "ファースト",
-    セカンド: "セカンド",
-    サード: "サード",
-    ショート: "ショート",
-    レフト: "レフト",
-    センター: "センター",
-    ライト: "ライト",
-    指名打者: "シメイダシャ",
+  // 守備位置は単独なら固定MP3を使う。
+  // ただし「ショートの」「ピッチャーに」など助詞が直後に続く場合は、
+  // 固定MP3へ分割すると助詞との間に不自然な間ができるため、
+  // 固定文に一致しないひらがな読みへ変えてMatchaで一続きに生成する。
+  const positionReadingsWithParticle: Record<string, string> = {
+    ピッチャー: "ぴっちゃー",
+    キャッチャー: "きゃっちゃー",
+    ファースト: "ふぁーすと",
+    セカンド: "せかんど",
+    サード: "さーど",
+    ショート: "しょーと",
+    レフト: "れふと",
+    センター: "せんたー",
+    ライト: "らいと",
+    指名打者: "しめいだしゃ",
   };
   text = text.replace(
-    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(?=\s*(?:の|に))/g,
-    (position) => positionReadings[position] ?? position
+    /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)(?=\s*(?:の|に|へ|を|が|は|で|と|から|まで))/g,
+    (position) => positionReadingsWithParticle[position] ?? position
   );
 
   if (text && !/[。！？]$/.test(text)) text += "。";
@@ -256,7 +257,7 @@ function splitDefenseAnnouncementSpeakParts(text: string): string[] {
   // ----------------------------------------------------------------
   const merged: string[] = [];
   const battingOrderHead =
-    /^(?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バン(?:\s|、|,)/;
+    /^(?:(?:イチ|ニ|サン|ヨ|ゴ|ロク|ナナ|ハチ|キュウ)バン|[1-9１-９]番)(?:\s|、|,)/;
 
   for (const part of filtered) {
     const prev = merged[merged.length - 1] ?? "";
@@ -4795,7 +4796,7 @@ const speakVisibleAnnouncement = () => {
   const speakOptions = {
     progressive: true,
     cache: true,
-    disableFixedBattingAndPositions: true,
+    disableFixedBattingAndPositions: false,
   } as const;
 
   // 初回押下時は進行中の先読みを止めない。
@@ -4810,39 +4811,20 @@ const speakVisibleAnnouncement = () => {
         firstPartPreview: parts[0]?.slice(0, 60),
       });
 
-      // 現在の文を再生している間に、次の1文をAI生成する。
-      // これにより
-      // 「○○くんに代わりまして、」→「○番に○○くん」
-      // の境目で生成待ちが発生しないようにする。
+      // 最初の音が出るまでの時間を最優先する。
+      // 読み上げボタン押下後に次文のprefetchを先に走らせると、
+      // 1スレッドWorkerでは先頭音声と生成が競合して開始が遅くなる。
+      // そのため、ここでは先頭から順番に再生するだけにする。
+      // 2文目以降はモーダル表示時の事前先読み側で準備済みにする。
       for (let i = 0; i < parts.length; i++) {
         const currentPart = parts[i];
-        const nextPart = parts[i + 1];
-
-        const nextReady =
-          nextPart
-            ? prefetchTTS(nextPart, {
-                ...speakOptions,
-                foregroundLookahead: true,
-              }).catch((error) => {
-                console.warn(
-                  "[TTS LOOKAHEAD][DefenseChange] next part failed",
-                  { index: i + 1, error }
-                );
-              })
-            : Promise.resolve();
 
         console.log("[TTS PLAY][DefenseChange] part", {
           index: i,
           preview: currentPart?.slice(0, 60),
-          nextPreview: nextPart?.slice(0, 60) ?? null,
         });
 
-        // 現在の文は先読み済みキャッシュがあれば即再生。
         await ttsSpeak(currentPart, speakOptions);
-
-        // 現在の音声が終わるまでに次文生成が完了していれば待ち時間ゼロ。
-        // 未完了の場合だけ残り時間を待つ。
-        await nextReady;
       }
     } finally {
       setSpeaking(false);
@@ -4879,7 +4861,7 @@ const speakVisibleAnnouncement = () => {
     const options = {
       progressive: true,
       cache: true,
-      disableFixedBattingAndPositions: true,
+      disableFixedBattingAndPositions: false,
     } as const;
 
     const headers = [
@@ -7033,9 +7015,14 @@ useEffect(() => {
   const options = {
     progressive: true,
     cache: true,
-    disableFixedBattingAndPositions: true,
+    disableFixedBattingAndPositions: false,
   } as const;
 
+  let cancelled = false;
+
+  // 重要：
+  // 先頭文と2文目以降を別タスクで同時に生成しない。
+  // 先頭文の生成が完了してから、残りを1つずつ直列で準備する。
   void (async () => {
     try {
       console.log("[TTS PREFETCH][DefenseChange FIRST] start", {
@@ -7045,38 +7032,41 @@ useEffect(() => {
 
       await prefetchTTS(parts[0], options);
 
-      if (version !== defenseAnnouncementPrefetchVersionRef.current) return;
+      if (
+        cancelled ||
+        version !== defenseAnnouncementPrefetchVersionRef.current
+      ) return;
 
       console.log("[TTS PREFETCH][DefenseChange FIRST] ready", {
         showSaveModal,
         preview: parts[0]?.slice(0, 60),
       });
+
+      // 先頭のキャッシュが確実に完成してから、残りを順番に生成。
+      for (let i = 1; i < parts.length; i++) {
+        if (
+          cancelled ||
+          version !== defenseAnnouncementPrefetchVersionRef.current
+        ) return;
+
+        await prefetchTTS(parts[i], options);
+
+        if (
+          cancelled ||
+          version !== defenseAnnouncementPrefetchVersionRef.current
+        ) return;
+      }
+
+      console.log("[TTS PREFETCH][DefenseChange ALL] ready", {
+        parts: parts.length,
+      });
     } catch (error) {
-      console.warn("[TTS PREFETCH][DefenseChange FIRST] failed", error);
+      console.warn("[TTS PREFETCH][DefenseChange] failed", error);
     }
   })();
 
-  const restDelayMs = showSaveModal ? 0 : 180;
-
-  const timer = window.setTimeout(() => {
-    void (async () => {
-      try {
-        // 2つ目以降は先頭1文の後に準備する。
-        for (let i = 1; i < parts.length; i++) {
-          if (version !== defenseAnnouncementPrefetchVersionRef.current) return;
-
-          await prefetchTTS(parts[i], options);
-
-          if (version !== defenseAnnouncementPrefetchVersionRef.current) return;
-        }
-      } catch (error) {
-        console.warn("[TTS PREFETCH][DefenseChange REST] failed", error);
-      }
-    })();
-  }, restDelayMs);
-
   return () => {
-    window.clearTimeout(timer);
+    cancelled = true;
   };
 }, [announcementText, showSaveModal]);
 

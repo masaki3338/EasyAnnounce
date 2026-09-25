@@ -1111,26 +1111,15 @@ const speakPinchModalFast = async () => {
   const parts = buildPinchModalSpeakParts();
   if (!parts.length) return;
 
-  console.log("[TTS PLAY][PinchModal] instant-head rolling", {
+  console.log("[TTS PLAY][PinchModal] first-audio priority", {
     parts: parts.length,
     firstPreview: parts[0]?.slice(0, 70),
   });
 
-  for (let i = 0; i < parts.length; i++) {
-    const current = parts[i];
-    const next = parts[i + 1];
-
-    const nextReady = next
-      ? prefetchTTS(next, SUB_MODAL_LOOKAHEAD_OPTIONS).catch((error) => {
-          console.warn("[TTS LOOKAHEAD][PinchModal] failed", {
-            index: i + 1,
-            error,
-          });
-        })
-      : Promise.resolve();
-
+  // 読み上げ開始前に次文生成を走らせない。
+  // キャッシュ済み音声を先頭から即再生し、未生成でも先頭音声を最優先にする。
+  for (const current of parts) {
     await speak(current, SUB_MODAL_TTS_OPTIONS);
-    await nextReady;
   }
 };
 
@@ -3071,7 +3060,6 @@ const SUB_MODAL_TTS_OPTIONS = {
 
 const SUB_MODAL_LOOKAHEAD_OPTIONS = {
   ...SUB_MODAL_TTS_OPTIONS,
-  foregroundLookahead: true,
 } as const;
 
 const battingOrderKatakana = (order1: number): string => {
@@ -3170,26 +3158,17 @@ const speakRunnerModalLikePinch = async () => {
   const parts = buildRunnerModalSpeakParts();
   if (!parts.length) return;
 
-  console.log("[TTS PLAY][RunnerModal] instant-head rolling", {
+  console.log("[TTS PLAY][RunnerModal] first-audio priority", {
     parts: parts.length,
     firstPreview: parts[0]?.slice(0, 70),
   });
 
-  for (let i = 0; i < parts.length; i++) {
-    const current = parts[i];
-    const next = parts[i + 1];
-
-    const nextReady = next
-      ? prefetchTTS(next, SUB_MODAL_LOOKAHEAD_OPTIONS).catch((error) => {
-          console.warn("[TTS LOOKAHEAD][RunnerModal] failed", {
-            index: i + 1,
-            error,
-          });
-        })
-      : Promise.resolve();
-
+  // 重要：
+  // 読み上げボタン押下後は「次の文の先読み」を先に開始しない。
+  // 1スレッドWorkerでは次文生成が先頭音声を待たせるため、
+  // 先頭から順番に speak() へ渡し、最初の音を最優先にする。
+  for (const current of parts) {
     await speak(current, SUB_MODAL_TTS_OPTIONS);
-    await nextReady;
   }
 };
 
@@ -6149,6 +6128,7 @@ useEffect(() => {
                       if (usedBenchActionType === "runner" && selectedBase) {
                         applyRunnerSelection(p);
                       } else {
+                        prefetchPinchSelectedPlayer(p);
                         setSelectedSubPlayer(p);
                       }
 
