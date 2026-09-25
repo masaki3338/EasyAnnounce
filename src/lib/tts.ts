@@ -78,14 +78,23 @@ const FIXED_AUDIO_ENTRIES: ReadonlyArray<FixedAudioEntry> = [
 
   // 打順アナウンス
   { text: "1番", files: ["0001"] },
+  { text: "イチバン", files: ["0001"] },
   { text: "2番", files: ["0002"] },
+  { text: "ニバン", files: ["0002"] },
   { text: "3番", files: ["0003"] },
+  { text: "サンバン", files: ["0003"] },
   { text: "4番", files: ["0004"] },
+  { text: "ヨバン", files: ["0004"] },
   { text: "5番", files: ["0005"] },
+  { text: "ゴバン", files: ["0005"] },
   { text: "6番", files: ["0006"] },
+  { text: "ロクバン", files: ["0006"] },
   { text: "7番", files: ["0007"] },
+  { text: "ナナバン", files: ["0007"] },
   { text: "8番", files: ["0008"] },
+  { text: "ハチバン", files: ["0008"] },
   { text: "9番", files: ["0009"] },
+  { text: "キュウバン", files: ["0009"] },
   // 守備位置アナウンス
   { text: "ピッチャー", files: ["0010"] },
   { text: "キャッチャー", files: ["0011"] },
@@ -111,7 +120,12 @@ const FIXED_AUDIO_ENTRIES: ReadonlyArray<FixedAudioEntry> = [
   { text: "シートの変更をお知らせいたします", files: ["0384"] },
   { text: "選手の交代並びにシートの変更をお知らせいたします", files: ["0385"] },  
   { text: "以上に代わります", files: ["427"] },
-  
+  { text: "そのままハイリ", files: ["0387"] },
+  { text: "リエントリーで", files: ["0391"] },
+  { text: "先ほど代打いたしました", files: ["0386"] },
+  { text: "先ほど代走いたしました", files: ["0388"] },
+  { text: "同じく先ほど代打いたしました", files: ["0389"] },
+  { text: "同じく先ほど代走いたしました", files: ["0390"] }, 
 
   // 次の試合アナウンス
   { text: "本日の第一試合、両チームのメンバー交換を行います。", files: ["440"] },
@@ -366,11 +380,102 @@ type HybridSegment =
   | { type: "fixed"; text: string; files: string[] };
 
 // 守備交代画面では打順(0001～0009)と守備位置(0010～0019)だけ固定MP3を除外する。
+
 function isBattingOrPositionFixedEntry(entry: FixedAudioEntry): boolean {
   return entry.files.some((baseName) => {
     const n = Number(baseName);
     return Number.isFinite(n) && n >= 1 && n <= 19;
   });
+}
+
+function isBattingFixedEntry(entry: FixedAudioEntry): boolean {
+  return entry.files.some((baseName) => {
+    const n = Number(baseName);
+    return Number.isFinite(n) && n >= 1 && n <= 9;
+  });
+}
+
+function isPositionFixedEntry(entry: FixedAudioEntry): boolean {
+  return entry.files.some((baseName) => {
+    const n = Number(baseName);
+    return Number.isFinite(n) && n >= 10 && n <= 19;
+  });
+}
+
+// 固定MP3を使わない文脈判定
+// 打順:
+//   「8番」   -> 固定MP3を使う
+//   「8番に」 -> 固定MP3を使わない
+//
+// 守備位置:
+//   「ショート」   -> 固定MP3を使う
+//   「ショートの」 -> 固定MP3を使わない
+//   「ピッチャーに」-> 固定MP3を使わない
+function shouldSkipFixedForFollowingParticle(
+  source: string,
+  originalEnd: number,
+  entry: FixedAudioEntry
+): boolean {
+  const rest = source
+    .slice(originalEnd)
+    .replace(/^[\s\u3000\u00A0]+/, "");
+
+  // 打順は「に」が直後に続くときだけ固定文を使わない。
+  if (isBattingFixedEntry(entry)) {
+    return rest.startsWith("に");
+  }
+
+  // 守備位置は助詞が直後に続くとき固定文を使わない。
+  if (isPositionFixedEntry(entry)) {
+    return /^(?:の|に|へ|を|が|は|で|と|から|まで)/.test(rest);
+  }
+
+  return false;
+}
+
+// 選手名の中に「ライト」「ショート」「センター」などが含まれていても、
+// その文字列を守備位置の固定MP3として扱わない。
+function getProtectedPlayerNameRanges(source: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  const patterns = [
+    /[ァ-ヶヷヸヹヺー]{1,30}(?:[ 　][ァ-ヶヷヸヹヺー]{1,30})?(?:くん|さん|投手)/g,
+    /[一-龯々〆ヵヶぁ-ゖァ-ヶヷヸヹヺー]{1,30}(?:[ 　][一-龯々〆ヵヶぁ-ゖァ-ヶヷヸヹヺー]{1,30})?(?:くん|さん|投手)/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      if (match.index == null) continue;
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+      });
+    }
+  }
+
+  ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const range of ranges) {
+    const last = merged[merged.length - 1];
+    if (!last || range.start > last.end) {
+      merged.push({ ...range });
+    } else {
+      last.end = Math.max(last.end, range.end);
+    }
+  }
+
+  return merged;
+}
+
+function isInsideProtectedPlayerName(
+  start: number,
+  end: number,
+  protectedRanges: Array<{ start: number; end: number }>
+): boolean {
+  return protectedRanges.some(
+    (range) => start >= range.start && end <= range.end
+  );
 }
 
 // 固定文言の照合では、改行・半角/全角空白・ゼロ幅文字を無視する。
@@ -402,6 +507,7 @@ function splitByFixedAudio(
   const source = String(originalText ?? "");
   const result: HybridSegment[] = [];
   const compactSource = compactFixedMatchText(source);
+  const protectedPlayerNameRanges = getProtectedPlayerNameRanges(source);
 
   let sourceCursor = 0;
 
@@ -442,6 +548,32 @@ function splitByFixedAudio(
       const originalStart = compactSource.originalIndexes[compactIndex];
       const originalEnd =
         compactSource.originalIndexes[compactEndIndex] + 1;
+
+      // 打順・守備位置の固定MP3(0001～0019)が、
+      // 「ライトくん」「ショートさん」のような選手名の内部にある場合は無視する。
+      if (
+        isBattingOrPositionFixedEntry(entry) &&
+        isInsideProtectedPlayerName(
+          originalStart,
+          originalEnd,
+          protectedPlayerNameRanges
+        )
+      ) {
+        continue;
+      }
+
+      // 「8番に」「ショートの」「ピッチャーに」など、
+      // 助詞まで一続きで読ませたい箇所では固定MP3に分割しない。
+      if (
+        isBattingOrPositionFixedEntry(entry) &&
+        shouldSkipFixedForFollowingParticle(
+          source,
+          originalEnd,
+          entry
+        )
+      ) {
+        continue;
+      }
 
       if (
         bestOriginalStart < 0 ||

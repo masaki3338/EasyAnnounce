@@ -48,9 +48,14 @@ function configureOrt() {
     typeof self !== "undefined" &&
     self.crossOriginIsolated === true;
 
-  // 復旧優先: Session作成が4スレッド構成で停止する切り分けのため、
-  // 一時的に1スレッド固定。モデル切替・Worker構成・WASMパスは維持する。
-  ort.env.wasm.numThreads = 1;
+  // crossOriginIsolated=true の端末では WASM Threads を使用。
+  // 端末の論理コア数に余裕がある場合だけ最大4スレッドまで使い、
+  // 条件を満たさない端末は安全に1スレッドへフォールバックする。
+  const usableThreads = canUseThreads
+    ? Math.min(4, Math.max(1, cores - 1))
+    : 1;
+
+  ort.env.wasm.numThreads = usableThreads;
 
   console.log("[TTS PERF] ORT config", {
     crossOriginIsolated: canUseThreads,

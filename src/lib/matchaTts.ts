@@ -510,8 +510,13 @@ function configureOrt() {
     typeof self !== "undefined" &&
     self.crossOriginIsolated === true;
 
-  // 安定動作優先。実推論Workerと同じく1スレッド固定。
-  ort.env.wasm.numThreads = 1;
+  // 実推論Workerと同じ条件で WASM Threads を使用。
+  // crossOriginIsolated=false の環境では安全に1スレッドへフォールバックする。
+  const usableThreads = canUseThreads
+    ? Math.min(4, Math.max(1, cores - 1))
+    : 1;
+
+  ort.env.wasm.numThreads = usableThreads;
 
   if (typeof window !== "undefined") {
     const origin = window.location.origin;
