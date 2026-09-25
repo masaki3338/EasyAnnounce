@@ -2421,6 +2421,7 @@ const buildScoreSpeakParts = (value: string): string[] => {
     .replace(/^[、,\s]+/g, "")
     .trim();
 
+  // 「3点です。」は分割せず、一続きで読み上げる。
   return [teamPart, marker, scorePart].filter(Boolean);
 };
 
@@ -2460,6 +2461,30 @@ const buildPitchAnnounceSpeakParts = (html: string): string[] => {
   return source
     .split(/\n+/)
     .flatMap((line) => {
+      // 投球制限のお知らせ：
+      // 「ピッチャー＋選手名＋ただいまの投球で」を一続きで生成し、
+      // その直後だけ短い結合間隔を入れる。
+      if (line.includes("ただいまの投球で")) {
+        const text = htmlToTtsText(line);
+        const marker = "、ただいまの投球で";
+        const markerIndex = text.indexOf(marker);
+
+        if (markerIndex >= 0) {
+          const namePart = text
+            .slice(0, markerIndex)
+            .replace(/^ピッチャー/, "ぴっちゃー")
+            .trim();
+          const countPart = text.slice(markerIndex + marker.length).trim();
+
+          return [
+            `${namePart}、ただいまの投球で`,
+            countPart,
+          ].filter(Boolean);
+        }
+
+        return text ? [text] : [];
+      }
+
       if (!line.includes("合計投球数")) {
         const text = htmlToTtsText(line);
         return text ? [text] : [];
@@ -2498,11 +2523,14 @@ useEffect(() => {
   if (!showPitchAnnounceModal || !pitchAnnounceText) return;
 
   const parts = buildPitchAnnounceSpeakParts(pitchAnnounceText);
+  const options = { progressive: false, cache: true } as const;
   void (async () => {
     for (const part of parts) {
-      await prefetchTTS(part);
+      await prefetchTTS(part, options);
     }
-  })();
+  })().catch((error) => {
+    console.warn("[TTS PREFETCH][OnePersonPitchModal] failed", error);
+  });
 }, [showPitchAnnounceModal, pitchAnnounceText]);
 
 const [inputScore, setInputScore] = useState("");

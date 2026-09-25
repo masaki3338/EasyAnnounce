@@ -1194,6 +1194,47 @@ useEffect(() => {
   })();
 }, [announceMessages]);
 
+// 投球制限モーダル専用：
+// 選手名を「ピッチャー」の固定音声待ちから切り離さず、
+// 「ただいまの投球で」の直後だけ短い結合間隔を入れる。
+const buildPitchLimitSpeakParts = (messages: string[]): string[] => {
+  const text = applyRegisteredPlayerReadings(
+    normalizeForTTS(messages.join("。"))
+  ).trim();
+  if (!text) return [];
+
+  const marker = "、ただいまの投球で";
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex < 0) return [text];
+
+  // 「ピッチャー」単独の固定音声に一致させず、名前まで一続きで生成する。
+  const namePart = text
+    .slice(0, markerIndex)
+    .replace(/^ピッチャー/, "ぴっちゃー")
+    .trim();
+  const countPart = text.slice(markerIndex + marker.length).trim();
+
+  return [
+    `${namePart}、ただいまの投球で`,
+    countPart,
+  ].filter(Boolean);
+};
+
+useEffect(() => {
+  if (pitchLimitMessages.length === 0) return;
+
+  const parts = buildPitchLimitSpeakParts(pitchLimitMessages);
+  const options = { progressive: false, cache: true } as const;
+
+  void (async () => {
+    for (const part of parts) {
+      await prefetchTTS(part, options);
+    }
+  })().catch((error) => {
+    console.warn("[TTS PREFETCH][PitchLimitModal] failed", error);
+  });
+}, [pitchLimitMessages]);
+
 
  const handleSpeak = () => {
    if (announceMessages.length === 0) return;
@@ -1227,8 +1268,12 @@ useEffect(() => {
 
  const handlePitchLimitSpeak = () => {
    if (pitchLimitMessages.length === 0) return;
-   const text = applyRegisteredPlayerReadings(normalizeForTTS(pitchLimitMessages.join("。")));
-   void ttsSpeak(text, { progressive: true, cache: true });
+   const parts = buildPitchLimitSpeakParts(pitchLimitMessages);
+   if (parts.length > 1) {
+     void speakJoinedTTS(parts, { progressive: false, cache: true });
+   } else if (parts[0]) {
+     void ttsSpeak(parts[0], { progressive: true, cache: true });
+   }
  };
 
 

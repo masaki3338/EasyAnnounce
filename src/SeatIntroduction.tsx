@@ -204,13 +204,34 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   useEffect(() => {
     if (!teamReading) return;
 
-    const timer = window.setTimeout(() => {
-      // 最初の一文だけを優先して生成し、ボタン押下後すぐ再生できるようにする。
-      void prefetchTTS(seatIntroFirstText);
-    }, 40);
+    const options = { progressive: true, cache: true } as const;
 
-    return () => window.clearTimeout(timer);
-  }, [teamReading, seatIntroFirstText]);
+    const pitcher = positions["投"];
+    const fixedKana = (value?: string) =>
+      preserveNameReading(String(value ?? ""));
+    const pitcherName = leagueMode === "boys"
+      ? `${fixedKana(pitcher?.lastNameKana || pitcher?.lastName)} ${fixedKana(
+          pitcher?.firstNameKana || pitcher?.firstName
+        )}`.trim()
+      : pitcher && pitcher.lastName && dupLastNames.has(pitcher.lastName)
+      ? `${fixedKana(pitcher.lastNameKana || pitcher.lastName)} ${fixedKana(
+          pitcher.firstNameKana || pitcher.firstName
+        )}`.trim()
+      : fixedKana(pitcher?.lastNameKana || pitcher?.lastName);
+    const pitcherLine = leagueMode === "boys"
+      ? `ぴっちゃーは、${pitcherName}${pitcher?.honorific || "くん"}`
+      : `ピッチャー、${pitcherName}${pitcher?.honorific || "くん"}`;
+
+    // 開始文と、その直後のピッチャー紹介を最優先で先読みする。
+    // 本番と同じ文字列・同じ設定を使い、キャッシュを確実に一致させる。
+    void (async () => {
+      for (const part of [seatIntroFirstText, pitcherLine]) {
+        await prefetchTTS(part, options);
+      }
+    })().catch((error) => {
+      console.warn("[TTS PREFETCH][SeatIntroduction] failed", error);
+    });
+  }, [teamReading, seatIntroFirstText, positions, dupLastNames, leagueMode]);
 
   // Matchaの起動時prewarmはtts.ts側で共通実行する。
   // この画面で重ねてprewarmすると、読み上げボタン直後の実再生と
@@ -256,6 +277,11 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
   };
 
   const speakText = () => {
+    const speakOpening = async () => {
+      const options = { progressive: true, cache: true } as const;
+      await ttsSpeak(seatIntroFirstText, options);
+    };
+
     const honor = (p?: PositionInfo) => p?.honorific || "くん";
     const fixedKana = (value?: string) =>
       preserveNameReading(String(value ?? ""));
@@ -308,7 +334,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     void (async () => {
       try {
         if (leagueMode === "boys") {
-          await ttsSpeak(seatIntroFirstText, { progressive: true, cache: true });
+          await speakOpening();
           if (mySession !== seatSpeakSessionRef.current) return;
 
           const playerLines = [
@@ -371,7 +397,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           return;
         }
 
-        await ttsSpeak(seatIntroFirstText, { progressive: true, cache: true });
+        await speakOpening();
         if (mySession !== seatSpeakSessionRef.current) return;
 
         const ponyPlayerLines = positionLabels.map(([pos, label]) => {
@@ -392,8 +418,10 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           }
         } else {
           // Android / PC：
-          // 9人分をPCM結合し、「○○くん → 次の守備位置」の間を最小化する。
-          await speakJoinedTTS(ponyPlayerLines, { progressive: true, cache: true });
+          // 9人分すべての結合完了を待たず、先読み済みのピッチャーから開始する。
+          await ttsSpeak(ponyPlayerLines[0], { progressive: true, cache: true });
+          if (mySession !== seatSpeakSessionRef.current) return;
+          await speakJoinedTTS(ponyPlayerLines.slice(1), { progressive: true, cache: true });
         }
         if (mySession !== seatSpeakSessionRef.current) return;
       } finally {
