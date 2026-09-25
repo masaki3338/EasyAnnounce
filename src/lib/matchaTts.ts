@@ -23,6 +23,17 @@ import {
   resumeSharedAudioContext,
 } from "./audioPipeline";
 
+
+// -----------------------------------------------------------------------------
+// TTSデバッグログ
+// 本番では false。必要なときだけ true にすると console.log が復活する。
+// warn / error は異常検知のため常時残す。
+// -----------------------------------------------------------------------------
+const TTS_DEBUG = false;
+const ttsDebugLog = (...args: any[]) => {
+  if (TTS_DEBUG) console.log(...args);
+};
+
 type MatchaSpeakOptions = {
   speedScale?: number;
   volume?: number;
@@ -123,7 +134,7 @@ function markFirstAudioStart(myGenerationId: number, backend: string) {
   }
 
   activeFirstAudioLogged = true;
-  console.log("[TTS LATENCY] first audio start", {
+  ttsDebugLog("[TTS LATENCY] first audio start", {
     backend,
     ms: Math.round((performance.now() - activeSpeakStartedAt) * 10) / 10,
   });
@@ -243,7 +254,7 @@ async function getPersistentCache(
             sampleRate: Number(record.sampleRate) || SAMPLE_RATE,
           };
 
-          console.log("[MatchaCache] persistent hit", {
+          ttsDebugLog("[MatchaCache] persistent hit", {
             keyLength: key.length,
             samples: audio.samples.length,
           });
@@ -651,7 +662,7 @@ async function getOpenJTalkReady(): Promise<void> {
         origin
       ).href;
 
-      console.log("[Matcha] OpenJTalk absolute assets", {
+      ttsDebugLog("[Matcha] OpenJTalk absolute assets", {
         dicUrl,
         voiceUrl,
       });
@@ -865,7 +876,7 @@ function strengthenHachibanOnset(
       const out = [...phonemes];
       out.splice(i, 0, "h");
 
-      console.log("[Matcha pronunciation] strengthen 8番 onset", {
+      ttsDebugLog("[Matcha pronunciation] strengthen 8番 onset", {
         before: phonemes.slice(Math.max(0, i - 3), Math.min(phonemes.length, i + 12)),
         after: out.slice(Math.max(0, i - 3), Math.min(out.length, i + 13)),
       });
@@ -956,7 +967,7 @@ function insertPronunciationPhraseBoundary(
     out.splice(index, 0, "#");
   }
 
-  console.log("[Matcha pronunciation] inserted phrase boundary", {
+  ttsDebugLog("[Matcha pronunciation] inserted phrase boundary", {
     text: sourceText,
     count: uniqueIndexes.length,
   });
@@ -998,7 +1009,7 @@ async function textToMatchaIds(
   }
 
   if (openJTalkText !== text) {
-    console.log("[Matcha] removed leading pause punctuation", {
+    ttsDebugLog("[Matcha] removed leading pause punctuation", {
       before: text.slice(0, 24),
       after: openJTalkText.slice(0, 24),
     });
@@ -1425,7 +1436,7 @@ async function synthesizeMatchaChunkInternal(
   const key = makeCacheKey(text, speedScale, modelId);
   const cached = synthesizedCache.get(key);
   if (cached) {
-    console.log("[TTS PERF] memory cache hit", {
+    ttsDebugLog("[TTS PERF] memory cache hit", {
       modelId,
       textLength: text.length,
     });
@@ -1446,7 +1457,7 @@ async function synthesizeMatchaChunkInternal(
   const persistent = await getPersistentCache(key);
   if (persistent) {
     putCache(key, persistent);
-    console.log("[TTS CACHE] PERSISTENT HIT", {
+    ttsDebugLog("[TTS CACHE] PERSISTENT HIT", {
       modelId,
       textLength: text.length,
       textPreview: text.slice(0, 36),
@@ -1487,7 +1498,7 @@ async function synthesizeMatchaChunkInternal(
   // 再生開始を遅らせないよう、IndexedDB保存は待たない。
   void putPersistentCache(key, synthesized);
 
-  console.log("[TTS PERF] synthesis completed", {
+  ttsDebugLog("[TTS PERF] synthesis completed", {
     modelId,
     textLength: text.length,
     g2pMs: Math.round(g2pMs * 10) / 10,
@@ -1507,7 +1518,7 @@ async function synthesizeMatchaChunk(
 
   const cached = synthesizedCache.get(key);
   if (cached) {
-    console.log("[TTS CACHE] MEMORY HIT", {
+    ttsDebugLog("[TTS CACHE] MEMORY HIT", {
       modelId,
       speedScale: Number(speedScale.toFixed(3)),
       textLength: text.length,
@@ -1518,7 +1529,7 @@ async function synthesizeMatchaChunk(
 
   const existing = synthesisInFlight.get(key);
   if (existing) {
-    console.log("[TTS CACHE] IN-FLIGHT", {
+    ttsDebugLog("[TTS CACHE] IN-FLIGHT", {
       modelId,
       speedScale: Number(speedScale.toFixed(3)),
       textLength: text.length,
@@ -1527,7 +1538,7 @@ async function synthesizeMatchaChunk(
     return existing;
   }
 
-  console.log("[TTS CACHE] MISS", {
+  ttsDebugLog("[TTS CACHE] MISS", {
     modelId,
     speedScale: Number(speedScale.toFixed(3)),
     textLength: text.length,
@@ -2016,7 +2027,7 @@ async function playSamplesIOS(
 
     try {
       await playAttempt(2);
-      console.log(
+      ttsDebugLog(
         "[Matcha iOS] retry playback succeeded"
       );
     } catch (retryError) {
@@ -2297,7 +2308,7 @@ export async function playJoinedMatchaPcm(
   const joined = joinSynthesizedAudios(valid, joinSilenceMs, edgeKeepSilenceMs);
   if (!joined) return;
 
-  console.log('[TTS JOIN] mixed PCM ready', {
+  ttsDebugLog('[TTS JOIN] mixed PCM ready', {
     parts: valid.length,
     samples: joined.samples.length,
     durationSec: Math.round((joined.samples.length / joined.sampleRate) * 100) / 100,
@@ -2334,7 +2345,7 @@ export async function speakMatchaJoined(
     ? clamp(Number(options.volume), 0, 1)
     : 0.8;
 
-  console.log('[TTS JOIN] start', {
+  ttsDebugLog('[TTS JOIN] start', {
     parts: cleanParts.length,
     modelId: getSelectedMatchaModelId(),
     previews: cleanParts.map((p) => p.slice(0, 28)),
@@ -2353,7 +2364,7 @@ export async function speakMatchaJoined(
   const joined = joinSynthesizedAudios(audios, 35);
   if (!joined) return;
 
-  console.log('[TTS JOIN] ready', {
+  ttsDebugLog('[TTS JOIN] ready', {
     parts: audios.length,
     samples: joined.samples.length,
     durationSec: Math.round((joined.samples.length / joined.sampleRate) * 100) / 100,
@@ -2493,7 +2504,7 @@ export async function prefetchMatcha(
     const chunks =
       splitMatchaText(cleanText);
 
-    console.log("[TTS PREFETCH] Matcha start", {
+    ttsDebugLog("[TTS PREFETCH] Matcha start", {
       modelId,
       speedScale: Number(speedScale.toFixed(3)),
       chunks: chunks.length,
@@ -2501,14 +2512,17 @@ export async function prefetchMatcha(
       textPreview: cleanText.slice(0, 42),
     });
 
-    // 短いアナウンスは全チャンク先読み。
-    // スタメン発表などの長文は「最初に再生する1チャンク」だけを
-    // 最優先で生成する。先頭4チャンクを連続生成すると、
-    // メインスレッドが長時間重くなり、読み上げ開始も遅く感じるため。
-    const prefetchChunks =
-      cleanText.length <= 140
-        ? chunks
-        : chunks.slice(0, 2);
+    // 画面表示中のバックグラウンド先読みは、先頭1チャンクだけ生成する。
+    //
+    // 重要:
+    // ここで2チャンク目以降まで生成すると、1スレッドの推論Workerに
+    // バックグラウンド処理が溜まり、読み上げボタンを押した本番音声が
+    // 待たされることがある。
+    //
+    // 長文の途中については speakMatcha() 側で、
+    // 「現在チャンクを再生している間に次チャンクを生成」するため、
+    // 再生開始後の先回り生成は維持する。
+    const prefetchChunks = chunks.slice(0, 1);
 
     for (
       const chunk of
@@ -2534,7 +2548,7 @@ export async function prefetchMatcha(
       );
     }
 
-    console.log("[TTS PREFETCH] Matcha ready", {
+    ttsDebugLog("[TTS PREFETCH] Matcha ready", {
       modelId,
       speedScale: Number(speedScale.toFixed(3)),
       chunks: prefetchChunks.length,
@@ -2556,7 +2570,7 @@ export async function prewarmMatcha(): Promise<void> {
     const modelId = getSelectedMatchaModelId();
     const startedAt = performance.now();
 
-    console.log("[TTS PREWARM] start", { modelId });
+    ttsDebugLog("[TTS PREWARM] start", { modelId });
 
     // Phase 1高速化:
     // OpenJTalk準備（メイン側）と、1スレッドWorker内のMatcha/Vocos Session作成を
@@ -2571,7 +2585,7 @@ export async function prewarmMatcha(): Promise<void> {
     // 画面側prefetchTTS()で「実際に次に読む文章」を最優先で生成し、
     // ダミー推論が実文の生成を塞ぐのを防ぐ。
 
-    console.log("[TTS PREWARM] ready", {
+    ttsDebugLog("[TTS PREWARM] ready", {
       modelId,
       totalMs: Math.round((performance.now() - startedAt) * 10) / 10,
     });
@@ -2661,7 +2675,7 @@ export async function benchmarkMatchaPerformance(
       self.crossOriginIsolated === true,
   };
 
-  console.log("[TTS DEVICE CHECK]", result);
+  ttsDebugLog("[TTS DEVICE CHECK]", result);
   onProgress?.("complete");
   return result;
 }

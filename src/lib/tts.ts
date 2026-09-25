@@ -17,6 +17,17 @@ import {
 // - 読み上げボタン自体は先読み完了待ちで無効化しない
 // - 固定MP3はAI音声ごとのフォルダから最優先再生
 
+
+// -----------------------------------------------------------------------------
+// TTSデバッグログ
+// 本番では false。必要なときだけ true にすると console.log が復活する。
+// warn / error は異常検知のため常時残す。
+// -----------------------------------------------------------------------------
+const TTS_DEBUG = false;
+const ttsDebugLog = (...args: any[]) => {
+  if (TTS_DEBUG) console.log(...args);
+};
+
 type SpeakOptions = {
   progressive?: boolean;
   cache?: boolean;
@@ -50,7 +61,7 @@ let prefetchGeneration = 0;
 
 function cancelBackgroundPrefetch(reason: string) {
   prefetchGeneration += 1;
-  console.log("[TTS PRIORITY] foreground wins", {
+  ttsDebugLog("[TTS PRIORITY] foreground wins", {
     reason,
     generation: prefetchGeneration,
   });
@@ -268,7 +279,7 @@ async function decodeFixedAudioToPcm(baseName: string): Promise<MatchaPcmAudio |
       for (let i = 0; i < samples.length; i++) {
         samples[i] *= FIXED_AUDIO_VOLUME_SCALE;
       }
-      console.log('[TTS JOIN FIXED] decoded', {
+      ttsDebugLog('[TTS JOIN FIXED] decoded', {
         voice: getSelectedMatchaVoice(),
         src,
         inputRate: decoded.sampleRate,
@@ -614,7 +625,7 @@ function splitByFixedAudio(
       bestOriginalEnd
     );
 
-    console.log("[TTS FIXED MATCH]", {
+    ttsDebugLog("[TTS FIXED MATCH]", {
       text: bestEntry.text,
       files: bestEntry.files,
       matchedOriginalText,
@@ -1022,7 +1033,7 @@ export async function speak(
     // 読み上げボタンが押された瞬間に、残りのバックグラウンド先読みを打ち切る。
     cancelBackgroundPrefetch("speak");
 
-    console.log("[TTS LATENCY] speak requested", {
+    ttsDebugLog("[TTS LATENCY] speak requested", {
       voice: getSelectedMatchaVoice(),
       textLength: originalText.length,
       at: Math.round(requestStartedAt * 10) / 10,
@@ -1066,7 +1077,7 @@ export async function speak(
             for (const baseName of segment.files) {
               fixedPcm = await decodeFixedAudioToPcm(baseName);
               if (fixedPcm) {
-                console.log("[TTS PITCH JOIN FIXED] use", {
+                ttsDebugLog("[TTS PITCH JOIN FIXED] use", {
                   voice: getSelectedMatchaVoice(),
                   src: getFixedAudioSrc(baseName),
                   text: segment.text,
@@ -1140,7 +1151,7 @@ export async function speak(
               nextNormalized &&
               hasSpeakableCharacters(nextNormalized)
             ) {
-              console.log("[TTS LOOKAHEAD] start while fixed audio plays", {
+              ttsDebugLog("[TTS LOOKAHEAD] start while fixed audio plays", {
                 voice: getSelectedMatchaVoice(),
                 currentFixed: segment.text,
                 nextTextLength: nextNormalized.length,
@@ -1162,7 +1173,7 @@ export async function speak(
 
           for (const baseName of segment.files) {
             try {
-              console.log("[TTS FIXED] try", {
+              ttsDebugLog("[TTS FIXED] try", {
                 voice: getSelectedMatchaVoice(),
                 src: getFixedAudioSrc(baseName),
                 text: segment.text,
@@ -1171,7 +1182,7 @@ export async function speak(
               await playFixedAudioFile(baseName, common.volume);
               played = true;
 
-              console.log("[TTS FIXED] played", {
+              ttsDebugLog("[TTS FIXED] played", {
                 voice: getSelectedMatchaVoice(),
                 src: getFixedAudioSrc(baseName),
               });
@@ -1194,7 +1205,7 @@ export async function speak(
         const matchupParts = splitStartGreetingMatchup(normalized);
 
         if (matchupParts) {
-          console.log("[TTS MATCHUP FORCE PAUSE]", {
+          ttsDebugLog("[TTS MATCHUP FORCE PAUSE]", {
             gapMs: START_GREETING_MATCHUP_GAP_MS,
             left: matchupParts[0],
             right: matchupParts[1],
@@ -1280,7 +1291,7 @@ export async function speakJoinedTTS(
     hybridSegments.push(...splitByFixedAudio(part, options));
   }
 
-  console.log('[TTS JOIN] request', {
+  ttsDebugLog('[TTS JOIN] request', {
     voice: getSelectedMatchaVoice(),
     segments: hybridSegments.length,
     previews: hybridSegments.map((s) => `${s.type}:${s.text.slice(0, 28)}`),
@@ -1301,7 +1312,7 @@ export async function speakJoinedTTS(
         for (const baseName of segment.files) {
           fixedPcm = await decodeFixedAudioToPcm(baseName);
           if (fixedPcm) {
-            console.log('[TTS JOIN FIXED] use', {
+            ttsDebugLog('[TTS JOIN FIXED] use', {
               voice: getSelectedMatchaVoice(),
               src: getFixedAudioSrc(baseName),
               text: segment.text,
@@ -1375,7 +1386,7 @@ export async function prefetchTTS(
   // ただし foregroundLookahead=true は「今読んでいる間に次の1文を作る」
   // 専用なので、再生中でも継続する。
   if (speaking && !foregroundLookahead) {
-    console.log("[TTS PREFETCH] skipped: foreground speaking", {
+    ttsDebugLog("[TTS PREFETCH] skipped: foreground speaking", {
       textPreview: originalText.replace(/\s+/g, " ").slice(0, 48),
     });
     return;
@@ -1387,7 +1398,7 @@ export async function prefetchTTS(
     (speaking || myPrefetchGeneration !== prefetchGeneration);
 
   if (foregroundLookahead) {
-    console.log("[TTS LOOKAHEAD] foreground next-part prefetch", {
+    ttsDebugLog("[TTS LOOKAHEAD] foreground next-part prefetch", {
       textPreview: originalText.replace(/\s+/g, " ").slice(0, 48),
     });
   }
@@ -1396,7 +1407,7 @@ export async function prefetchTTS(
   const segments = splitByFixedAudio(originalText, options);
   const prefetchStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-  console.log("[TTS PREFETCH] request", {
+  ttsDebugLog("[TTS PREFETCH] request", {
     voice: getSelectedMatchaVoice(),
     speedScale: Number(common.baseRate.toFixed(3)),
     textLength: originalText.length,
@@ -1405,9 +1416,17 @@ export async function prefetchTTS(
 
   // 固定MP3はHTTPキャッシュへ先読み。
   // MP3が存在しない場合だけMatcha側のフォールバック音声も生成しておく。
+  //
+  // 通常の画面先読みでは、Matcha生成は「最初に必要な1セグメント」で止める。
+  // これにより複数の作成文・長文の先読みが1スレッドWorkerへ大量に並ぶのを防ぐ。
+  //
+  // foregroundLookahead=true は再生中の次文先読み専用なので、
+  // その場合はこの制限をかけない。
+  let generatedTtsSegmentCount = 0;
+
   for (const segment of segments) {
     if (shouldYieldToForeground()) {
-      console.log("[TTS PREFETCH] yielded to foreground", {
+      ttsDebugLog("[TTS PREFETCH] yielded to foreground", {
         textPreview: originalText.replace(/\s+/g, " ").slice(0, 48),
       });
       return;
@@ -1443,34 +1462,57 @@ export async function prefetchTTS(
     const matchupParts = splitStartGreetingMatchup(normalized);
 
     if (matchupParts) {
-      console.log("[TTS PREFETCH][MATCHUP SPLIT]", {
+      ttsDebugLog("[TTS PREFETCH][MATCHUP SPLIT]", {
         parts: matchupParts,
       });
 
       for (const part of matchupParts) {
         if (shouldYieldToForeground()) return;
 
+        if (!foregroundLookahead && generatedTtsSegmentCount >= 1) {
+          return;
+        }
+
         await prefetchMatcha(part, {
           speedScale: common.baseRate,
           volume: common.volume,
         });
+
+        generatedTtsSegmentCount += 1;
+
+        // 通常の画面先読みは、最初のMatcha音声が準備できた時点で終了。
+        if (!foregroundLookahead) {
+          return;
+        }
       }
       continue;
     }
 
     if (shouldYieldToForeground()) return;
 
+    if (!foregroundLookahead && generatedTtsSegmentCount >= 1) {
+      return;
+    }
+
     await prefetchMatcha(normalized, {
       speedScale: common.baseRate,
       volume: common.volume,
     });
 
+    generatedTtsSegmentCount += 1;
+
     // 1チャンク生成が終わった時点でも、本番読み上げが来ていれば即終了。
     if (shouldYieldToForeground()) return;
+
+    // 通常の画面先読みはここで終了。
+    // 再生開始後の次チャンク生成は speakMatcha() が担当する。
+    if (!foregroundLookahead) {
+      return;
+    }
   }
 
   const finishedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-  console.log("[TTS PREFETCH] ready", {
+  ttsDebugLog("[TTS PREFETCH] ready", {
     voice: getSelectedMatchaVoice(),
     speedScale: Number(common.baseRate.toFixed(3)),
     totalMs: Math.round((finishedAt - prefetchStartedAt) * 10) / 10,
