@@ -4811,20 +4811,50 @@ const speakVisibleAnnouncement = () => {
         firstPartPreview: parts[0]?.slice(0, 60),
       });
 
-      // 最初の音が出るまでの時間を最優先する。
-      // 読み上げボタン押下後に次文のprefetchを先に走らせると、
-      // 1スレッドWorkerでは先頭音声と生成が競合して開始が遅くなる。
-      // そのため、ここでは先頭から順番に再生するだけにする。
-      // 2文目以降はモーダル表示時の事前先読み側で準備済みにする。
+      // 最初の音を最優先しつつ、現在パートの再生中に次パートを先回り生成する。
+      //
+      // モーダル表示中は先頭パートだけ先読みする。
+      // 2パート目以降は、現在パートの ttsSpeak() を開始した「あと」に
+      // foregroundLookahead=true で準備する。
+      //
+      // これにより、
+      //   固定文/現在文を再生
+      //      ↓ その再生時間を利用して次の作成文を生成
+      //      ↓
+      //   現在文終了時には次文ができている
+      // というローリング先読みになる。
       for (let i = 0; i < parts.length; i++) {
         const currentPart = parts[i];
+        const nextPart = parts[i + 1];
 
         console.log("[TTS PLAY][DefenseChange] part", {
           index: i,
           preview: currentPart?.slice(0, 60),
+          nextPreview: nextPart?.slice(0, 60),
         });
 
-        await ttsSpeak(currentPart, speakOptions);
+        // まず現在パートを最優先で開始する。
+        const playPromise = ttsSpeak(currentPart, speakOptions);
+
+        if (nextPart) {
+          // ttsSpeak(currentPart) 側を先に走らせる。
+          // すでに先頭先読み中なら同じin-flightを共有し、
+          // 次文が先頭文を追い越してWorkerへ入らないよう少しだけ譲る。
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+
+          void prefetchTTS(nextPart, {
+            ...speakOptions,
+            foregroundLookahead: true,
+          }).catch((error) => {
+            console.warn("[TTS LOOKAHEAD][DefenseChange] failed", {
+              index: i + 1,
+              preview: nextPart?.slice(0, 60),
+              error,
+            });
+          });
+        }
+
+        await playPromise;
       }
     } finally {
       setSpeaking(false);
@@ -7042,23 +7072,18 @@ useEffect(() => {
         preview: parts[0]?.slice(0, 60),
       });
 
-      // 先頭のキャッシュが確実に完成してから、残りを順番に生成。
-      for (let i = 1; i < parts.length; i++) {
-        if (
-          cancelled ||
-          version !== defenseAnnouncementPrefetchVersionRef.current
-        ) return;
-
-        await prefetchTTS(parts[i], options);
-
-        if (
-          cancelled ||
-          version !== defenseAnnouncementPrefetchVersionRef.current
-        ) return;
-      }
-
-      console.log("[TTS PREFETCH][DefenseChange ALL] ready", {
+      // 画面表示中のバックグラウンド先読みはここで終了。
+      //
+      // 以前は2文目以降もここで全て生成していたため、
+      // 交代内容を変更した直後や、モーダルを開いてすぐ読み上げた場合に
+      // 古い/後続の作成文生成が1スレッドWorkerを占有し、
+      // 本番の作成文が待たされることがあった。
+      //
+      // 2文目以降は speakVisibleAnnouncement() で、
+      // 現在文を再生している間に1文ずつローリング先読みする。
+      console.log("[TTS PREFETCH][DefenseChange FIRST ONLY] ready", {
         parts: parts.length,
+        firstPartPreview: parts[0]?.slice(0, 60),
       });
     } catch (error) {
       console.warn("[TTS PREFETCH][DefenseChange] failed", error);
