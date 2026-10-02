@@ -2,7 +2,7 @@ import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
 import * as wanakana from "wanakana";
 import QRCode from "qrcode";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
 import * as pako from "pako";
 
 
@@ -63,7 +63,8 @@ type QrImportData = {
   lineup: QrLineupData;
 };
 
-const QR_PREFIX_V2 = "EA2:";
+const QR_PREFIX_V3 = "EA3:";
+const QR_PREFIX_V2 = "EA2:"; // 旧QR互換
 const QR_PREFIX_V1 = "EA1:"; // 旧QR互換
 const QR_POSITION_KEYS = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "指"] as const;
 
@@ -75,6 +76,60 @@ const bytesToBase64Url = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...Array.from(chunk));
   }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+
+
+const BASE45_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+const BASE45_LOOKUP = new Map<string, number>(
+  Array.from(BASE45_CHARSET).map((ch, index) => [ch, index])
+);
+
+const bytesToBase45 = (bytes: Uint8Array) => {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 2) {
+    if (i + 1 < bytes.length) {
+      let x = bytes[i] * 256 + bytes[i + 1];
+      const e = x % 45;
+      x = Math.floor(x / 45);
+      const d = x % 45;
+      const c = Math.floor(x / 45);
+      out += BASE45_CHARSET[e] + BASE45_CHARSET[d] + BASE45_CHARSET[c];
+    } else {
+      const x = bytes[i];
+      const e = x % 45;
+      const d = Math.floor(x / 45);
+      out += BASE45_CHARSET[e] + BASE45_CHARSET[d];
+    }
+  }
+  return out;
+};
+
+const base45ToBytes = (value: string) => {
+  const bytes: number[] = [];
+  for (let i = 0; i < value.length; ) {
+    const remain = value.length - i;
+    if (remain >= 3) {
+      const c0 = BASE45_LOOKUP.get(value[i]);
+      const c1 = BASE45_LOOKUP.get(value[i + 1]);
+      const c2 = BASE45_LOOKUP.get(value[i + 2]);
+      if (c0 == null || c1 == null || c2 == null) throw new Error("Base45 decode error");
+      const x = c0 + c1 * 45 + c2 * 45 * 45;
+      if (x > 0xffff) throw new Error("Base45 decode overflow");
+      bytes.push(Math.floor(x / 256), x % 256);
+      i += 3;
+    } else if (remain === 2) {
+      const c0 = BASE45_LOOKUP.get(value[i]);
+      const c1 = BASE45_LOOKUP.get(value[i + 1]);
+      if (c0 == null || c1 == null) throw new Error("Base45 decode error");
+      const x = c0 + c1 * 45;
+      if (x > 0xff) throw new Error("Base45 decode overflow");
+      bytes.push(x);
+      i += 2;
+    } else {
+      throw new Error("Base45 decode length error");
+    }
+  }
+  return new Uint8Array(bytes);
 };
 
 const base64UrlToBytes = (value: string) => {
@@ -122,7 +177,10 @@ const TeamRegister = () => {
   const [pendingQrImport, setPendingQrImport] = useState<QrImportData | null>(null);
   const [showQrImportConfirm, setShowQrImportConfirm] = useState(false);
   const [showQrImportComplete, setShowQrImportComplete] = useState(false);
-  const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const qrVideoRef = useRef<HTMLVideoElement | null>(null);
+  const qrMediaStreamRef = useRef<MediaStream | null>(null);
+  const qrZxingControlsRef = useRef<IScannerControls | null>(null);
+  const qrNativeTimerRef = useRef<number | null>(null);
   const qrScanHandledRef = useRef(false);
   const [showFormErrorModal, setShowFormErrorModal] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -583,44 +641,121 @@ const encodeQrShareData = (data: QrImportData) => {
   const shortIdByPlayerId = new Map<number, number>();
   players.forEach((p, index) => shortIdByPlayerId.set(p.id, index + 1));
 
-  const sid = (id: number | null | undefined): number | null => {
-    if (typeof id !== "number") return null;
-    return shortIdByPlayerId.get(id) ?? null;
+  const sid = (id: number | null | undefined): number => {
+    if (typeof id !== "number") return 0;
+    return shortIdByPlayerId.get(id) ?? 0;
   };
 
-  const compact = {
-    f: [
-      data.folder.listName,
-      data.folder.team.name,
-      data.folder.team.furigana,
-      players.map((p) => [
-        p.lastName,
-        p.firstName,
-        p.lastNameKana,
-        p.firstNameKana,
-        p.number,
-        p.isFemale ? 1 : 0,
-      ]),
-    ],
-    m: [
-      data.match.tournamentName,
-      data.match.opponentTeam,
-      data.match.opponentTeamFurigana,
-    ],
-    l: [
-      QR_POSITION_KEYS.map((pos) => sid(data.lineup.assignments?.[pos] ?? null)),
-      data.lineup.battingOrder.map((x) => sid(x.id)).filter((x): x is number => x !== null),
-      data.lineup.benchOutIds.map((id) => sid(id)).filter((x): x is number => x !== null),
-      Math.max(0, Number(data.lineup.extraBattingSlots ?? 0)),
-      Object.entries(data.lineup.extraPositionMap ?? {})
-        .map(([id, pos]) => [sid(Number(id)), pos] as const)
-        .filter((pair) => pair[0] !== null && pair[1] != null),
-      data.lineup.ohtaniRule ? 1 : 0,
-    ],
-  };
+  // EA3: キー名を完全に無くし、配列位置で意味を持たせる。
+  // 文字列自体は削らず、共有内容はEA2と同じ。
+  const compact = [
+    data.folder.listName,
+    data.folder.team.name,
+    data.folder.team.furigana,
+    players.map((p) => [
+      p.lastName,
+      p.firstName,
+      p.lastNameKana,
+      p.firstNameKana,
+      p.number,
+      p.isFemale ? 1 : 0,
+    ]),
+    data.match.tournamentName,
+    data.match.opponentTeam,
+    data.match.opponentTeamFurigana,
+    QR_POSITION_KEYS.map((pos) => sid(data.lineup.assignments?.[pos] ?? null)),
+    data.lineup.battingOrder.map((x) => sid(x.id)).filter((x) => x > 0),
+    data.lineup.benchOutIds.map((id) => sid(id)).filter((x) => x > 0),
+    Math.max(0, Number(data.lineup.extraBattingSlots ?? 0)),
+    Object.entries(data.lineup.extraPositionMap ?? {})
+      .map(([id, pos]) => [sid(Number(id)), pos] as const)
+      .filter((pair) => pair[0] > 0 && pair[1] != null),
+    data.lineup.ohtaniRule ? 1 : 0,
+  ];
 
-  const compressed = pako.deflate(JSON.stringify(compact), { level: 9 });
-  return `${QR_PREFIX_V2}${bytesToBase64Url(compressed)}`;
+  const utf8 = new TextEncoder().encode(JSON.stringify(compact));
+  // zlibヘッダー/末尾CRCを省くため raw DEFLATE を使用。
+  const compressed = pako.deflateRaw(utf8, { level: 9 });
+  // Base45はQRの英数字モードに載せやすく、Base64のByte modeよりQR上で効率が良い。
+  return `${QR_PREFIX_V3}${bytesToBase45(compressed)}`;
+};
+
+const decodeQrShareDataV3 = (text: string): QrImportData => {
+  // Base45の文字集合には半角スペースも含まれるため、内部空白を削除してはいけない。
+  const cleaned = text.trim();
+  const payload = cleaned.slice(QR_PREFIX_V3.length);
+
+  let raw: any;
+  try {
+    const inflated = pako.inflateRaw(base45ToBytes(payload));
+    const json = new TextDecoder("utf-8", { fatal: false }).decode(inflated);
+    raw = JSON.parse(json);
+  } catch (error) {
+    console.error("EA3 decode error", error);
+    throw new Error("QRデータの展開に失敗しました。QRコードをもう一度表示して読み取ってください。");
+  }
+
+  if (!Array.isArray(raw) || !Array.isArray(raw[3])) {
+    throw new Error("対応していないQRデータです");
+  }
+
+  const players: Player[] = raw[3].map((p: any[], index: number) => ({
+    id: index + 1,
+    lastName: String(p?.[0] ?? ""),
+    firstName: String(p?.[1] ?? ""),
+    lastNameKana: String(p?.[2] ?? ""),
+    firstNameKana: String(p?.[3] ?? ""),
+    number: String(p?.[4] ?? ""),
+    isFemale: Number(p?.[5] ?? 0) === 1,
+  }));
+
+  const assignmentIds = Array.isArray(raw[7]) ? raw[7] : [];
+  const assignments: Record<string, number | null> = {};
+  QR_POSITION_KEYS.forEach((pos, index) => {
+    const value = Number(assignmentIds[index]);
+    assignments[pos] = Number.isFinite(value) && value > 0 ? value : null;
+  });
+
+  const orderIds = Array.isArray(raw[8]) ? raw[8] : [];
+  const benchIds = Array.isArray(raw[9]) ? raw[9] : [];
+  const extraPairs = Array.isArray(raw[11]) ? raw[11] : [];
+  const extraPositionMap: Record<number, string | null> = {};
+  extraPairs.forEach((pair: any[]) => {
+    const id = Number(pair?.[0]);
+    const pos = pair?.[1];
+    if (Number.isFinite(id) && id > 0 && typeof pos === "string") {
+      extraPositionMap[id] = pos;
+    }
+  });
+
+  return {
+    folder: {
+      listName: String(raw[0] ?? raw[1] ?? "QR受信データ"),
+      team: {
+        name: String(raw[1] ?? ""),
+        furigana: String(raw[2] ?? ""),
+        players,
+      },
+    },
+    match: {
+      tournamentName: String(raw[4] ?? ""),
+      opponentTeam: String(raw[5] ?? ""),
+      opponentTeamFurigana: String(raw[6] ?? ""),
+    },
+    lineup: {
+      assignments,
+      battingOrder: orderIds
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id) && id > 0)
+        .map((id: number) => ({ id, reason: "スタメン" as const })),
+      benchOutIds: benchIds
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id) && id > 0),
+      extraBattingSlots: Math.max(0, Number(raw[10] ?? 0)),
+      extraPositionMap,
+      ohtaniRule: Number(raw[12] ?? 0) === 1,
+    },
+  };
 };
 
 const inflateQrJsonUtf8 = (payload: string) => {
@@ -774,10 +909,13 @@ const decodeQrShareDataV1 = (text: string): QrImportData => {
 };
 
 const decodeQrShareData = (text: string): QrImportData => {
-  // QRライブラリが前後に改行等を付ける端末があるため、判定前に除去する。
-  const cleaned = text.trim().replace(/\s+/g, "");
-  if (cleaned.startsWith(QR_PREFIX_V2)) return decodeQrShareDataV2(cleaned);
-  if (cleaned.startsWith(QR_PREFIX_V1)) return decodeQrShareDataV1(cleaned);
+  const trimmed = text.trim();
+  if (trimmed.startsWith(QR_PREFIX_V3)) return decodeQrShareDataV3(trimmed);
+
+  // EA1/EA2はBase64URLなので、互換用に内部空白を除去してから読む。
+  const legacy = trimmed.replace(/\s+/g, "");
+  if (legacy.startsWith(QR_PREFIX_V2)) return decodeQrShareDataV2(legacy);
+  if (legacy.startsWith(QR_PREFIX_V1)) return decodeQrShareDataV1(legacy);
   throw new Error("EasyアナウンスのQRコードではありません");
 };
 
@@ -856,10 +994,11 @@ const handleQrShare = async () => {
     };
 
     const qrText = encodeQrShareData(shareData);
+    console.log("[QR EA3] payload chars:", qrText.length);
     const image = await QRCode.toDataURL(qrText, {
       errorCorrectionLevel: "L",
-      width: 720,
-      margin: 2,
+      width: 900,
+      margin: 3,
     });
 
     setQrImageUrl(image);
@@ -878,34 +1017,45 @@ const handleQrShare = async () => {
 };
 
 const stopQrScanner = async () => {
-  const scanner = qrScannerRef.current;
-  qrScannerRef.current = null;
-  if (!scanner) return;
+  if (qrNativeTimerRef.current != null) {
+    window.clearInterval(qrNativeTimerRef.current);
+    qrNativeTimerRef.current = null;
+  }
+
   try {
-    if (scanner.isScanning) await scanner.stop();
+    qrZxingControlsRef.current?.stop();
   } catch {}
-  try {
-    scanner.clear();
-  } catch {}
+  qrZxingControlsRef.current = null;
+
+  const stream = qrMediaStreamRef.current;
+  qrMediaStreamRef.current = null;
+  if (stream) {
+    stream.getTracks().forEach((track) => {
+      try { track.stop(); } catch {}
+    });
+  }
+
+  const video = qrVideoRef.current;
+  if (video) {
+    try {
+      video.pause();
+      video.srcObject = null;
+    } catch {}
+  }
 };
 
 const handleDecodedQrText = (decodedText: string) => {
-  // 同じQRを連続検出した時に多重処理しない
   if (qrScanHandledRef.current) return;
 
   try {
     const decoded = decodeQrShareData(decodedText);
     qrScanHandledRef.current = true;
 
-    // ★重要：カメラ停止を待たず、まず確認画面へ進める。
-    // 一部スマホでは scan callback 内で stop() を await すると
-    // 画面遷移まで到達しないことがある。
     setPendingQrImport(decoded);
     setShowQrImportConfirm(true);
     setShowQrScanModal(false);
     setQrScannerError("");
 
-    // カメラ停止は後処理として非同期実行
     window.setTimeout(() => {
       void stopQrScanner();
     }, 0);
@@ -915,114 +1065,142 @@ const handleDecodedQrText = (decodedText: string) => {
   }
 };
 
+const startZxingScanner = async () => {
+  const video = qrVideoRef.current;
+  if (!video || qrScanHandledRef.current) return;
+
+  const reader = new BrowserQRCodeReader(undefined, {
+    delayBetweenScanAttempts: 60,
+    delayBetweenScanSuccess: 400,
+  });
+
+  const constraints: MediaStreamConstraints = {
+    audio: false,
+    video: {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+  };
+
+  try {
+    const controls = await reader.decodeFromConstraints(
+      constraints,
+      video,
+      (result) => {
+        if (result && !qrScanHandledRef.current) {
+          handleDecodedQrText(result.getText());
+        }
+      }
+    );
+    qrZxingControlsRef.current = controls;
+  } catch (error) {
+    console.error("ZXing camera start error", error);
+    throw error;
+  }
+};
+
+const startNativeBarcodeDetector = async (): Promise<boolean> => {
+  const video = qrVideoRef.current;
+  if (!video || qrScanHandledRef.current) return false;
+
+  const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+  if (!BarcodeDetectorCtor || !navigator.mediaDevices?.getUserMedia) return false;
+
+  try {
+    if (typeof BarcodeDetectorCtor.getSupportedFormats === "function") {
+      const formats: string[] = await BarcodeDetectorCtor.getSupportedFormats();
+      if (!formats.includes("qr_code")) return false;
+    }
+
+    const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    });
+
+    qrMediaStreamRef.current = stream;
+    video.srcObject = stream;
+    video.setAttribute("playsinline", "true");
+    video.muted = true;
+    await video.play();
+
+    let busy = false;
+    let elapsed = 0;
+    qrNativeTimerRef.current = window.setInterval(async () => {
+      if (busy || qrScanHandledRef.current || video.readyState < 2) return;
+      busy = true;
+      elapsed += 150;
+      try {
+        const found = await detector.detect(video);
+        const raw = found?.[0]?.rawValue;
+        if (raw) {
+          handleDecodedQrText(String(raw));
+          return;
+        }
+      } catch {}
+      finally {
+        busy = false;
+      }
+
+      // ネイティブ検出で拾えない場合はZXingへ切り替える。
+      if (elapsed >= 2500 && !qrScanHandledRef.current) {
+        if (qrNativeTimerRef.current != null) {
+          window.clearInterval(qrNativeTimerRef.current);
+          qrNativeTimerRef.current = null;
+        }
+        const current = qrMediaStreamRef.current;
+        qrMediaStreamRef.current = null;
+        current?.getTracks().forEach((track) => {
+          try { track.stop(); } catch {}
+        });
+        try { video.srcObject = null; } catch {}
+        try {
+          await startZxingScanner();
+        } catch {
+          setQrScannerError("QR読取カメラを開始できませんでした。カメラの使用を許可して、もう一度お試しください。");
+        }
+      }
+    }, 150);
+
+    return true;
+  } catch (error) {
+    console.warn("Native BarcodeDetector start failed", error);
+    const current = qrMediaStreamRef.current;
+    qrMediaStreamRef.current = null;
+    current?.getTracks().forEach((track) => {
+      try { track.stop(); } catch {}
+    });
+    try { video.srcObject = null; } catch {}
+    return false;
+  }
+};
+
 useEffect(() => {
   if (!showQrScanModal) return;
 
   qrScanHandledRef.current = false;
   setQrScannerError("");
+
   const timer = window.setTimeout(() => {
     void (async () => {
       try {
-        // QRコードだけを対象にすることでデコード負荷を下げる
-        const scanner = new Html5Qrcode("team-register-qr-reader", {
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          verbose: false,
-        });
-        qrScannerRef.current = scanner;
-
-        // 端末差でカメラ起動に失敗しないよう、条件をゆるくして段階的に試す。
-        // 解像度は端末／ブラウザに任せる（1920x1080固定・ideal指定もしない）。
-        let cameras: Array<{ id: string; label: string }> = [];
-        try {
-          cameras = await Html5Qrcode.getCameras();
-        } catch (cameraListError) {
-          console.warn("camera list error", cameraListError);
-        }
-
-        const backCamera =
-          cameras.find((camera) =>
-            /back|rear|environment|背面/i.test(camera.label || "")
-          ) ?? cameras[cameras.length - 1];
-
-        const scanConfig = {
-          fps: 12,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const size = Math.max(180, Math.min(minEdge - 24, Math.floor(minEdge * 0.88)));
-            return { width: size, height: size };
-          },
-          disableFlip: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        } as any;
-
-        const onScanSuccess = (decodedText: string) => {
-          handleDecodedQrText(decodedText);
-        };
-        const onScanFailure = () => {};
-
-        let started = false;
-        let lastStartError: unknown = null;
-
-        // ① 背面カメラIDを直接指定（見つかった場合）
-        if (backCamera?.id) {
-          try {
-            await scanner.start(
-              backCamera.id,
-              scanConfig,
-              onScanSuccess,
-              onScanFailure
-            );
-            started = true;
-          } catch (error) {
-            lastStartError = error;
-            console.warn("QR camera start by id failed", error);
-          }
-        }
-
-        // ② ID指定で失敗したら environment を指定
-        if (!started) {
-          try {
-            await scanner.start(
-              { facingMode: "environment" },
-              scanConfig,
-              onScanSuccess,
-              onScanFailure
-            );
-            started = true;
-          } catch (error) {
-            lastStartError = error;
-            console.warn("QR environment camera start failed", error);
-          }
-        }
-
-        // ③ それでも失敗したら、最小条件でカメラ選択をブラウザに任せる
-        if (!started) {
-          try {
-            await scanner.start(
-              { facingMode: { ideal: "environment" } },
-              { ...scanConfig, fps: 10 },
-              onScanSuccess,
-              onScanFailure
-            );
-            started = true;
-          } catch (error) {
-            lastStartError = error;
-          }
-        }
-
-        if (!started) {
-          throw lastStartError ?? new Error("camera start failed");
+        const nativeStarted = await startNativeBarcodeDetector();
+        if (!nativeStarted) {
+          await startZxingScanner();
         }
       } catch (error) {
         console.error("QR scanner start error", error);
         setQrScannerError(
-          "カメラを開始できませんでした。カメラの使用を許可してから、もう一度お試しください。"
+          "QR読取カメラを開始できませんでした。カメラの使用を許可して、もう一度お試しください。"
         );
       }
     })();
-  }, 150);
+  }, 120);
 
   return () => {
     window.clearTimeout(timer);
@@ -1037,26 +1215,25 @@ const handleQrImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
   if (!file) return;
 
   setQrScannerError("");
-  try {
-    // カメラ読取中なら一旦停止して、画像ファイルを解析する
-    await stopQrScanner();
+  await stopQrScanner();
 
-    const imageScanner = new Html5Qrcode("team-register-qr-image-reader", {
-      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-      verbose: false,
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("image load failed"));
+      img.src = objectUrl;
     });
 
-    try {
-      const decodedText = await imageScanner.scanFile(file, true);
-      handleDecodedQrText(decodedText);
-    } finally {
-      try {
-        imageScanner.clear();
-      } catch {}
-    }
+    const reader = new BrowserQRCodeReader();
+    const result = await reader.decodeFromImageElement(img);
+    handleDecodedQrText(result.getText());
   } catch (error) {
     console.error("QR image scan error", error);
     setQrScannerError("画像からQRコードを読み取れませんでした。QRコード全体が写った画像を選んでください。");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 };
 
@@ -2380,7 +2557,15 @@ const saveTeam = async () => {
     <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
       <div className="bg-cyan-600 px-4 py-3 text-center font-bold text-white">QR読取</div>
       <div className="p-3">
-        <div id="team-register-qr-reader" className="min-h-[360px] w-full overflow-hidden rounded-xl bg-black" />
+        <div className="relative min-h-[360px] w-full overflow-hidden rounded-xl bg-black">
+          <video
+            ref={qrVideoRef}
+            className="h-[360px] w-full object-cover"
+            playsInline
+            muted
+          />
+          <div className="pointer-events-none absolute inset-4 rounded-2xl border-2 border-cyan-300/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.18)]" />
+        </div>
         <p className="mt-2 text-center text-xs font-semibold text-gray-600">QRコード全体が枠内に入るように、少し離して映してください</p>
 
         <div className="mt-3">
@@ -2393,7 +2578,6 @@ const saveTeam = async () => {
               className="hidden"
             />
           </label>
-          <div id="team-register-qr-image-reader" className="hidden" />
         </div>
 
         {qrScannerError && (
