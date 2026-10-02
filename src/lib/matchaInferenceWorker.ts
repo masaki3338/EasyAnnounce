@@ -4,6 +4,17 @@
 
 import * as ort from "onnxruntime-web/wasm";
 
+
+// -----------------------------------------------------------------------------
+// TTSデバッグログ
+// 本番では false。必要なときだけ true にすると console.log が復活する。
+// warn / error は異常検知のため常時残す。
+// -----------------------------------------------------------------------------
+const TTS_DEBUG = false;
+const ttsDebugLog = (...args: any[]) => {
+  if (TTS_DEBUG) ttsDebugLog(...args);
+};
+
 type MatchaModelId = "taniho" | "uguisu";
 
 const MATCHA_MODEL_URLS: Record<MatchaModelId, string> = {
@@ -57,7 +68,7 @@ function configureOrt() {
 
   ort.env.wasm.numThreads = usableThreads;
 
-  console.log("[TTS PERF] ORT config", {
+  ttsDebugLog("[TTS PERF] ORT config", {
     crossOriginIsolated: canUseThreads,
     hardwareConcurrency: cores,
     numThreads: ort.env.wasm.numThreads,
@@ -88,20 +99,20 @@ async function getMatchaSession(
 
   const promise = (async () => {
     const url = MATCHA_MODEL_URLS[modelId];
-    console.log("[TTS LOAD] Matcha fetch start", { modelId, url });
+    ttsDebugLog("[TTS LOAD] Matcha fetch start", { modelId, url });
     const start = performance.now();
     const bytes = await fetchBytes(url);
     const fetchMs = performance.now() - start;
-    console.log("[TTS LOAD] Matcha fetch complete", { modelId, bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
+    ttsDebugLog("[TTS LOAD] Matcha fetch complete", { modelId, bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
 
-    console.log("[TTS LOAD] Matcha session create start", { modelId });
+    ttsDebugLog("[TTS LOAD] Matcha session create start", { modelId });
     const sessionStart = performance.now();
     const session = await ort.InferenceSession.create(bytes, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
     });
 
-    console.log("[TTS PERF] Matcha model ready", {
+    ttsDebugLog("[TTS PERF] Matcha model ready", {
       modelId,
       fetchMs: Math.round(fetchMs * 10) / 10,
       sessionMs: Math.round((performance.now() - sessionStart) * 10) / 10,
@@ -121,20 +132,20 @@ async function getVocosSession(): Promise<ort.InferenceSession> {
   if (!vocosSessionPromise) {
     configureOrt();
     vocosSessionPromise = (async () => {
-      console.log("[TTS LOAD] Vocos fetch start", { url: VOCOS_MODEL_URL });
+      ttsDebugLog("[TTS LOAD] Vocos fetch start", { url: VOCOS_MODEL_URL });
       const start = performance.now();
       const bytes = await fetchBytes(VOCOS_MODEL_URL);
       const fetchMs = performance.now() - start;
-      console.log("[TTS LOAD] Vocos fetch complete", { bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
+      ttsDebugLog("[TTS LOAD] Vocos fetch complete", { bytes: bytes.byteLength, fetchMs: Math.round(fetchMs * 10) / 10 });
 
-      console.log("[TTS LOAD] Vocos session create start");
+      ttsDebugLog("[TTS LOAD] Vocos session create start");
       const sessionStart = performance.now();
       const session = await ort.InferenceSession.create(bytes, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
       });
 
-      console.log("[TTS PERF] Vocos model ready", {
+      ttsDebugLog("[TTS PERF] Vocos model ready", {
         fetchMs: Math.round(fetchMs * 10) / 10,
         sessionMs: Math.round((performance.now() - sessionStart) * 10) / 10,
       });
@@ -329,7 +340,7 @@ async function synthesize(ids: number[], speedScale: number, modelId: MatchaMode
   );
   const istftMs = performance.now() - istftStart;
 
-  console.log("[TTS PERF] inference", {
+  ttsDebugLog("[TTS PERF] inference", {
     modelId,
     ids: ids.length,
     frames,
