@@ -70,9 +70,12 @@ const historyData: HistoryItem[] = [
     ],
   },
   {
-    date: "2026.09.24",
+    date: "2026.09.30",
     version: "Version 1.05",
-    details: ["読み上げ設定画面でAI音声の選択追加"],
+    details: [
+      `・読み上げ設定画面でAI音声の選択追加
+       ・チーム選手データのQRコード共有追加`,
+    ],
   },
 ];
 
