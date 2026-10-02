@@ -995,11 +995,21 @@ const handleQrShare = async () => {
 
     const qrText = encodeQrShareData(shareData);
     console.log("[QR EA3] payload chars:", qrText.length);
-    const image = await QRCode.toDataURL(qrText, {
+
+    // 高密度QRはPNGを縮小すると1マスの境界がにじみやすいため、
+    // ベクター形式のSVGで生成する。quiet zone（白い余白）は4モジュール確保。
+    const svg = await QRCode.toString(qrText, {
+      type: "svg",
       errorCorrectionLevel: "L",
-      width: 900,
-      margin: 3,
+      margin: 4,
+      width: 1024,
+      color: {
+        dark: "#000000",
+        light: "#ffffff",
+      },
     });
+
+    const image = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
     setQrImageUrl(image);
     setQrShareSummary(
@@ -2527,7 +2537,7 @@ const saveTeam = async () => {
 {/* QR共有モーダル */}
 {showQrShareModal && (
   <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/70 px-4 py-4" role="dialog" aria-modal="true">
-    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+    <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
       <div className="bg-violet-600 px-4 py-3 text-center font-bold text-white">QR共有</div>
       <div className="px-4 py-4 text-center">
         {qrError ? (
@@ -2536,10 +2546,18 @@ const saveTeam = async () => {
           <>
             <p className="mb-3 text-sm font-bold text-gray-800">{qrShareSummary}</p>
             {qrImageUrl && (
-              <img src={qrImageUrl} alt="共有用QRコード" className="mx-auto w-full max-w-[300px] rounded-xl border border-gray-200" />
+              <div className="mx-auto w-full max-w-[390px] bg-white p-2 sm:p-3">
+                <img
+                  src={qrImageUrl}
+                  alt="共有用QRコード"
+                  className="block h-auto w-full bg-white"
+                  draggable={false}
+                  style={{ imageRendering: "pixelated" }}
+                />
+              </div>
             )}
             <p className="mt-3 text-xs leading-5 text-gray-600">
-              相手の端末で「QR読取」を押して、このQRコードを読み取ってください。
+              相手の端末で「QR読取」を押し、QRコード全体と周囲の白い余白が枠内に入るように読み取ってください。
             </p>
           </>
         )}
