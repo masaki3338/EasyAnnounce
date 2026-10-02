@@ -2,7 +2,7 @@ import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
 import * as wanakana from "wanakana";
 import QRCode from "qrcode";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import * as pako from "pako";
 
 
@@ -63,7 +63,9 @@ type QrImportData = {
   lineup: QrLineupData;
 };
 
-const QR_PREFIX = "EA1:";
+const QR_PREFIX_V2 = "EA2:";
+const QR_PREFIX_V1 = "EA1:"; // 旧QR互換
+const QR_POSITION_KEYS = ["投", "捕", "一", "二", "三", "遊", "左", "中", "右", "指"] as const;
 
 const bytesToBase64Url = (bytes: Uint8Array) => {
   let binary = "";
@@ -576,16 +578,21 @@ const getLineupForQr = async (folderId: string): Promise<QrLineupData> => {
 };
 
 const encodeQrShareData = (data: QrImportData) => {
-  // QR容量を抑えるため、QR内部だけ短いキー＋配列形式にする。
+  const players = data.folder.team.players;
+  const shortIdByPlayerId = new Map<number, number>();
+  players.forEach((p, index) => shortIdByPlayerId.set(p.id, index + 1));
+
+  const sid = (id: number | null | undefined): number | null => {
+    if (typeof id !== "number") return null;
+    return shortIdByPlayerId.get(id) ?? null;
+  };
+
   const compact = {
-    v: 1,
-    t: "ea",
-    f: {
-      n: data.folder.listName,
-      m: data.folder.team.name,
-      r: data.folder.team.furigana,
-      p: data.folder.team.players.map((p) => [
-        p.id,
+    f: [
+      data.folder.listName,
+      data.folder.team.name,
+      data.folder.team.furigana,
+      players.map((p) => [
         p.lastName,
         p.firstName,
         p.lastNameKana,
@@ -593,30 +600,98 @@ const encodeQrShareData = (data: QrImportData) => {
         p.number,
         p.isFemale ? 1 : 0,
       ]),
-    },
+    ],
     m: [
       data.match.tournamentName,
       data.match.opponentTeam,
       data.match.opponentTeamFurigana,
     ],
     l: [
-      data.lineup.assignments,
-      data.lineup.battingOrder.map((x) => x.id),
-      data.lineup.benchOutIds,
-      data.lineup.extraBattingSlots,
-      data.lineup.extraPositionMap,
+      QR_POSITION_KEYS.map((pos) => sid(data.lineup.assignments?.[pos] ?? null)),
+      data.lineup.battingOrder.map((x) => sid(x.id)).filter((x): x is number => x !== null),
+      data.lineup.benchOutIds.map((id) => sid(id)).filter((x): x is number => x !== null),
+      Math.max(0, Number(data.lineup.extraBattingSlots ?? 0)),
+      Object.entries(data.lineup.extraPositionMap ?? {})
+        .map(([id, pos]) => [sid(Number(id)), pos] as const)
+        .filter((pair) => pair[0] !== null && pair[1] != null),
       data.lineup.ohtaniRule ? 1 : 0,
     ],
   };
 
   const compressed = pako.deflate(JSON.stringify(compact), { level: 9 });
-  return `${QR_PREFIX}${bytesToBase64Url(compressed)}`;
+  return `${QR_PREFIX_V2}${bytesToBase64Url(compressed)}`;
 };
 
-const decodeQrShareData = (text: string): QrImportData => {
-  if (!text.startsWith(QR_PREFIX)) throw new Error("EasyアナウンスのQRコードではありません");
+const decodeQrShareDataV2 = (text: string): QrImportData => {
+  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX_V2.length)), { to: "string" }) as string;
+  const raw = JSON.parse(json);
 
-  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX.length)), { to: "string" }) as string;
+  if (!Array.isArray(raw?.f) || !Array.isArray(raw?.f?.[3])) {
+    throw new Error("対応していないQRデータです");
+  }
+
+  const players: Player[] = raw.f[3].map((p: any[], index: number) => ({
+    id: index + 1,
+    lastName: String(p?.[0] ?? ""),
+    firstName: String(p?.[1] ?? ""),
+    lastNameKana: String(p?.[2] ?? ""),
+    firstNameKana: String(p?.[3] ?? ""),
+    number: String(p?.[4] ?? ""),
+    isFemale: Number(p?.[5] ?? 0) === 1,
+  }));
+
+  const lineupRaw = Array.isArray(raw.l) ? raw.l : [];
+  const assignmentIds = Array.isArray(lineupRaw[0]) ? lineupRaw[0] : [];
+  const assignments: Record<string, number | null> = {};
+  QR_POSITION_KEYS.forEach((pos, index) => {
+    const value = Number(assignmentIds[index]);
+    assignments[pos] = Number.isFinite(value) && value > 0 ? value : null;
+  });
+
+  const orderIds = Array.isArray(lineupRaw[1]) ? lineupRaw[1] : [];
+  const benchIds = Array.isArray(lineupRaw[2]) ? lineupRaw[2] : [];
+  const extraPairs = Array.isArray(lineupRaw[4]) ? lineupRaw[4] : [];
+  const extraPositionMap: Record<number, string | null> = {};
+  extraPairs.forEach((pair: any[]) => {
+    const id = Number(pair?.[0]);
+    const pos = pair?.[1];
+    if (Number.isFinite(id) && id > 0 && typeof pos === "string") {
+      extraPositionMap[id] = pos;
+    }
+  });
+
+  return {
+    folder: {
+      listName: String(raw.f[0] ?? raw.f[1] ?? "QR受信データ"),
+      team: {
+        name: String(raw.f[1] ?? ""),
+        furigana: String(raw.f[2] ?? ""),
+        players,
+      },
+    },
+    match: {
+      tournamentName: String(raw?.m?.[0] ?? ""),
+      opponentTeam: String(raw?.m?.[1] ?? ""),
+      opponentTeamFurigana: String(raw?.m?.[2] ?? ""),
+    },
+    lineup: {
+      assignments,
+      battingOrder: orderIds
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id) && id > 0)
+        .map((id: number) => ({ id, reason: "スタメン" as const })),
+      benchOutIds: benchIds
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id) && id > 0),
+      extraBattingSlots: Math.max(0, Number(lineupRaw[3] ?? 0)),
+      extraPositionMap,
+      ohtaniRule: Number(lineupRaw[5] ?? 0) === 1,
+    },
+  };
+};
+
+const decodeQrShareDataV1 = (text: string): QrImportData => {
+  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX_V1.length)), { to: "string" }) as string;
   const raw = JSON.parse(json);
   if (raw?.v !== 1 || raw?.t !== "ea" || !raw?.f || !Array.isArray(raw?.f?.p)) {
     throw new Error("対応していないQRデータです");
@@ -662,6 +737,58 @@ const decodeQrShareData = (text: string): QrImportData => {
       extraPositionMap:
         lineupRaw[4] && typeof lineupRaw[4] === "object" ? lineupRaw[4] : {},
       ohtaniRule: Number(lineupRaw[5] ?? 0) === 1,
+    },
+  };
+};
+
+const decodeQrShareData = (text: string): QrImportData => {
+  if (text.startsWith(QR_PREFIX_V2)) return decodeQrShareDataV2(text);
+  if (text.startsWith(QR_PREFIX_V1)) return decodeQrShareDataV1(text);
+  throw new Error("EasyアナウンスのQRコードではありません");
+};
+
+const remapImportedPlayerIds = (data: QrImportData): QrImportData => {
+  const base = Date.now();
+  const idMap = new Map<number, number>();
+  const players = data.folder.team.players.map((p, index) => {
+    const nextId = base + index + 1;
+    idMap.set(p.id, nextId);
+    return { ...p, id: nextId };
+  });
+
+  const mapId = (id: number | null | undefined): number | null => {
+    if (typeof id !== "number") return null;
+    return idMap.get(id) ?? null;
+  };
+
+  const assignments: Record<string, number | null> = {};
+  QR_POSITION_KEYS.forEach((pos) => {
+    assignments[pos] = mapId(data.lineup.assignments?.[pos] ?? null);
+  });
+
+  const extraPositionMap: Record<number, string | null> = {};
+  Object.entries(data.lineup.extraPositionMap ?? {}).forEach(([oldId, pos]) => {
+    const nextId = mapId(Number(oldId));
+    if (nextId != null) extraPositionMap[nextId] = pos;
+  });
+
+  return {
+    ...data,
+    folder: {
+      ...data.folder,
+      team: { ...data.folder.team, players },
+    },
+    lineup: {
+      ...data.lineup,
+      assignments,
+      battingOrder: data.lineup.battingOrder
+        .map((entry) => mapId(entry.id))
+        .filter((id): id is number => id != null)
+        .map((id) => ({ id, reason: "スタメン" as const })),
+      benchOutIds: data.lineup.benchOutIds
+        .map((id) => mapId(id))
+        .filter((id): id is number => id != null),
+      extraPositionMap,
     },
   };
 };
@@ -747,11 +874,49 @@ useEffect(() => {
   const timer = window.setTimeout(() => {
     void (async () => {
       try {
-        const scanner = new Html5Qrcode("team-register-qr-reader");
+        // QRコードだけを対象にすることでデコード負荷を下げる
+        const scanner = new Html5Qrcode("team-register-qr-reader", {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false,
+        });
         qrScannerRef.current = scanner;
+
+        // 可能なら背面カメラを明示的に選択する
+        const cameras = await Html5Qrcode.getCameras();
+        const backCamera =
+          cameras.find((camera) =>
+            /back|rear|environment|背面/i.test(camera.label || "")
+          ) ?? cameras[cameras.length - 1];
+
+        // 高密度QRでも読めるよう、なるべく高解像度を要求する
+        const cameraConfig: any = backCamera?.id
+          ? {
+              deviceId: { exact: backCamera.id },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              facingMode: { ideal: "environment" },
+            }
+          : {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            };
+
         await scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
+          cameraConfig,
+          {
+            fps: 20,
+            // 固定250pxではなく、実際のカメラ表示の約90%を読み取る
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              const size = Math.max(220, Math.floor(minEdge * 0.9));
+              return { width: size, height: size };
+            },
+            disableFlip: false,
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true,
+            },
+          } as any,
           (decodedText) => {
             void handleDecodedQrText(decodedText);
           },
@@ -764,7 +929,7 @@ useEffect(() => {
         );
       }
     })();
-  }, 100);
+  }, 150);
 
   return () => {
     window.clearTimeout(timer);
@@ -773,13 +938,43 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [showQrScanModal]);
 
+const handleQrImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+
+  setQrScannerError("");
+  try {
+    // カメラ読取中なら一旦停止して、画像ファイルを解析する
+    await stopQrScanner();
+
+    const imageScanner = new Html5Qrcode("team-register-qr-image-reader", {
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      verbose: false,
+    });
+
+    try {
+      const decodedText = await imageScanner.scanFile(file, true);
+      await handleDecodedQrText(decodedText);
+    } finally {
+      try {
+        imageScanner.clear();
+      } catch {}
+    }
+  } catch (error) {
+    console.error("QR image scan error", error);
+    setQrScannerError("画像からQRコードを読み取れませんでした。QRコード全体が写った画像を選んでください。");
+  }
+};
+
 const importQrData = async () => {
   if (!pendingQrImport) return;
 
   try {
+    const imported = remapImportedPlayerIds(pendingQrImport);
     const now = Date.now();
     const existingNames = teamStore.teams.map((t) => t.listName.trim());
-    const baseName = (pendingQrImport.folder.listName || pendingQrImport.folder.team.name || "QR受信データ").trim();
+    const baseName = (imported.folder.listName || imported.folder.team.name || "QR受信データ").trim();
     let nextName = baseName || "QR受信データ";
     let suffix = 1;
     while (existingNames.includes(nextName)) {
@@ -790,7 +985,7 @@ const importQrData = async () => {
     const newFolder: TeamFolder = {
       id: `team_${now}`,
       listName: nextName,
-      team: pendingQrImport.folder.team,
+      team: imported.folder.team,
       createdAt: now,
       updatedAt: now,
     };
@@ -809,12 +1004,12 @@ const importQrData = async () => {
     const existingMatch = (await localForage.getItem<any>("matchInfo")) ?? {};
     await localForage.setItem("matchInfo", {
       ...existingMatch,
-      tournamentName: pendingQrImport.match.tournamentName,
-      opponentTeam: pendingQrImport.match.opponentTeam,
-      opponentTeamFurigana: pendingQrImport.match.opponentTeamFurigana,
+      tournamentName: imported.match.tournamentName,
+      opponentTeam: imported.match.opponentTeam,
+      opponentTeamFurigana: imported.match.opponentTeamFurigana,
     });
 
-    const l = pendingQrImport.lineup;
+    const l = imported.lineup;
     await Promise.all([
       localForage.setItem("startingassignments", l.assignments),
       localForage.setItem("startingBattingOrder", l.battingOrder),
@@ -2092,8 +2287,22 @@ const saveTeam = async () => {
     <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
       <div className="bg-cyan-600 px-4 py-3 text-center font-bold text-white">QR読取</div>
       <div className="p-3">
-        <div id="team-register-qr-reader" className="min-h-[300px] w-full overflow-hidden rounded-xl bg-black" />
-        <p className="mt-2 text-center text-xs text-gray-600">QRコードを枠内に入れてください</p>
+        <div id="team-register-qr-reader" className="min-h-[360px] w-full overflow-hidden rounded-xl bg-black" />
+        <p className="mt-2 text-center text-xs font-semibold text-gray-600">QRコード全体が枠内に入るように、少し離して映してください</p>
+
+        <div className="mt-3">
+          <label className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow active:scale-95">
+            🖼️ 画像からQRを読み取る
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleQrImageFile}
+              className="hidden"
+            />
+          </label>
+          <div id="team-register-qr-image-reader" className="hidden" />
+        </div>
+
         {qrScannerError && (
           <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-sm font-bold text-red-600">{qrScannerError}</p>
         )}
