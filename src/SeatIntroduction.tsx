@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import localForage from "localforage";
 import { ScreenType } from "./pre-game-announcement";
-import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, preserveNameReading, prefetchTTS } from "./lib/tts";
+import { speak as ttsSpeak, stop as ttsStop, preserveNameReading, prefetchTTS } from "./lib/tts";
 import { getLeagueMode } from "./lib/leagueSettings";
 
 interface Props {
@@ -222,10 +222,79 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       ? `ぴっちゃーは、${pitcherName}${pitcher?.honorific || "くん"}`
       : `ピッチャー、${pitcherName}${pitcher?.honorific || "くん"}`;
 
-    // 開始文と、その直後のピッチャー紹介を最優先で先読みする。
-    // 本番と同じ文字列・同じ設定を使い、キャッシュを確実に一致させる。
+    // 開始文＋9人分を画面表示時から順番に先読みする。
+    // 従来は「開始文＋ピッチャー」だけだったため、
+    // ピッチャーの後でキャッチャー以降の生成待ちが発生することがあった。
+    const seatPrefetchLines =
+      leagueMode === "boys"
+        ? [
+            pitcherLine,
+            `キャッチャー、${(() => {
+              const p = positions["捕"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ファースト、${(() => {
+              const p = positions["一"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `セカンド、${(() => {
+              const p = positions["二"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `サード、${(() => {
+              const p = positions["三"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ショート、${(() => {
+              const p = positions["遊"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `レフト、${(() => {
+              const p = positions["左"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `センター、${(() => {
+              const p = positions["中"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+            `ライト、${(() => {
+              const p = positions["右"];
+              return `${fixedKana(p?.lastNameKana || p?.lastName)} ${fixedKana(
+                p?.firstNameKana || p?.firstName
+              )}`.trim() + (p?.honorific || "くん");
+            })()}`,
+          ]
+        : positionLabels.map(([pos, label]) => {
+            const p = positions[pos];
+            if (!p) return "";
+            const ln = p.lastName || "";
+            const forceFull = ln && dupLastNames.has(ln);
+            const yomi = forceFull
+              ? `${fixedKana(p.lastNameKana || p.lastName)} ${fixedKana(
+                  p.firstNameKana || p.firstName
+                )}`.trim()
+              : fixedKana(p.lastNameKana || p.lastName);
+            const isLastPlayer = pos === "右";
+            return `${label}、${yomi}${p.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
+          });
+
     void (async () => {
-      for (const part of [seatIntroFirstText, pitcherLine]) {
+      for (const part of [seatIntroFirstText, ...seatPrefetchLines]) {
+        if (!part) continue;
         await prefetchTTS(part, options);
       }
     })().catch((error) => {
@@ -351,21 +420,13 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
             `ライト、${fullKana(positions["右"])}${honor(positions["右"])}`,
           ];
 
-          if (isIOSSeatIntro) {
-            // iPhone/iPad：
-            // 9人分を1本の長いWAVへ結合するとSafariで再生失敗することがある。
-            // 先読み済み音声を1人ずつ、追加の待機時間なしで続けて再生する。
-            for (const line of playerLines) {
-              if (mySession !== seatSpeakSessionRef.current) return;
-              await ttsSpeak(line, { progressive: true, cache: true });
-            }
-          } else {
-            // Android / PC：
-            // 「ぴっちゃーは」は固定文に一致しないため、文全体を通常生成する。
-            // 2人目以降だけ固定文対応の結合処理へ渡す。
-            await ttsSpeak(playerLines[0], { progressive: true, cache: true });
+          // 全端末共通：
+          // 8人分を speakJoinedTTS() でまとめて生成してから再生すると、
+          // キャッシュ未完成時に数秒の大きな無音が発生することがある。
+          // 1人ずつ順番に再生し、画面表示時の先読みキャッシュを利用する。
+          for (const line of playerLines) {
             if (mySession !== seatSpeakSessionRef.current) return;
-            await speakJoinedTTS(playerLines.slice(1), { progressive: true, cache: true });
+            await ttsSpeak(line, { progressive: true, cache: true });
           }
           if (mySession !== seatSpeakSessionRef.current) return;
 
@@ -408,20 +469,12 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           return `${label}、${yomi}${p?.honorific || "くん"}${isLastPlayer ? "です。" : ""}`;
         });
 
-        if (isIOSSeatIntro) {
-          // iPhone/iPad：
-          // 長い結合WAVを避け、先読み済みの1人分ずつを待機なしで連続再生する。
-          // 以前入っていた200ms待機は入れない。
-          for (const line of ponyPlayerLines) {
-            if (mySession !== seatSpeakSessionRef.current) return;
-            await ttsSpeak(line, { progressive: true, cache: true });
-          }
-        } else {
-          // Android / PC：
-          // 9人分すべての結合完了を待たず、先読み済みのピッチャーから開始する。
-          await ttsSpeak(ponyPlayerLines[0], { progressive: true, cache: true });
+        // 全端末共通：
+        // まとめて結合生成せず、1人ずつ順番に再生する。
+        // 画面表示時に9人分を先読みしているので、選手間の生成待ちを減らす。
+        for (const line of ponyPlayerLines) {
           if (mySession !== seatSpeakSessionRef.current) return;
-          await speakJoinedTTS(ponyPlayerLines.slice(1), { progressive: true, cache: true });
+          await ttsSpeak(line, { progressive: true, cache: true });
         }
         if (mySession !== seatSpeakSessionRef.current) return;
       } finally {

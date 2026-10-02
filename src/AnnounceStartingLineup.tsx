@@ -499,13 +499,62 @@ clone.querySelectorAll("ruby").forEach((rb) => {
   // 画面表示用テキストから、実際にTTSへ渡す文章を1か所で作る。
   // 重要: 先読みと本番読み上げで完全に同じ文字列を使い、
   // Matchaのキャッシュキーを一致させる。
-  const buildSpeakText = (source: string): string =>
-    String(source ?? "")
+  //
+  // ★ 選手名のふりがなに「ライト」「ショート」等が含まれる場合、
+  //    守備位置用の整形・固定MP3判定に巻き込まれないよう、
+  //    選手名部分を一時的にプレースホルダーへ退避してから整形する。
+  const buildSpeakText = (source: string): string => {
+    let working = String(source ?? "");
+
+    // 選手名 + 敬称を一時退避。
+    // 例:
+    //   「ライト タロウくん」→ private-use文字のプレースホルダー
+    //   「ライトくん」       → private-use文字のプレースホルダー
+    //
+    // 守備位置として表示されている「ライト」は退避しないので、
+    // 従来どおり固定MP3(0018)を使用できる。
+    const protectedNames: Array<{ token: string; value: string }> = [];
+    const nameCandidates: string[] = [];
+
+    teamPlayers.forEach((p) => {
+      const last = preserveNameReading(
+        (p.lastNameKana || p.lastName || "").trim()
+      );
+      const first = preserveNameReading(
+        (p.firstNameKana || p.firstName || "").trim()
+      );
+      const honorific = getHonorific(p);
+
+      if (last && first) {
+        nameCandidates.push(`${last} ${first}${honorific}`);
+      }
+      if (last) {
+        nameCandidates.push(`${last}${honorific}`);
+      }
+    });
+
+    // 「姓名」→「姓」の順で保護し、短い候補が先に食わないようにする。
+    const uniqueNameCandidates = Array.from(new Set(nameCandidates))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+
+    uniqueNameCandidates.forEach((value, index) => {
+      if (!working.includes(value)) return;
+
+      // 数字や英字を含むプレースホルダーは使わない。
+      // 以前の `NAME0` は、この後の「単独の0→ゼロ」変換で
+      // `NAMEゼロ` に変わり、選手名へ復元できずTTSが
+      // 「ネームゼロ」と読んでしまうことがあった。
+      //
+      // Private Use Area の1文字だけを使えば、下の文章整形に
+      // 一切巻き込まれず、最後に確実に選手名へ戻せる。
+      const token = String.fromCharCode(0xE100 + index);
+      protectedNames.push({ token, value });
+      working = working.split(value).join(token);
+    });
+
+    working = working
       // 「先攻/後攻 チーム名」の直後で一度文を閉じる。
-      // 例:
-      // 「先攻、東京武蔵ポニー。\n1番、ショート…」
-      // として、チーム名の直後から1番へ詰めて読まないようにする。
-      // 表示文は変更せず、読み上げだけ自然な間を入れる。
       .replace(
         /(^|\n)((?:先攻|続きまして、?\s*後攻|対しまして、?\s*後攻)[^\n]*)\n(?=\s*1番)/g,
         "$1$2。\n"
@@ -514,31 +563,38 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       // 「1番ショート」→「1番、ショート」
       .replace(/([0-9]+)番\s*/g, "$1番、")
 
-      // 守備位置の直後だけ区切る
+      // 守備位置の直後だけ区切る。
+      // 選手名は上で退避済みなので、名前中の「ライト」等には作用しない。
       .replace(
         /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)\s*/g,
         "$1、"
       )
 
       // 「先攻 チーム名」は従来どおり少し区切る。
-      // 「続きまして、後攻 チーム名」は「後攻」の後に読点を入れない。
-      // 「続きまして、」の自然な間だけを残し、後攻→チーム名を詰めて読む。
       .replace(/(先攻|後攻)\s+/g, "$1、")
       .replace(/続きまして、\s*後攻、/g, "続きまして、後攻 ")
 
       // 「苗字くん 背番号1」→「苗字くん、背番号1」
       .replace(/(さん|くん)\s*背番号/g, "$1、背番号")
 
-      // 背番号の直後に短い間を入れる（画面表示は変更しない）
-      // 例: 「背番号12」→ 読み上げ時だけ「背番号、12」
+      // 背番号の直後に短い間を入れる
       .replace(/背番号\s*([0-9０-９]+)/g, "背番号、$1")
 
       // 単独の 0 は「れい」ではなく「ゼロ」
       .replace(/(^|[^0-9])0(?![0-9])/g, "$1ゼロ")
 
       // 句読点の重複を軽く整理
-      .replace(/、、+/g, "、")
-      .trim();
+      .replace(/、、+/g, "、");
+
+    // 選手名を元に戻す。
+    // この時点では名前中の「ライト」等に読点が入っていないため、
+    // tts.ts の「選手名範囲保護」が正しく認識できる。
+    protectedNames.forEach(({ token, value }) => {
+      working = working.split(token).join(value);
+    });
+
+    return working.trim();
+  };
 
   // 画面上の1行（選手1人分）単位に分割する。
   // 長いヘッダーや審判文だけは句点単位にも分け、1回の生成を短くする。
@@ -552,6 +608,8 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       )
       .map((part) => part.trim())
       .filter(Boolean);
+
+
 
   // 同じ完成文を何度も先読みしない。
   const lastPrefetchedSpeakTextRef = useRef("");
@@ -576,7 +634,9 @@ clone.querySelectorAll("ruby").forEach((rb) => {
       void (async () => {
         await prefetchTTS(parts[0]);
         if (generation !== prefetchGenerationRef.current) return;
-        if (parts[1]) await prefetchTTS(parts[1]);
+        if (parts[1]) {
+          await prefetchTTS(parts[1]);
+        }
       })();
     }, 0);
 
@@ -630,6 +690,9 @@ const handleSpeak = () => {
         : Promise.resolve();
 
       // 1人分は途中分割せずに再生し、氏名の途中に生成待ちを入れない。
+      // 本来の打順・守備位置は固定MP3を使用する。
+      // 選手名の中に含まれる「ライト」等だけは、tts.ts側の
+      // 選手名範囲保護により固定MP3へ置き換えない。
       await ttsSpeak(parts[i], { progressive: false, cache: true });
       if (session !== speakSessionRef.current) return;
       await nextReady;

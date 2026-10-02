@@ -292,6 +292,56 @@ const App = () => {
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showNoContinueModal, setShowNoContinueModal] = useState(false);
 
+  // ---------------------------------------------------------------------------
+  // モーダルTTS高速開始
+  // 「読み上げ」押下後にMatcha生成を開始すると数秒待つことがあるため、
+  // 固定文はアプリ起動後にバックグラウンド生成してキャッシュしておく。
+  // 動的文はモーダル表示時点で先読みする。
+  // ---------------------------------------------------------------------------
+  const MODAL_TTS_STATIC_TEXTS = [
+    "この試合は、ただ今で打ち切り、継続試合となります。\n明日以降に中断した時点から再開いたします。\nあしからずご了承くださいませ。",
+    "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。",
+    "ご覧のような天候の為、試合を一時中断いたします。\n",
+    "お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。\nスタンドの皆様も安全な場所に避難をお願い致します。",
+    "大変長らくお待たせをしております。\nただいまからグラウンドの整備をおこないます。今しばらくお待ちください。",
+    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。",
+    "ご覧のような天候状態の為、試合続行が不可能となりましたので\nこの試合は大会規定により、サスペンデッドゲームといたします。",
+  ] as const;
+
+  const prefetchTextFast = (value?: string | null) => {
+    const valueText = String(value ?? "").trim();
+    if (!valueText) return;
+    void prefetchTTS(valueText).catch((error) => {
+      console.warn("[TTS PREFETCH][App modal] failed", error);
+    });
+  };
+
+  // AI音声のprewarm後、固定モーダル文を低優先度で順番にキャッシュする。
+  // 実際の操作を邪魔しにくいよう、起動直後ではなく少し待ってから開始。
+  useEffect(() => {
+    if (localStorage.getItem("tts:engine") !== "matcha") return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const value of MODAL_TTS_STATIC_TEXTS) {
+          if (cancelled) return;
+          try {
+            await prefetchTTS(value);
+          } catch (error) {
+            console.warn("[TTS PREFETCH][App static modal] failed", error);
+          }
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
+      })();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   // 継続試合モーダルは固定文なので、表示した時点でMatcha音声を先読みする。
   // 読み上げボタンを押してから1文目を生成する待ち時間をなくす。
   useEffect(() => {
@@ -714,18 +764,29 @@ useEffect(() => {
 
   if (!text) return;
 
-  const timer = window.setTimeout(() => {
-    void prefetchEndGameAnnouncement(text).catch((error) => {
-      console.warn("[TTS PREFETCH][EndGame] failed", error);
-    });
-  }, 40);
-
-  return () => window.clearTimeout(timer);
+  // モーダル表示と同時に即先読みする。
+  // 40ms待つと、表示直後に読み上げボタンを押した場合に生成待ちになる。
+  void prefetchEndGameAnnouncement(text).catch((error) => {
+    console.warn("[TTS PREFETCH][EndGame] failed", error);
+  });
 }, [
   showEndGamePopup,
   endGameAnnouncementSpeak,
   endGameAnnouncement,
 ]);
+
+  // タイブレークは設定内容で文言が変わるため、表示された瞬間に現在文を先読み。
+  useEffect(() => {
+    if (!showTiebreakPopup || !tiebreakMessage.trim()) return;
+    prefetchTextFast(tiebreakMessage.replace(/入ります。/g, "はいります。"));
+  }, [showTiebreakPopup, tiebreakMessage]);
+
+  // 熱中症は固定文だが、モーダル表示時にも最優先でキャッシュ確認する。
+  useEffect(() => {
+    if (!showHeatPopup) return;
+    prefetchTextFast(heatMessage);
+  }, [showHeatPopup, heatMessage]);
+
 
   // --- 試合終了アナウンスを分割して注意ボックスを差し込む ---
   const BREAKPOINT_LINE = "球審、EasyScore担当、公式記録員、球場役員もお集まりください。";
@@ -762,6 +823,18 @@ const formatWaterBreakTime = (sec: number) => {
 };
 
 const waterBreakMessage = `ただいまから${waterBreakMinutes}分間のクーリングタイムを取ります。`;
+
+  // クーリングタイムは設定時間・残り時間で文言が変わるため、
+  // waterBreakMessage の定義後に先読みする。
+  useEffect(() => {
+    if (!showWaterBreakPopup) return;
+    prefetchTextFast(waterBreakNotice || waterBreakMessage);
+  }, [showWaterBreakPopup, waterBreakNotice, waterBreakMessage]);
+
+  useEffect(() => {
+    if (!showWaterBreakPopupMessage || !waterBreakPopupMessage.trim()) return;
+    prefetchTextFast(waterBreakPopupMessage);
+  }, [showWaterBreakPopupMessage, waterBreakPopupMessage]);
 
 const changeWaterBreakMinutes = (delta: number) => {
   if (waterBreakRunning) return;
@@ -1177,7 +1250,7 @@ const handleHeatSpeak = async () => {
   heatSpeakingRef.current = true;
   setHeatSpeaking(true);
   try {
-    await speak(heatMessage); // progressiveにしたいなら { progressive:true } を第2引数に
+    await speak(heatMessage, { progressive: true, cache: true }); // progressiveにしたいなら { progressive:true } を第2引数に
   } finally {
     heatSpeakingRef.current = false;
     setHeatSpeaking(false);
@@ -1217,7 +1290,7 @@ const handleSpeak = async () => {
       "この試合は、ただ今で打ち切り、継続試合となります。\n" +
       "明日以降に中断した時点から再開いたします。\n" +
       "あしからずご了承くださいませ。";
-    await speak(txt);
+    await speak(txt, { progressive: true, cache: true });
   };
   const handleStop = () => {
     stop();
@@ -1876,6 +1949,7 @@ return (
 
                     setEndGameAnnouncement(displayAnnouncement);
                     setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else if (winnerName) {
                     if (currentLeagueMode === "boys") {
@@ -1924,6 +1998,7 @@ return (
 
                     setEndGameAnnouncement(displayAnnouncement);
                     setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
                     setShowEndGamePopup(true);
                   } else {
                     setShowEndGameSimpleModal(true);
@@ -2241,6 +2316,7 @@ return (
 
             setEndGameAnnouncement(displayAnnouncement);
             setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else if (totalMyScore > totalOpponentScore) {
             const currentLeagueMode = resolveCurrentLeagueMode(match);
@@ -2297,6 +2373,7 @@ return (
 
             setEndGameAnnouncement(displayAnnouncement);
             setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
             setShowEndGamePopup(true);
           } else {
             setShowEndGameSimpleModal(true);
@@ -2650,6 +2727,7 @@ return (
 
               setEndGameAnnouncement(displayAnnouncement);
               setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else if (totalMyScore > totalOpponentScore) {
               const currentLeagueMode = resolveCurrentLeagueMode(match);
@@ -2706,6 +2784,7 @@ return (
 
               setEndGameAnnouncement(displayAnnouncement);
               setEndGameAnnouncementSpeak(speakAnnouncement);
+                     void prefetchEndGameAnnouncement(speakAnnouncement);
               setShowEndGamePopup(true);
             } else {
               setShowEndGameSimpleModal(true);
@@ -3151,7 +3230,7 @@ return (
                   const parts = buildEndGameAnnouncementParts(text);
 
                   if (parts.length <= 1) {
-                    await speak(parts[0] || text);
+                    await speak(parts[0] || text, { progressive: true, cache: true });
                   } else {
                     // 「〇時」→「〇分です」の境目だけ、
                     // speakJoinedTTS の短い接続間隔で自然につなぐ。
@@ -3391,7 +3470,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    tiebreakMessage.replace(/入ります。/g, "はいります。")
+                    tiebreakMessage.replace(/入ります。/g, "はいります。"),
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3555,7 +3635,7 @@ return (
                     "この試合は、ただ今で打ち切り、継続試合となります。\n" +
                     "明日以降に中断した時点から再開いたします。\n" +
                     "あしからずご了承くださいませ。";
-                  await speak(txt);
+                  await speak(txt, { progressive: true, cache: true });
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                            inline-flex items-center justify-center gap-2"
@@ -3935,7 +4015,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    "ご覧のような天候の為、試合を一時中断いたします。\n"
+                    "ご覧のような天候の為、試合を一時中断いたします。\n",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -3970,7 +4051,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "お知らせいたします。雷雲が近づいている為、試合を一時中断いたします。\n" +
-                    "スタンドの皆様も安全な場所に避難をお願い致します。"
+                    "スタンドの皆様も安全な場所に避難をお願い致します。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -4005,7 +4087,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "大変長らくお待たせをしております。\n" +
-                    "ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。"
+                    "ただいまからグラウンドの整備をおこないます。今しばらくお待ちください。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -4038,7 +4121,8 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。"
+                    "ご覧のような天候状態の為、本日の試合は中止とさせていただきます。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -4130,7 +4214,8 @@ return (
                 onClick={async () => {
                   await speak(
                     "ご覧のような天候状態の為、試合続行が不可能となりましたので\n" +
-                    "この試合は大会規定により、サスペンデッドゲームといたします。"
+                    "この試合は大会規定により、サスペンデッドゲームといたします。",
+                    { progressive: true, cache: true }
                   );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
@@ -4693,7 +4778,10 @@ return (
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 onClick={async () => {
-                  await speak(waterBreakNotice || waterBreakMessage);
+                  await speak(
+                    waterBreakNotice || waterBreakMessage,
+                    { progressive: true, cache: true }
+                  );
                 }}
                 className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white
                             inline-flex items-center justify-center gap-2"
