@@ -622,9 +622,28 @@ const encodeQrShareData = (data: QrImportData) => {
   return `${QR_PREFIX_V2}${bytesToBase64Url(compressed)}`;
 };
 
+const inflateQrJsonUtf8 = (payload: string) => {
+  // pako の { to: "string" } は端末／バージョン差で日本語UTF-8が崩れることがあるため、
+  // Uint8Array のまま展開し、TextDecoder でUTF-8として明示的に文字列化する。
+  const inflated = pako.inflate(base64UrlToBytes(payload));
+  return new TextDecoder("utf-8", { fatal: false }).decode(inflated);
+};
+
 const decodeQrShareDataV2 = (text: string): QrImportData => {
-  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX_V2.length)), { to: "string" }) as string;
-  const raw = JSON.parse(json);
+  const cleaned = text.trim().replace(/\s+/g, "");
+  const json = inflateQrJsonUtf8(cleaned.slice(QR_PREFIX_V2.length));
+
+  let raw: any;
+  try {
+    raw = JSON.parse(json);
+  } catch (error) {
+    console.error("EA2 JSON parse error", {
+      error,
+      jsonHead: json.slice(0, 80),
+      jsonLength: json.length,
+    });
+    throw new Error("QRデータの展開に失敗しました。QRコードをもう一度表示して読み取ってください。");
+  }
 
   if (!Array.isArray(raw?.f) || !Array.isArray(raw?.f?.[3])) {
     throw new Error("対応していないQRデータです");
@@ -691,8 +710,20 @@ const decodeQrShareDataV2 = (text: string): QrImportData => {
 };
 
 const decodeQrShareDataV1 = (text: string): QrImportData => {
-  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX_V1.length)), { to: "string" }) as string;
-  const raw = JSON.parse(json);
+  const cleaned = text.trim().replace(/\s+/g, "");
+  const json = inflateQrJsonUtf8(cleaned.slice(QR_PREFIX_V1.length));
+
+  let raw: any;
+  try {
+    raw = JSON.parse(json);
+  } catch (error) {
+    console.error("EA1 JSON parse error", {
+      error,
+      jsonHead: json.slice(0, 80),
+      jsonLength: json.length,
+    });
+    throw new Error("QRデータの展開に失敗しました。QRコードをもう一度表示して読み取ってください。");
+  }
   if (raw?.v !== 1 || raw?.t !== "ea" || !raw?.f || !Array.isArray(raw?.f?.p)) {
     throw new Error("対応していないQRデータです");
   }
@@ -742,8 +773,10 @@ const decodeQrShareDataV1 = (text: string): QrImportData => {
 };
 
 const decodeQrShareData = (text: string): QrImportData => {
-  if (text.startsWith(QR_PREFIX_V2)) return decodeQrShareDataV2(text);
-  if (text.startsWith(QR_PREFIX_V1)) return decodeQrShareDataV1(text);
+  // QRライブラリが前後に改行等を付ける端末があるため、判定前に除去する。
+  const cleaned = text.trim().replace(/\s+/g, "");
+  if (cleaned.startsWith(QR_PREFIX_V2)) return decodeQrShareDataV2(cleaned);
+  if (cleaned.startsWith(QR_PREFIX_V1)) return decodeQrShareDataV1(cleaned);
   throw new Error("EasyアナウンスのQRコードではありません");
 };
 
