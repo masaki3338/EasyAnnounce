@@ -89,8 +89,6 @@ function ortRuntimeAssets(): Plugin {
   };
 }
 
-
-
 export default defineConfig({
   plugins: [
     react(),
@@ -159,28 +157,11 @@ export default defineConfig({
     ],
   },
 
-
-  // ONNX Runtime Web のWASMマルチスレッドを有効化するため、
-  // localhost / preview でも crossOriginIsolated=true にする。
-  server: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-      "Cross-Origin-Resource-Policy": "same-origin",
-    },
-  },
-
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-      "Cross-Origin-Resource-Policy": "same-origin",
-    },
-  },
-
   optimizeDeps: {
+    // piper-plusは最適化しない。
     // ORTのWASMエントリもViteの .vite/deps に閉じ込めない。
     exclude: [
+      'piper-plus',
       'onnxruntime-web',
       'onnxruntime-web/wasm',
     ],
