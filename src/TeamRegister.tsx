@@ -123,6 +123,7 @@ const TeamRegister = () => {
   const [showQrImportConfirm, setShowQrImportConfirm] = useState(false);
   const [showQrImportComplete, setShowQrImportComplete] = useState(false);
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const qrScanHandledRef = useRef(false);
   const [showFormErrorModal, setShowFormErrorModal] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -888,14 +889,28 @@ const stopQrScanner = async () => {
   } catch {}
 };
 
-const handleDecodedQrText = async (decodedText: string) => {
+const handleDecodedQrText = (decodedText: string) => {
+  // 同じQRを連続検出した時に多重処理しない
+  if (qrScanHandledRef.current) return;
+
   try {
     const decoded = decodeQrShareData(decodedText);
-    await stopQrScanner();
-    setShowQrScanModal(false);
+    qrScanHandledRef.current = true;
+
+    // ★重要：カメラ停止を待たず、まず確認画面へ進める。
+    // 一部スマホでは scan callback 内で stop() を await すると
+    // 画面遷移まで到達しないことがある。
     setPendingQrImport(decoded);
     setShowQrImportConfirm(true);
+    setShowQrScanModal(false);
+    setQrScannerError("");
+
+    // カメラ停止は後処理として非同期実行
+    window.setTimeout(() => {
+      void stopQrScanner();
+    }, 0);
   } catch (error: any) {
+    qrScanHandledRef.current = false;
     setQrScannerError(error?.message || "QRコードを読み取れませんでした");
   }
 };
@@ -903,6 +918,7 @@ const handleDecodedQrText = async (decodedText: string) => {
 useEffect(() => {
   if (!showQrScanModal) return;
 
+  qrScanHandledRef.current = false;
   setQrScannerError("");
   const timer = window.setTimeout(() => {
     void (async () => {
@@ -942,7 +958,7 @@ useEffect(() => {
         } as any;
 
         const onScanSuccess = (decodedText: string) => {
-          void handleDecodedQrText(decodedText);
+          handleDecodedQrText(decodedText);
         };
         const onScanFailure = () => {};
 
@@ -1032,7 +1048,7 @@ const handleQrImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     try {
       const decodedText = await imageScanner.scanFile(file, true);
-      await handleDecodedQrText(decodedText);
+      handleDecodedQrText(decodedText);
     } finally {
       try {
         imageScanner.clear();
