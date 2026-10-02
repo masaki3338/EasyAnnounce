@@ -483,7 +483,16 @@ export default function TtsSettings({ onNavigate, onBack }: Props) {
                     <div className="h-5 w-5 rounded-full border-2 border-cyan-200/30 border-t-cyan-200 animate-spin" />
                     <div className="text-sm font-semibold text-cyan-50">
                       {aiPerformanceProgress === "preparing"
-                        ? "AIモデルを準備しています..."
+                        ? (
+                           <span>
+                             AIモデルを準備しています...
+                             <span className="block mt-1 text-xs font-normal text-cyan-100/80 leading-relaxed">
+                               初回のみ時間がかかる場合があります。
+                               <br />
+                               そのままお待ちください。
+                             </span>
+                           </span>
+                         )
                         : aiPerformanceProgress === "g2p"
                         ? "文章をAI音声用データに変換しています..."
                         : aiPerformanceProgress === "inference"
