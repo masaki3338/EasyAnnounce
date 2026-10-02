@@ -1,6 +1,9 @@
 import React, { useEffect,useRef, useState } from "react";
 import localForage from "localforage";
 import * as wanakana from "wanakana";
+import QRCode from "qrcode";
+import { Html5Qrcode } from "html5-qrcode";
+import * as pako from "pako";
 
 
 
@@ -41,6 +44,47 @@ const EMPTY_TEAM: Team = {
   players: [],
 };
 
+type QrLineupData = {
+  assignments: Record<string, number | null>;
+  battingOrder: Array<{ id: number; reason: "スタメン" }>;
+  benchOutIds: number[];
+  extraBattingSlots: number;
+  extraPositionMap: Record<number, string | null>;
+  ohtaniRule: boolean;
+};
+
+type QrImportData = {
+  folder: Omit<TeamFolder, "id" | "createdAt" | "updatedAt">;
+  match: {
+    tournamentName: string;
+    opponentTeam: string;
+    opponentTeamFurigana: string;
+  };
+  lineup: QrLineupData;
+};
+
+const QR_PREFIX = "EA1:";
+
+const bytesToBase64Url = (bytes: Uint8Array) => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...Array.from(chunk));
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+
+const base64UrlToBytes = (value: string) => {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+};
+
+
 
 const TeamRegister = () => {
   const [team, setTeam] = useState<Team>(EMPTY_TEAM);
@@ -65,6 +109,18 @@ const TeamRegister = () => {
   const [formError, setFormError] = useState("");
   const [showBackupComplete, setShowBackupComplete] = useState(false);
   const [backupFileName, setBackupFileName] = useState("");
+
+  // QR共有 / QR読取
+  const [showQrShareModal, setShowQrShareModal] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState("");
+  const [qrShareSummary, setQrShareSummary] = useState("");
+  const [qrError, setQrError] = useState("");
+  const [showQrScanModal, setShowQrScanModal] = useState(false);
+  const [qrScannerError, setQrScannerError] = useState("");
+  const [pendingQrImport, setPendingQrImport] = useState<QrImportData | null>(null);
+  const [showQrImportConfirm, setShowQrImportConfirm] = useState(false);
+  const [showQrImportComplete, setShowQrImportComplete] = useState(false);
+  const qrScannerRef = useRef<Html5Qrcode | null>(null);
   const [showFormErrorModal, setShowFormErrorModal] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -493,6 +549,312 @@ const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 };
 
+
+
+const getLineupForQr = async (folderId: string): Promise<QrLineupData> => {
+  const matchInfo = await localForage.getItem<any>("matchInfo");
+  const isSingle = matchInfo?.announcementMode === "single";
+  const key = (name: string) => `${name}_${folderId}`;
+
+  const readWithFallback = async <T,>(name: string, fallback: T): Promise<T> => {
+    if (isSingle) {
+      const teamSpecific = await localForage.getItem<T>(key(name));
+      if (teamSpecific != null) return teamSpecific;
+    }
+    const normal = await localForage.getItem<T>(name);
+    return normal ?? fallback;
+  };
+
+  return {
+    assignments: await readWithFallback<Record<string, number | null>>("startingassignments", {}),
+    battingOrder: await readWithFallback<Array<{ id: number; reason: "スタメン" }>>("startingBattingOrder", []),
+    benchOutIds: await readWithFallback<number[]>("startingBenchOutIds", []),
+    extraBattingSlots: await readWithFallback<number>("startingExtraBattingSlots", 0),
+    extraPositionMap: await readWithFallback<Record<number, string | null>>("startingExtraPositionMap", {}),
+    ohtaniRule: Boolean(await localForage.getItem<boolean>("ohtaniRule")),
+  };
+};
+
+const encodeQrShareData = (data: QrImportData) => {
+  // QR容量を抑えるため、QR内部だけ短いキー＋配列形式にする。
+  const compact = {
+    v: 1,
+    t: "ea",
+    f: {
+      n: data.folder.listName,
+      m: data.folder.team.name,
+      r: data.folder.team.furigana,
+      p: data.folder.team.players.map((p) => [
+        p.id,
+        p.lastName,
+        p.firstName,
+        p.lastNameKana,
+        p.firstNameKana,
+        p.number,
+        p.isFemale ? 1 : 0,
+      ]),
+    },
+    m: [
+      data.match.tournamentName,
+      data.match.opponentTeam,
+      data.match.opponentTeamFurigana,
+    ],
+    l: [
+      data.lineup.assignments,
+      data.lineup.battingOrder.map((x) => x.id),
+      data.lineup.benchOutIds,
+      data.lineup.extraBattingSlots,
+      data.lineup.extraPositionMap,
+      data.lineup.ohtaniRule ? 1 : 0,
+    ],
+  };
+
+  const compressed = pako.deflate(JSON.stringify(compact), { level: 9 });
+  return `${QR_PREFIX}${bytesToBase64Url(compressed)}`;
+};
+
+const decodeQrShareData = (text: string): QrImportData => {
+  if (!text.startsWith(QR_PREFIX)) throw new Error("EasyアナウンスのQRコードではありません");
+
+  const json = pako.inflate(base64UrlToBytes(text.slice(QR_PREFIX.length)), { to: "string" }) as string;
+  const raw = JSON.parse(json);
+  if (raw?.v !== 1 || raw?.t !== "ea" || !raw?.f || !Array.isArray(raw?.f?.p)) {
+    throw new Error("対応していないQRデータです");
+  }
+
+  const players: Player[] = raw.f.p.map((p: any[]) => ({
+    id: Number(p?.[0]),
+    lastName: String(p?.[1] ?? ""),
+    firstName: String(p?.[2] ?? ""),
+    lastNameKana: String(p?.[3] ?? ""),
+    firstNameKana: String(p?.[4] ?? ""),
+    number: String(p?.[5] ?? ""),
+    isFemale: Number(p?.[6] ?? 0) === 1,
+  }));
+
+  const lineupRaw = Array.isArray(raw.l) ? raw.l : [];
+  const orderIds = Array.isArray(lineupRaw[1]) ? lineupRaw[1] : [];
+
+  return {
+    folder: {
+      listName: String(raw.f.n ?? raw.f.m ?? "QR受信データ"),
+      team: {
+        name: String(raw.f.m ?? ""),
+        furigana: String(raw.f.r ?? ""),
+        players,
+      },
+    },
+    match: {
+      tournamentName: String(raw?.m?.[0] ?? ""),
+      opponentTeam: String(raw?.m?.[1] ?? ""),
+      opponentTeamFurigana: String(raw?.m?.[2] ?? ""),
+    },
+    lineup: {
+      assignments: lineupRaw[0] && typeof lineupRaw[0] === "object" ? lineupRaw[0] : {},
+      battingOrder: orderIds
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id))
+        .map((id: number) => ({ id, reason: "スタメン" as const })),
+      benchOutIds: Array.isArray(lineupRaw[2])
+        ? lineupRaw[2].map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+        : [],
+      extraBattingSlots: Math.max(0, Number(lineupRaw[3] ?? 0)),
+      extraPositionMap:
+        lineupRaw[4] && typeof lineupRaw[4] === "object" ? lineupRaw[4] : {},
+      ohtaniRule: Number(lineupRaw[5] ?? 0) === 1,
+    },
+  };
+};
+
+const handleQrShare = async () => {
+  setQrError("");
+  setQrImageUrl("");
+  setQrShareSummary("");
+
+  const selectedFolder =
+    teamStore.teams.find((folder) => folder.id === teamStore.selectedTeamId) ?? null;
+
+  if (!selectedFolder) {
+    setFormError("QR共有する登録が選択されていません");
+    setShowFormErrorModal(true);
+    return;
+  }
+
+  try {
+    const matchInfo = (await localForage.getItem<any>("matchInfo")) ?? {};
+    const lineup = await getLineupForQr(selectedFolder.id);
+
+    const shareData: QrImportData = {
+      folder: { listName: selectedFolder.listName, team: selectedFolder.team },
+      match: {
+        tournamentName: String(matchInfo.tournamentName ?? ""),
+        opponentTeam: String(matchInfo.opponentTeam ?? ""),
+        opponentTeamFurigana: String(matchInfo.opponentTeamFurigana ?? ""),
+      },
+      lineup,
+    };
+
+    const qrText = encodeQrShareData(shareData);
+    const image = await QRCode.toDataURL(qrText, {
+      errorCorrectionLevel: "L",
+      width: 720,
+      margin: 2,
+    });
+
+    setQrImageUrl(image);
+    setQrShareSummary(
+      `${selectedFolder.listName} / 選手${selectedFolder.team.players.length}名` +
+        (shareData.match.tournamentName ? ` / ${shareData.match.tournamentName}` : "")
+    );
+    setShowQrShareModal(true);
+  } catch (error) {
+    console.error("QR share error", error);
+    setQrError(
+      "QRコードを作成できませんでした。登録人数や文字数が多すぎる可能性があります。"
+    );
+    setShowQrShareModal(true);
+  }
+};
+
+const stopQrScanner = async () => {
+  const scanner = qrScannerRef.current;
+  qrScannerRef.current = null;
+  if (!scanner) return;
+  try {
+    if (scanner.isScanning) await scanner.stop();
+  } catch {}
+  try {
+    scanner.clear();
+  } catch {}
+};
+
+const handleDecodedQrText = async (decodedText: string) => {
+  try {
+    const decoded = decodeQrShareData(decodedText);
+    await stopQrScanner();
+    setShowQrScanModal(false);
+    setPendingQrImport(decoded);
+    setShowQrImportConfirm(true);
+  } catch (error: any) {
+    setQrScannerError(error?.message || "QRコードを読み取れませんでした");
+  }
+};
+
+useEffect(() => {
+  if (!showQrScanModal) return;
+
+  setQrScannerError("");
+  const timer = window.setTimeout(() => {
+    void (async () => {
+      try {
+        const scanner = new Html5Qrcode("team-register-qr-reader");
+        qrScannerRef.current = scanner;
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText) => {
+            void handleDecodedQrText(decodedText);
+          },
+          () => {}
+        );
+      } catch (error) {
+        console.error("QR scanner start error", error);
+        setQrScannerError(
+          "カメラを開始できませんでした。カメラの使用を許可してから、もう一度お試しください。"
+        );
+      }
+    })();
+  }, 100);
+
+  return () => {
+    window.clearTimeout(timer);
+    void stopQrScanner();
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [showQrScanModal]);
+
+const importQrData = async () => {
+  if (!pendingQrImport) return;
+
+  try {
+    const now = Date.now();
+    const existingNames = teamStore.teams.map((t) => t.listName.trim());
+    const baseName = (pendingQrImport.folder.listName || pendingQrImport.folder.team.name || "QR受信データ").trim();
+    let nextName = baseName || "QR受信データ";
+    let suffix = 1;
+    while (existingNames.includes(nextName)) {
+      suffix += 1;
+      nextName = `${baseName} (${suffix})`;
+    }
+
+    const newFolder: TeamFolder = {
+      id: `team_${now}`,
+      listName: nextName,
+      team: pendingQrImport.folder.team,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // 進行中データを持ち込まないよう、既存の試合進行キャッシュを先に消す。
+    await clearContinuationGameCache();
+
+    const nextStore: TeamRegisterStore = {
+      selectedTeamId: newFolder.id,
+      teams: [...teamStore.teams, newFolder],
+    };
+
+    await localForage.setItem(TEAM_STORE_KEY, nextStore);
+    await localForage.setItem("team", newFolder.team);
+
+    const existingMatch = (await localForage.getItem<any>("matchInfo")) ?? {};
+    await localForage.setItem("matchInfo", {
+      ...existingMatch,
+      tournamentName: pendingQrImport.match.tournamentName,
+      opponentTeam: pendingQrImport.match.opponentTeam,
+      opponentTeamFurigana: pendingQrImport.match.opponentTeamFurigana,
+    });
+
+    const l = pendingQrImport.lineup;
+    await Promise.all([
+      localForage.setItem("startingassignments", l.assignments),
+      localForage.setItem("startingBattingOrder", l.battingOrder),
+      localForage.setItem("startingBenchOutIds", l.benchOutIds),
+      localForage.setItem("startingExtraBattingSlots", l.extraBattingSlots),
+      localForage.setItem("startingExtraPositionMap", l.extraPositionMap),
+      localForage.setItem("startingassignments_draft", l.assignments),
+      localForage.setItem("startingBattingOrder_draft", l.battingOrder),
+      localForage.setItem("startingBenchOutIds_draft", l.benchOutIds),
+      localForage.setItem("startingExtraBattingSlots_draft", l.extraBattingSlots),
+      localForage.setItem("startingExtraPositionMap_draft", l.extraPositionMap),
+      localForage.setItem("lineupAssignments", l.assignments),
+      localForage.setItem("battingOrder", l.battingOrder),
+      localForage.setItem("ohtaniRule", l.ohtaniRule),
+
+      // 1人アナウンスモードでも、新しい登録IDでそのまま読めるように保存。
+      localForage.setItem(`startingassignments_${newFolder.id}`, l.assignments),
+      localForage.setItem(`startingBattingOrder_${newFolder.id}`, l.battingOrder),
+      localForage.setItem(`startingBenchOutIds_${newFolder.id}`, l.benchOutIds),
+      localForage.setItem(`startingExtraBattingSlots_${newFolder.id}`, l.extraBattingSlots),
+      localForage.setItem(`startingExtraPositionMap_${newFolder.id}`, l.extraPositionMap),
+    ]);
+
+    setTeamStore(nextStore);
+    setTeam(newFolder.team);
+    setTeamListName(newFolder.listName);
+    setEditingPlayer({});
+    snapshotRef.current = makeSnapshot(newFolder.team, {}, newFolder.listName);
+    setIsDirty(false);
+    setShowQrImportConfirm(false);
+    setPendingQrImport(null);
+    setShowQrImportComplete(true);
+  } catch (error) {
+    console.error("QR import error", error);
+    setShowQrImportConfirm(false);
+    setFormError("QRデータの登録に失敗しました");
+    setShowFormErrorModal(true);
+  }
+};
+
   const [editingPlayer, setEditingPlayer] = useState<Partial<Player>>({});
 
 useEffect(() => {
@@ -867,15 +1229,34 @@ const saveTeam = async () => {
 
 </div>
 
-    <div className="flex gap-3 justify-center mt-4 mb-2 w-full">
+    <div className="grid grid-cols-2 gap-3 justify-center mt-4 mb-2 w-full">
       <button
+        type="button"
+        onClick={handleQrShare}
+        className="inline-flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-3 rounded-xl shadow active:scale-95 font-bold"
+      >
+        📱 QR共有
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setShowQrScanModal(true)}
+        className="inline-flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-3 rounded-xl shadow active:scale-95 font-bold"
+      >
+        📷 QR読取
+      </button>
+    </div>
+
+    <div className="grid grid-cols-2 gap-3 justify-center mb-2 w-full">
+      <button
+        type="button"
         onClick={handleBackup}
-         className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow active:scale-95"
+        className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl shadow active:scale-95 font-bold"
       >
         💽 バックアップ
       </button>
 
-      <label className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl shadow active:scale-95 cursor-pointer">
+      <label className="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl shadow active:scale-95 font-bold cursor-pointer">
         📂 復元
         <input
           type="file"
@@ -1093,7 +1474,9 @@ const saveTeam = async () => {
                 使い方はこの順番です
               </div>
               <div className="mt-1 text-[13px] font-bold leading-5 text-rose-500">
-                ①登録名・チーム名を入力 → ②選手を追加 → ③保存 → ④必要に応じて切り替え・編集・削除・バックアップ
+                ①登録名・チーム名を入力 → ②選手を追加 → ③保存
+                <br />
+                ④QR共有・QR読取、または必要に応じて切り替え・編集・バックアップ
               </div>
             </div>
           </div>
@@ -1207,14 +1590,93 @@ const saveTeam = async () => {
           </div>
 
           {/* 4 */}
-          <div className="rounded-[16px] border border-amber-200 bg-white px-3 py-3 shadow-sm">
+          <div className="rounded-[16px] border border-fuchsia-200 bg-white px-3 py-3 shadow-sm">
             <div className="flex items-start gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white shadow-sm">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-fuchsia-500 text-[12px] font-bold text-white shadow-sm">
                 4
               </div>
               <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-fuchsia-700">
+                  QR共有でほかの端末へ渡す
+                </h3>
+
+                <div className="mt-2 space-y-2 text-[13px] leading-5 text-slate-700">
+                  <p>
+                    共有したい内容を各画面で保存してから、
+                    <span className="font-bold text-fuchsia-700">【📱 QR共有】</span>
+                    を押します。
+                  </p>
+                  <p>
+                    表示されたQRコードを、データを使いたい相手の端末で読み取ります。
+                  </p>
+                  <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2">
+                    <div className="font-bold text-fuchsia-800">QRで共有される内容</div>
+                    <div className="mt-1 text-[12.5px] leading-5 text-slate-700">
+                      ・チーム名、ふりがな、登録選手
+                      <br />
+                      ・大会名
+                      <br />
+                      ・相手チーム名、ふりがな
+                      <br />
+                      ・スタメン（打順、守備位置、ベンチ入り／出場しない選手、DH・大谷ルール等）
+                    </div>
+                  </div>
+                  <p className="text-[12.5px] text-slate-600">
+                    ※ QR共有は、今選択している登録の<span className="font-bold">保存済みデータ</span>を使用します。
+                  </p>
+                  <p className="text-[12.5px] text-slate-600">
+                    ※ 得点・投球数・現在のイニングなど、試合進行中のデータは共有されません。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 5 */}
+          <div className="rounded-[16px] border border-cyan-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500 text-[12px] font-bold text-white shadow-sm">
+                5
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-extrabold leading-tight text-cyan-700">
+                  QR読取で受け取る
+                </h3>
+
+                <div className="mt-2 space-y-2 text-[13px] leading-5 text-slate-700">
+                  <p>
+                    データを受け取る端末で
+                    <span className="font-bold text-cyan-700">【📷 QR読取】</span>
+                    を押します。
+                  </p>
+                  <p>
+                    カメラの使用を許可して、相手の端末に表示されているQRコードを枠内に入れます。
+                  </p>
+                  <p>
+                    読み取り後に内容を確認し、
+                    <span className="font-bold text-cyan-700">【登録する】</span>
+                    を押すと、チーム・試合情報・スタメンがまとめて登録されます。
+                  </p>
+                  <p className="text-[12.5px] text-slate-600">
+                    ※ 同じ登録名がすでにある場合は、上書きせず「(2)」などを付けて新しい登録として追加されます。
+                  </p>
+                  <p className="text-[12.5px] text-slate-600">
+                    ※ 読み取り後は受け取ったチームが現在の登録として選択されます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6 */}
+          <div className="rounded-[16px] border border-amber-200 bg-white px-3 py-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[12px] font-bold text-white shadow-sm">
+                6
+              </div>
+              <div className="min-w-0">
                 <h3 className="text-[15px] font-extrabold leading-tight text-amber-700">
-                  登録後にできること
+                  その他の便利な機能
                 </h3>
 
                 <div className="mt-2 space-y-3 text-[13px] leading-5 text-slate-700">
@@ -1597,6 +2059,101 @@ const saveTeam = async () => {
 )}
 
 {/* バックアップ完了モーダル */}
+{/* QR共有モーダル */}
+{showQrShareModal && (
+  <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/70 px-4 py-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+      <div className="bg-violet-600 px-4 py-3 text-center font-bold text-white">QR共有</div>
+      <div className="px-4 py-4 text-center">
+        {qrError ? (
+          <p className="text-sm font-bold leading-6 text-red-600">{qrError}</p>
+        ) : (
+          <>
+            <p className="mb-3 text-sm font-bold text-gray-800">{qrShareSummary}</p>
+            {qrImageUrl && (
+              <img src={qrImageUrl} alt="共有用QRコード" className="mx-auto w-full max-w-[300px] rounded-xl border border-gray-200" />
+            )}
+            <p className="mt-3 text-xs leading-5 text-gray-600">
+              相手の端末で「QR読取」を押して、このQRコードを読み取ってください。
+            </p>
+          </>
+        )}
+      </div>
+      <div className="px-4 pb-4">
+        <button type="button" onClick={() => setShowQrShareModal(false)} className="w-full rounded-full bg-gray-600 py-3 font-bold text-white active:scale-95">閉じる</button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* QR読取モーダル */}
+{showQrScanModal && (
+  <div className="fixed inset-0 z-[10020] flex items-center justify-center bg-black/80 px-3 py-3" role="dialog" aria-modal="true">
+    <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+      <div className="bg-cyan-600 px-4 py-3 text-center font-bold text-white">QR読取</div>
+      <div className="p-3">
+        <div id="team-register-qr-reader" className="min-h-[300px] w-full overflow-hidden rounded-xl bg-black" />
+        <p className="mt-2 text-center text-xs text-gray-600">QRコードを枠内に入れてください</p>
+        {qrScannerError && (
+          <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-center text-sm font-bold text-red-600">{qrScannerError}</p>
+        )}
+      </div>
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => { void stopQrScanner(); setShowQrScanModal(false); }}
+          className="w-full rounded-full bg-gray-600 py-3 font-bold text-white active:scale-95"
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* QR登録確認モーダル */}
+{showQrImportConfirm && pendingQrImport && (
+  <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/70 px-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+      <div className="bg-emerald-600 px-4 py-3 text-center font-bold text-white">QRデータを読み取りました</div>
+      <div className="space-y-2 px-5 py-5 text-sm leading-6">
+        <p><span className="font-bold">登録名：</span>{pendingQrImport.folder.listName}</p>
+        <p><span className="font-bold">チーム名：</span>{pendingQrImport.folder.team.name}</p>
+        <p><span className="font-bold">選手：</span>{pendingQrImport.folder.team.players.length}名</p>
+        <p><span className="font-bold">大会名：</span>{pendingQrImport.match.tournamentName || "未設定"}</p>
+        <p><span className="font-bold">相手チーム：</span>{pendingQrImport.match.opponentTeam || "未設定"}</p>
+        <p><span className="font-bold">スタメン：</span>{pendingQrImport.lineup.battingOrder.length > 0 ? `${pendingQrImport.lineup.battingOrder.length}名分` : "未設定"}</p>
+        <p className="pt-2 text-center font-bold text-gray-800">このデータを登録しますか？</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 px-5 pb-5">
+        <button
+          type="button"
+          onClick={() => { setShowQrImportConfirm(false); setPendingQrImport(null); }}
+          className="rounded-full bg-gray-400 py-3 font-bold text-white active:scale-95"
+        >
+          キャンセル
+        </button>
+        <button type="button" onClick={importQrData} className="rounded-full bg-emerald-600 py-3 font-bold text-white active:scale-95">登録する</button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* QR登録完了モーダル */}
+{showQrImportComplete && (
+  <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/70 px-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl">
+      <div className="bg-blue-600 px-4 py-3 text-center font-bold text-white">登録完了</div>
+      <div className="px-5 py-6 text-center text-[15px] font-bold leading-7">
+        チーム・選手情報、大会名、相手チーム、スタメンを登録しました。
+      </div>
+      <div className="px-5 pb-5">
+        <button type="button" onClick={() => setShowQrImportComplete(false)} className="w-full rounded-full bg-blue-600 py-3 font-bold text-white active:scale-95">OK</button>
+      </div>
+    </div>
+  </div>
+)}
+
 {showBackupComplete && (
   <div
     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-6"
