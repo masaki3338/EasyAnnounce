@@ -881,47 +881,91 @@ useEffect(() => {
         });
         qrScannerRef.current = scanner;
 
-        // 可能なら背面カメラを明示的に選択する
-        const cameras = await Html5Qrcode.getCameras();
+        // 端末差でカメラ起動に失敗しないよう、条件をゆるくして段階的に試す。
+        // 解像度は端末／ブラウザに任せる（1920x1080固定・ideal指定もしない）。
+        let cameras: Array<{ id: string; label: string }> = [];
+        try {
+          cameras = await Html5Qrcode.getCameras();
+        } catch (cameraListError) {
+          console.warn("camera list error", cameraListError);
+        }
+
         const backCamera =
           cameras.find((camera) =>
             /back|rear|environment|背面/i.test(camera.label || "")
           ) ?? cameras[cameras.length - 1];
 
-        // 高密度QRでも読めるよう、なるべく高解像度を要求する
-        const cameraConfig: any = backCamera?.id
-          ? {
-              deviceId: { exact: backCamera.id },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-              facingMode: { ideal: "environment" },
-            }
-          : {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-            };
-
-        await scanner.start(
-          cameraConfig,
-          {
-            fps: 20,
-            // 固定250pxではなく、実際のカメラ表示の約90%を読み取る
-            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const size = Math.max(220, Math.floor(minEdge * 0.9));
-              return { width: size, height: size };
-            },
-            disableFlip: false,
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true,
-            },
-          } as any,
-          (decodedText) => {
-            void handleDecodedQrText(decodedText);
+        const scanConfig = {
+          fps: 12,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const size = Math.max(180, Math.min(minEdge - 24, Math.floor(minEdge * 0.88)));
+            return { width: size, height: size };
           },
-          () => {}
-        );
+          disableFlip: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+        } as any;
+
+        const onScanSuccess = (decodedText: string) => {
+          void handleDecodedQrText(decodedText);
+        };
+        const onScanFailure = () => {};
+
+        let started = false;
+        let lastStartError: unknown = null;
+
+        // ① 背面カメラIDを直接指定（見つかった場合）
+        if (backCamera?.id) {
+          try {
+            await scanner.start(
+              backCamera.id,
+              scanConfig,
+              onScanSuccess,
+              onScanFailure
+            );
+            started = true;
+          } catch (error) {
+            lastStartError = error;
+            console.warn("QR camera start by id failed", error);
+          }
+        }
+
+        // ② ID指定で失敗したら environment を指定
+        if (!started) {
+          try {
+            await scanner.start(
+              { facingMode: "environment" },
+              scanConfig,
+              onScanSuccess,
+              onScanFailure
+            );
+            started = true;
+          } catch (error) {
+            lastStartError = error;
+            console.warn("QR environment camera start failed", error);
+          }
+        }
+
+        // ③ それでも失敗したら、最小条件でカメラ選択をブラウザに任せる
+        if (!started) {
+          try {
+            await scanner.start(
+              { facingMode: { ideal: "environment" } },
+              { ...scanConfig, fps: 10 },
+              onScanSuccess,
+              onScanFailure
+            );
+            started = true;
+          } catch (error) {
+            lastStartError = error;
+          }
+        }
+
+        if (!started) {
+          throw lastStartError ?? new Error("camera start failed");
+        }
       } catch (error) {
         console.error("QR scanner start error", error);
         setQrScannerError(
