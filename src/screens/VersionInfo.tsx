@@ -86,8 +86,7 @@ export default function VersionInfo({ version, onBack }: Props) {
   const [updateMessage, setUpdateMessage] = useState("");
   const updateLock = useRef(false);
 
-  // Vite本番ビルドのハッシュ付きJS/CSSを比較。バージョン番号据え置きの修正も検出する。
-  // SWがこの確認URLをキャッシュ優先で処理する場合は、SW側でNetworkOnlyに設定する。
+  // ビルド時に埋め込んだIDと、公開先の小さなJSONを比較する。
   const checkForUpdate = async () => {
     if (updateLock.current) return;
     if (!navigator.onLine) {
@@ -101,7 +100,7 @@ export default function VersionInfo({ version, onBack }: Props) {
     const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
       const entryUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
-      const checkUrl = new URL("index.html", entryUrl);
+      const checkUrl = new URL("app-update.json", entryUrl);
       checkUrl.searchParams.set("__easy_update_check", Date.now().toString());
       const response = await fetch(checkUrl.href, {
         cache: "no-store",
@@ -109,24 +108,16 @@ export default function VersionInfo({ version, onBack }: Props) {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error("server");
-      const html = await response.text();
-      const latestDocument = new DOMParser().parseFromString(html, "text/html");
-      const assets = (doc: Document, base: string) =>
-        Array.from(doc.querySelectorAll('script[type="module"][src], link[rel="stylesheet"][href]'))
-          .map((el) => new URL(el.getAttribute("src") || el.getAttribute("href") || "", base))
-          .filter((url) => url.origin === window.location.origin)
-          .map((url) => url.pathname + url.search)
-          .sort();
-      const currentAssets = assets(document, document.baseURI);
-      const latestAssets = assets(latestDocument, response.url);
-      // 開発サーバーやログインページ等を「最新」と誤判定しない。
-      const bundled = (items: string[]) => items.some((item) => /[-.][A-Za-z0-9_-]{8,}\.js(?:\?|$)/.test(item));
-      if (!bundled(currentAssets) || !bundled(latestAssets)) {
-        setUpdateMessage("更新情報を確認できませんでした。本番公開したアプリでお試しください。");
+      const latest = await response.json();
+      const currentBuildId = import.meta.env.VITE_APP_BUILD_ID;
+      if (typeof latest?.buildId !== "string" || !latest.buildId || !currentBuildId) {
+        setUpdateMessage("更新情報を確認できませんでした。更新用の設定が公開されているか確認してください。");
         return;
       }
-      if (JSON.stringify(currentAssets) === JSON.stringify(latestAssets)) {
-        setUpdateMessage("現在お使いのアプリは最新版です。");
+      if (latest.buildId === currentBuildId) {
+        setUpdateMessage(import.meta.env.DEV
+          ? "開発画面です。現在の開発サーバーと更新IDが一致しています。公開版の更新確認はVercelのURLで行ってください。"
+          : "現在お使いのアプリは最新版です。");
         return;
       }
       setUpdateMessage("新しいバージョンがあります。更新して再読み込みしています…");
