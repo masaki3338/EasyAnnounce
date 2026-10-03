@@ -1,5 +1,5 @@
-// VersionInfo.tsx（UIのみ刷新・機能は完全据え置き）
-import React, { useState } from "react";
+// VersionInfo.tsx（更新確認・強制再読み込み対応）
+import React, { useRef, useState } from "react";
 
 type Props = {
   version: string;
@@ -82,6 +82,78 @@ const historyData: HistoryItem[] = [
 export default function VersionInfo({ version, onBack }: Props) {
   const [openIndex, setOpenIndex] = useState<number | null>(0); // 最新を最初から開く
 
+  const [checking, setChecking] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const updateLock = useRef(false);
+
+  // Vite本番ビルドのハッシュ付きJS/CSSを比較。バージョン番号据え置きの修正も検出する。
+  // SWがこの確認URLをキャッシュ優先で処理する場合は、SW側でNetworkOnlyに設定する。
+  const checkForUpdate = async () => {
+    if (updateLock.current) return;
+    if (!navigator.onLine) {
+      setUpdateMessage("ネットワークにつながっていません。インターネットに接続してから、もう一度お試しください。");
+      return;
+    }
+    updateLock.current = true;
+    setChecking(true);
+    setUpdateMessage("最新版を確認しています…");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      const entryUrl = new URL(import.meta.env.BASE_URL, window.location.origin);
+      const checkUrl = new URL("index.html", entryUrl);
+      checkUrl.searchParams.set("__easy_update_check", Date.now().toString());
+      const response = await fetch(checkUrl.href, {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("server");
+      const html = await response.text();
+      const latestDocument = new DOMParser().parseFromString(html, "text/html");
+      const assets = (doc: Document, base: string) =>
+        Array.from(doc.querySelectorAll('script[type="module"][src], link[rel="stylesheet"][href]'))
+          .map((el) => new URL(el.getAttribute("src") || el.getAttribute("href") || "", base))
+          .filter((url) => url.origin === window.location.origin)
+          .map((url) => url.pathname + url.search)
+          .sort();
+      const currentAssets = assets(document, document.baseURI);
+      const latestAssets = assets(latestDocument, response.url);
+      // 開発サーバーやログインページ等を「最新」と誤判定しない。
+      const bundled = (items: string[]) => items.some((item) => /[-.][A-Za-z0-9_-]{8,}\.js(?:\?|$)/.test(item));
+      if (!bundled(currentAssets) || !bundled(latestAssets)) {
+        setUpdateMessage("更新情報を確認できませんでした。本番公開したアプリでお試しください。");
+        return;
+      }
+      if (JSON.stringify(currentAssets) === JSON.stringify(latestAssets)) {
+        setUpdateMessage("現在お使いのアプリは最新版です。");
+        return;
+      }
+      setUpdateMessage("新しいバージョンがあります。更新して再読み込みしています…");
+      // このページを対象とするSWのみ解除し、次のナビゲーションで最新版を取得。
+      // localStorage・IndexedDB・音声モデルのキャッシュには触れない。
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration(window.location.href);
+        if (registration) await registration.unregister();
+      }
+      const reloadUrl = new URL(window.location.href);
+      reloadUrl.searchParams.set("__easy_updated", Date.now().toString());
+      window.location.replace(reloadUrl.href);
+    } catch (error) {
+      if (!navigator.onLine) {
+        setUpdateMessage("ネットワークにつながっていません。インターネットに接続してから、もう一度お試しください。");
+      } else if (error instanceof Error && error.name === "AbortError") {
+        setUpdateMessage("通信がタイムアウトしました。接続状況を確認して、もう一度お試しください。");
+      } else {
+        setUpdateMessage("最新版を確認・更新できませんでした。インターネット接続やサーバーの状態を確認して、もう一度お試しください。");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      updateLock.current = false;
+      setChecking(false);
+    }
+  };
+
   const start = 2025;
   const y = new Date().getFullYear();
   const year = start === y ? `${y}` : `${start}–${y}`;
@@ -127,6 +199,27 @@ export default function VersionInfo({ version, onBack }: Props) {
               <IconInfo />
               <span className="font-semibold">Version {version}</span>
             </span>
+          </div>
+
+          <div className="mx-auto w-full max-w-md space-y-3">
+            <button
+              type="button"
+              onClick={checkForUpdate}
+              disabled={checking}
+              aria-busy={checking}
+              className="w-full min-h-[48px] rounded-xl bg-sky-500 px-4 py-3 text-base font-bold text-white shadow active:scale-[0.99] disabled:opacity-60 disabled:cursor-wait"
+            >
+              {checking ? "確認・更新中…" : "最新版を確認・更新"}
+            </button>
+            <p className="text-center text-xs text-gray-300">
+              新しいバージョンがある場合、更新してアプリを再読み込みします。
+              入力中の内容は保存してから押してください。
+            </p>
+            {updateMessage && (
+              <p role="status" aria-live="polite" className="rounded-xl border border-sky-300/30 bg-sky-950/50 px-4 py-3 text-sm leading-relaxed">
+                {updateMessage}
+              </p>
+            )}
           </div>
 
           {/* 更新履歴アコーディオン */}
