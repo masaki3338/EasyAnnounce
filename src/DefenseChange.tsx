@@ -11137,7 +11137,7 @@ const canDropHere =
                       setDraggingBenchPlayerId(p.id);
                       setTouchDrag({ playerId: p.id, fromPos: BENCH });
                     }}
-                    className="
+                    className={`
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
                       font-semibold md:font-extrabold
@@ -11148,7 +11148,12 @@ const canDropHere =
                       shadow-sm
                       cursor-move select-none
                       transition active:scale-[0.98]
-                    "
+                      ${
+                        draggingBenchPlayerId === p.id || touchDrag?.playerId === p.id
+                          ? "ring-2 ring-inset ring-emerald-400"
+                          : ""
+                      }
+                    `}
                   >
                     {formatPlayerLabel(p)}
                   </div>
@@ -11184,15 +11189,17 @@ const canDropHere =
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
                       font-semibold md:font-extrabold
-                      border md:border-2
+                      text-slate-700 md:text-slate-800
+                      bg-slate-50
+                      border border-slate-200 md:border-2 md:border-slate-300
                       rounded-xl md:rounded-2xl
                       shadow-sm
                       cursor-move select-none
                       transition active:scale-[0.98]
                       ${
                         draggingBenchPlayerId === p.id || touchDrag?.playerId === p.id
-                          ? "text-slate-900 bg-slate-100 border-slate-200"
-                          : "text-slate-700 md:text-slate-800 bg-slate-50 border-slate-200 md:border-slate-300"
+                          ? "ring-2 ring-inset ring-emerald-400"
+                          : ""
                       }
                     `}
                     title="一度出場済みの選手"
