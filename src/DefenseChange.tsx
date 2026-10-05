@@ -5132,6 +5132,7 @@ const startingOrderRef = useRef<{ id: number; reason?: string }[]>([]);
   // assignments 変更後の benchPlayers 再計算で消えるため、このIDだけ再追加対象にする。
   const [forcedReturnedUsedBenchIds, setForcedReturnedUsedBenchIds] = useState<Set<number>>(new Set());
   const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
+  const [draggingBenchPlayerId, setDraggingBenchPlayerId] = useState<number | null>(null);
   const [hoverPos, setHoverPos] = useState<string | null>(null);
 
   const [substitutionLogs, setSubstitutionLogs] = useState<string[]>([]);
@@ -7405,11 +7406,13 @@ const getDisplayedPlayerIdForPos = (pos: string): number | null => {
     e.dataTransfer.setData("text/plain", playerId.toString()); // ★ Android 用
     e.dataTransfer.effectAllowed = "move";                     // ★ 視覚的にも安定
     setDraggingFrom(BENCH);
+    setDraggingBenchPlayerId(playerId);
     const el = e.currentTarget as HTMLElement;
     const onEnd = () => {
       try { el.removeEventListener("dragend", onEnd); } catch {}
       window.removeEventListener("dragend", onEnd);
       window.removeEventListener("drop", onEnd);
+      setDraggingBenchPlayerId(null);
       unlockScroll();
     };
     el.addEventListener("dragend", onEnd, { once: true });
@@ -10531,6 +10534,7 @@ const p = typeof id === "number" ? teamPlayers.find((x) => x.id === id) : null;
       lastTouchRef.current = null;
       setTouchDrag(null);
       setDraggingFrom(null);
+      setDraggingBenchPlayerId(null);
     };
 
     const routeTouchDrop = (x: number, y: number) => {
@@ -11130,6 +11134,7 @@ const canDropHere =
                       const t = e.changedTouches?.[0];
                       if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
                       setDraggingFrom(BENCH);
+                      setDraggingBenchPlayerId(p.id);
                       setTouchDrag({ playerId: p.id, fromPos: BENCH });
                     }}
                     className="
@@ -11172,20 +11177,24 @@ const canDropHere =
                       const t = e.changedTouches?.[0];
                       if (t) lastTouchRef.current = { x: t.clientX, y: t.clientY };
                       setDraggingFrom(BENCH);
+                      setDraggingBenchPlayerId(p.id);
                       setTouchDrag({ playerId: p.id, fromPos: BENCH });
                     }}
-                    className="
+                    className={`
                       px-3 py-1.5 md:px-4 md:py-2
                       text-sm md:text-base lg:text-lg
                       font-semibold md:font-extrabold
-                      text-slate-700 md:text-slate-800
-                      bg-slate-50
-                      border border-slate-200 md:border-2 md:border-slate-300
+                      border md:border-2
                       rounded-xl md:rounded-2xl
                       shadow-sm
                       cursor-move select-none
                       transition active:scale-[0.98]
-                    "
+                      ${
+                        draggingBenchPlayerId === p.id || touchDrag?.playerId === p.id
+                          ? "text-slate-900 bg-slate-100 border-slate-200"
+                          : "text-slate-700 md:text-slate-800 bg-slate-50 border-slate-200 md:border-slate-300"
+                      }
+                    `}
                     title="一度出場済みの選手"
                   >
                     {formatPlayerLabel(p)}
