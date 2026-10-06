@@ -7971,6 +7971,23 @@ if (isPitcherOnlyChangeWithDh && dhIdBeforePitcherChange != null) {
     return next;
   });
 
+  // ✅ フィールドから外れた選手がリエントリー青枠だった場合は解除する。
+  // その選手がもうフィールドにいないのに reentryFixedIds が残り続けると、
+  // 次の通常交代までリエントリー状態の影響を受けるため。
+  if (typeof replacedId === "number" && Number(replacedId) !== Number(playerId)) {
+    setReentryPreviewIds((prev) => {
+      const next = new Set(prev);
+      next.delete(Number(replacedId));
+      return next;
+    });
+
+    setReentryFixedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(Number(replacedId));
+      return next;
+    });
+  }
+
   setHoverPos(null);
   setDraggingFrom(null);
 };
@@ -8164,13 +8181,31 @@ const keepExistingReentryBlue =
 
 // ★ ベンチ→守備のときだけ、新規リエントリー成立判定を行う
 // ==== v2 リエントリー判定 ====
+//
+// ✅ 未出場の「控え選手」はリエントリー判定へ入れない。
+// 画面上で「控え選手」と「出場済み選手」を分けているのと同じ基準で処理する。
+// これにより、リエントリー成立後でも通常の控え選手をそのまま交代配置できる。
 if (!fromIsField && toPos !== BENCH) {
-  const ok = checkReentryForBenchToField({
-    toPos,
-    toId: Number(toId),
-    fromId: Number(fromId),
-  });
-  if (!ok) return;
+  const incomingId = Number(toId);
+
+  const isNeverPlayedBenchPlayer = benchNeverPlayed.some(
+    (p) => Number(p.id) === incomingId
+  );
+
+  if (!isNeverPlayedBenchPlayer) {
+    const ok = checkReentryForBenchToField({
+      toPos,
+      toId: incomingId,
+      fromId: Number(fromId),
+    });
+    if (!ok) return;
+  } else {
+    console.log("[BENCH DROP] fresh bench player -> normal substitution", {
+      toPos,
+      incomingId,
+      fromId,
+    });
+  }
 } else {
   const keepExistingReentryBlue =
     toPos !== BENCH && reentryFixedIds.size > 0;
