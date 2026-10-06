@@ -7896,10 +7896,45 @@ newAssignments = normalizeFieldAssignments(newAssignments, {
   allowPitcherDhDuplicate,
 });
 
+// ✅ 控え選手を通常の守備位置へ配置した場合は、
+// 最終的に「実際にドロップした守備位置」を必ず優先する。
+// 何らかの一時的な重複で同じ選手IDが「指」に残った場合、
+// normalizeFieldAssignments() の走査順によって守備側が消えて
+// DHだけが残ることがあるため、ここで明示的に補正する。
+//
+// なお、DHへ直接ドロップした場合は当然そのまま。
+// 大谷ルールの「投手＋DH」重複は別ID/別条件で従来処理を維持する。
+if (toPos !== "指") {
+  if (Number(newAssignments["指"]) === Number(playerId)) {
+    newAssignments["指"] = null;
+  }
+
+  // ドロップ先を最優先で再保証
+  newAssignments[toPos] = playerId;
+
+  // 同じ選手が他守備に残っていたらドロップ先以外を除去
+  for (const pos of Object.keys(newAssignments)) {
+    if (
+      pos !== toPos &&
+      pos !== "指" &&
+      Number(newAssignments[pos]) === Number(playerId)
+    ) {
+      newAssignments[pos] = null;
+    }
+  }
+}
+
 // normalize 後も、投手だけ交代ならDHをもう一度保証する
 if (isPitcherOnlyChangeWithDh && dhIdBeforePitcherChange != null) {
   newAssignments["指"] = dhIdBeforePitcherChange;
 }
+
+    console.log("[BENCH DROP FINAL ASSIGNMENT]", {
+      playerId,
+      requestedToPos: toPos,
+      finalToPosId: newAssignments[toPos],
+      finalDhId: newAssignments["指"] ?? null,
+    });
 
     if (typeof replacedId === "number") {
       updateLog(toPos, replacedId, toPos, playerId);
