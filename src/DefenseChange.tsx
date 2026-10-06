@@ -12615,15 +12615,39 @@ const canDropHere =
           <p className="mt-2 text-sm text-slate-600 text-center px-2">
             「1 が 9」「1 に代わり ○○」のように入力できます
           </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「が」＝同じ選手が別の守備へ移動
-          </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「と」＝出場中の2人が守備を入れ替え
-          </p>
-          <p className="mt-2 text-sm text-slate-600 text-Left px-2">
-            「に代わり」＝控え選手との交代
-          </p>
+
+          {/* 操作記号の説明：スマホでも見やすいアイコン付き */}
+          <div className="mt-3 space-y-1.5 px-1">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+              <span className="text-base shrink-0" aria-hidden>➡️</span>
+              <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-emerald-700 shadow-sm">
+                「が」
+              </span>
+              <span className="text-[13px] font-medium text-slate-700">
+                同じ選手が別の守備へ
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2">
+              <span className="text-base shrink-0" aria-hidden>🔄</span>
+              <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-sky-700 shadow-sm">
+                「と」
+              </span>
+              <span className="text-[13px] font-medium text-slate-700">
+                出場中の2人が守備を入替
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2">
+              <span className="text-base shrink-0" aria-hidden>👤</span>
+              <span className="inline-flex min-w-[4.8rem] justify-center rounded-md bg-white px-2 py-0.5 text-sm font-extrabold text-rose-700 shadow-sm">
+                「に代わり」
+              </span>
+              <span className="text-[13px] font-medium text-slate-700">
+                控え選手と交代
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* error */}
