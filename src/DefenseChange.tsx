@@ -8329,6 +8329,85 @@ if (!fromIsField && toPos !== BENCH) {
       }
     }
 
+    // ✅ ベンチ → 通常守備位置は、ここで単独処理して終了する。
+    //
+    // これまでは下の setAssignments(prev => { ... }) の中から
+    // applyBenchDropToField() を呼び、その applyBenchDropToField() の中でも
+    // setAssignments() を呼ぶ「state updater の二重呼び出し」になっていた。
+    // そのため、内側で正しい守備位置へ配置しても外側の return prev と競合し、
+    // 状態が巻き戻る／別位置（DH表示を含む）になる不安定な挙動が起こり得た。
+    //
+    // srcFrom は DataTransfer / touchDrag まで含めて上で正規化済みなので、
+    // draggingFrom ではなく srcFrom を基準に判定する。
+    if (srcFrom === BENCH && toPos !== BENCH && toPos !== "指") {
+      const incomingId = Number(toId);
+      if (!Number.isFinite(incomingId)) {
+        setHoverPos(null);
+        setDraggingFrom(null);
+        return;
+      }
+
+      const replacedId =
+        typeof fromId === "number"
+          ? Number(fromId)
+          : getDisplayedPlayerIdForPos(toPos);
+
+      console.log("[BENCH DROP EARLY] apply once", {
+        srcFrom,
+        toPos,
+        incomingId,
+        replacedId,
+      });
+
+      applyBenchDropToField({
+        toPos,
+        playerId: incomingId,
+        replacedId:
+          typeof replacedId === "number" ? Number(replacedId) : null,
+      });
+
+      // 打順ドラフトも、従来のベンチ→守備交代と同じ条件で同期する。
+      // DH運用中の「控え→投」は投手だけの交代なので打順は触らない。
+      const isOhtaniStartForBenchDrop =
+        ohtaniRule &&
+        typeof initialAssignments?.["投"] === "number" &&
+        typeof initialAssignments?.["指"] === "number" &&
+        Number(initialAssignments["投"]) === Number(initialAssignments["指"]);
+
+      const dhStillActiveForPitcherOnlyChange =
+        !pendingDisableDH &&
+        (
+          typeof assignments?.["指"] === "number" ||
+          dhEnabledAtStart
+        );
+
+      const skipDraftSwap =
+        toPos === "投" &&
+        (
+          isOhtaniStartForBenchDrop ||
+          dhStillActiveForPitcherOnlyChange
+        );
+
+      if (!skipDraftSwap && typeof fromId === "number") {
+        setBattingOrderDraft((prev) => {
+          const base =
+            prev?.length === battingOrder.length
+              ? [...prev]
+              : [...battingOrder];
+
+          const idx = base.findIndex((e) => Number(e.id) === Number(fromId));
+          if (idx >= 0) {
+            base[idx] = { ...base[idx], id: incomingId };
+          }
+          return base;
+        });
+      }
+
+      setHoverPos(null);
+      setDraggingFrom(null);
+      return;
+    }
+
     // ✅ DH制：投手を他の守備位置へ動かしてもDHは解除しない
     //
     // 例：
@@ -8593,23 +8672,10 @@ if (srcFrom === "指" && toPos !== BENCH && toPos !== "指") {
       }
 
       // ===== ベンチ → フィールド（配置）=====
-// ===== ベンチ → フィールド（配置）=====
-if (fromPos === BENCH && toPos !== BENCH) {
-  console.log("✅ BENCH DROP branch", { fromPos, toPos });
-
-  const playerIdStr =
-    e.dataTransfer.getData("playerId") || e.dataTransfer.getData("text/plain");
-  if (!playerIdStr) return prev;
-
-  const playerId = Number(playerIdStr);
-
-  // ✅ 画面に実際に表示されている選手IDを使う
-  const replacedId = getDisplayedPlayerIdForPos(toPos);
-
-  // ✅ 本体処理は共通関数へ
-  applyBenchDropToField({ toPos, playerId, replacedId });
-
-  // ここでは prev を返す（更新は applyBenchDropToField 内の setAssignments で行う）
+// 通常守備へのベンチ配置は handleDrop 上部の [BENCH DROP EARLY] で
+// setAssignments の外側から1回だけ処理する。
+// ここで applyBenchDropToField() を再度呼ぶと setAssignments の二重更新になるため行わない。
+if (fromPos === BENCH && toPos !== BENCH && toPos !== "指") {
   return prev;
 }
 
