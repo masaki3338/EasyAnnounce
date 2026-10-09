@@ -4956,6 +4956,30 @@ if (isOhtaniSinglePitcherPlayerChange) {
   result.splice(closingIndex >= 0 ? closingIndex : result.length, 0, ...sortedRows);
 }
 
+// 最終生成後の連続代打アナウンス表現を統一。
+// 途中の文言生成・並べ替えで「同じく」が消えるケースにも対応する。
+// 選手の交代や打順は変更せず、アナウンス本文の先頭のみを変更する。
+{
+  let previousWasPinchHit = false;
+  for (let i = 0; i < result.length; i++) {
+    const line = String(result[i] ?? "");
+    const trimmed = line.trim();
+    const isHeaderOrLineupOrClosing =
+      /お知らせいたします。$/.test(trimmed) ||
+      /^\d+番\s/.test(trimmed) ||
+      /以上に代わります。$/.test(trimmed);
+    if (isHeaderOrLineupOrClosing || !trimmed) {
+      previousWasPinchHit = false;
+      continue;
+    }
+    const isPinchHit = /^(?:同じく)?先ほど代打(?:いたしました|しました|に出ました)/.test(trimmed);
+    if (isPinchHit && previousWasPinchHit && /^先ほど代打/.test(trimmed)) {
+      result[i] = line.replace(/^(\s*)先ほど代打/, "$1同じく先ほど代打");
+    }
+    previousWasPinchHit = isPinchHit;
+  }
+}
+
 // ▼ 最初の「以上に代わります。」以降は出さない（特別処理が先に出していてもOK）
 const endAt = result.findIndex(l => l.trim().endsWith("以上に代わります。"));
 if (endAt !== -1) {
