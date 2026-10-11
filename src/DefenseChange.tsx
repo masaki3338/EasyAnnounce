@@ -6103,6 +6103,8 @@ const [pendingNonReentryDrop, setPendingNonReentryDrop] =
   useState<PendingNonReentryDrop | null>(null);
 
 const [showNonReentryConfirm, setShowNonReentryConfirm] = useState(false);
+// 守備交代時のエラーはブラウザ標準alertではなく画面内モーダルで表示
+const [defenseErrorMessage, setDefenseErrorMessage] = useState<string | null>(null);
 const [showHelpModal, setShowHelpModal] = useState(false);
 
 // ✅ YES時に「次の1回だけリエントリー判定を無視する」フラグ
@@ -8863,7 +8865,7 @@ if (ohtaniRule && srcFrom === "指" && toPos !== "指") {
     void localForage.setItem("ohtaniRule", false);
     // returnしない（= 通常DHとして処理を続行）
   } else {
-    window.alert(
+    setDefenseErrorMessage(
       "大谷ルール中は、指名打者（DH）の選手を他の守備位置へ配置できません。"
     );
     setHoverPos(null);
@@ -14026,6 +14028,41 @@ const canDropHere =
           type="button"
           onClick={() => setShowPosNumberHelpModal(false)}
           className="w-full rounded-2xl bg-emerald-600 py-3 text-[15px] font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 守備交代エラーメッセージ（標準alertの代わり） */}
+{defenseErrorMessage && (
+  <div
+    className="fixed inset-0 z-[20000] flex items-center justify-center bg-black/60 px-4"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="defense-error-title"
+    aria-describedby="defense-error-description"
+    onClick={() => setDefenseErrorMessage(null)}
+  >
+    <div
+      className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="bg-green-600 py-3 text-center font-bold text-white">
+        <h3 id="defense-error-title" className="text-base">エラー</h3>
+      </div>
+      <div className="px-6 py-5 text-center">
+        <p id="defense-error-description" className="whitespace-pre-line text-[15px] font-bold leading-relaxed">
+          {defenseErrorMessage}
+        </p>
+      </div>
+      <div className="px-5 pb-5">
+        <button
+          type="button"
+          className="w-full rounded-full bg-green-600 py-3 font-semibold text-white hover:bg-green-700 active:bg-green-800"
+          onClick={() => setDefenseErrorMessage(null)}
         >
           OK
         </button>
