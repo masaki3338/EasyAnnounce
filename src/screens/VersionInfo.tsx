@@ -85,7 +85,11 @@ const historyData: HistoryItem[] = [
        ・リエントリー交代不具合修正`,
     ],
   },
-
+  {
+    date: "2026.10.17",
+    version: "Version 1.07",
+    details: ["リトルシニア対応"],
+  },
 
 
 ];

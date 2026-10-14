@@ -463,7 +463,7 @@ export default function OperationSettings({ onNavigate }: Props) {
         <TileButton
           icon={<span className="text-2xl">🏆</span>}
           title="リーグ設定"
-          desc="ポニーリーグ / ボーイズリーグ"
+          desc="ポニーリーグ / ボーイズリーグ / リトルシニア"
           onClick={() => onNavigate("league-settings")}
         />
         <TileButton
