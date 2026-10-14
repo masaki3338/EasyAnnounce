@@ -34,7 +34,7 @@ function useClock(duration:number, notice:number) {
     const tick = () => {
       const r = Math.max(0, Math.ceil(((deadline.current ?? Date.now()) - Date.now()) / 1000));
       setRemaining(r); remainingRef.current = r;
-      if (last.current > notice && r <= notice && r > 0) setNoticeShown(true);
+      if (notice > 0 && last.current > notice && r <= notice && r > 0) setNoticeShown(true);
       if (last.current > 0 && r === 0) { setEndShown(true); setRunning(false); deadline.current = null; }
       last.current = r;
     };
@@ -59,16 +59,27 @@ const SeniorWarmup: React.FC<{onBack:()=>void}> = ({onBack}) => {
   const session = useRef(0);
   const [warmupMinutes,setWarmupMinutes] = useState(7);
   const [noticeMinutes,setNoticeMinutes] = useState(2);
-  const clock1 = useClock(warmupMinutes*60,noticeMinutes*60);
-  const clock2 = useClock(warmupMinutes*60,noticeMinutes*60);
+  // 入力値とタイマーへ反映した値を分離（反映ボタンを押すまでタイマーは変更しない）
+  const [appliedMinutes,setAppliedMinutes] = useState(7);
+  const [appliedNotice,setAppliedNotice] = useState(2);
+  const clock1 = useClock(appliedMinutes*60,appliedNotice*60);
+  const clock2 = useClock(appliedMinutes*60,appliedNotice*60);
   useEffect(()=>{void localForage.getItem<{warmupMinutes:number;noticeMinutes:number}>(SETTINGS_KEY).then(v=>{
-    if(!v)return;setWarmupMinutes(Math.max(1,Math.min(30,v.warmupMinutes||7)));
-    setNoticeMinutes(Math.max(0,Math.min(30,v.noticeMinutes??2)));
+    if(!v)return;
+    const minutes = Math.max(1,Math.min(30,v.warmupMinutes||7));
+    const notice = Math.max(0,Math.min(minutes,v.noticeMinutes??2));
+    setWarmupMinutes(minutes); setNoticeMinutes(notice);
+    setAppliedMinutes(minutes); setAppliedNotice(notice);
   });},[]);
   const applySettings=async()=>{
-    clock1.reset();clock2.reset();
-    await localForage.setItem(SETTINGS_KEY,{warmupMinutes,noticeMinutes});
+    const minutes = Math.max(1,Math.min(30,warmupMinutes));
+    const notice = Math.max(0,Math.min(minutes,noticeMinutes));
+    setWarmupMinutes(minutes); setNoticeMinutes(notice);
+    setAppliedMinutes(minutes); setAppliedNotice(notice);
+    await localForage.setItem(SETTINGS_KEY,{warmupMinutes:minutes,noticeMinutes:notice});
   };
+  // 反映済み時間に合わせて両方のタイマーをリセット
+  useEffect(() => { clock1.reset(); clock2.reset(); }, [appliedMinutes, appliedNotice]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -98,36 +109,59 @@ const SeniorWarmup: React.FC<{onBack:()=>void}> = ({onBack}) => {
   };
   const stopVoice=()=>{++session.current;stop();setActive(null);};
   const phases = [
-    {n:1 as Phase, clock:clock1, display:`1塁側${first.name}はキャッチボールを、\n3塁側${third.name}はトスバッティングを開始してください。\n時間は${warmupMinutes}分以内です。`,spoken:`1塁側${first.reading}はキャッチボールを、3塁側${third.reading}はトスバッティングを開始してください。時間は${warmupMinutes}分以内です。`},
-    {n:2 as Phase, clock:clock2, display:`1塁側${first.name}はトスバッティングを、\n3塁側${third.name}はキャッチボールを開始してください。\n時間は${warmupMinutes}分以内です。`,spoken:`1塁側${first.reading}はトスバッティングを、3塁側${third.reading}はキャッチボールを開始してください。時間は${warmupMinutes}分以内です。`},
+    {n:1 as Phase, clock:clock1, display:`1塁側${first.name}はキャッチボールを、\n3塁側${third.name}はトスバッティングを開始してください。\n時間は${appliedMinutes}分以内です。`,spoken:`1塁側${first.reading}はキャッチボールを、3塁側${third.reading}はトスバッティングを開始してください。時間は${appliedMinutes}分以内です。`},
+    {n:2 as Phase, clock:clock2, display:`1塁側${first.name}はトスバッティングを、\n3塁側${third.name}はキャッチボールを開始してください。\n時間は${appliedMinutes}分以内です。`,spoken:`1塁側${first.reading}はトスバッティングを、3塁側${third.reading}はキャッチボールを開始してください。時間は${appliedMinutes}分以内です。`},
   ];
   useEffect(()=>{if(first.name === "チーム未登録" || third.name === "チーム未登録")return; phases.forEach(p=>{void prefetchTTS(p.spoken).catch(()=>{});});},[first,third]);
   const card=(p:typeof phases[number])=><section key={p.n} className="rounded-2xl border border-sky-300/40 bg-sky-400/10 p-4 space-y-3">
     <h2 className="font-bold text-lg">{p.n}回目</h2>
     <Announcement display={p.display} spoken={p.spoken} id={`start${p.n}`} active={active} onSpeak={say} onStop={stopVoice}/>
     <div className="rounded-xl bg-white/10 p-3">
-      <p className="text-sm opacity-80">タイマー（{warmupMinutes}分）</p>
+      <p className="text-sm opacity-80">タイマー（{appliedMinutes}分）</p>
       <p className="text-4xl font-black tabular-nums my-2">{format(p.clock.remaining)}</p>
       <div className="grid grid-cols-2 gap-2">
         <button onClick={p.clock.running?p.clock.pause:p.clock.start} className={`rounded-lg py-3 font-bold ${p.clock.running?"bg-amber-600":"bg-green-600"}`}>{p.clock.running?"一時停止":"START"}</button>
         <button onClick={p.clock.reset} className="bg-gray-600 rounded-lg py-3 font-bold">RESET</button>
       </div>
     </div>
-    <Announcement display={`残り時間${noticeMinutes}分です。`} spoken={`残り時間${noticeMinutes}分です。`} id={`manual-notice${p.n}`} active={active} onSpeak={say} onStop={stopVoice}/>
+    <Announcement display={`残り時間${appliedNotice}分です。`} spoken={`残り時間${appliedNotice}分です。`} id={`manual-notice${p.n}`} active={active} onSpeak={say} onStop={stopVoice}/>
     <Announcement display="終了してください。" spoken="終了してください。" id={`manual-end${p.n}`} active={active} onSpeak={say} onStop={stopVoice}/>
   </section>;
-  const modal = (clock:ReturnType<typeof useClock>, id:string, end:boolean) => <div className="fixed inset-0 z-50 bg-black/75 grid place-items-center p-4"><div className="bg-white text-gray-900 rounded-2xl p-5 w-full max-w-sm space-y-3"><h2 className="text-lg font-bold">{end?"ウォーミングアップ終了":"残り時間のお知らせ"}</h2><p className="font-semibold">{end?"終了してください。":`残り時間${noticeMinutes}分です。`}</p><div className="grid grid-cols-2 gap-2"><button className="bg-blue-600 text-white py-3 rounded-lg font-bold" onClick={()=>say(id,end?"終了してください。":`残り時間${noticeMinutes}分です。`)}>🎤 読み上げ</button><button className="bg-gray-600 text-white py-3 rounded-lg font-bold" onClick={stopVoice}>停止</button></div><button className="w-full bg-gray-200 py-3 rounded-lg font-bold" onClick={()=>{stopVoice();end?clock.clearEnd():clock.clearNotice();}}>OK</button></div></div>;
+  // シートノックの通知と共通の赤系アナウンスデザイン
+  const modal = (clock:ReturnType<typeof useClock>, id:string, end:boolean) => {
+    const message = end ? "終了してください。" : `残り時間${appliedNotice}分です。`;
+    const dismiss = () => { stopVoice(); end ? clock.clearEnd() : clock.clearNotice(); };
+    return <div className="fixed inset-0 z-50 bg-black/75 grid place-items-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label={end ? "終了のお知らせ" : "残り時間のお知らせ"}>
+      <div className="relative w-full max-w-lg rounded-2xl border border-rose-500 bg-gradient-to-br from-rose-600/45 to-rose-400/25 p-4 shadow-xl text-white">
+        <button type="button" onClick={dismiss} aria-label="通知を閉じる" className="absolute right-2 top-2 rounded-full px-2 py-1 text-white/80 hover:bg-white/15">×</button>
+        <p className="pr-8 font-semibold leading-relaxed">{message}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={()=>say(id,message)} className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-bold"><Mic/>読み上げ</button>
+          <button type="button" disabled={active!==id} onClick={stopVoice} className="min-h-12 rounded-lg bg-gray-600 py-3 font-bold disabled:opacity-40">停止</button>
+        </div>
+      </div>
+    </div>;
+  };
   return <div className="min-h-[100dvh] bg-gradient-to-b from-gray-900 to-gray-800 text-white p-4 sm:p-6" style={{paddingBottom:"max(20px,env(safe-area-inset-bottom))"}}><div className="max-w-2xl mx-auto space-y-4">
     <header className="text-center"><h1 className="text-2xl sm:text-3xl font-extrabold">🏃 ウォーミングアップ</h1><p className="text-sm opacity-80 mt-2">リトルシニア／関東連盟基準</p></header>
-    <div className="rounded-2xl border border-amber-300/50 bg-amber-400/10 p-4 text-sm">1塁側・3塁側でキャッチボールとトスバッティングを交代で実施。各{warmupMinutes}分、残り{noticeMinutes}分で案内します。</div>
-    <section className="rounded-2xl bg-white/10 border border-white/20 p-4 space-y-3">
-      <h2 className="font-bold">タイマー時間設定（1回目・2回目共通）</h2>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="text-sm">実施時間（分）<input type="number" min={1} max={30} value={warmupMinutes} onChange={e=>setWarmupMinutes(Math.max(1,Math.min(30,Number(e.target.value)||1)))} className="w-full mt-1 bg-white text-gray-900 rounded-lg px-3 py-2" /></label>
-        <label className="text-sm">残り時間案内（分）<input type="number" min={0} max={warmupMinutes} value={noticeMinutes} onChange={e=>setNoticeMinutes(Math.max(0,Math.min(warmupMinutes,Number(e.target.value)||0)))} className="w-full mt-1 bg-white text-gray-900 rounded-lg px-3 py-2" /></label>
+    <div className="rounded-2xl border border-amber-300/50 bg-amber-400/10 p-4 text-sm">1塁側・3塁側でキャッチボールとトスバッティングを交代で実施。各{appliedMinutes}分、残り{appliedNotice}分で案内します。</div>
+    <section className="rounded-2xl border border-slate-500/70 bg-slate-700/80 p-3 space-y-3 shadow-lg">
+      <h2 className="flex items-center gap-2 text-sm sm:text-base font-bold"><span className="grid h-9 w-9 place-items-center rounded-xl border border-white/20 bg-white/10 text-xl" aria-hidden="true">⏱</span> タイマー時間設定</h2>
+      <div className="grid grid-cols-2 gap-2">
+        {([
+          {label:"ウォーミングアップ時間", value:warmupMinutes, change:(value:number)=>{setWarmupMinutes(value);setNoticeMinutes(current=>Math.min(current,value));}, min:1, max:30},
+          {label:"お知らせ残り時間", value:noticeMinutes, change:setNoticeMinutes, min:0, max:warmupMinutes},
+        ] as const).map(item=><div key={item.label} className="min-w-0 rounded-xl bg-slate-900/55 px-1.5 py-2 text-center">
+          <p className="text-[10px] sm:text-xs font-semibold whitespace-nowrap">{item.label}</p>
+          <div className="mt-1 flex items-center justify-center gap-1 sm:gap-2">
+            <button type="button" aria-label={`${item.label}を1分減らす`} disabled={clock1.running||clock2.running||item.value<=item.min} onClick={()=>item.change(Math.max(item.min,item.value-1))} className="h-9 w-8 shrink-0 rounded-lg border border-white/25 bg-white/15 text-lg disabled:opacity-35">－</button>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-gray-900 font-extrabold tabular-nums">{item.value}</span>
+            <button type="button" aria-label={`${item.label}を1分増やす`} disabled={clock1.running||clock2.running||item.value>=item.max} onClick={()=>item.change(Math.min(item.max,item.value+1))} className="h-9 w-8 shrink-0 rounded-lg border border-white/25 bg-white/15 text-lg disabled:opacity-35">＋</button>
+            <span className="text-sm font-bold">分</span>
+          </div>
+        </div>)}
       </div>
-      <button className="bg-blue-600 px-4 py-3 rounded-xl font-bold w-full" onClick={()=>void applySettings()} disabled={clock1.running||clock2.running}>時間設定を反映・保存</button>
-      <p className="text-xs text-white/70">時間を変更したら「反映・保存」を押してください。タイマー動作中は変更できません。</p>
+      <button type="button" className="w-full rounded-xl bg-emerald-500 py-3 font-bold text-white disabled:opacity-40" onClick={()=>void applySettings()} disabled={clock1.running||clock2.running}>反映</button>
     </section>
     {phases.map(card)}
     <button className="w-full py-4 rounded-xl bg-white text-gray-900 font-bold" onClick={()=>{stopVoice();onBack();}}>← 試合前アナウンスに戻る</button>
