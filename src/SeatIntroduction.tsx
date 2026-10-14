@@ -91,7 +91,7 @@ const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [speaking, setSpeaking] = useState(false);
   const seatSpeakSessionRef = useRef(0);
   const [backTarget, setBackTarget] = useState<ScreenType>("announcement" as ScreenType);
-  const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
+  const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode() === "boys" ? "boys" : "pony");
   const [umpires, setUmpires] = useState<{ role: string; name: string; furigana: string }[]>([]);
   // ★ 同姓（苗字）重複セット
   const [dupLastNames, setDupLastNames] = useState<Set<string>>(new Set());
@@ -170,7 +170,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
         setTeamReading(team.furigana || team.kana || team.reading || team.name || "");
       }
       if (matchInfo) {
-        setLeagueMode(getLeagueMode());
+        setLeagueMode(getLeagueMode() === "boys" ? "boys" : "pony");
         setUmpires((() => {
           const raw = matchInfo.umpires;
           if (Array.isArray(raw)) return raw;

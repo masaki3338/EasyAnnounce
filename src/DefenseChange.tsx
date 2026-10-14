@@ -8137,16 +8137,86 @@ const omitUnchangedDhPinchAnnouncement = (raw: string): string => {
   }).join("\n");
 };
 
-const normalizedBaseDisplayText = correctExtraDhBenchLineup(
+// リトルシニア専用：守備交代の本文だけ、移動先の「守備位置、」を
+// 「守備位置に、」にする。ruby タグを維持し、表示・読み上げに共通適用。
+// 生成経路によって「くんが」「さんが」「が入り」などがあるため、
+// 直前の敬称に依存せず、守備位置と読点の境界を判定する。
+const addSeniorShiftParticle = (value: string): string => {
+  if (getLeagueMode() !== "senior") return value;
+  const pos = /(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者)([ \t]*)([、，,])/g;
+  return String(value ?? "").split(/(\n|<br\s*\/?>)/i).map((part) => {
+    // 打順の紹介や見出しを変更しない。本文の「～が○○、」等が対象。
+    const plain = part.replace(/<rt>[^<]*<\/rt>/g, "").replace(/<[^>]+>/g, "").trim();
+    if (!plain || /^\d+番\s/.test(plain) || !plain.includes("が")) return part;
+    return part.replace(pos, "$1に$2$3");
+  }).join("");
+};
+
+// リトルシニア専用：代打本人がそのまま守備に就く案内を自然な語順へ。
+// ふりがな（ruby）を含む選手名部分はそのまま保持する。
+// 他の選手への「代打に代わりまして」などは対象外。
+const normalizeSeniorPinchStaysOnField = (value: string): string => {
+  if (getLeagueMode() !== "senior") return value;
+  const positions = "ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者";
+  const pattern = new RegExp(
+    `((?:同じく)?先ほど代打いたしました[^\\n、。]*?(?:くん|さん))が\\s*そのまま\\s*入り\\s*(${positions})\\s*([、。]?)`,
+    "g"
+  );
+  // 「代打Aに代わりまして、Bがそのまま入りキャッチャー。」も修正する。
+  // 代打本人の継続出場とは区別して、入場するBの氏名（ruby）は触れない。
+  const replacementPattern = new RegExp(
+    `((?:同じく)?先ほど代打いたしました[^\\n]*?に代わりまして[、，,]\\s*[^\\n、。]*?(?:くん|さん))が\\s*そのまま入り\\s*(${positions})\\s*([、。]?)`,
+    "g"
+  );
+  let updated = String(value ?? "").replace(replacementPattern,
+    (_match, head: string, position: string, punctuation: string) =>
+      punctuation === "、"
+        ? `${head}がそのまま${position}に入り、`
+        : `${head}がそのまま${position}に入ります。`
+  );
+  // 従来の「代打本人がそのまま守備入り」の修正も維持する。
+  updated = updated.replace(pattern, (_match, head: string, position: string, punctuation: string) =>
+    punctuation === "、"
+      ? `${head}が、そのまま${position}に入り、`
+      : `${head}が、そのまま${position}に入ります。`
+  );
+  return updated;
+};
+
+// リトルシニア専用：打順紹介の直前にある最後の守備変更本文は
+// 「ショートの○○くんがセカンドに、」ではなく「...セカンドに入ります。」で閉じる。
+// 途中の行・ヘッダー・打順・ルビの内容は触らない。
+const closeSeniorLastDefenseBody = (value: string): string => {
+  if (getLeagueMode() !== "senior") return value;
+  const parts = String(value ?? "").split(/(\n|<br\s*\/?>)/i);
+  const plainText = (part: string) => part.replace(/<rt>[^<]*<\/rt>/g, "").replace(/<[^>]+>/g, "").trim();
+  const isBody = (part: string): boolean => {
+    const plain = plainText(part);
+    return !!plain && !/^\d+番\s/.test(plain) &&
+      !/お知らせいたします[。.]$/.test(plain) &&
+      !/以上に代わります[。.]$/.test(plain);
+  };
+  let lastBody = -1;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (isBody(parts[i])) lastBody = i;
+  }
+  if (lastBody < 0) return value;
+  const positions = "ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト|指名打者";
+  const end = new RegExp(`(${positions})に(?:入り)?\\s*[、，,。]?\\s*$`);
+  parts[lastBody] = parts[lastBody].replace(end, "$1に入ります。");
+  return parts.join("");
+};
+
+const normalizedBaseDisplayText = closeSeniorLastDefenseBody(addSeniorShiftParticle(normalizeSeniorPinchStaysOnField(correctExtraDhBenchLineup(
   removeHeBeforeCommaAfterPosition(
     omitUnchangedDhPinchAnnouncement(baseDisplayText || missingDhAnnouncement || "")
   )
-);
-const normalizedBaseSpeakText = correctExtraDhBenchLineup(
+))));
+const normalizedBaseSpeakText = closeSeniorLastDefenseBody(addSeniorShiftParticle(normalizeSeniorPinchStaysOnField(correctExtraDhBenchLineup(
   removeHeBeforeCommaAfterPosition(
     omitUnchangedDhPinchAnnouncement(baseSpeakText || missingDhAnnouncement || "")
   )
-);
+))));
 
 const displayText = [normalizedBaseDisplayText, pitcherCountAnnouncement]
   .filter(Boolean)

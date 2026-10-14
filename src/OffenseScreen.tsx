@@ -4713,7 +4713,27 @@ useEffect(() => {
 
         {/* ⚠️ ファウルボール注意文（常時表示） */}
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
-          <div className="mt-2 w-full flex gap-2">
+          <div className="w-full rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-yellow-900 flex items-center gap-2">
+            <span className="text-lg leading-none shrink-0" aria-hidden="true">⚠️</span>
+            <span
+              className="font-bold"
+              style={{
+                fontSize: "clamp(13px, 1.5vh, 21px)",
+                lineHeight: 1.3,
+              }}
+            >
+              ファールボールがバックネット裏、観客席などへ飛んだ時
+            </span>
+          </div>
+
+          <div className="mt-2 w-full flex items-start gap-2">
+            {/* ファウルボール注意アナウンスのマイクアイコン */}
+            <img
+              src="/mic-red.png"
+              alt=""
+              aria-hidden="true"
+              className="w-7 h-7 shrink-0 object-contain"
+            />
 
             <span
               className="text-red-600 font-bold whitespace-pre-line"
@@ -4760,10 +4780,17 @@ useEffect(() => {
         )}
 
         <div className="border border-red-500 bg-red-200 text-red-700 p-2 rounded relative text-left">
-          <div className="flex items-center mb-2">
+          <div className="flex items-start gap-2 mb-2">
+            {/* 打順アナウンスのマイクアイコン：複数行でも本文の左端を揃える */}
+            <img
+              src="/mic-red.png"
+              alt=""
+              aria-hidden="true"
+              className="w-7 h-7 shrink-0 object-contain"
+            />
 
             <span
-              className="text-red-600 font-bold whitespace-pre-line"
+              className="min-w-0 text-red-600 font-bold whitespace-pre-line"
               style={{
                 fontSize: "clamp(17px, 1.9vh, 28px)",
                 lineHeight: 1.35,

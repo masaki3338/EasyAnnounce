@@ -29,8 +29,11 @@ import Warmup from "./Warmup";
 import SheetKnock from "./SheetKnock";
 import AnnounceStartingLineup from "./AnnounceStartingLineup";
 import OffenseScreen from "./OffenseScreen";
+import SeniorOffenseScreen from "./SeniorOffenseScreen";
 import DefenseScreen from "./DefenseScreen";
+import SeniorDefenseScreen from "./SeniorDefenseScreen";
 import OnePersonAnnounceScreen from "./OnePersonAnnounceScreen";
+import SeniorOnePersonAnnounceScreen from "./SeniorOnePersonAnnounceScreen";
 import DefenseChange from "./DefenseChange";
 import OperationSettings from "./screens/OperationSettings";
 import PitchLimit from "./screens/PitchLimit";
@@ -44,10 +47,18 @@ import AnnounceMindset from "./AnnounceMindset";
 import LeagueSettings from "./screens/LeagueSettings";
 import BoysPreGameAnnouncement from "./boys-pre-game-announcement";
 import BoysSheetKnock from "./BoysSheetKnock";
+import SeniorPreGameAnnouncement from "./SeniorPreGameAnnouncement";
+import SeniorWarmup from "./SeniorWarmup";
+import SeniorSheetKnock from "./SeniorSheetKnock";
+import SeniorStartingLineup from "./SeniorStartingLineup";
+import SeniorKnockLineup from "./SeniorKnockLineup";
+import SeniorSeatIntroduction from "./SeniorSeatIntroduction";
+import SeniorSimpleAnnouncements from "./SeniorSimpleAnnouncements";
 import StartTimeAnnouncement from "./StartTimeAnnouncement";
 import AnnouncementModeScreen from "./screens/AnnouncementMode";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { getAnnouncementMode } from "./lib/announcementMode";
+import { renderSeniorEndTemplate } from "./SeniorEndGameTemplates";
 
 // バージョン番号を定数で管理
 type AnnouncementTimingSettings = {
@@ -68,7 +79,7 @@ const DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS: AnnouncementTimingSettings = {
   groundMaintenanceInning: 5,
 };
 
-const APP_VERSION = "1.06"
+const APP_VERSION = "1.07"
 
 // iOS 判定を共通で使えるようにグローバル定数として定義
 const isIOS = (() => {
@@ -109,6 +120,17 @@ export type ScreenType =
   | "seatIntroduction"
   | "boysPreGameAnnouncement"
   | "boysSheetKnock"
+  | "seniorPreGameAnnouncement"
+  | "seniorWarmup"
+  | "seniorStartTime"
+  | "seniorMemberExchange"
+  | "seniorSheetKnock"
+  | "seniorStartingLineup"
+  | "seniorKnockLineup"
+  | "seniorGroundMaintenance"
+  | "seniorStartGreeting"
+  | "seniorSeatIntroduction"
+  | "seniorPending"
   | "startTimeAnnouncement"
   | "operationSettings"
   | "pitchLimit"
@@ -312,6 +334,10 @@ const App = () => {
   const [showIOSCloseGuide, setShowIOSCloseGuide] = useState(false);
   const [leagueMode, setLeagueMode] = useState<LeagueMode>("pony");
   const isBoys = leagueMode === "boys";
+  // リトルシニア専用の試合中画面。ポニー・ボーイズは既存の画面をそのまま使う。
+  const ActiveOffenseScreen = leagueMode === "senior" ? SeniorOffenseScreen : OffenseScreen;
+  const ActiveOnePersonAnnounceScreen = leagueMode === "senior" ? SeniorOnePersonAnnounceScreen : OnePersonAnnounceScreen;
+  const [seniorPendingTitle, setSeniorPendingTitle] = useState("");
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showOffenseHelpModal, setShowOffenseHelpModal] = useState(false);
   const fromGameRef = useRef(false);
@@ -361,6 +387,52 @@ const App = () => {
       await prefetchTTS(part);
     }
   };
+  // リトルシニアの試合終了は、通常・守備・1人モード共通でカスタマイズ文を使う。
+  const openSeniorEndGame = async () => {
+    const [match, savedScores, registeredTeam] = await Promise.all([
+      localForage.getItem<any>("matchInfo"),
+      localForage.getItem<Record<string, { top?: number; bottom?: number }>>("scores"),
+      localForage.getItem<any>("team"),
+    ]);
+    const scoreRows = Object.values(savedScores || {});
+    const topScore = scoreRows.reduce((sum, row) => sum + (Number(row?.top) || 0), 0);
+    const bottomScore = scoreRows.reduce((sum, row) => sum + (Number(row?.bottom) || 0), 0);
+    let topTeamName = "先攻チーム";
+    let bottomTeamName = "後攻チーム";
+    let topTeamReading = topTeamName;
+    let bottomTeamReading = bottomTeamName;
+
+    if (match?.announcementMode === "single") {
+      const { firstTeam, thirdTeam } = await getOnePersonTeamsFromMatchInfo();
+      const topTeam = match?.battingFirstSide === "first" ? firstTeam : thirdTeam;
+      const bottomTeam = match?.battingFirstSide === "first" ? thirdTeam : firstTeam;
+      topTeamName = topTeam?.name || topTeamName;
+      bottomTeamName = bottomTeam?.name || bottomTeamName;
+      topTeamReading = topTeam?.furigana || topTeamName;
+      bottomTeamReading = bottomTeam?.furigana || bottomTeamName;
+    } else {
+      const ownName = String(registeredTeam?.name || match?.teamName || "自チーム");
+      const ownReading = String(registeredTeam?.furigana || registeredTeam?.nameKana || registeredTeam?.kana || registeredTeam?.reading || ownName);
+      const opponentName = String(match?.opponentTeam || match?.opponentTeamName || "対戦チーム");
+      const opponentReading = String(match?.opponentTeamFurigana || opponentName);
+      const home = match?.isHome === true;
+      topTeamName = home ? opponentName : ownName;
+      bottomTeamName = home ? ownName : opponentName;
+      topTeamReading = home ? opponentReading : ownReading;
+      bottomTeamReading = home ? ownReading : opponentReading;
+    }
+    const draw = topScore === bottomScore;
+    const winningTeam = topScore > bottomScore ? topTeamName : bottomTeamName;
+    const winningTeamReading = topScore > bottomScore ? topTeamReading : bottomTeamReading;
+    const values = { topScore, bottomScore, winningTeam, winningTeamReading };
+    const kind = draw ? "draw" : "win";
+    const display = renderSeniorEndTemplate(kind, values);
+    const speech = renderSeniorEndTemplate(kind, values, true);
+    setEndGameAnnouncement(display);
+    setEndGameAnnouncementSpeak(speech);
+    setShowEndGamePopup(true);
+  };
+
   const [showEndGameSimpleModal, setShowEndGameSimpleModal] = useState(false);
   const [showHeatPopup, setShowHeatPopup] = useState(false);
   // 🔒 熱中症アナウンス 連打ロック
@@ -370,6 +442,81 @@ const App = () => {
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
 
   const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
+  // リトルシニア専用「その他」アナウンス
+  const [seniorOtherNotice, setSeniorOtherNotice] = useState<{
+    title: string; message: string; kind?: "resume"; html?: string; speech?: string;
+  } | null>(null);
+  const [seniorTreatmentMinutes, setSeniorTreatmentMinutes] = useState("0");
+  const SENIOR_TREATMENT_START_KEY = "senior:treatment:startedAt";
+
+  const openSeniorTreatmentPause = async () => {
+    await localForage.setItem(SENIOR_TREATMENT_START_KEY, Date.now());
+    const message = "選手負傷による治療のため、しばらくお待ち下さい。";
+    setSeniorOtherNotice({ title: "試合の中断（治療）", message });
+    void prefetchTTS(message);
+  };
+  const openSeniorTreatmentResume = async () => {
+    const raw = await localForage.getItem<number>(SENIOR_TREATMENT_START_KEY);
+    const minutes = typeof raw === "number" && Number.isFinite(raw)
+      ? Math.max(0, Math.round((Date.now() - raw) / 60000)) : 0;
+    setSeniorTreatmentMinutes(String(minutes));
+    const message = `大変お待たせいたしました。\nただ今より試合を再開いたします。\nなお、中断時間は${minutes}分です。`;
+    setSeniorOtherNotice({ title: "試合再開（治療）", message, kind: "resume" });
+    void prefetchTTS(message);
+  };
+  const handleSeniorTreatmentMinutes = (value: string) => {
+    setSeniorTreatmentMinutes(value);
+    const minutes = Math.max(0, Math.min(9999, Number(value) || 0));
+    setSeniorOtherNotice(prev => prev?.kind === "resume" ? {
+      ...prev,
+      message: `大変お待たせいたしました。\nただ今より試合を再開いたします。\nなお、中断時間は${minutes}分です。`,
+    } : prev);
+  };
+  const openSeniorIntentionalWalk = async () => {
+    const [team, order, lastIndex] = await Promise.all([
+      localForage.getItem<any>("team"),
+      localForage.getItem<Array<{id:number}>>("battingOrder"),
+      localForage.getItem<number>("lastBatterIndex"),
+    ]);
+    const lineup = Array.isArray(order) ? order : [];
+    const ix = Number.isInteger(lastIndex) ? Number(lastIndex) : 0;
+    const entry = lineup[ix];
+    const player = Array.isArray(team?.players)
+      ? team.players.find((p: any) => Number(p?.id) === Number(entry?.id)) : null;
+    if (!player) {
+      setSeniorOtherNotice({title:"申告敬遠",message:"現在の打者を取得できません。打者を選択してからお試しください。"});
+      return;
+    }
+    const lastName = String(player?.lastName ?? "");
+    const kana = String(player?.lastNameKana ?? "").trim();
+    const honor = player?.isFemale ? "さん" : "くん";
+    // HTMLルビと読み上げ用テキストは別々に保持する。
+    const safe = (v: string) => v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const ruby = `<ruby>${safe(lastName)}<rt>${safe(kana)}</rt></ruby>`;
+    const suffix = `${honor}は、申告敬遠により一塁へ進みます。`;
+    const message = `バッター${lastName}${suffix}`;
+    const spoken = `バッター${kana || lastName}${suffix}`;
+    setSeniorOtherNotice({title:"申告敬遠",message, html:`バッター${ruby}${suffix}`, speech:spoken});
+    void prefetchTTS(spoken);
+  };
+  const openSeniorTiebreak = async () => {
+    const [cfg, match, savedScores] = await Promise.all([
+      localForage.getItem<{ outs?: string; bases?: string }>("tiebreakConfig"),
+      localForage.getItem<any>("matchInfo"),
+      localForage.getItem<Record<string, { top?: number; bottom?: number }>>("scores"),
+    ]);
+    const scores = savedScores || {};
+    const currentInning = Math.max(1, Number(match?.inning) || 1);
+    const endedInning = Math.max(1, currentInning - 1);
+    const totalTop = Object.values(scores).reduce((sum, score) => sum + (Number(score?.top) || 0), 0);
+    const totalBottom = Object.values(scores).reduce((sum, score) => sum + (Number(score?.bottom) || 0), 0);
+    const outs = cfg?.outs === "ノーアウト" ? "0アウト" : cfg?.outs === "ツーアウト" ? "2アウト" : "1アウト";
+    const bases = cfg?.bases || "2,3塁";
+    const msg = `スタンドの皆様、両チームの皆様にお知らせ致します。\n${endedInning}回を終了し、${totalTop}対${totalBottom}の同点ですので大会規定により、\n${currentInning}回からの攻撃は、${outs}${bases}から行いますのでご了承ください。`;
+    setTiebreakMessage(msg);
+    setShowTiebreakPopup(true);
+  };
+
   const [isContinueGame, setIsContinueGame] = useState(false);
 
   const [showManualPopup, setShowManualPopup] = useState(false);
@@ -633,7 +780,7 @@ useEffect(() => {
 
 const handleSeatIntroductionBack = async () => {
   if (!fromGameRef.current) {
-    setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement");
+    setScreen(leagueMode === "senior" ? "seniorPreGameAnnouncement" : isBoys ? "boysPreGameAnnouncement" : "announcement");
     return;
   }
 
@@ -1762,7 +1909,14 @@ return (
             ← 試合開始画面に戻る
           </button>
 
-          {leagueMode === "boys" ? (
+          {leagueMode === "senior" ? (
+            <SeniorPreGameAnnouncement
+              onNavigate={(next) => {
+                setScreen(next);
+              }}
+              onBack={() => setScreen("startGame")}
+            />
+          ) : leagueMode === "boys" ? (
             <BoysPreGameAnnouncement
               onNavigate={async (next) => {
                 if (next === "seatIntroduction") {
@@ -1787,6 +1941,26 @@ return (
             />
           )}
         </>
+      )}
+
+      {screen === "seniorWarmup" && (
+        <SeniorWarmup onBack={() => setScreen("announcement")} />
+      )}
+
+      {(["seniorStartTime","seniorMemberExchange","seniorGroundMaintenance","seniorStartGreeting"] as const).map((page) => (
+        screen === page ? <SeniorSimpleAnnouncements key={page} page={page} onBack={() => setScreen("announcement")} /> : null
+      ))}
+      {screen === "seniorSheetKnock" && (
+        <SeniorSheetKnock onBack={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorKnockLineup" && (
+        <SeniorKnockLineup onBack={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorStartingLineup" && (
+        <SeniorStartingLineup leagueMode="pony" onNavigate={() => setScreen("announcement")} />
+      )}
+      {screen === "seniorSeatIntroduction" && (
+        <SeniorSeatIntroduction onNavigate={() => setScreen("announcement")} onBack={() => setScreen("announcement")} />
       )}
 
       {screen === "boysPreGameAnnouncement" && (
@@ -1876,7 +2050,7 @@ return (
           </button>
           <AnnounceStartingLineup
             onNavigate={setScreen}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
@@ -1904,7 +2078,7 @@ return (
           <StartGreeting
             onBack={() => setScreen(isBoys ? "boysPreGameAnnouncement" : "announcement")}
             onNavigate={setScreen}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
@@ -1921,7 +2095,7 @@ return (
           <SeatIntroduction
             onNavigate={handleSeatIntroductionNavigate}
             onBack={handleSeatIntroductionBack}
-            leagueMode={leagueMode}
+            leagueMode={leagueMode === "senior" ? "pony" : leagueMode}
           />
         </>
       )}
@@ -1962,6 +2136,11 @@ return (
                 }
 
                 if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
                   console.group("[END] その他→試合終了");
 
                   const now = new Date();
@@ -2107,7 +2286,12 @@ return (
                   }
 
                   console.groupEnd();
-                } else if (value === "tiebreak") {
+                 } else if (value === "tiebreak") {
+                   if (leagueMode === "senior") {
+                     await openSeniorTiebreak();
+                     setOtherOption("");
+                     return;
+                   }
                   const cfg = (await localForage.getItem("tiebreakConfig")) as
                     | { outs?: string; bases?: string }
                     | null;
@@ -2143,7 +2327,11 @@ return (
 
                   setTiebreakMessage(msg);
                   setShowTiebreakPopup(true);
-                } else if (value === "continue") {
+                 } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
                   setShowContinuationModal(true);
                 } else if (value === "heat") {
                   setShowHeatPopup(true);
@@ -2213,7 +2401,12 @@ return (
                   setShowPitchListPopup(true);
 
                 } else if (value === "intentionalWalk") {
-                  setIntentionalWalkTrigger((n) => n + 1);
+
+
+                  if (leagueMode === "senior") await openSeniorIntentionalWalk();
+
+
+                  else setIntentionalWalkTrigger((n) => n + 1);
 
                 } else if (value === "waterBreak") {
                   setWaterBreakRunning(false);
@@ -2237,6 +2430,13 @@ return (
                 その他
               </option>
               <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
               {isBoys ? (
                 <>
                   <option value="waterBreak">給水タイム</option>
@@ -2261,7 +2461,7 @@ return (
             </select>
           </div>
 
-          <OnePersonAnnounceScreen
+          <ActiveOnePersonAnnounceScreen
             onGoToSeatIntroduction={() => {
               fromGameRef.current = true;
               lastOffenseRef.current = true;
@@ -2327,6 +2527,11 @@ return (
         }
 
         if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
           console.group("[END] その他→試合終了");
           const now = new Date();
           const formatted = `${now.getHours()}時${now.getMinutes()}分`;
@@ -2490,7 +2695,12 @@ return (
 
           console.groupEnd();
 
-        } else if (value === "tiebreak") {
+         } else if (value === "tiebreak") {
+                   if (leagueMode === "senior") {
+                     await openSeniorTiebreak();
+                     setOtherOption("");
+                     return;
+                   }
           const cfg = (await localForage.getItem("tiebreakConfig")) as
             | { outs?: string; bases?: string }
             | null;
@@ -2519,7 +2729,11 @@ return (
           setTiebreakMessage(msg);
           setShowTiebreakPopup(true);
 
-        } else if (value === "continue") {
+         } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
           setShowContinuationModal(true);
 
         } else if (value === "heat") {
@@ -2568,7 +2782,12 @@ return (
           setShowPitchListPopup(true);
 
         } else if (value === "intentionalWalk") {
-          setIntentionalWalkTrigger((n) => n + 1);
+
+
+          if (leagueMode === "senior") await openSeniorIntentionalWalk();
+
+
+          else setIntentionalWalkTrigger((n) => n + 1);
 
         } else if (value === "waterBreak") {
           setWaterBreakRunning(false);
@@ -2595,6 +2814,13 @@ return (
         その他
       </option>
       <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="intentionalWalk">申告敬遠</option>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
 
       {isBoys ? (
         <>
@@ -2619,7 +2845,7 @@ return (
       )}
     </select>
         </div>
-        <OffenseScreen
+        <ActiveOffenseScreen
           onSwitchToDefense={async () => {
             const match =
               (await localForage.getItem("matchInfo")) as
@@ -2745,6 +2971,11 @@ return (
           }
 
           if (value === "end") {
+                   if (leagueMode === "senior") {
+                     await openSeniorEndGame();
+                     setOtherOption("");
+                     return;
+                   }
             console.group("[END] その他→試合終了");
             const now = new Date();
             const formatted = `${now.getHours()}時${now.getMinutes()}分`;
@@ -2907,7 +3138,13 @@ return (
             }
 
             console.groupEnd();
-          } else if (value === "continue") {
+            } else if (value === "tiebreak" && leagueMode === "senior") {
+                   await openSeniorTiebreak();
+                 } else if (leagueMode === "senior" && value === "treatmentPause") {
+                   await openSeniorTreatmentPause();
+                 } else if (leagueMode === "senior" && value === "treatmentResume") {
+                   await openSeniorTreatmentResume();
+                 } else if (value === "continue") {
             setShowContinuationModal(true);
 
           } else if (value === "heat") {
@@ -3011,6 +3248,12 @@ return (
         </option>
 
         <option value="history">アナウンス履歴</option>
+              {leagueMode === "senior" && (
+                <>
+                  <option value="treatmentPause">試合の中断（治療）</option>
+                  <option value="treatmentResume">試合再開（治療）</option>
+                </>
+              )}
         {isBoys ? (
           <>
             <option value="waterBreak">給水タイム</option>
@@ -3022,7 +3265,8 @@ return (
         ) : (
           <>
             <option value="end">試合終了</option>
-            <option value="continue">継続試合</option>
+            {leagueMode === "senior" && <option value="tiebreak">タイブレーク</option>}
+             <option value="continue">継続試合</option>
             <option value="heat">熱中症</option>
             <option value="waterBreak">給水タイム</option>
             <option value="manual">連盟🎤マニュアル</option> 
@@ -3033,12 +3277,21 @@ return (
     </div>
 
 
-    <DefenseScreen
-      key="defense"
-      onChangeDefense={() => setScreen("defenseChange")}
-      onSwitchToOffense={() => setScreen("offense")}
-      saveInningStartTrigger={defenseInningStartTrigger}
-    />
+    {leagueMode === "senior" ? (
+      <SeniorDefenseScreen
+        key="senior-defense"
+        onChangeDefense={() => setScreen("defenseChange")}
+        onSwitchToOffense={() => setScreen("offense")}
+        saveInningStartTrigger={defenseInningStartTrigger}
+      />
+    ) : (
+      <DefenseScreen
+        key="defense"
+        onChangeDefense={() => setScreen("defenseChange")}
+        onSwitchToOffense={() => setScreen("offense")}
+        saveInningStartTrigger={defenseInningStartTrigger}
+      />
+    )}
   </>
 )}
 
@@ -3282,6 +3535,37 @@ return (
 
 {screen === "versionInfo" && (
   <VersionInfo version={APP_VERSION} onBack={() => setScreen("operationSettings")} />
+)}
+
+{/* リトルシニア専用：その他アナウンス（読み上げと停止を共通デザイン） */}
+{leagueMode === "senior" && seniorOtherNotice && (
+  <div className="fixed inset-0 z-[2000] bg-black/55 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label={seniorOtherNotice.title}>
+    <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90svh] flex flex-col">
+      <div className="bg-gradient-to-r from-rose-600 to-pink-600 text-white px-4 py-4 font-extrabold flex items-center gap-2">
+        <IconMic />{seniorOtherNotice.title}
+      </div>
+      <div className="p-4 overflow-y-auto">
+        {seniorOtherNotice.kind === "resume" && (
+          <label className="flex items-center gap-3 mb-3 text-gray-800 font-bold">
+            中断時間（分）
+            <input aria-label="中断時間（分）" type="number" min={0} max={9999} inputMode="numeric"
+              value={seniorTreatmentMinutes} onChange={e=>handleSeniorTreatmentMinutes(e.target.value)}
+              className="w-28 min-h-11 border-2 border-gray-300 rounded-xl px-3 text-lg" />
+          </label>
+        )}
+        <div className="rounded-2xl border border-red-500 bg-red-200 p-4">
+          {seniorOtherNotice.html ?
+            <div className="font-bold text-red-700 whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{__html:seniorOtherNotice.html}} /> :
+            <p className="font-bold text-red-700 whitespace-pre-wrap leading-relaxed">{seniorOtherNotice.message}</p>}
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button className="h-11 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center gap-2" onClick={()=>void speak(seniorOtherNotice.speech || seniorOtherNotice.message, {progressive:true,cache:true})}><IconMic />読み上げ</button>
+            <button className="h-11 rounded-xl bg-rose-600 text-white font-bold" onClick={()=>stop()}>停止</button>
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t"><button className="w-full h-11 rounded-xl bg-emerald-600 text-white font-bold" onClick={()=>{stop();setSeniorOtherNotice(null);}}>OK</button></div>
+    </div>
+  </div>
 )}
 
 {/* 試合終了画面（スマホ風） */}
@@ -5073,12 +5357,18 @@ useEffect(() => {
             style={{
               color: "white",
               WebkitTextStroke:
-                leagueMode === "boys" ? "0.5px #3B82F6" : "0.5px red", // Boysは青
+                leagueMode === "boys"
+                  ? "0.5px #3B82F6" // ボーイズ：青
+                  : leagueMode === "senior"
+                    ? "0.5px #22C55E" // リトルシニア：緑
+                    : "0.5px red", // ポニー：従来の赤
             }}
           >
             {leagueMode === "boys"
               ? "～ Boys League Version ～"
-              : "～ Pony League Version ～"}
+              : leagueMode === "senior"
+                ? "～ Little Senior Version ～"
+                : "～ Pony League Version ～"}
           </p>
         </div>
 

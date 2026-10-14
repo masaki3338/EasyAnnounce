@@ -2350,74 +2350,48 @@ const handleStop = () => { ttsStop(); };
       relative text-left
     "
   >
-    {/* 🔴 上段：マイクアイコン + 注意書き */}
-    <div className="flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
-      <img
-        src="/mic-red.png"
-        alt="mic"
-        className="
-          w-6 h-6 mt-[-2px] shrink-0
-          md:w-[clamp(24px,3.2dvh,34px)]
-          md:h-[clamp(24px,3.2dvh,34px)]
-        "
-      />
-
+    {/* 🔔 読み上げタイミング：薄い黄色の注意表示 */}
+    <div className="flex items-center">
       <div
-        className="
-          bg-yellow-100 text-yellow-800
-          border-l-4 border-yellow-500
-          px-2 py-0
-          text-xs
-          md:px-[clamp(8px,1.4dvh,14px)]
-          md:py-[clamp(2px,0.8dvh,6px)]
-          md:text-[clamp(13px,1.9dvh,20px)]
-          font-semibold
-          whitespace-nowrap
-          leading-tight
-        "
+        className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 text-xs md:text-[clamp(13px,1.9dvh,20px)] font-semibold leading-tight"
       >
-        <span className="mr-2 text-2xl md:text-[clamp(22px,3.2dvh,34px)]">⚠️</span>
+        <span className="mr-2 text-lg" aria-hidden="true">⚠️</span>
         守備回終了時に🎤
       </div>
     </div>
 
-    {/* 🔽 下段：アナウンスメッセージとボタン */}
-    <div
-      className="
-        flex flex-col
-        text-red-600
-        text-lg
-        md:text-[clamp(20px,3.2dvh,34px)]
-        font-bold
-        space-y-1
-        md:space-y-[clamp(4px,0.8dvh,8px)]
-        mt-2
-        md:mt-[clamp(8px,1.4dvh,14px)]
-        leading-tight
-      "
-    >
-{announceMessages.map((msg, index) => {
-  const isPitchCountMessage =
-    msg.includes("投球数") ||
-    msg.includes("トータル") ||
-    msg.includes("合計投球数") ||
-    msg.includes("球です");
+    {/* 🎤 投球数アナウンス：アイコンは1行目の左、続く行は同じ字下げ */}
+    <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
+      <img
+        src="/mic-red.png"
+        alt=""
+        aria-hidden="true"
+        className="w-6 h-6 shrink-0 md:w-[clamp(24px,3.2dvh,34px)] md:h-[clamp(24px,3.2dvh,34px)]"
+      />
+      <div className="min-w-0 flex-1 flex flex-col space-y-1 text-red-600 font-bold leading-tight">
+        {announceMessages.map((msg, index) => {
+          const isPitchCountMessage =
+            msg.includes("投球数") ||
+            msg.includes("トータル") ||
+            msg.includes("合計投球数") ||
+            msg.includes("球です");
 
-  return (
-    <p
-      key={index}
-      className={`
-        leading-tight
-        ${
-          isPitchCountMessage
-            ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
-            : ""
-        }
-      `}
-      dangerouslySetInnerHTML={{ __html: msg }}
-    />
-  );
-})}
+          return (
+            <p
+              key={index}
+              className={`leading-tight ${
+                isPitchCountMessage
+                  ? "text-lg md:!text-[clamp(19px,2.4dvh,26px)]"
+                  : "text-lg md:text-[clamp(20px,3.2dvh,34px)]"
+              }`}
+              dangerouslySetInnerHTML={{ __html: msg }}
+            />
+          );
+        })}
+      </div>
+    </div>
+
+    <div>
       {/* 読み上げ／停止 */}
       <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] grid grid-cols-2 gap-2">
         <button
