@@ -3488,7 +3488,7 @@ return (
     </button>
     <OperationSettings
       onNavigate={setScreen}
-      onOpenManual={() => setShowManualPopup(true)} // ← 追加：ManualViewerを開く
+      onOpenManual={() => { if (leagueMode === "boys") setShowBoysManualPopup(true); else setShowManualPopup(true); }} // リーグ別マニュアル
     />
         </>
 )}
@@ -4684,7 +4684,15 @@ return (
         連盟🎤マニュアル
       </div>
       <div className="flex-1 overflow-hidden">
-        <ManualViewer />
+        {leagueMode === "senior" ? (
+          <iframe
+            src="/Senior-manual.pdf#view=FitH"
+            title="リトルシニア 連盟アナウンスマニュアル"
+            className="w-full h-full border-0"
+          />
+        ) : (
+          <ManualViewer />
+        )}
       </div>
       <button
         className="bg-green-600 text-white py-2 text-lg"
