@@ -4684,15 +4684,7 @@ return (
         連盟🎤マニュアル
       </div>
       <div className="flex-1 overflow-hidden">
-        {leagueMode === "senior" ? (
-          <iframe
-            src="/Senior-manual.pdf#view=FitH"
-            title="リトルシニア 連盟アナウンスマニュアル"
-            className="w-full h-full border-0"
-          />
-        ) : (
-          <ManualViewer />
-        )}
+        <ManualViewer fileUrl={leagueMode === "senior" ? "/Senior-manual.pdf" : "/manual.pdf"} />
       </div>
       <button
         className="bg-green-600 text-white py-2 text-lg"
