@@ -240,11 +240,18 @@ export default function OperationSettings({ onNavigate }: Props) {
   };
 
   const leagueMode = getLeagueMode();
-  const manualFile = leagueMode === "boys" ? "Boysmanual.pdf" : "manual.pdf";
+  const manualFile =
+    leagueMode === "senior"
+      ? "Senior-manual.pdf"
+      : leagueMode === "boys"
+        ? "Boysmanual.pdf"
+        : "manual.pdf";
   const manualTitle =
-    leagueMode === "boys"
-      ? "ボーイズリーグ 連盟アナウンスマニュアル"
-      : "ポニーリーグ 連盟アナウンスマニュアル";
+    leagueMode === "senior"
+      ? "リトルシニア 連盟アナウンスマニュアル"
+      : leagueMode === "boys"
+        ? "ボーイズリーグ 連盟アナウンスマニュアル"
+        : "ポニーリーグ 連盟アナウンスマニュアル";
 
   const openManual = () => {
     setShowManual(true);
