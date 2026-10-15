@@ -520,6 +520,13 @@ const App = () => {
   const [isContinueGame, setIsContinueGame] = useState(false);
 
   const [showManualPopup, setShowManualPopup] = useState(false);
+  // 開く瞬間に保存済みリーグを確認し、PDFを確定する（画面stateの更新遅れを回避）。
+  const [manualFileUrl, setManualFileUrl] = useState("/manual.pdf");
+  const openLeagueManual = () => {
+    const activeLeague = getLeagueMode();
+    setManualFileUrl(activeLeague === "senior" ? "/Senior-manual.pdf" : "/manual.pdf");
+    setShowManualPopup(true);
+  };
   const [showContinuationModal, setShowContinuationModal] = useState(false);
   const [showNoContinueModal, setShowNoContinueModal] = useState(false);
 
@@ -2336,7 +2343,7 @@ return (
                 } else if (value === "heat") {
                   setShowHeatPopup(true);
                 } else if (value === "manual") {
-                  setShowManualPopup(true);
+                  openLeagueManual();
                 } else if (value === "pitchlist") {
                   const { matchInfo: onePersonMatch, firstTeam, thirdTeam } =
                     await getOnePersonTeamsFromMatchInfo();
@@ -2740,7 +2747,7 @@ return (
           setShowHeatPopup(true);
 
         } else if (value === "manual") {
-          setShowManualPopup(true);
+          openLeagueManual();
 
         } else if (value === "pitchlist") {
           const team = (await localForage.getItem("team")) as
@@ -3151,7 +3158,7 @@ return (
             setShowHeatPopup(true);
 
           } else if (value === "manual") {
-            setShowManualPopup(true);
+            openLeagueManual();
 
           } else if (value === "pitchlist") {
             type PitchRow = { playerId: number; name: string; total: number };
@@ -3488,7 +3495,7 @@ return (
     </button>
     <OperationSettings
       onNavigate={setScreen}
-      onOpenManual={() => { if (leagueMode === "boys") setShowBoysManualPopup(true); else setShowManualPopup(true); }} // リーグ別マニュアル
+      onOpenManual={() => { if (getLeagueMode() === "boys") setShowBoysManualPopup(true); else openLeagueManual(); }} // リーグ別マニュアル
     />
         </>
 )}
@@ -4684,7 +4691,7 @@ return (
         連盟🎤マニュアル
       </div>
       <div className="flex-1 overflow-hidden">
-        <ManualViewer fileUrl={leagueMode === "senior" ? "/Senior-manual.pdf" : "/manual.pdf"} />
+        <ManualViewer key={manualFileUrl} fileUrl={manualFileUrl} />
       </div>
       <button
         className="bg-green-600 text-white py-2 text-lg"
