@@ -1,3 +1,4 @@
+import CustomInGameMemo from "./components/CustomInGameMemo";
 /**
  * DefenseScreen.tsx
  * ------------------------------------------------------------
@@ -13,6 +14,25 @@ import localForage from 'localforage';
 import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
+import { customPitchText } from "./lib/customDefenseRuntime";
+
+// カスタマイズ文章内のルビのみを安全に描画する。
+// 任意のHTMLは解釈せずテキストとして扱い、タグ文字列の露出・HTML注入を防ぐ。
+const renderPitchLimitRuby = (source: string): React.ReactNode[] => {
+  const result: React.ReactNode[] = [];
+  const rubyPattern = /<ruby>([^<]*)<rt>([^<]*)<\/rt><\/ruby>/g;
+  let pos = 0;
+  let match: RegExpExecArray | null;
+  while ((match = rubyPattern.exec(source)) !== null) {
+    if (match.index > pos) result.push(source.slice(pos, match.index));
+    result.push(
+      <ruby key={match.index}>{match[1]}<rt>{match[2]}</rt></ruby>
+    );
+    pos = rubyPattern.lastIndex;
+  }
+  if (pos < source.length) result.push(source.slice(pos));
+  return result;
+};
 
 const IconMic = () => (
   <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor" aria-hidden>
@@ -528,6 +548,12 @@ const buildPitchAnnouncementMessages = (
   const suffix = pitcher.isFemale ? "さん" : "くん";
   const pitcherRuby = nameRubyHTML(pitcher);
 
+  if (leagueMode === "custom") {
+    const part = current !== total ? "inningEnd" : "inningEndNoTotal";
+    const custom = customPitchText(part, pitcher, current, total, pitchLimitSelected, inning, isTop);
+    if (custom !== null) return [custom];
+  }
+
   // ✅ ボーイズリーグ専用文言
   // 1回：「投球数は〇球です。」
   // 2回以降：「投球数は〇球です。」
@@ -881,10 +907,13 @@ const addPitch = async () => {
     const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
     const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
 
-    const specialMsg =
+    const customLimit = leagueMode === "custom"
+      ? customPitchText(newTotal === warn2 ? "limit" : "limitAdvance", pitcher, newCurrent, newTotal, pitchLimitSelected, inning, isTop)
+      : null;
+    const specialMsg = customLimit ?? (
       newTotal === warn2
         ? `${specialHead}、ただいまの投球で${newTotal}球に到達しました。`
-        : `${specialHead}、ただいまの投球で${newTotal}球です。`;
+        : `${specialHead}、ただいまの投球で${newTotal}球です.`);
 
 
     setPitchLimitMessages([specialMsg]);
@@ -2350,16 +2379,17 @@ const handleStop = () => { ttsStop(); };
       relative text-left
     "
   >
-    {/* 🔔 読み上げタイミング：薄い黄色の注意表示 */}
-    <div className="flex items-center">
+    {/* カスタマイズでは固定のタイミング文を表示しない */}
+    {leagueMode !== "custom" && <div className="flex items-center">
       <div
         className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 text-xs md:text-[clamp(13px,1.9dvh,20px)] font-semibold leading-tight"
       >
         <span className="mr-2 text-lg" aria-hidden="true">⚠️</span>
         守備回終了時に🎤
       </div>
-    </div>
+    </div>}
 
+    <CustomInGameMemo item="pitchCount" parts={["inningEnd", "inningEndNoTotal"]} />
     {/* 🎤 投球数アナウンス：アイコンは1行目の左、続く行は同じ字下げ */}
     <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
       <img
@@ -2990,9 +3020,10 @@ if (typeof reEntryTarget?.index === "number") {
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
+            <CustomInGameMemo item="pitchCount" parts={["limitAdvance", "limit"]} />
             <div className="text-red-700 text-base font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
-                <p key={idx}>{msg}</p>
+                <p key={idx} className="whitespace-pre-wrap">{renderPitchLimitRuby(msg)}</p>
               ))}
             </div>
 

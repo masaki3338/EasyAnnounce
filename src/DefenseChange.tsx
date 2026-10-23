@@ -4,6 +4,9 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
+import { loadCustomInGameTexts, buildDefenseChangeText } from "./lib/customInGameTemplates";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
+import { customDefenseChangeIntro, customPinchDefenseBodies } from "./lib/customDefenseRuntime";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
@@ -557,6 +560,157 @@ const recentHead = (reason?: string) => {
    アナウンス文生成 ― テンプレート完全対応版
    (打順が欠落しない／一人交代時は「以上に代わります」を付けない)
 ========================================================= */
+
+/** カスタマイズ専用・通常の選手交代をテンプレート化する。
+ * DH・代打/代走からの守備入り・リエントリーは既存処理を保護する。 */
+const buildCustomRegularDefenseAnnouncement = (args: {
+  records: ChangeRecord[];
+  teamName: string;
+  battingOrder: { id: number; reason: string }[];
+  assignments: Record<string, number | null>;
+  initialAssignments: Record<string, number | null>;
+  teamPlayers: Player[];
+  usedPlayerInfo: Record<string, any>;
+  ohtaniRule: boolean;
+  reentryIds: Set<number>;
+  dhChanging: boolean;
+}): string | null => {
+  if (getLeagueMode() !== "custom") return null;
+  const { records, teamName, battingOrder, assignments, initialAssignments,
+    teamPlayers, usedPlayerInfo, ohtaniRule, reentryIds, dhChanging } = args;
+  if (!records.length || dhChanging) return null;
+  // リエントリーや代打・代走の履歴は「交代対象の選手」に限って判定する。
+  // 試合の途中で誰かが代走をしただけで、その後の通常交代まで
+  // カスタマイズを無効にしていた不具合を防止する。
+  const substitutedRecords = records.filter(
+    (r): r is Extract<ChangeRecord, {type: "replace" | "mixed"}> =>
+      r.type === "replace" || r.type === "mixed"
+  );
+  const pinchReasons = new Set(["代打", "代走", "臨時代走"]);
+  const isPinchRelated = (id: number): boolean =>
+    Object.entries(usedPlayerInfo || {}).some(([originalId, info]: [string, any]) =>
+      pinchReasons.has(String(info?.reason ?? "")) &&
+      (Number(originalId) === Number(id) || Number(info?.subId) === Number(id))
+    );
+  if (substitutedRecords.some(r =>
+    !r.from || !r.to ||
+    (r.type === "replace" && r.pos === "指") ||
+    reentryIds.has(Number(r.to.id)) ||
+    isPinchRelated(r.from.id) || isPinchRelated(r.to.id)
+  )) return null;
+  // 大谷ルールでも投手とDHの移動を伴わない単純な守備交代は対象とする。
+  // 特別なDH交代は従来の処理を保護する。
+  if (ohtaniRule && substitutedRecords.some(r =>
+    (r.type === "replace" ? r.pos === "投" :
+      r.fromPos === "投" || r.toPos === "投" || r.fromPos === "指" || r.toPos === "指")
+  )) return null;
+  const position: Record<string,string> = {
+    投:"ピッチャー",捕:"キャッチャー",一:"ファースト",二:"セカンド",三:"サード",
+    遊:"ショート",左:"レフト",中:"センター",右:"ライト",指:"指名打者"
+  };
+  const parts = loadCustomInGameTexts(getActiveCustomProfileId())?.defenseChange;
+  if (!parts) return null;
+  const name = (p: Player) => {
+    const same = teamPlayers.filter(q => String(q.lastName||"").trim() === String(p.lastName||"").trim()).length > 1;
+    const rubyPart = (text?:string,kana?:string) => {
+      const esc=(s:string)=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return `<ruby>${esc(text||"")}<rt>${esc(kana||"")}</rt></ruby>`;
+    };
+    return rubyPart(p.lastName,p.lastNameKana)+(same?rubyPart(p.firstName,p.firstNameKana):"");
+  };
+  const honorific=(p:Player)=>p.isFemale?"さん":"くん";
+  const newPlayers:Record<string,string>[]=[];
+  const positionMoves:Record<string,string>[]=[];
+  const orderedChanges: Array<{kind:"new"|"move"; vars:Record<string,string>; fromPos:string; toPos:string}> = [];
+  const changedIds=new Set<number>();
+  for(const r of records){
+    if(r.type==='replace' || r.type==='mixed'){
+      // 守備位置が違う新規選手の交代は mixed として来る。
+      // 以前は mixed を除外していたため、登録テンプレートを使用できなかった。
+      const oldPos=r.type==='mixed' ? r.fromPos :
+        (Object.entries(initialAssignments).find(([,id])=>Number(id)===Number(r.from.id))?.[0] || r.pos);
+      const newPos=r.type==='mixed' ? r.toPos :
+        (Object.entries(assignments).find(([,id])=>Number(id)===Number(r.to.id))?.[0] || r.pos);
+      if(!position[oldPos] || !position[newPos]) return null;
+      // 元の打順は交代記録の order が最も確実（交代後の打順では旧選手IDが消える）。
+      const oldBattingIndex = battingOrder.findIndex(entry => Number(entry.id)===Number(r.from.id));
+      const formerBattingOrder = r.order > 0 ? `${r.order}番` : oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '';
+      const replacementVars:Record<string,string> = {
+        '交代前打順':formerBattingOrder,
+        '交代前・守備位置':position[oldPos], '交代前・選手名':name(r.from),'交代前・敬称':honorific(r.from),
+        '交代後・選手名':name(r.to),'交代後・敬称':honorific(r.to),
+        '交代後・守備位置':position[newPos],'交代後・背番号':String(r.to.number??'')
+      };
+      newPlayers.push(replacementVars);
+      orderedChanges.push({kind:'new',vars:replacementVars,fromPos:oldPos,toPos:newPos});
+      changedIds.add(r.to.id);
+    }else if(r.type==='shift'){
+      if(!position[r.fromPos] || !position[r.toPos]) return null;
+      const oldBattingIndex = battingOrder.findIndex(entry => Number(entry.id)===Number(r.player.id));
+      const movementVars:Record<string,string> = {
+        '交代前打順':oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '',
+        '移動前・守備位置':position[r.fromPos],'移動・選手名':name(r.player),
+        '移動・敬称':honorific(r.player),'移動後・守備位置':position[r.toPos],
+        '移動・背番号':String(r.player.number??'')
+      };
+      positionMoves.push(movementVars);
+      orderedChanges.push({kind:'move',vars:movementVars,fromPos:r.fromPos,toPos:r.toPos});
+      changedIds.add(r.player.id);
+    }
+  }
+  if(!newPlayers.length && !positionMoves.length) return null;
+  // 「変更後の打順」は初期 battingOrder のIDだけから探すと、
+  // 交代後の選手IDがまだ入っておらず、交代人数より少なくなる。
+  // changes は確定前の交代内容と打順を保持しているため、こちらを第一情報源とする。
+  // 同一打順に複数の記録がある場合は最後の変更を優先する。
+  const rowsByOrder = new Map<number,Record<string,string>>();
+  for (const r of records) {
+    const target = r.type === 'shift' ? r.player : r.to;
+    // 打順が未設定(例:DH制で打順を持たない投手)なら推測しない。
+    const fallbackIndex = battingOrder.findIndex(e => Number(e?.id) === Number(target.id));
+    const order = r.order > 0 ? r.order : (fallbackIndex >= 0 ? fallbackIndex + 1 : 0);
+    if (order <= 0) continue;
+    const currentPos = Object.entries(assignments).find(([,id]) => Number(id) === Number(target.id))?.[0];
+    const recordPos = r.type === 'replace' ? r.pos : r.toPos;
+    const pos = currentPos && position[currentPos] ? currentPos : recordPos;
+    if (!position[pos]) continue;
+    rowsByOrder.set(order, {
+      '打順':String(order), '守備位置':position[pos],
+      '選手名':name(target), '敬称':honorific(target),
+      '背番号':String(target.number ?? '')
+    });
+  }
+  const battingRows = [...rowsByOrder.entries()]
+    .sort(([a],[b]) => a-b)
+    .map(([,row]) => row);
+  // 交代先のポジションから動く既存選手を、直後につないで読み上げる。
+  // 例: 新選手→ショート、ショートの選手→レフト、次の新選手→ライト…
+  // 無関係な変更は元の記録順を維持する。循環守備移動にも対応する。
+  const pending = new Set(orderedChanges.map((_,i)=>i));
+  const chainOrder: typeof orderedChanges = [];
+  const take = (i:number) => {pending.delete(i);chainOrder.push(orderedChanges[i]);};
+  const follow = (toPos:string) => {
+    while(true) {
+      const idx=[...pending].find(i=>orderedChanges[i].kind==='move' && orderedChanges[i].fromPos===toPos);
+      if(idx===undefined)break;
+      take(idx);
+      toPos=orderedChanges[idx].toPos;
+    }
+  };
+  orderedChanges.forEach((entry,i)=>{
+    if(entry.kind!=='new'||!pending.has(i))return;
+    take(i);
+    follow(entry.toPos);
+  });
+  // 連鎖に含まれなかった移動は独立した守備変更として残す。
+  for(const i of [...pending]){take(i);if(orderedChanges[i].kind==='move')follow(orderedChanges[i].toPos);}
+  return buildDefenseChangeText(parts,{
+    orderedChanges:chainOrder.map(({kind,vars})=>({kind,vars})),
+    introVars:{'チーム名':teamName}, newPlayers, positionMoves, battingRows,
+    includeBatting:true, includeOutro:true
+  });
+};
+
 const generateAnnouncementText = (
   records: ChangeRecord[],
   teamName: string,
@@ -8207,6 +8361,16 @@ const closeSeniorLastDefenseBody = (value: string): string => {
   return parts.join("");
 };
 
+// カスタマイズモードでは特殊交代の固定開始文も設定内容に合わせる。
+const replaceCustomIntro = (text: string): string => {
+ if (getLeagueMode() !== "custom") return text;
+ const introPattern = /[^\n<]*?、(?:選手の交代並びにシートの変更|選手の交代|シートの変更)をお知らせいたします。/;
+ return text.replace(introPattern, (original) => {
+   const kind = original.includes("並びに") ? "both" : original.includes("シートの変更") ? "position" : "player";
+   return customDefenseChangeIntro(kind, teamName) ?? original;
+ });
+};
+
 const normalizedBaseDisplayText = closeSeniorLastDefenseBody(addSeniorShiftParticle(normalizeSeniorPinchStaysOnField(correctExtraDhBenchLineup(
   removeHeBeforeCommaAfterPosition(
     omitUnchangedDhPinchAnnouncement(baseDisplayText || missingDhAnnouncement || "")
@@ -8218,11 +8382,26 @@ const normalizedBaseSpeakText = closeSeniorLastDefenseBody(addSeniorShiftParticl
   )
 ))));
 
-const displayText = [normalizedBaseDisplayText, pitcherCountAnnouncement]
+const customRegularText = buildCustomRegularDefenseAnnouncement({
+  records: changes, teamName, battingOrder, assignments, initialAssignments,
+  teamPlayers, usedPlayerInfo, ohtaniRule, reentryIds: effectiveReentryIds,
+  dhChanging: !!(pendingDisableDH || dhDisableDirty || dhDisableSnapshot ||
+    (initialAssignments?.["指"] ?? null) !== (assignments?.["指"] ?? null))
+});
+// カスタマイズ対象外・特殊交代時は従来の計算結果をそのまま使用。
+if (customRegularText) {
+  const customSpeak = buildDefenseAnnouncementSpeakText(customRegularText);
+  return {
+    displayText: [customRegularText, pitcherCountAnnouncement].filter(Boolean).join("<br />"),
+    speakText: [customRegularText, pitcherCountAnnouncement].filter(Boolean).join(" "),
+  };
+}
+
+const displayText = [replaceCustomIntro(customPinchDefenseBodies(normalizedBaseDisplayText,teamPlayers,battingOrder)), pitcherCountAnnouncement]
   .filter(Boolean)
   .join("<br />");
 
-const speakText = [normalizedBaseSpeakText, pitcherCountAnnouncement]
+const speakText = [replaceCustomIntro(customPinchDefenseBodies(normalizedBaseSpeakText,teamPlayers,battingOrder)), pitcherCountAnnouncement]
   .filter(Boolean)
   .join(" ");
 
