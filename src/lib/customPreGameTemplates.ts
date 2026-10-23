@@ -1,0 +1,86 @@
+/** 試合前ビルダー専用定義。表示制御／保存は custom リーグモード限定。 */
+export type PreGameKind='notice'|'startTime'|'call'|'warmup'|'sheetKnock'|'lineup'|'umpires'|'defense'|'bench'|'ground'|'gather'|'greeting'|'nationalFlag'|'firstPitch'|'seat'|'custom';
+export type PreGameCondition={team:'any'|'top'|'bottom'|'firstBase'|'thirdBase';announcementMode:'any'|'single'|'normal';matchNo:string;repeat:'any'|'first'|'again';requiresData:boolean};
+export type PreGameTiming={type:'manual'|'beforeStart'|'afterPrevious'|'event';minutes:number;event:string;note:string};
+export type PreGameSegment={id:string;text:string;condition:PreGameCondition;timing:PreGameTiming;phase?:'start'|'notice'|'end'};
+export type PreGameItem={id:string;title:string;kind:PreGameKind;enabled:boolean;target:'any'|'top'|'bottom';condition:PreGameCondition;timing:PreGameTiming;segments:PreGameSegment[];timerSettings?:{minutes:number;noticeMinutes:number}};
+export const defaultCondition=():PreGameCondition=>({team:'any',announcementMode:'any',matchNo:'',repeat:'any',requiresData:false});
+export const defaultTiming=():PreGameTiming=>({type:'manual',minutes:0,event:'',note:''});
+const genId=()=>`item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
+export const COMMON_TOKENS=['チーム名','先攻チーム名','後攻チーム名','大会名','試合番号','開始予定時刻','開始時刻','選手名（苗字）','選手名（フルネーム）','控え選手名（苗字）','控え選手名（フルネーム）','選手敬称','打順','守備位置','背番号','監督名','審判名','審判役割','残り分数','ノック時間','回','表裏','1塁側チーム名','3塁側チーム名'];
+export const PRE_GAME_CATALOG:{kind:PreGameKind;title:string;text:string;target?:'top'|'bottom'}[]=[
+ {kind:'startTime',title:'開始時間の案内',text:'第【試合番号】試合、【先攻チーム名】対【後攻チーム名】の試合開始予定時刻は【開始予定時刻】です。'},
+ {kind:'call',title:'関係者呼び出し',text:'関係者の皆様は本部席までお集まりください。'},
+ {kind:'warmup',title:'ウォーミングアップ',text:'【チーム名】のウォーミングアップを開始してください。'},
+ {kind:'sheetKnock',title:'シートノック（後攻）',text:'後攻、【後攻チーム名】のシートノックを開始してください。',target:'bottom'},
+ {kind:'sheetKnock',title:'シートノック（先攻）',text:'先攻、【先攻チーム名】のシートノックを開始してください。',target:'top'},
+ {kind:'lineup',title:'スタメン発表（先攻）',text:'先攻、【先攻チーム名】のスターティングメンバーを発表いたします。\n【打順】番、【守備位置】、【選手名（フルネーム）】【選手敬称】、背番号【背番号】。',target:'top'},
+ {kind:'lineup',title:'スタメン発表（後攻）',text:'後攻、【後攻チーム名】のスターティングメンバーを発表いたします。\n【打順】番、【守備位置】、【選手名（フルネーム）】【選手敬称】、背番号【背番号】。',target:'bottom'},
+ {kind:'ground',title:'グラウンド整備',text:'ただいまからグラウンド整備を行います。しばらくお待ちください。'},
+ {kind:'greeting',title:'試合開始挨拶',text:'本日はご来場いただきありがとうございます。まもなく試合を開始いたします。'},
+ {kind:'seat',title:'シート紹介',text:'【回】回の【表裏】、【チーム名】の守備位置をご紹介します。【守備位置】、【選手名（フルネーム）】【選手敬称】。'},
+ {kind:'custom',title:'自由項目',text:'アナウンス文を入力してください。'}
+];
+export function fromCatalog(index:number):PreGameItem{
+ const c=PRE_GAME_CATALOG[index]||PRE_GAME_CATALOG[PRE_GAME_CATALOG.length-1];
+ const segment=(text:string,phase?:'start'|'notice'|'end'):PreGameSegment=>({id:genId(),text,phase,condition:defaultCondition(),timing:defaultTiming()});
+ return {id:genId(),title:c.title,kind:c.kind,enabled:true,target:c.target||'any',condition:{...defaultCondition(),team:c.target||'any'},timing:defaultTiming(),timerSettings:c.kind==='warmup'?{minutes:10,noticeMinutes:2}:undefined,segments:c.kind==='sheetKnock'?[segment(c.text,'start'),segment('ノック時間、残り【残り分数】分です。','notice'),segment('ノックを終了してください。','end')]:c.kind==='warmup'?[segment(c.text,'start'),segment('ウォーミングアップ、残り【残り分数】分です。','notice'),segment('ウォーミングアップを終了してください。','end')]:[segment(c.text)]};
+}
+export const REMOVED_PRE_GAME_TITLES = ["開始時間変更", "チーム呼び出し", "審判員紹介", "守備紹介", "控え紹介", "整列案内", "開始時刻放送", "国旗掲揚", "始球式"];
+const knockPhase=(title:string):'start'|'notice'|'end'=>title.includes('残り')?'notice':title.includes('終了')?'end':'start';
+export const initialPreGameItems=()=>{
+ const all=PRE_GAME_CATALOG.slice(0,-1).map((_,i)=>fromCatalog(i));
+ return consolidateWarmupItems(consolidateKnockItems(all));
+};
+// 旧保存データのシートノック三分割を一画面に統合。旧文言は維持する。
+export function consolidateKnockItems(all:PreGameItem[]):PreGameItem[]{
+ const withoutRemoved=all.filter(x=>!REMOVED_PRE_GAME_TITLES.includes(x.title));
+ const output:PreGameItem[]=[];
+ const seen=new Set<string>();
+ for(const item of withoutRemoved){
+  if(item.kind!=='sheetKnock'){output.push(item);continue;}
+  const team=item.target==='top'?'top':item.target==='bottom'?'bottom':'any';
+  if(seen.has(team))continue;
+  seen.add(team);
+  const group=withoutRemoved.filter(x=>x.kind==='sheetKnock'&&x.target===team);
+  const segments=group.flatMap(x=>x.segments.map(y=>({...y,id:y.id,phase:y.phase||knockPhase(x.title)} as PreGameSegment & {phase:string})));
+  segments.sort((a,b)=>({start:0,notice:1,end:2}[a.phase]-{start:0,notice:1,end:2}[b.phase]));
+  output.push({...item,title:team==='top'?'シートノック（先攻）':team==='bottom'?'シートノック（後攻）':'シートノック',segments});
+ }
+ return output;
+}
+
+// 旧版の開始・終了2項目をまとめ、入力済み文章をできる限り維持する。
+export function consolidateWarmupItems(all:PreGameItem[]):PreGameItem[]{
+ const output:PreGameItem[]=[];const seen=new Set<string>();
+ for(const item of all){
+  if(item.kind!=='warmup'){output.push(item);continue;}
+  const team=item.condition?.team&&item.condition.team!=='any'?item.condition.team:(item.target||'any');
+  if(seen.has(team))continue;
+  seen.add(team);
+  const group=all.filter(x=>x.kind==='warmup'&&(x.condition?.team&&x.condition.team!=='any'?x.condition.team:(x.target||'any'))===team);
+  const defaults=fromCatalog(PRE_GAME_CATALOG.findIndex(c=>c.kind==='warmup'));
+  const getPhase=(x:PreGameItem,y:PreGameSegment):'start'|'notice'|'end'=>y.phase||(x.title.includes('終了')?'end':x.title.includes('残り')?'notice':'start');
+  const segments=(['start','notice','end'] as const).map(phase=>{
+   const found=group.flatMap(x=>x.segments.map(y=>({x,y}))).find(v=>getPhase(v.x,v.y)===phase);
+   return found?{...found.y,phase}:{...defaults.segments.find(y=>y.phase===phase)!,id:genId()};
+  });
+  output.push({...item,title:'ウォーミングアップ',segments,timerSettings:item.timerSettings||{minutes:10,noticeMinutes:2}});
+ }
+ return output;
+}
+
+const key=(profileId:string)=>'easyannounce:custom:preGame:v1:'+profileId;
+export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed))):initialPreGameItems();}catch{return initialPreGameItems();}}
+export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(normalizeSingleTextItems(items)));}
+export function renderPreGameText(text:string,values:Record<string,string>){return text.replace(/【([^】]+)】/g,(_,k)=>Object.prototype.hasOwnProperty.call(values,k)?values[k]:`【${k}】`);}
+export function validatePreGameText(text:string){return [...text.matchAll(/【([^】]+)】/g)].map(x=>x[1]).filter(k=>!COMMON_TOKENS.includes(k)&&k!=='選手名');}
+// UIから廃止した条件（アナウンスモード・試合番号・実行回数）は、旧保存データに残っていても評価しない。
+export function matchesPreGameCondition(c:PreGameCondition,s:{team?:string;announcementMode?:string;matchNo?:number;firstTime?:boolean;hasData?:boolean}){
+ return c.team==='any'||c.team===s.team;
+}
+
+/** 通常項目は1文のみ。シートノックとウォーミングアップは3文を維持する。 */
+export function normalizeSingleTextItems(items:PreGameItem[]):PreGameItem[]{
+ return items.map(item=>{const condition={...defaultCondition(),...item.condition,team:item.condition?.team&&item.condition.team!=='any'?item.condition.team:(item.target||'any')};return (item.kind==='sheetKnock'||item.kind==='warmup')?{...item,condition}:{...item,condition,segments:item.segments.length?[item.segments[0]]:[{id:genId(),text:'',condition:defaultCondition(),timing:defaultTiming()}]};});
+}
