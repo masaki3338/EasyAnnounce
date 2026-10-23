@@ -623,7 +623,22 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   const positionMoves:Record<string,string>[]=[];
   const orderedChanges: Array<{kind:"new"|"move"; vars:Record<string,string>; fromPos:string; toPos:string}> = [];
   const changedIds=new Set<number>();
+  // カスタマイズモード限定：同じ選手の同じ守備移動が交代記録に
+  // 重複登録されても、アナウンス本文には1回しか追加しない。
+  // 例：「ショートの秋山がセカンド、」の直後に
+  // 「ショートの秋山がセカンドに入ります。」が再度出る現象を防ぐ。
+  const seenMoves = new Set<string>();
+  // 実画面では同じ選手の移動が別のID/移動前位置で記録される場合もある。
+  // 表示される選手名＋移動先でも重複を検出する。
+  const seenMoveAnnouncements = new Set<string>();
   for(const r of records){
+    if(r.type==='shift'){
+      const moveKey = `${Number(r.player.id)}:${r.fromPos}:${r.toPos}`;
+      const displayMoveKey = `${String(r.player.lastName ?? '').trim()}|${String(r.player.firstName ?? '').trim()}|${r.toPos}`;
+      if(seenMoves.has(moveKey) || (String(r.player.lastName ?? '').trim() && seenMoveAnnouncements.has(displayMoveKey))) continue;
+      seenMoves.add(moveKey);
+      if(String(r.player.lastName ?? '').trim()) seenMoveAnnouncements.add(displayMoveKey);
+    }
     if(r.type==='replace' || r.type==='mixed'){
       // 守備位置が違う新規選手の交代は mixed として来る。
       // 以前は mixed を除外していたため、登録テンプレートを使用できなかった。
