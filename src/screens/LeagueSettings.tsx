@@ -150,6 +150,21 @@ export default function LeagueSettings({ onNavigate }: Props) {
             onClick={() => handleSelect("senior")}
           />
 
+          <OptionCard
+            selected={mode === "custom"}
+            title="カスタマイズ"
+            desc="独自のアナウンスで動作"
+            onClick={() => handleSelect("custom")}
+          />
+
+          {/* カスタマイズモードでのみ、専用の文章設定を表示する。 */}
+          {mode === "custom" && <section className="rounded-2xl border border-emerald-400/40 bg-emerald-950/30 p-4 space-y-3">
+            <h2 className="text-lg font-bold">🛠 カスタマイズ（設定作成）</h2>
+            <p className="text-sm opacity-85">試合前の進行表・文章・条件設定と、試合中の固定文言を編集・保存できます。</p>
+            <button type="button" onClick={() => onNavigate("custom-pre-game-settings")} className="w-full rounded-xl bg-sky-600 px-4 py-3 font-bold text-white active:scale-[0.98]">試合前アナウンス設定を開く →</button>
+            <button type="button" onClick={() => onNavigate("custom-in-game-settings")} className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white active:scale-[0.98]">試合中アナウンス設定を開く →</button>
+          </section>}
+
           {mode === "senior" && (
             <section className="space-y-5 rounded-2xl border border-sky-300/40 bg-slate-800 p-4 text-left">
               <h2 className="text-xl font-extrabold">リトルシニア アナウンス設定</h2>
