@@ -84,8 +84,33 @@ export function substituteTokens(text:string,data:Record<string,string>){return 
 /** 守備交代は新規出場→既存守備移動→打順→終了で組み立てる。 */
 export function buildDefenseChangeText(parts:Record<string,string>,args:{introVars:Record<string,string>;newPlayers:Record<string,string>[];positionMoves:Record<string,string>[];battingRows:Record<string,string>[];includeBatting?:boolean;includeOutro?:boolean;extraSegments?:string[];orderedChanges?:Array<{kind:"new"|"move";vars:Record<string,string>}>}){
  const renderNew=(v:Record<string,string>)=>substituteTokens((v['交代前・守備位置']===v['交代後・守備位置'] ? parts.newPlayerSame : parts.newPlayerDifferent) || parts.newPlayer || '',v);
- const ordered=args.orderedChanges?.map(c=>c.kind==='new'?renderNew(c.vars):substituteTokens(parts.positionMove||'',c.vars));
- const chunks=[...(args.extraSegments||[]),...(ordered??[...args.newPlayers.map(renderNew),...args.positionMoves.map(v=>substituteTokens(parts.positionMove||'',v))])];
+ // カスタマイズ専用：同じ選手が同じ位置に移動する案内は一度だけ出す。
+ // 交代記録の選手ID・移動前位置が違っていても、表示内容が同じなら重複扱い。
+ // 後ろの案内を残すことで、途中/最後の接続文が正しく付き直される。
+ const changesWithVars: Array<{kind:'new'|'move';vars:Record<string,string>}> =
+  args.orderedChanges ?? [
+   ...args.newPlayers.map(vars=>({kind:'new' as const,vars})),
+   ...args.positionMoves.map(vars=>({kind:'move' as const,vars}))
+  ];
+ const normalizeName=(name:string)=>String(name??'')
+  .replace(/<rt>[^<]*<\/rt>/g,'').replace(/<[^>]+>/g,'').replace(/\s+/g,'').trim();
+ const seenMoveNames=new Set<string>();
+ const uniqueChanges=changesWithVars.filter((change,index)=>{
+  if(change.kind!=='move')return true;
+  const name=normalizeName(change.vars['移動・選手名']||'');
+  const toPos=String(change.vars['移動後・守備位置']||'').trim();
+  if(!name||!toPos)return true;
+  const key=`${name}=>${toPos}`;
+  // 最後に現れた同じ移動を採用。最終文末の接続文も正常に付ける。
+  if(changesWithVars.slice(index+1).some(next=>next.kind==='move' &&
+   normalizeName(next.vars['移動・選手名']||'')===name &&
+   String(next.vars['移動後・守備位置']||'').trim()===toPos))return false;
+  if(seenMoveNames.has(key))return false;
+  seenMoveNames.add(key);
+  return true;
+ });
+ const ordered=uniqueChanges.map(c=>c.kind==='new'?renderNew(c.vars):substituteTokens(parts.positionMove||'',c.vars));
+ const chunks=[...(args.extraSegments||[]),...ordered];
  // 最後の接続文の直前に句読点が残っている場合は取り除く。
  // 例：「セカンド、」＋「に入ります。」→「セカンドに入ります。」
  // 途中の接続文は従来の句読点を維持する。
