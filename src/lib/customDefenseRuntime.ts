@@ -59,8 +59,12 @@ export function customPinchDefenseBodies(source:string,players:any[],battingOrde
     const output=substituteTokens(template,{
       '交代前打順':previousOrder>=0?`${previousOrder+1}番`:'',
       '交代前・選手名':from?getName(from):'',
+      '交代前・選手名（苗字）':from?getName(from):'',
+      '交代前・選手名（フルネーム）':from?getFullName(from):'',
       '交代前・敬称':from?(from.isFemale?'さん':'くん'):'',
       '交代後・選手名':getName(to),
+      '交代後・選手名（苗字）':getName(to),
+      '交代後・選手名（フルネーム）':getFullName(to),
       '交代後・敬称':to.isFemale?'さん':'くん',
       '交代後・守備位置':pos,
       '交代後・背番号':String(to.number??''),
@@ -70,4 +74,27 @@ export function customPinchDefenseBodies(source:string,players:any[],battingOrde
     return /[。.!！、，,]\s*$/.test(output) ? output : output + joiner;
   };
   return source.split(/(\n|<br\s*\/?>)/i).map((segment,i)=> i%2===1 ? segment : run(segment)).join('');
+}
+
+/** 守備リエントリーの設定文。選手名のふりがなをルビで保持する。 */
+export function customDefenseReentryText(before:any,after:any,position:string,kind:'pinch'|'defense',reason='代打'):string|null {
+ if(getLeagueMode()!=='custom')return null;
+ const part=kind==='pinch'?'reentryFromPinch':'reentryFromDefense';
+ const source=loadCustomInGameTexts(getActiveCustomProfileId()).defenseChange?.[part];
+ if(typeof source!=='string')return null;
+ const pronoun=reason==='代走'?'代走':reason==='臨時代走'?'臨時代走':'代打';
+ const full=(p:any)=>nameRuby(p?.lastName,p?.lastNameKana)+(p?.firstName?'、'+nameRuby(p?.firstName,p?.firstNameKana):'');
+ const values={
+  '交代前・選手名（苗字）':nameRuby(before?.lastName,before?.lastNameKana),
+  '交代前・選手名（フルネーム）':full(before),
+  '交代前・選手名':nameRuby(before?.lastName,before?.lastNameKana),
+  '交代前・敬称':before?.isFemale?'さん':'くん',
+  '交代後・選手名（苗字）':nameRuby(after?.lastName,after?.lastNameKana),
+  '交代後・選手名（フルネーム）':full(after),
+  '交代後・選手名':nameRuby(after?.lastName,after?.lastNameKana),
+  '交代後・敬称':after?.isFemale?'さん':'くん',
+  '交代後・守備位置':position
+ };
+ const mapped=source.replace(/代打（代走）/g,pronoun);
+ return substituteTokens(mapped,values);
 }

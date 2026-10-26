@@ -73,7 +73,92 @@ export function consolidateWarmupItems(all:PreGameItem[]):PreGameItem[]{
 const key=(profileId:string)=>'easyannounce:custom:preGame:v1:'+profileId;
 export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed))):initialPreGameItems();}catch{return initialPreGameItems();}}
 export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(normalizeSingleTextItems(items)));}
-export function renderPreGameText(text:string,values:Record<string,string>){return text.replace(/【([^】]+)】/g,(_,k)=>Object.prototype.hasOwnProperty.call(values,k)?values[k]:`【${k}】`);}
+
+export type PreGamePreviewPlayer={battingOrder:string;position:string;lastName:string;fullName:string;honorific:string;number:string;fieldingOrder:number};
+
+const PREVIEW_STARTERS:PreGamePreviewPlayer[]=[
+ {battingOrder:'1',position:'ピッチャー',lastName:'青空',fullName:'青空 太郎',honorific:'さん',number:'1',fieldingOrder:1},
+ {battingOrder:'2',position:'キャッチャー',lastName:'若葉',fullName:'若葉 次郎',honorific:'くん',number:'3',fieldingOrder:2},
+ {battingOrder:'3',position:'ファースト',lastName:'星野',fullName:'星野 三郎',honorific:'くん',number:'5',fieldingOrder:3},
+ {battingOrder:'4',position:'セカンド',lastName:'春風',fullName:'春風 四郎',honorific:'くん',number:'4',fieldingOrder:4},
+ {battingOrder:'5',position:'サード',lastName:'夏川',fullName:'夏川 五郎',honorific:'くん',number:'6',fieldingOrder:5},
+ {battingOrder:'6',position:'ショート',lastName:'秋月',fullName:'秋月 六郎',honorific:'くん',number:'7',fieldingOrder:6},
+ {battingOrder:'7',position:'レフト',lastName:'冬野',fullName:'冬野 七郎',honorific:'くん',number:'8',fieldingOrder:7},
+ {battingOrder:'8',position:'センター',lastName:'朝日',fullName:'朝日 八郎',honorific:'くん',number:'9',fieldingOrder:8},
+ {battingOrder:'9',position:'ライト',lastName:'夕凪',fullName:'夕凪 九郎',honorific:'くん',number:'10',fieldingOrder:9},
+];
+
+const PREVIEW_BENCH:PreGamePreviewPlayer[]=[
+ {battingOrder:'',position:'',lastName:'花咲',fullName:'花咲 十郎',honorific:'くん',number:'12',fieldingOrder:0},
+ {battingOrder:'',position:'',lastName:'水音',fullName:'水音 花子',honorific:'さん',number:'14',fieldingOrder:0},
+ {battingOrder:'',position:'',lastName:'虹原',fullName:'虹原 大和',honorific:'くん',number:'16',fieldingOrder:0},
+];
+
+function replaceTokensByMap(text:string, values:Record<string,string>){
+ return text.replace(/【([^】]+)】/g,(_,k)=>Object.prototype.hasOwnProperty.call(values,k)?values[k]:`【${k}】`);
+}
+function hasAny(text:string,tokens:string[]){return tokens.some(t=>text.includes(`【${t}】`));}
+function basePreviewMap(values:Record<string,string>){return {...values};}
+function playerPreviewMap(player:PreGamePreviewPlayer, values:Record<string,string>){
+ return {
+  ...basePreviewMap(values),
+  '選手名': player.fullName,
+  '選手名（苗字）': player.lastName,
+  '選手名（フルネーム）': player.fullName,
+  '控え選手名（苗字）': player.lastName,
+  '控え選手名（フルネーム）': player.fullName,
+  '選手敬称': player.honorific,
+  '打順': player.battingOrder,
+  '守備位置': player.position,
+  '背番号': player.number,
+ }
+}
+
+export function renderPreGamePreview(item:PreGameItem, segment:PreGameSegment, values:Record<string,string>){
+ const text=segment.text||'';
+ const lines=text.split(/\r?\n/);
+ const starterTokens=['選手名（苗字）','選手名（フルネーム）','選手名','打順','守備位置'];
+ const benchTokens=['控え選手名（苗字）','控え選手名（フルネーム）'];
+ const starterList=item.kind==='seat'?[...PREVIEW_STARTERS].sort((a,b)=>a.fieldingOrder-b.fieldingOrder):PREVIEW_STARTERS;
+
+ // シート紹介は同じ行の導入文だけ1回表示し、選手行のみ9人分展開する。
+ // 改行より後の文章（「以上です。」など）は繰り返さない。
+ if(item.kind==='seat'){
+  const firstLine=lines[0]||'';
+  const firstStarterTokenPos=Math.min(...starterTokens.map(t=>{const idx=firstLine.indexOf(`【${t}】`);return idx>=0?idx:Infinity;}));
+  if(firstStarterTokenPos!==Infinity){
+   const intro=firstLine.slice(0,firstStarterTokenPos);
+   const playerLine=firstLine.slice(firstStarterTokenPos);
+   const out:string[]=[];
+   if(intro.trim()) out.push(replaceTokensByMap(intro.trim(),basePreviewMap(values)));
+   for(const p of starterList)out.push(replaceTokensByMap(playerLine.trim(),playerPreviewMap(p,values)));
+   for(const line of lines.slice(1))out.push(replaceTokensByMap(line,basePreviewMap(values)));
+   return out.join('\n');
+  }
+ }
+
+ const out:string[]=[];
+ for(const line of lines){
+  const trimmed=line.trim();
+  if(!trimmed){out.push('');continue;}
+  if(hasAny(trimmed, benchTokens)){
+   for(const p of PREVIEW_BENCH){
+    out.push(replaceTokensByMap(trimmed, playerPreviewMap(p, values)));
+   }
+   continue;
+  }
+  if(hasAny(trimmed, starterTokens)){
+   for(const p of starterList){
+    out.push(replaceTokensByMap(trimmed, playerPreviewMap(p, values)));
+   }
+   continue;
+  }
+  out.push(replaceTokensByMap(trimmed, basePreviewMap(values)));
+ }
+ return out.join('\n');
+}
+
+export function renderPreGameText(text:string,values:Record<string,string>){return replaceTokensByMap(text,values);}
 export function validatePreGameText(text:string){return [...text.matchAll(/【([^】]+)】/g)].map(x=>x[1]).filter(k=>!COMMON_TOKENS.includes(k)&&k!=='選手名');}
 // UIから廃止した条件（アナウンスモード・試合番号・実行回数）は、旧保存データに残っていても評価しない。
 export function matchesPreGameCondition(c:PreGameCondition,s:{team?:string;announcementMode?:string;matchNo?:number;firstTime?:boolean;hasData?:boolean}){

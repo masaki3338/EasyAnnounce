@@ -16,6 +16,18 @@ export function createCustomProfile(name:string,sourceId?:string):CustomProfile{
  if(sourceId){for(const prefix of ['easyannounce:custom:inGame:v1:','easyannounce:custom:preGame:v1:']){const raw=localStorage.getItem(prefix+sourceId);if(raw!==null)localStorage.setItem(prefix+id,raw);}}
  setActiveCustomProfileId(id);return next;
 }
+
+/** 選択中グループの試合前・試合中設定を、登録済みグループへ上書きする。 */
+export function overwriteCustomProfileSettings(sourceId:string,targetId:string){
+ const profiles=getCustomProfiles();
+ if(!profiles.some(p=>p.id===sourceId)||!profiles.some(p=>p.id===targetId))throw new Error('設定グループが見つかりません');
+ if(sourceId===targetId)return;
+ for(const prefix of ['easyannounce:custom:preGame:v1:','easyannounce:custom:inGame:v1:']){
+  const raw=localStorage.getItem(prefix+sourceId);
+  if(raw===null)localStorage.removeItem(prefix+targetId);
+  else localStorage.setItem(prefix+targetId,raw);
+ }
+}
 export function renameCustomProfile(id:string,name:string){const profiles=getCustomProfiles().map(x=>x.id===id?{...x,name:name.trim()||x.name}:x);localStorage.setItem(LIST,JSON.stringify(profiles));}
 export function deleteCustomProfile(id:string){const profiles=getCustomProfiles().filter(x=>x.id!==id);localStorage.setItem(LIST,JSON.stringify(profiles.length?profiles:[initial]));for(const prefix of ['easyannounce:custom:inGame:v1:','easyannounce:custom:preGame:v1:'])localStorage.removeItem(prefix+id);if(getActiveCustomProfileId()===id)setActiveCustomProfileId(getCustomProfiles()[0].id);}
 export function exportCustomProfile(id:string){const profile=getCustomProfiles().find(p=>p.id===id);if(!profile)return '';return JSON.stringify({format:'easyannounce-custom-v1',profile,preGame:JSON.parse(localStorage.getItem('easyannounce:custom:preGame:v1:'+id)||'null'),inGame:JSON.parse(localStorage.getItem('easyannounce:custom:inGame:v1:'+id)||'null')},null,2);}

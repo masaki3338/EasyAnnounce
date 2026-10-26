@@ -12,6 +12,7 @@ export const CUSTOM_IN_GAME_ITEMS:AnnounceItem[] = [
  {id:'pinchRunner',label:'代走',category:'offense',parts:[p('main','代走の案内','【交代前選手名（苗字）】【交代前敬称】に代わりまして、代走、【交代後選手名（苗字）】【交代後敬称】、背番号【交代後背番号】。',['交代前選手名（苗字）','交代前選手名（フルネーム）','交代前敬称','交代後選手名（苗字）','交代後選手名（フルネーム）','交代後敬称','交代後背番号','チーム名','1,2,3塁','ファースト,セカンド,サード'])]},
  {id:'courtesyRunner',label:'臨時代走',category:'offense',parts:[p('main','臨時代走の案内','臨時代走、【交代後選手名（苗字）】【交代後敬称】、背番号【交代後背番号】。',['交代後選手名（苗字）','交代後選手名（フルネーム）','交代後敬称','交代後背番号','交代前選手名（苗字）','交代前選手名（フルネーム）'])]},
  {id:'intentionalWalk',label:'申告敬遠',category:'offense',parts:[p('main','申告敬遠の案内','申告敬遠により、打者は一塁へ進みます。',['選手名（苗字）','選手名（フルネーム）','敬称','チーム名'])]},
+ {id:'offenseReentry',label:'代打・代走でのリエントリー',category:'offense',parts:[p('main','リエントリーの案内','【打順】番 【交代前選手名（苗字）】【交代前敬称】に代わりまして【交代後選手名（苗字）】【交代後敬称】がリエントリーで戻ります。\nバッターは【交代後選手名（苗字）】【交代後敬称】。',['回','表裏','打順','交代前選手名（苗字）','交代前選手名（フルネーム）','交代前敬称','交代後選手名（苗字）','交代後選手名（フルネーム）','交代後敬称','交代後背番号','チーム名'])]},
  {id:'pitchCount',label:'投球数の放送',category:'defense',parts:[
  p('inningEnd','守備回終了時（合計投球数あり）','ただいまの回、【投手名（苗字）】【敬称】の投球数は【この回の投球数】球、合計【合計投球数】球です。',['投手名（苗字）','投手名（フルネーム）','敬称','この回の投球数','合計投球数','回','表裏']),
  p('inningEndNoTotal','守備回終了時（合計投球数なし）','ただいまの回、【投手名（苗字）】【敬称】の投球数は【この回の投球数】球です。',['投手名（苗字）','投手名（フルネーム）','敬称','この回の投球数','回','表裏']),
@@ -22,17 +23,19 @@ export const CUSTOM_IN_GAME_ITEMS:AnnounceItem[] = [
  p('introPlayer','① 開始文：選手交代のみ','【チーム名】、選手の交代をお知らせいたします。',['チーム名']),
  p('introPosition','① 開始文：守備変更のみ','【チーム名】、シートの変更をお知らせいたします。',['チーム名']),
  p('introBoth','① 開始文：選手交代＋守備変更','【チーム名】、選手の交代並びにシートの変更をお知らせいたします。',['チーム名']),
- p('newPlayerSame','② 新しく出場する選手(同じ守備位置)','【交代前・守備位置】【交代前・選手名】【交代前・敬称】に代わりまして【交代後・選手名】【交代後・敬称】が入ります。',['交代前・守備位置','交代前・選手名','交代前・敬称','交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
- p('newPlayerDifferent','③ 新しく出場する選手(違う守備位置)','【交代前・守備位置】【交代前・選手名】【交代前・敬称】に代わりまして【交代前打順】に【交代後・選手名】【交代後・敬称】が入り　【交代後・守備位置】　へ',['交代前・守備位置','交代前・選手名','交代前・敬称','交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
- p('positionMove','③ 既存選手の守備移動','【移動前・守備位置】の【移動・選手名】【移動・敬称】が【移動後・守備位置】に',['移動前・守備位置','移動・選手名','移動・敬称','移動後・守備位置','交代前打順']),
+ p('newPlayerSame','② 新しく出場する選手(同じ守備位置)','【交代前・守備位置】【交代前・選手名（苗字）】【交代前・敬称】に代わりまして【交代後・選手名（苗字）】【交代後・敬称】が入ります。',['交代前・守備位置','交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('newPlayerDifferent','③ 新しく出場する選手(違う守備位置)','【交代前・守備位置】【交代前・選手名（苗字）】【交代前・敬称】に代わりまして【交代前打順】に【交代後・選手名（苗字）】【交代後・敬称】が入り　【交代後・守備位置】　へ',['交代前・守備位置','交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('positionMove','③ 既存選手の守備移動','【移動前・守備位置】の【移動・選手名（苗字）】【移動・敬称】が【移動後・守備位置】に',['移動前・守備位置','移動・選手名（苗字）','移動・選手名（フルネーム）','移動・敬称','移動後・守備位置','交代前打順']),
  // 代打・代走から守備へ入る場面は、同じ選手が守備に残るか別選手へ交代するかで分ける。
- p('pinchHitStay','④ 代打からの守備交代：そのまま入る','先ほど代打いたしました【交代後・選手名】【交代後・敬称】がそのまま【交代後・守備位置】に',['交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
- p('pinchHitReplace','⑤ 代打からの守備交代：選手交代','先ほど代打いたしました【交代前・選手名】【交代前・敬称】に代わりまして、【交代後・選手名】【交代後・敬称】が【交代後・守備位置】に',['交代前・選手名','交代前・敬称','交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
- p('pinchRunStay','⑥ 代走からの守備交代：そのまま入る','先ほど代走いたしました【交代後・選手名】【交代後・敬称】がそのまま【交代後・守備位置】に',['交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
- p('pinchRunReplace','⑦ 代走からの守備交代：選手交代','先ほど代走いたしました【交代前・選手名】【交代前・敬称】に代わりまして、【交代後・選手名】【交代後・敬称】が【交代後・守備位置】に',['交代前・選手名','交代前・敬称','交代後・選手名','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('pinchHitStay','④ 代打からの守備交代：そのまま入る','先ほど代打いたしました【交代後・選手名（苗字）】【交代後・敬称】がそのまま【交代後・守備位置】に',['交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('pinchHitReplace','⑤ 代打からの守備交代：選手交代','先ほど代打いたしました【交代前・選手名（苗字）】【交代前・敬称】に代わりまして、【交代後・選手名（苗字）】【交代後・敬称】が【交代後・守備位置】に',['交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('pinchRunStay','⑥ 代走からの守備交代：そのまま入る','先ほど代走いたしました【交代後・選手名（苗字）】【交代後・敬称】がそのまま【交代後・守備位置】に',['交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('pinchRunReplace','⑦ 代走からの守備交代：選手交代','先ほど代走いたしました【交代前・選手名（苗字）】【交代前・敬称】に代わりまして、【交代後・選手名（苗字）】【交代後・敬称】が【交代後・守備位置】に',['交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代後・背番号','交代前打順']),
+ p('reentryFromPinch','⑧ 代打／代走からの守備リエントリー','先ほど代打（代走）いたしました【交代前・選手名（苗字）】【交代前・敬称】に代わりまして【交代後・選手名（苗字）】【交代後・敬称】がリエントリーで【交代後・守備位置】に入ります。',['交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代前打順']),
+ p('reentryFromDefense','⑨ 守備からのリエントリー','【交代前・選手名（苗字）】【交代前・敬称】に代わりまして【交代後・選手名（苗字）】【交代後・敬称】がリエントリーで【交代後・守備位置】に入ります。',['交代前・選手名（苗字）','交代前・選手名（フルネーム）','交代前・敬称','交代後・選手名（苗字）','交代後・選手名（フルネーム）','交代後・敬称','交代後・守備位置','交代前打順']),
  p('middle','⑧ 途中の接続文','入り、'),p('last','⑨ 最後の接続文','入ります。'),
  p('battingIntro','⑩ 打順紹介の開始文','続きまして、変更後の打順をお知らせいたします。'),
- p('battingRow','⑪ 打順紹介（選手ごと）','【打順】番、【守備位置】、【選手名】【敬称】、背番号【背番号】。',['打順','守備位置','選手名','敬称','背番号']),
+ p('battingRow','⑪ 打順紹介（選手ごと）','【打順】番、【守備位置】、【選手名（苗字）】【敬称】、背番号【背番号】。',['打順','守備位置','選手名（苗字）','選手名（フルネーム）','敬称','背番号']),
  p('outro','⑫ 終了文','以上のように代わります。')
  ]},
  {id:'gameEnd',label:'試合終了',category:'other',parts:[p('main','試合終了の案内','ただいまをもちまして、【先攻チーム名】対【後攻チーム名】の試合は終了いたしました。',['先攻チーム名','後攻チーム名','先攻得点','後攻得点','勝利チーム名','終了時刻'])]},
@@ -66,11 +69,21 @@ export const START_TIME_TIMINGS:{value:StartTimeTiming;label:string}[]=[
 export type CustomInGameTexts = Record<string,Record<string,string>>;
 export const initialCustomInGameTexts=():CustomInGameTexts=>Object.fromEntries(CUSTOM_IN_GAME_ITEMS.map(x=>[x.id,Object.fromEntries([...x.parts.map(t=>[t.id,t.text]),...(x.id==='startTime'?[['timing','afterFirstPitch']]:[]),...(x.id==='score'?[['noScoreEnabled','false']]:[])] )]));
 const storageKey = (profileId:string) => `easyannounce:custom:inGame:v1:${profileId}`;
+/** 旧版のリエントリー・守備交代の差し込み記号を新表記へ引き継ぐ。 */
+export function migrateReentryNameTokens(itemId:string, value:string):string {
+ if(itemId==='offenseReentry')return value
+  .replace(/【交代前・選手名】/g,'【交代前選手名（苗字）】')
+  .replace(/【交代後・選手名】/g,'【交代後選手名（苗字）】')
+  .replace(/【交代前・敬称】/g,'【交代前敬称】')
+  .replace(/【交代後・敬称】/g,'【交代後敬称】');
+ if(itemId==='defenseChange')return value.replace(/【(交代前・選手名|交代後・選手名|移動・選手名|選手名)】/g,(_m,n)=>`【${n}（苗字）】`);
+ return value;
+}
 export function loadCustomInGameTexts(profileId:string):CustomInGameTexts {
  const base=initialCustomInGameTexts();
  if(typeof window==='undefined')return base;
  try{const raw=localStorage.getItem(storageKey(profileId));if(!raw)return base;const obj=JSON.parse(raw);if(!obj||typeof obj!=='object')return base;
-  for(const def of CUSTOM_IN_GAME_ITEMS){for(const part of def.parts){const t=obj?.[def.id]?.[part.id];if(typeof t==='string')base[def.id][part.id]= def.id==='startTime'&&part.id==='main'&&t==='この試合の 試合開始時刻は、【開始時刻】です。'?'この試合の 試合開始時刻は 【開始時刻】です。':migrateTieBreakTokens(def.id,migratePitchTokens(def.id,migrateOffenseTokens(def.id,t)));} if(def.id==='defenseChange'&&typeof obj?.defenseChange?.intro==='string'&&typeof obj?.defenseChange?.introPlayer!=='string')base.defenseChange.introPlayer=obj.defenseChange.intro;
+  for(const def of CUSTOM_IN_GAME_ITEMS){for(const part of def.parts){const t=obj?.[def.id]?.[part.id];if(typeof t==='string')base[def.id][part.id]= def.id==='startTime'&&part.id==='main'&&t==='この試合の 試合開始時刻は、【開始時刻】です。'?'この試合の 試合開始時刻は 【開始時刻】です。':migrateReentryNameTokens(def.id,migrateTieBreakTokens(def.id,migratePitchTokens(def.id,migrateOffenseTokens(def.id,t))));} if(def.id==='defenseChange'&&typeof obj?.defenseChange?.intro==='string'&&typeof obj?.defenseChange?.introPlayer!=='string')base.defenseChange.introPlayer=obj.defenseChange.intro;
   for(const part of def.parts){const m=obj?.[def.id]?.[customInGameMemoKey(part.id)];if(typeof m==='string')base[def.id][customInGameMemoKey(part.id)]=m;} if(def.id==='startTime'&&START_TIME_TIMINGS.some(x=>x.value===obj?.startTime?.timing))base.startTime.timing=obj.startTime.timing; if(def.id==='score'&&['true','false'].includes(obj?.score?.noScoreEnabled))base.score.noScoreEnabled=obj.score.noScoreEnabled;} return base;
  }catch{return base;}
 }
@@ -117,15 +130,45 @@ export function buildDefenseChangeText(parts:Record<string,string>,args:{introVa
  const changes=chunks.map((s,i)=>{
   const isLast=i===chunks.length-1;
   const connector=String(isLast?parts.last??'':parts.middle??'');
-  // 入ります。まで完成している文章には接続文を追加しない。
-  if(/[。.!！]\s*$/.test(s)) {
-   // 後続の交代・守備移動がある場合、『入ります。』で文章を閉じず『入り、』につなげる。
-   // 最後の選手だけは完成文をそのまま使用する。
-   if(!isLast && /入ります[。.!！]\s*$/.test(s)) {
-    return s.replace(/入ります[。.!！]\s*$/, connector || '入り、');
+  // 文末が完結形で、後ろに変更が続くときは、動詞を連用形にして自然につなぐ。
+  // 「入ります→入り、」「になります→になり、」「に代わります→に代わり、」など。
+  // 最後の選手の完成文や、ユーザーが設定した本文の途中の語句は変更しない。
+  const completed = /[。.!！]\s*$/.test(s);
+  if (!isLast && completed) {
+   const endings: Array<[RegExp,string]> = [
+    [/に代わります[。.!！]\s*$/, 'に代わり'],
+    [/になります[。.!！]\s*$/, 'になり'],
+    [/に入ります[。.!！]\s*$/, 'に入り'],
+    [/が入ります[。.!！]\s*$/, 'が入り'],
+    [/入ります[。.!！]\s*$/, '入り'],
+    [/に移ります[。.!！]\s*$/, 'に移り'],
+    [/に戻ります[。.!！]\s*$/, 'に戻り'],
+    [/へ移動します[。.!！]\s*$/, 'へ移動し'],
+    [/移動します[。.!！]\s*$/, '移動し'],
+    [/変更します[。.!！]\s*$/, '変更し'],
+    [/交代します[。.!！]\s*$/, '交代し'],
+    [/出場します[。.!！]\s*$/, '出場し'],
+    [/担当します[。.!！]\s*$/, '担当し'],
+    [/守ります[。.!！]\s*$/, '守り'],
+    [/に就きます[。.!！]\s*$/, 'に就き'],
+    [/につきます[。.!！]\s*$/, 'につき'],
+    [/に入って[。.!！]\s*$/, 'に入り'],
+   ];
+   const ending = endings.find(([pattern]) => pattern.test(s));
+   if (ending) {
+    const [pattern, continuation] = ending;
+    const middle = connector.trim();
+    // 途中の接続文の既定値「入り、」は「になります」などに重ねず、
+    // 文章側の動詞の連用形を優先する。
+    const isDefaultJoin = !middle || /^[、，,。．.]+$/.test(middle) || /^(?:が)?(?:入り|入って)[、，,。．.]*$/.test(middle);
+    const suffix = isDefaultJoin
+      ? (middle.match(/[、，,]/)?.[0] || '、')
+      : middle.replace(/^[、，,。．.]+/, '');
+    return s.replace(pattern, continuation + suffix);
    }
-   return s+(isLast?'':'\n');
+   return s + '\n';
   }
+  if (completed) return s;
   if(!isLast)return s+connector;
   const body=s.replace(/[、。，．,.]+\s*$/u,'').trimEnd();
   let tail=connector.replace(/^\s*[、。，．,.]+/u,'');

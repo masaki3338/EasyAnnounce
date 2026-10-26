@@ -61,3 +61,35 @@ export function customAnnouncementMemo(item:string,part:string,vars:Record<strin
  const memo=String(itemData?.[`memo:${part}`]??'');
  return substituteTokens(memo,vars).trim();
 }
+
+/** 代走の塁位置差し込み使用時は従来の固定接頭辞を省略する。 */
+export function getCustomRunnerTemplate():string|null {
+ if(getLeagueMode()!=='custom')return null;
+ return loadCustomInGameTexts(getActiveCustomProfileId()).pinchRunner?.main??null;
+}
+
+/** 攻撃モードのリエントリー表示と読み上げの共通テンプレート。 */
+export function customOffenseReentryText(before:any,after:any,order:number,speech=false,context:{inning?:number;isTop?:boolean;teamName?:string}={}):string|null {
+ if(getLeagueMode()!=='custom')return null;
+ const name=(p:any,full=false)=>{
+  const last=speech?String(p?.lastNameKana||p?.lastName||''):ruby(p?.lastName,p?.lastNameKana);
+  if(!full)return last;
+  const first=speech?String(p?.firstNameKana||p?.firstName||''):ruby(p?.firstName,p?.firstNameKana);
+  return first?last+(speech?'、':'、')+first:last;
+ };
+ const values:Record<string,string>={
+  '回':context.inning!=null?String(context.inning):'',
+  '表裏':context.isTop===undefined?'':context.isTop?'表':'裏',
+  '打順':String(order), 'チーム名':context.teamName||'',
+  '交代前選手名（苗字）':name(before), '交代前選手名（フルネーム）':name(before,true),
+  '交代前敬称':before?.isFemale?'さん':'くん',
+  '交代後選手名（苗字）':name(after), '交代後選手名（フルネーム）':name(after,true),
+  '交代後敬称':after?.isFemale?'さん':'くん',
+  '交代後背番号':String(after?.number??''),
+  // 以前に保存した文章との互換性
+  '交代前・選手名':name(before), '交代前・敬称':before?.isFemale?'さん':'くん',
+  '交代後・選手名':name(after), '交代後・敬称':after?.isFemale?'さん':'くん'
+ };
+ const template=loadCustomInGameTexts(getActiveCustomProfileId()).offenseReentry?.main;
+ return typeof template==='string'?substituteTokens(template,values).replace(/\n/g,speech?'':'<br/>'):null;
+}
