@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { loadCustomInGameTexts, buildDefenseChangeText } from "./lib/customInGameTemplates";
 import { getActiveCustomProfileId } from "./lib/customProfiles";
-import { customDefenseChangeIntro, customPinchDefenseBodies } from "./lib/customDefenseRuntime";
+import { customDefenseChangeIntro, customPinchDefenseBodies, customDefenseReentryText } from "./lib/customDefenseRuntime";
 import localForage from "localforage";
 import { useNavigate } from "react-router-dom";
 import { speak as ttsSpeak, stop as ttsStop, prefetchTTS, prewarmTTS, preserveNameReading } from "./lib/tts";
@@ -652,8 +652,8 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       const formerBattingOrder = r.order > 0 ? `${r.order}番` : oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '';
       const replacementVars:Record<string,string> = {
         '交代前打順':formerBattingOrder,
-        '交代前・守備位置':position[oldPos], '交代前・選手名':name(r.from),'交代前・敬称':honorific(r.from),
-        '交代後・選手名':name(r.to),'交代後・敬称':honorific(r.to),
+        '交代前・守備位置':position[oldPos], '交代前・選手名':name(r.from),'交代前・選手名（苗字）':name(r.from),'交代前・選手名（フルネーム）':fullName(r.from),'交代前・敬称':honorific(r.from),
+        '交代後・選手名':name(r.to),'交代後・選手名（苗字）':name(r.to),'交代後・選手名（フルネーム）':fullName(r.to),'交代後・敬称':honorific(r.to),
         '交代後・守備位置':position[newPos],'交代後・背番号':String(r.to.number??'')
       };
       newPlayers.push(replacementVars);
@@ -664,7 +664,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       const oldBattingIndex = battingOrder.findIndex(entry => Number(entry.id)===Number(r.player.id));
       const movementVars:Record<string,string> = {
         '交代前打順':oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '',
-        '移動前・守備位置':position[r.fromPos],'移動・選手名':name(r.player),
+        '移動前・守備位置':position[r.fromPos],'移動・選手名':name(r.player),'移動・選手名（苗字）':name(r.player),'移動・選手名（フルネーム）':fullName(r.player),
         '移動・敬称':honorific(r.player),'移動後・守備位置':position[r.toPos],
         '移動・背番号':String(r.player.number??'')
       };
@@ -691,7 +691,11 @@ const buildCustomRegularDefenseAnnouncement = (args: {
     if (!position[pos]) continue;
     rowsByOrder.set(order, {
       '打順':String(order), '守備位置':position[pos],
-      '選手名':name(target), '敬称':honorific(target),
+      // 打順紹介のカスタマイズ差し込み項目は旧【選手名】と新【選手名（苗字）】両方に対応。
+      '選手名':name(target),
+      '選手名（苗字）':name(target),
+      '選手名（フルネーム）':fullName(target),
+      '敬称':honorific(target),
       '背番号':String(target.number ?? '')
     });
   }
@@ -2165,11 +2169,12 @@ if (
 }
 
 // 直後でなければ「先ほど〜いたしました」を使わず、位置付きの通常形にする
-const firstLine = useSimpleForm
+const firstLineCustom = customDefenseReentryText(refPlayer,B2,posFull2,useSimpleForm?'defense':'pinch',refReason);
+const firstLine = firstLineCustom ?? (useSimpleForm
   ? `${posFull2} ${nameWithHonor(refPlayer)}に代わりまして、` +
     `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`
   : `先ほど${phrase}いたしました${nameWithHonor(refPlayer)}に代わりまして、` +
-    `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`;
+    `${nameWithHonor(B2)}がリエントリーで ${posFull2}に入ります。`);
 
 console.log("[REENTRY-LINE]", useSimpleForm ? "simple" : "recent", {
   refId: refPlayer?.id, toId: B2?.id, posFull: posFull2
@@ -5057,7 +5062,8 @@ if (isOhtaniSinglePitcherPlayerChange) {
             ? `先ほど代打いたしました${nameWithHonor(fromPlayer)}に代わりまして、`
             : `${fromPosLabel} ${nameWithHonor(fromPlayer)}に代わりまして、`;
 
-    const canonicalLine =
+    const canonicalLine = customDefenseReentryText(fromPlayer,toPlayer,toPosLabel,
+      ['代打','代走','臨時代走'].includes(reason)?'pinch':'defense',reason) ??
       `${head}${nameWithHonor(toPlayer)}がリエントリーで${toPosLabel}に入ります。`;
 
     const alreadyCorrectIndex = result.findIndex(

@@ -22,7 +22,7 @@ import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode } from "./lib/leagueSettings";
 import { getCustomOtherText } from "./lib/customOtherRuntime";
 import { customPitchText } from "./lib/customDefenseRuntime";
-import { customBatterHtml, customIntentionalWalkHtml, customStartTimeTiming, customStartTimeMessage, customOffenseText, customPlayerVars, customScoreAnnouncement, customScoreEnabledWhenZero, customAnnouncementMemo } from "./lib/customOffenseRuntime";
+import { customBatterHtml, customIntentionalWalkHtml, customStartTimeTiming, customStartTimeMessage, customOffenseText, customPlayerVars, customScoreAnnouncement, customScoreEnabledWhenZero, customAnnouncementMemo, customOffenseReentryText } from "./lib/customOffenseRuntime";
 import {
   deriveCurrentGameState,
   type UsedPlayerInfoMap,
@@ -7226,7 +7226,8 @@ const buildPinchModalSpeakParts = (): string[] => {
 
     const batter = `バッターは ${kanaB}${honorB}。`;
 
-    return [header, change, batter].filter(Boolean);
+    const customized=customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1,true,{inning,isTop,teamName});
+    return customized!==null?[header,customized]:[header,change,batter].filter(Boolean);
   }
 
   const stable = buildPinchModalStableParts();
@@ -7741,19 +7742,43 @@ const findReentryCandidateForCurrentSpot = async (
   order1: number | null;
 }> => {
   try {
-    const currentBatting =
-      (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder")) || [];
+    // カスタマイズ＋1人モードでは共通キーが守備側チームに切り替わることがある。
+    // リエントリー資格は現在の攻撃チーム専用の「試合開始時打順」と交代履歴で判定する。
+    const customSingleReentry = getLeagueMode() === "custom";
+    const side = customSingleReentry
+      ? (currentOnePersonOffenseSideRef.current ||
+          getOnePersonSideByTopBottom(isTop, await getSavedOnePersonFirstAttackSide()))
+      : null;
+    const scopedBatting = side
+      ? await localForage.getItem<Array<{ id: number; reason?: string }>>(`onePerson.${side}.battingOrder`)
+      : null;
+    const currentBatting = customSingleReentry
+      ? (battingOrder.length ? battingOrder : (scopedBatting?.length ? scopedBatting :
+          (await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder")) || []))
+      : ((await localForage.getItem<Array<{ id: number; reason?: string }>>("battingOrder")) || []);
 
-    const startingOrder =
-      (await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder")) || [];
+    const scopedStarting = side
+      ? await localForage.getItem<Array<{ id: number; reason?: string }>>(`onePerson.${side}.startingBattingOrder`)
+      : null;
+    const startingOrder = customSingleReentry && scopedStarting?.length
+      ? scopedStarting
+      : ((await localForage.getItem<Array<{ id: number; reason?: string }>>("startingBattingOrder")) || []);
 
-    const initialAssignmentsData =
-      (await localForage.getItem<Record<string, number | null>>("startingassignments")) || {};
+    const scopedAssignments = side
+      ? await localForage.getItem<Record<string, number | null>>(`onePerson.${side}.startingassignments`)
+      : null;
+    const initialAssignmentsData = customSingleReentry && scopedAssignments && Object.keys(scopedAssignments).length
+      ? scopedAssignments
+      : ((await localForage.getItem<Record<string, number | null>>("startingassignments")) || {});
 
-    const savedUsedPlayerInfo =
-      (await localForage.getItem<Record<string, any>>("usedPlayerInfo")) ||
-      (usedPlayerInfo as Record<string, any>) ||
-      {};
+    const scopedUsed = side
+      ? await localForage.getItem<Record<string, any>>(`onePerson.${side}.usedPlayerInfo`)
+      : null;
+    const savedUsedPlayerInfo = customSingleReentry
+      ? { ...((await localForage.getItem<Record<string, any>>("usedPlayerInfo")) || {}),
+          ...(scopedUsed || {}), ...(usedPlayerInfo || {}) }
+      : ((await localForage.getItem<Record<string, any>>("usedPlayerInfo")) ||
+          (usedPlayerInfo as Record<string, any>) || {});
 
     const teamPlayers = Array.isArray(players) ? players : [];
     const allCandidatePlayers = [
@@ -7804,7 +7829,8 @@ const findReentryCandidateForCurrentSpot = async (
       const wasStarter = isStarterByInitialData(starterIdFromStartingOrder);
       const B = findPlayerById(starterIdFromStartingOrder);
 
-      if (!isSameAsCurrent && starterIsOut && wasStarter && B) {
+      if (!isSameAsCurrent && starterIsOut && wasStarter && B &&
+          !(customSingleReentry && savedUsedPlayerInfo[String(starterIdFromStartingOrder)]?.hasReentered)) {
         return { A, B, order1 };
       }
     }
@@ -7823,6 +7849,7 @@ const findReentryCandidateForCurrentSpot = async (
       const wasStarter = Boolean(info.wasStarter) || isStarterByInitialData(starterNum);
 
       if (!wasStarter) return false;
+      if (customSingleReentry && info.hasReentered) return false;
       if (infoOrder !== order1) return false;
       if (Number(starterNum) === Number(currentPlayerId)) return false;
       if (isInBatting(starterNum)) return false;
@@ -9524,7 +9551,7 @@ useEffect(() => {
                       <span
                         className="space-y-1 font-bold text-red-700 leading-relaxed [&_rt]:text-red-700"
                         dangerouslySetInnerHTML={{
-                          __html: `
+                          __html: customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1??0,false,{inning,isTop,teamName}) ?? `
                             ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
                             ${reEntryOrder1 ?? "?"}番
                             ${reEntryFromPlayer ? rubyReEntry(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
@@ -9558,6 +9585,8 @@ useEffect(() => {
           const kanaA = kanaForReEntry(reEntryFromPlayer);
           const kanaB = kanaForReEntry(reEntryTargetPlayer);
 
+          const customSpeech=customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1,true,{inning,isTop,teamName});
+          if(customSpeech!==null){announce(customSpeech);return;}
           announce(
             `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
             `${reEntryOrder1}番 ${kanaA}${honorA}に代わりまして ` +
@@ -9840,7 +9869,7 @@ useEffect(() => {
                         {subModalMode === "reentry" ? (
                           <span
                             dangerouslySetInnerHTML={{
-                              __html: `
+                              __html: customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1??0,false,{inning,isTop,teamName}) ?? `
                                 ${isLeadingBatter ? `${inning}回の${isTop ? "表" : "裏"}、${teamName || "自チーム"}の攻撃は、` : `${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>`}
                                 ${reEntryOrder1 ?? "?"}番 ${reEntryFromPlayer ? formatNameForReEntryAnnounce(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして                        
                                 ${reEntryTargetPlayer ? formatNameForReEntryAnnounce(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。

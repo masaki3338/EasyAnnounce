@@ -1,7 +1,7 @@
 import React, {useEffect,useMemo,useRef,useState} from 'react';
 import localForage from 'localforage';
 import {getActiveCustomProfileId,getCustomProfiles} from './lib/customProfiles';
-import {loadPreGameItems,savePreGameItems,matchesPreGameCondition,type PreGameItem, type PreGameSegment} from './lib/customPreGameTemplates';
+import {loadPreGameItems,matchesPreGameCondition,type PreGameItem, type PreGameSegment} from './lib/customPreGameTemplates';
 import {speak,stop,preserveNameReading} from './lib/tts';
 import type {ScreenType} from './App';
 
@@ -11,11 +11,30 @@ const POS:Record<string,string>={投:'ピッチャー',捕:'キャッチャー',
 const esc=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const ruby=(text:string,kana?:string)=>kana?`<ruby>${esc(text)}<rt>${esc(kana)}</rt></ruby>`:esc(text);
 const playerSurname=(p:Player)=>ruby(p.lastName||'',p.lastNameKana);
-const playerName=(p:Player)=>playerSurname(p)+(p.firstName? '、'+ruby(p.firstName,p.firstNameKana):'');
+const playerName=(p:Player)=>playerSurname(p)+(p.firstName?ruby(p.firstName,p.firstNameKana):'');
 const playerSpeech=(p:Player)=>[preserveNameReading(p.lastNameKana||p.lastName||''),preserveNameReading(p.firstNameKana||p.firstName||'')].filter(Boolean).join('、');
 const tokenPattern=/【([^】]+)】/g;
 const replaceTokens=(source:string,vars:Record<string,string>)=>source.split(tokenPattern).map((part,i)=>i%2===0?esc(part):(Object.prototype.hasOwnProperty.call(vars,part)?vars[part]:esc('【'+part+'】'))).join('');
 const speakingFromHtml=(html:string)=>{const el=document.createElement('div');el.innerHTML=html.replace(/<br\s*\/?\s*>/gi,'\n');el.querySelectorAll('ruby').forEach(r=>{const kana=r.querySelector('rt')?.textContent||'';const visible=Array.from(r.childNodes).filter(n=>n.nodeName!=='RT').map(n=>n.textContent||'').join('');r.replaceWith(preserveNameReading(kana||visible));});return el.textContent||'';};
+// 審判は役割名から対応付ける（2審制の「塁審」は1塁審欄へ）。
+const umpireNameTokens=(umpires:any):Record<string,string>=>{
+ const result:Record<string,string>={'球審名':'','1塁審名':'','2塁審名':'','3塁審名':''};
+ if(!Array.isArray(umpires))return result;
+ const occupied=new Set<string>();
+ umpireData: for(const u of umpires){
+  const role=String(u?.role??'').replace(/[\s　]/g,'').replace(/[１２３]/g,d=>String('１２３'.indexOf(d)+1));
+  let key='';
+  if(/球審|主審/.test(role))key='球審名';
+  else if(/1塁|一塁|塁審1|塁審一/.test(role))key='1塁審名';
+  else if(/2塁|二塁|塁審2|塁審二/.test(role))key='2塁審名';
+  else if(/3塁|三塁|塁審3|塁審三/.test(role))key='3塁審名';
+  else if(role==='塁審')key='1塁審名';
+  if(!key||occupied.has(key))continue umpireData;
+  result[key]=ruby(String(u?.name??''),String(u?.furigana??''));
+  occupied.add(key);
+ }
+ return result;
+};
 const getPos=(team:Team,id:number)=>POS[Object.entries(team.assignments).find(([,pid])=>pid===id)?.[0]||'']||'指名打者';
 const emptyTeam=():Team=>({name:'',kana:'',players:[],assignments:{},order:[],benchOutIds:[]});
 export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:ScreenType)=>void;onBack:()=>void}){
@@ -28,8 +47,6 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
  const [playing,setPlaying]=useState('');
  const [detailId,setDetailId]=useState<string|null>(null);
  const [ready,setReady]=useState(false);
- const [timerPopup,setTimerPopup]=useState<{itemId:string;phase:'notice'|'end';kind:'warmup'|'sheetKnock';timerKey:string}|null>(null);
- const popupSeen=useRef<Record<string,boolean>>({});
  const [profileName,setProfileName]=useState('');
  const session=useRef(0);
  useEffect(()=>{let live=true;(async()=>{
@@ -163,11 +180,17 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
   '開始時刻':String(match.actualStartTime||match.startTime||''),'残り分数':String(noticeMinutes),'ノック時間':String(knockMinutes),
   '回':'1','表裏':'表','1塁側チーム名':match.battingFirstSide==='third'?bottom.name:top.name,
   '3塁側チーム名':match.battingFirstSide==='third'?top.name:bottom.name,
-  '監督名':'','選手名':'','選手名（苗字）':'','選手名（フルネーム）':'','控え選手名（苗字）':'','控え選手名（フルネーム）':'','選手敬称':'','打順':'','守備位置':'','背番号':'','審判名':'','審判役割':''
+  '監督名':'','選手名':'','選手名（苗字）':'','選手名（フルネーム）':'','控え選手名（苗字）':'','控え選手名（フルネーム）':'','選手敬称':'','打順':'','守備位置':'','背番号':'','審判名':'','審判役割':'','球審名':'','1塁審名':'','2塁審名':'','3塁審名':''
  }),[current,top,bottom,match,knockMinutes,noticeMinutes]);
  const buildSegment=(item:PreGameItem,seg:PreGameSegment)=>{
-  const selectedTeam=item.condition?.team||'any';const team=selectedTeam==='top'?top:selectedTeam==='bottom'?bottom:current;
-  const basic={...vars,'チーム名':team.name,'残り分数':String(item.kind==='warmup'?(item.timerSettings?.noticeMinutes??2):noticeMinutes)};
+  const selectedTeam=item.condition?.team||'any';
+  // 1人アナウンスでは設定上の先攻・後攻・塁側にかかわらず表示するが、
+  // 差し込みに使うチームは各項目の指定側を尊重する。
+  const firstBaseTeam=match.battingFirstSide==='third'?bottom:top;
+  const thirdBaseTeam=match.battingFirstSide==='third'?top:bottom;
+  const team=selectedTeam==='top'?top:selectedTeam==='bottom'?bottom:
+    selectedTeam==='firstBase'?firstBaseTeam:selectedTeam==='thirdBase'?thirdBaseTeam:current;
+  const basic={...vars,...umpireNameTokens(match.umpires),'チーム名':team.name,'残り分数':String(item.kind==='warmup'?(item.timerSettings?.noticeMinutes??2):noticeMinutes)};
   const template=seg.text;
   // 控えはスタメン・守備配置・ベンチ外を除外して抽出する。
   const benchOutIds=new Set<number>(team.benchOutIds);
@@ -179,88 +202,89 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
     '選手名（フルネーム）':currentPlayer?playerName(currentPlayer):'',
     '控え選手名（苗字）':benchPlayers.map(playerSurname).join('、'),
     '控え選手名（フルネーム）':benchPlayers.map(playerName).join('、')};
-  // 【打順】は先発9名分、控え選手名はベンチ入り選手を1人1行で展開する。
-  // 各行を独立に処理し、控え選手が9番打者の繰り返しに混ざらないようにする。
-  const hasLineupToken=/【(?:打順|選手名|選手名（苗字）|選手名（フルネーム）|選手敬称|守備位置|背番号)】/;
-  const hasBenchToken=/【控え選手名（(?:苗字|フルネーム)）】/;
-  if(hasLineupToken.test(template)||hasBenchToken.test(template)){
-    const lines=template.split('\n');
-    const output:string[]=[];
-    for(const line of lines){
-      const benchMatch=line.match(/【控え選手名（(苗字|フルネーム)）】/);
-      if(benchMatch){
-        const full=benchMatch[1]==='フルネーム';
-        for(const p of benchPlayers){
-          // テンプレート内に敬称や背番号が無ければ自動で付加する。
-          const includesHonor=line.includes('【選手敬称】');
-          const includesNumber=line.includes('【背番号】');
-          const name=full?playerName(p):playerSurname(p);
-          const rendered=replaceTokens(line,{
+  // カスタマイズのスタメン発表は、打順行とウェイティング行を別々に展開する。
+  // 説明文（「ウェイティング選手は、」等）は繰り返さない。
+  if (item.kind === 'lineup') {
+    const starters = team.order.slice(0, 9)
+      .map(entry => team.players.find(p => Number(p.id) === Number(entry.id)))
+      .filter((p): p is Player => Boolean(p));
+    const starterToken = /【(?:打順|守備位置|選手名|選手名（苗字）|選手名（フルネーム）)】/;
+    // 打順・守備位置がある行は、控え選手名トークンを誤使用していても先発行を優先する。
+    const starterIdentityToken = /【(?:打順|守備位置)】/;
+    const benchToken = /【控え選手名（(?:苗字|フルネーム)）】/;
+    const renderedLines: string[] = [];
+    for (const line of template.split(/\r?\n/)) {
+      if (starterIdentityToken.test(line) || (starterToken.test(line) && !benchToken.test(line))) {
+        // スタメン行の【控え選手名】は設定ミスでも先発選手名に読み替える。
+        starters.forEach((p, i) => {
+          renderedLines.push(replaceTokens(line, {
             ...values,
-            '控え選手名（苗字）':name,
-            '控え選手名（フルネーム）':name,
-            '選手敬称':p.isFemale?'さん':'くん',
-            '背番号':String(p.number??'')
-          });
-          const suffix=(includesHonor?'':p.isFemale?'さん':'くん')+
-            (includesNumber||!String(p.number??'').trim()?'':`、背番号${esc(String(p.number))}`);
-          output.push(rendered+suffix);
-        }
-        continue;
-      }
-      if(hasLineupToken.test(line)&&(item.kind==='lineup'||line.includes('【打順】'))){
-        const players=team.order.slice(0,9).map(x=>team.players.find(p=>Number(p.id)===Number(x.id))).filter((p):p is Player=>!!p);
-        for(const [i,p] of players.entries()){
-          output.push(replaceTokens(line,{
-            ...values,'選手名':playerName(p),'選手名（苗字）':playerSurname(p),
-            '選手名（フルネーム）':playerName(p),'選手敬称':p.isFemale?'さん':'くん',
-            '打順':String(i+1),'守備位置':getPos(team,p.id),'背番号':String(p.number??'')
+            '選手名': playerName(p),
+            '選手名（苗字）': playerSurname(p),
+            '選手名（フルネーム）': playerName(p),
+            '控え選手名（苗字）': playerSurname(p),
+            '控え選手名（フルネーム）': playerName(p),
+            '選手敬称': p.isFemale ? 'さん' : 'くん',
+            '打順': String(i + 1),
+            '守備位置': getPos(team, p.id),
+            '背番号': String(p.number ?? ''),
+          }));
+        });
+      } else if (benchToken.test(line)) {
+        // 控え選手は、各選手の敬称と背番号を個別に埋め込む。
+        for (const p of benchPlayers) {
+          renderedLines.push(replaceTokens(line, {
+            ...values,
+            '控え選手名（苗字）': playerSurname(p),
+            '控え選手名（フルネーム）': playerName(p),
+            '選手敬称': p.isFemale ? 'さん' : 'くん',
+            '背番号': String(p.number ?? ''),
           }));
         }
-        continue;
+      } else {
+        // 「先攻、…」「ウェイティング選手は、」などは一度だけ表示する。
+        renderedLines.push(replaceTokens(line, values));
       }
-      if(hasLineupToken.test(line)&&(item.kind==='defense'||item.kind==='seat')){
-        const players=team.players.filter(p=>Object.values(team.assignments).some(id=>Number(id)===Number(p.id)));
-        for(const p of players){
-          const orderIndex=team.order.findIndex(x=>Number(x.id)===Number(p.id));
-          output.push(replaceTokens(line,{...values,'選手名':playerName(p),'選手名（苗字）':playerSurname(p),
-            '選手名（フルネーム）':playerName(p),'選手敬称':p.isFemale?'さん':'くん',
-            '打順':orderIndex>=0?String(orderIndex+1):'', '守備位置':getPos(team,p.id),'背番号':String(p.number??'')}));
-        }
-        continue;
-      }
-      output.push(replaceTokens(line,values));
     }
-    return output.join('\n');
+    return renderedLines.join('\n');
   }
-  const hasUmpire=/【(?:審判名|審判役割)】/.test(template);
-  if(item.kind==='umpires'&&hasUmpire&&Array.isArray(match.umpires)&&match.umpires.length){
+  const hasPlayer=/【(?:選手名|選手名（苗字）|選手名（フルネーム）|選手敬称|打順|守備位置|背番号)】/.test(template);
+  const hasLegacyUmpire=/【(?:審判名|審判役割)】/.test(template);
+  if(item.kind==='lineup'||item.kind==='bench'||item.kind==='defense'||item.kind==='seat'){
+    const players=item.kind==='bench'?team.players.filter(p=>!team.order.some(x=>x.id===p.id)&&!Object.values(team.assignments).includes(p.id)):
+      item.kind==='lineup'?team.order.map(x=>team.players.find(p=>p.id===x.id)).filter(Boolean) as Player[]:
+      team.players.filter(p=>Object.entries(team.assignments).some(([pos,id])=>
+        Number(id)===Number(p.id) && (item.kind!=='seat' || pos!=='指')))
+        // シート紹介のみ、DHを除き守備番号順（投・捕・一・二・三・遊・左・中・右）。
+        .sort((a,b)=>item.kind==='seat'
+          ? ((['投','捕','一','二','三','遊','左','中','右'].indexOf(
+                Object.keys(team.assignments).find(pos=>Number(team.assignments[pos])===Number(a.id))||'') + 11)%11)
+            - ((['投','捕','一','二','三','遊','左','中','右'].indexOf(
+                Object.keys(team.assignments).find(pos=>Number(team.assignments[pos])===Number(b.id))||'') + 11)%11)
+          : 0);
+    if(hasPlayer && players.length){
+      const firstToken=template.search(/【(?:選手名|選手名（苗字）|選手名（フルネーム）|選手敬称|打順|守備位置|背番号)】/);
+      const lineStart=template.lastIndexOf('\n',firstToken)+1;
+      const head=template.slice(0,lineStart);
+      const row=template.slice(lineStart);
+      const rows=players.map((p,i)=>{const orderIndex=team.order.findIndex(x=>x.id===p.id);return replaceTokens(row,{...values,'選手名':playerName(p),'選手名（苗字）':playerSurname(p),'選手名（フルネーム）':playerName(p),'選手敬称':p.isFemale?'さん':'くん','打順':String(orderIndex>=0?orderIndex+1:i+1),'守備位置':getPos(team,p.id),'背番号':String(p.number??'')})});
+      return replaceTokens(head,values)+rows.join('\n');
+    }
+  }
+  if(item.kind==='umpires'&&hasLegacyUmpire&&Array.isArray(match.umpires)&&match.umpires.length){
    const pos=template.search(/【(?:審判名|審判役割)】/);const lineStart=template.lastIndexOf('\n',pos)+1;
    return replaceTokens(template.slice(0,lineStart),basic)+match.umpires.map((u:any)=>replaceTokens(template.slice(lineStart),{...basic,'審判名':ruby(String(u.name||''),String(u.furigana||'')),'審判役割':String(u.role||'')})).join('\n');
   }
   return replaceTokens(template,values);
  };
  const context=(item:PreGameItem)=>({team:side,announcementMode:match.announcementMode==='single'?'single':'normal',matchNo:Number(match.matchNumber)||undefined,firstTime:!completed[item.id],hasData:!!current.name});
- const filtered=items.filter(item=>{if(!item.enabled)return false;const target=item.condition?.team&&item.condition.team!=='any'?item.condition.team:(item.target||'any');const ownBase=(match.benchSide==='3塁側'?'thirdBase':'firstBase');return (target==='any'||target===side||target===ownBase);});
- // タイマーの通知フラグが初めて立った瞬間に、該当するアナウンスをポップアップ表示する。
- // 画面再描画や一時停止では二重に開かず、リセット後は再通知可能。
- useEffect(()=>{
-  const activeItem=items.find(x=>x.id===detailId);
-  if(!activeItem||!['warmup','sheetKnock'].includes(activeItem.kind))return;
-  const timerKey=activeItem.kind==='warmup'?`warm:${activeItem.id}`:`knock:${getKnockSide(activeItem)}`;
-  const timerState=activeItem.kind==='warmup'?getWarmTimer(activeItem):knockSides[getKnockSide(activeItem)];
-  const configuredNotice=activeItem.kind==='warmup'?(activeItem.timerSettings?.noticeMinutes??2):noticeMinutes;
-  for(const phase of ['notice','end'] as const){
-   const key=`${timerKey}:${phase}`;
-   const triggered=phase==='notice'?configuredNotice>0&&timerState.noticed:timerState.ended;
-   if(!triggered){delete popupSeen.current[key];continue;}
-   if(!popupSeen.current[key]){
-    popupSeen.current[key]=true;
-    setTimerPopup({itemId:activeItem.id,phase,kind:activeItem.kind as 'warmup'|'sheetKnock',timerKey});
-   }
-  }
- },[knockSides,warmTimers,detailId,items,noticeMinutes,side]);
- useEffect(()=>{if(timerPopup&&detailId!==timerPopup.itemId){stop();setTimerPopup(null)}},[detailId,timerPopup]);
+ const filtered=items.filter(item=>{if(!item.enabled)return false;
+  // カスタマイズ＋1人モードでは、先攻・後攻および1塁側・3塁側のすべての項目を表示。
+  if(match.announcementMode==='single')return true;
+  const target=item.condition?.team&&item.condition.team!=='any'?item.condition.team:(item.target||'any');
+  const ownBase=(match.benchSide==='3塁側'?'thirdBase':'firstBase');
+  return target==='any'||target===side||target===ownBase;
+ });
  const stopAudio=()=>{session.current++;stop();setPlaying('')};
  const play=async(item:PreGameItem,seg:PreGameSegment,html:string)=>{
   stopAudio();const n=++session.current;setPlaying(seg.id);
@@ -276,9 +300,14 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
    const currentItem=filtered.find(x=>x.id===detailId);
    if(!currentItem)return <button onClick={()=>setDetailId(null)}>← 一覧に戻る</button>;
    const isKnock=currentItem.kind==='sheetKnock';const isWarm=currentItem.kind==='warmup';const isTriple=isKnock||isWarm;
-   const relatedSegments=currentItem.segments.filter(seg=>{const t=seg.condition?.team||'any';return t==='any'||t===side||t===(match.benchSide==='3塁側'?'thirdBase':'firstBase');});
+   const relatedSegments=currentItem.segments.filter(seg=>{
+    if(match.announcementMode==='single')return true;
+    const t=seg.condition?.team||'any';
+    return t==='any'||t===side||t===(match.benchSide==='3塁側'?'thirdBase':'firstBase');
+   });
    const parts=isTriple?(['start','notice','end'] as const).map(phase=>({phase,segments:relatedSegments.filter(s=>(s.phase||'start')===phase)})):[];
    return <section className="space-y-4">
+    <button className="w-full rounded-xl bg-white/15 border border-white/20 p-3 text-left font-bold" onClick={()=>{stopAudio();setDetailId(null)}}>← 試合前アナウンス一覧に戻る</button>
     <h2 className="text-2xl font-extrabold text-center">{currentItem.title}</h2>
     {currentItem.timing?.note?.trim()&&<div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-3 text-amber-950"><div className="text-xs font-bold mb-1">🕒 タイミングのメモ</div><div className="whitespace-pre-wrap">{currentItem.timing.note}</div></div>}
     {isKnock&&renderKnockTimer(currentItem)}
@@ -298,29 +327,6 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
     <span className="flex-1 min-w-0"><span className="font-bold text-base sm:text-lg block">{item.title}</span>{item.timing?.note?.trim()&&<span className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">🕒 {item.timing.note}</span>}</span>
     <span className="text-white/70 text-xl">›</span>
    </button>)}
-  {!detailId&&<button onClick={()=>{stopAudio();onBack()}} className="w-full rounded-2xl bg-white text-slate-900 py-4 font-bold">← 試合開始画面に戻る</button>}
-  {timerPopup&&(()=>{
-   const popupItem=items.find(x=>x.id===timerPopup.itemId);
-   if(!popupItem)return null;
-   const selected=popupItem.segments.find(seg=>(seg.phase||'start')===timerPopup.phase&&((seg.condition?.team||'any')==='any'||(seg.condition?.team||'any')===side));
-   const isNotice=timerPopup.phase==='notice';
-   const remainingText=popupItem.kind==='warmup'?(popupItem.timerSettings?.noticeMinutes??2):noticeMinutes;
-   const fallback=isNotice?`${popupItem.kind==='warmup'?'ウォーミングアップ':'ノック'}時間、残り${remainingText}分です。`:popupItem.kind==='warmup'?'ウォーミングアップを終了してください。':'ノックを終了してください。';
-   const textHtml=selected?buildSegment(popupItem,selected):esc(fallback);
-   const unresolved=/【[^】]+】/.test(textHtml);
-   return <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/75 px-3 py-5" role="dialog" aria-modal="true" aria-label={isNotice?'残り時間のお知らせ':'タイマー終了のお知らせ'}>
-    <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl border-2 border-rose-400 bg-rose-700 p-5 sm:p-7 text-white shadow-2xl space-y-4">
-     <h2 className="text-xl sm:text-2xl font-extrabold text-center">{isNotice?`⏱ 残り${remainingText}分のお知らせ`:'⏰ 終了のお知らせ'}</h2>
-     <p className="text-center font-bold text-sm text-rose-100">{popupItem.title}</p>
-     <div className="rounded-2xl border border-white/20 bg-white/15 px-4 py-5 text-lg font-semibold leading-loose whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{__html:textHtml.replace(/\n/g,'<br/>')}} />
-     {unresolved&&<p className="text-sm text-amber-100">差し込みに必要なデータが未設定です。</p>}
-     <div className="grid grid-cols-2 gap-3">
-      <button type="button" className="rounded-xl bg-blue-600 py-3 font-bold disabled:opacity-50" disabled={unresolved||!textHtml.trim()} onClick={()=>{if(selected)void play(popupItem,selected,textHtml);else {stopAudio();const n=++session.current;setPlaying('popup');void speak(speakingFromHtml(textHtml)).finally(()=>{if(session.current===n)setPlaying('')});}}}>🔊 読み上げ</button>
-      <button type="button" className="rounded-xl bg-slate-600 py-3 font-bold" onPointerDown={stopAudio} onClick={stopAudio}>■ 停止</button>
-     </div>
-     <button type="button" className="w-full rounded-xl bg-white py-3 text-lg font-extrabold text-rose-800" onClick={()=>{stopAudio();setTimerPopup(null)}}>OK（閉じる）</button>
-    </div>
-   </div>;
-  })()}
+  <button onClick={()=>{stopAudio();onBack()}} className="w-full rounded-2xl bg-white text-slate-900 py-4 font-bold">← 試合開始画面に戻る</button>
  </main></div>
 }

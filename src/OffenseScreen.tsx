@@ -21,7 +21,7 @@ import { speak, speakJoinedTTS, stop, preserveNameReading, prefetchTTS } from ".
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode } from "./lib/leagueSettings";
 import { getCustomOtherText } from "./lib/customOtherRuntime";
-import { customBatterHtml, customIntentionalWalkHtml, customStartTimeTiming, customStartTimeMessage, customOffenseText, customPlayerVars, customScoreAnnouncement, customScoreEnabledWhenZero, customAnnouncementMemo } from "./lib/customOffenseRuntime";
+import { customBatterHtml, customIntentionalWalkHtml, customStartTimeTiming, customStartTimeMessage, customOffenseText, customPlayerVars, customScoreAnnouncement, customScoreEnabledWhenZero, customAnnouncementMemo, customOffenseReentryText } from "./lib/customOffenseRuntime";
 import {
   deriveCurrentGameState,
   type UsedPlayerInfoMap,
@@ -3466,7 +3466,8 @@ const buildPinchModalSpeakParts = (): string[] => {
 
     const batter = `バッターは ${kanaB}${honorB}。`;
 
-    return [header, change, batter].filter(Boolean);
+    const customized=customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1,true,{inning,isTop,teamName});
+    return customized!==null?[header,customized]:[header,change,batter].filter(Boolean);
   }
 
   const stable = buildPinchModalStableParts();
@@ -5804,7 +5805,7 @@ useEffect(() => {
                       <span
                         className="space-y-1 font-bold text-red-700 leading-relaxed [&_rt]:text-red-700"
                         dangerouslySetInnerHTML={{
-                          __html: `
+                          __html: customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1??0,false,{inning,isTop,teamName}) ?? `
                             ${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>
                             ${reEntryOrder1 ?? "?"}番
                             ${reEntryFromPlayer ? rubyReEntry(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして
@@ -5842,6 +5843,8 @@ useEffect(() => {
           const kanaA = kanaForReEntry(reEntryFromPlayer);
           const kanaB = kanaForReEntry(reEntryTargetPlayer);
 
+          const customSpeech=customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1,true,{inning,isTop,teamName});
+          if(customSpeech!==null){announce(customSpeech);return;}
           announce(
             `${teamName || "自チーム"}、選手の交代をお知らせいたします。` +
             `${reEntryOrder1}番 ${kanaA}${honorA}に代わりまして ` +
@@ -6126,7 +6129,7 @@ useEffect(() => {
                         {subModalMode === "reentry" ? (
                           <span
                             dangerouslySetInnerHTML={{
-                              __html: `
+                              __html: customOffenseReentryText(reEntryFromPlayer,reEntryTargetPlayer,reEntryOrder1??0,false,{inning,isTop,teamName}) ?? `
                                 ${isLeadingBatter ? `${inning}回の${isTop ? "表" : "裏"}、${teamName || "自チーム"}の攻撃は、` : `${teamName || "自チーム"}、選手の交代をお知らせいたします。<br/>`}
                                 ${reEntryOrder1 ?? "?"}番 ${reEntryFromPlayer ? formatNameForReEntryAnnounce(reEntryFromPlayer) : ""}${reEntryFromPlayer?.isFemale ? "さん" : "くん"}に代わりまして                        
                                 ${reEntryTargetPlayer ? formatNameForReEntryAnnounce(reEntryTargetPlayer) : ""}${reEntryTargetPlayer?.isFemale ? "さん" : "くん"}がリエントリーで戻ります。
