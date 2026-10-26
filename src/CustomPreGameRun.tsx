@@ -35,6 +35,20 @@ const umpireNameTokens=(umpires:any):Record<string,string>=>{
  }
  return result;
 };
+const normalizeClockInput=(value:unknown):string=>{
+ const raw=String(value??'').trim();
+ const match=raw.match(/^(\d{1,2})(?::|時)(\d{1,2})?(?:分)?$/);
+ if(!match)return '';
+ const h=Number(match[1]);const m=Number(match[2]??0);
+ return h>=0&&h<24&&m>=0&&m<60?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`:'';
+};
+const clockAnnouncement=(value:string):string=>{
+ const normalized=normalizeClockInput(value);
+ if(!normalized)return String(value||'');
+ const [hour,minute]=normalized.split(':').map(Number);
+ return `${hour}時${minute?`${minute}分`:''}`;
+};
+const startClockStorageKey=(profileId:string,itemId:string)=>`easyannounce:custom:preGame:startClock:v1:${profileId}:${itemId}`;
 const getPos=(team:Team,id:number)=>POS[Object.entries(team.assignments).find(([,pid])=>pid===id)?.[0]||'']||'指名打者';
 const emptyTeam=():Team=>({name:'',kana:'',players:[],assignments:{},order:[],benchOutIds:[]});
 export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:ScreenType)=>void;onBack:()=>void}){
@@ -48,6 +62,8 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
  const [detailId,setDetailId]=useState<string|null>(null);
  const [ready,setReady]=useState(false);
  const [profileName,setProfileName]=useState('');
+ // 試合当日の入力値。アナウンス設定のテンプレートは変更しない。
+ const [startClocks,setStartClocks]=useState<Record<string,string>>({});
  const session=useRef(0);
  useEffect(()=>{let live=true;(async()=>{
   const id=getActiveCustomProfileId();const all=loadPreGameItems(id);const mi=await localForage.getItem<any>('matchInfo')||{};
@@ -70,7 +86,12 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
    const other=emptyTeam();other.name=String(mi.opponentTeam||mi.opponentTeamName||'対戦チーム');other.kana=String(mi.opponentTeamFurigana||other.name);
    [topTeam,bottomTeam]=mi.isHome?[other,selfTeam]:[selfTeam,other];
   }
+  const storedTimes=await Promise.all(all.map(async item=>{
+   try{return [item.id,normalizeClockInput(await localForage.getItem<string>(startClockStorageKey(id,item.id)))] as const;}
+   catch{return [item.id,''] as const;}
+  }));
   if(!live)return;
+  setStartClocks(Object.fromEntries(storedTimes));
   setItems(all);setMatch(mi);setTop(topTeam);setBottom(bottomTeam);setSide(mi.isHome?'bottom':'top');
   setProfileName(getCustomProfiles().find(x=>x.id===id)?.name||'カスタマイズ');setReady(true);
  })().catch(e=>{console.error('[CustomPreGameRun]',e);setReady(true)});return()=>{live=false;session.current++;stop()};},[]);
@@ -173,10 +194,14 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
    {current.ended&&<div className="rounded-lg border border-rose-300 bg-rose-100 px-3 py-2 text-sm font-bold text-rose-950">ノック時間が終了しました。「終了案内」を読み上げてください。</div>}
   </div>
  };
+ const changeStartClock=(itemId:string,value:string)=>{
+  setStartClocks(prev=>({...prev,[itemId]:value}));
+  void localForage.setItem(startClockStorageKey(getActiveCustomProfileId(),itemId),value).catch(e=>console.error('[CustomPreGameRun] 開始予定時刻の保存に失敗',e));
+ };
  const current=side==='top'?top:bottom;
  const vars=useMemo(()=>({
   'チーム名':current.name,'先攻チーム名':top.name,'後攻チーム名':bottom.name,'大会名':String(match.tournamentName||''),
-  '試合番号':String(match.matchNumber||''),'開始予定時刻':String(match.startTime||match.scheduledStartTime||''),
+  '試合番号':String(match.matchNumber||''),'開始予定時刻':clockAnnouncement(String(match.startTime||match.scheduledStartTime||'')),
   '開始時刻':String(match.actualStartTime||match.startTime||''),'残り分数':String(noticeMinutes),'ノック時間':String(knockMinutes),
   '回':'1','表裏':'表','1塁側チーム名':match.battingFirstSide==='third'?bottom.name:top.name,
   '3塁側チーム名':match.battingFirstSide==='third'?top.name:bottom.name,
@@ -190,7 +215,7 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
   const thirdBaseTeam=match.battingFirstSide==='third'?top:bottom;
   const team=selectedTeam==='top'?top:selectedTeam==='bottom'?bottom:
     selectedTeam==='firstBase'?firstBaseTeam:selectedTeam==='thirdBase'?thirdBaseTeam:current;
-  const basic={...vars,...umpireNameTokens(match.umpires),'チーム名':team.name,'残り分数':String(item.kind==='warmup'?(item.timerSettings?.noticeMinutes??2):noticeMinutes)};
+  const basic={...vars,...umpireNameTokens(match.umpires),'チーム名':team.name,'開始予定時刻':clockAnnouncement(startClocks[item.id]||String(match.startTime||match.scheduledStartTime||'')),'残り分数':String(item.kind==='warmup'?(item.timerSettings?.noticeMinutes??2):noticeMinutes)};
   const template=seg.text;
   // 控えはスタメン・守備配置・ベンチ外を除外して抽出する。
   const benchOutIds=new Set<number>(team.benchOutIds);
@@ -310,6 +335,14 @@ export default function CustomPreGameRun({onNavigate,onBack}:{onNavigate:(s:Scre
     <button className="w-full rounded-xl bg-white/15 border border-white/20 p-3 text-left font-bold" onClick={()=>{stopAudio();setDetailId(null)}}>← 試合前アナウンス一覧に戻る</button>
     <h2 className="text-2xl font-extrabold text-center">{currentItem.title}</h2>
     {currentItem.timing?.note?.trim()&&<div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-3 text-amber-950"><div className="text-xs font-bold mb-1">🕒 タイミングのメモ</div><div className="whitespace-pre-wrap">{currentItem.timing.note}</div></div>}
+    {relatedSegments.some(seg=>seg.text.includes('【開始予定時刻】'))&&<div className="rounded-xl border border-sky-300/40 bg-slate-900/55 p-3 space-y-2">
+      <label htmlFor={`scheduled-start-${currentItem.id}`} className="block text-sm font-bold">🕒 開始予定時刻</label>
+      <input id={`scheduled-start-${currentItem.id}`} type="time" step={60}
+        value={startClocks[currentItem.id]||normalizeClockInput(match.startTime||match.scheduledStartTime)}
+        onChange={e=>changeStartClock(currentItem.id,e.target.value)}
+        className="block w-full min-h-12 rounded-xl border border-white/20 bg-slate-700 px-4 text-lg font-bold text-white [color-scheme:dark]"/>
+      <p className="text-xs text-white/70">入力した時刻が、この項目のアナウンスに自動反映されます。入力値は端末に保存されます。</p>
+    </div>}
     {isKnock&&renderKnockTimer(currentItem)}
     {isWarm&&renderWarmTimer(currentItem)}
     {(isTriple?parts:[{phase:'other',segments:relatedSegments}]).map(block=><div key={block.phase} className="space-y-3">
