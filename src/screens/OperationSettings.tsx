@@ -469,8 +469,8 @@ export default function OperationSettings({ onNavigate }: Props) {
 
         <TileButton
           icon={<span className="text-2xl">🏆</span>}
-          title="リーグ設定"
-          desc="ポニーリーグ / ボーイズリーグ / リトルシニア"
+          title="リーグ・オリジナル設定"
+          desc="連盟の選択・アナウンスの自由設定"
           onClick={() => onNavigate("league-settings")}
         />
         <TileButton
@@ -632,9 +632,9 @@ export default function OperationSettings({ onNavigate }: Props) {
                     </div>
 
                     <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-3">
-                      <div className="font-bold text-cyan-800">🏆 リーグ設定</div>
+                      <div className="font-bold text-cyan-800">🏆 リーグ・オリジナル設定</div>
                       <p className="mt-1.5 text-[13px] leading-5 text-slate-700">
-                        ポニーリーグ／ボーイズリーグを切り替えます。
+                        ポニーリーグ／ボーイズリーグ／リトルシニアなどの連盟を選択したり、オリジナルのアナウンスを設定したりできます。
                       </p>
                       <p className="mt-1 text-[12.5px] leading-5 text-cyan-900">
                         選択したリーグに合わせて、試合中の機能やアナウンス内容が切り替わります。

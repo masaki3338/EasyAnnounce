@@ -6,6 +6,8 @@ import { DEFAULT_SENIOR_SUB_TEMPLATES, getSeniorSubTemplates, saveSeniorSubTempl
 import { DEFAULT_SENIOR_END_TEMPLATES, getSeniorEndTemplates, saveSeniorEndTemplates, renderSeniorEndTemplate, type SeniorEndKind } from "../SeniorEndGameTemplates";
 import type { ScreenType } from "../App";
 import { getLeagueLabel, getLeagueMode, setLeagueMode, type LeagueMode } from "../lib/leagueSettings";
+import CustomProfileQR from "./CustomProfileQR";
+import { getActiveCustomProfileId, getCustomProfiles } from "../lib/customProfiles";
 
 type Props = {
   onNavigate: (s: ScreenType) => void;
@@ -80,6 +82,9 @@ export default function LeagueSettings({ onNavigate }: Props) {
     const next=text.slice(0,start)+`【${token}】`+text.slice(end);updateSubTemplate(next);
     requestAnimationFrame(()=>{el?.focus();el?.setSelectionRange(start+token.length+2,start+token.length+2);});
   };
+  const [showLeagueHelp, setShowLeagueHelp] = useState(false);
+  const [showCustomQr, setShowCustomQr] = useState(false);
+  const [qrImportMessage, setQrImportMessage] = useState("");
   const [mode, setMode] = useState<LeagueMode>("pony");
   const [senior, setSenior] = useState<SeniorAnnounceSettings>(getSeniorAnnounceSettings);
   const updateSenior = (patch: Partial<SeniorAnnounceSettings>) => {
@@ -117,7 +122,8 @@ export default function LeagueSettings({ onNavigate }: Props) {
             ← 戻る
           </button>
 
-          <div className="text-center">
+          <div className="relative text-center">
+            <button type="button" aria-label="リーグ設定のヘルプ" onClick={() => setShowLeagueHelp(true)} className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center rounded-full bg-sky-600 text-xl font-bold text-white shadow-md hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-white" >？</button>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-wide">
               🏆 リーグ設定
             </h1>
@@ -153,16 +159,19 @@ export default function LeagueSettings({ onNavigate }: Props) {
           <OptionCard
             selected={mode === "custom"}
             title="カスタマイズ"
-            desc="独自のアナウンスで動作"
+            desc="大会ごとのアナウンス文言設定"
             onClick={() => handleSelect("custom")}
           />
 
           {/* カスタマイズモードでのみ、専用の文章設定を表示する。 */}
           {mode === "custom" && <section className="rounded-2xl border border-emerald-400/40 bg-emerald-950/30 p-4 space-y-3">
             <h2 className="text-lg font-bold">🛠 カスタマイズ（設定作成）</h2>
-            <p className="text-sm opacity-85">試合前の進行表・文章・条件設定と、試合中の固定文言を編集・保存できます。</p>
+            <p className="text-sm opacity-85">既存3リーグには影響しません。試合中アナウンスの文章を編集・保存できます。</p>
             <button type="button" onClick={() => onNavigate("custom-pre-game-settings")} className="w-full rounded-xl bg-sky-600 px-4 py-3 font-bold text-white active:scale-[0.98]">試合前アナウンス設定を開く →</button>
             <button type="button" onClick={() => onNavigate("custom-in-game-settings")} className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white active:scale-[0.98]">試合中アナウンス設定を開く →</button>
+            <button type="button" onClick={() => { setQrImportMessage(""); setShowCustomQr(true); }} className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white active:scale-[0.98]">📱 QRコードで設定を共有・読み込み</button>
+            <p className="text-xs text-emerald-100/80">試合前・試合中の設定を圧縮して1枚のQRで受け渡しします。容量を超える場合はQRを作成できません。</p>
+            {qrImportMessage && <p role="status" className="rounded-xl bg-emerald-950/70 p-3 text-sm">{qrImportMessage}</p>}
           </section>}
 
           {mode === "senior" && (
@@ -239,6 +248,70 @@ export default function LeagueSettings({ onNavigate }: Props) {
             <span className="font-bold ml-2">{getLeagueLabel(mode)}</span>
           </div>
         </main>
+        {showCustomQr && <CustomProfileQR
+          profileId={getActiveCustomProfileId()}
+          onBeforeExport={() => { /* 保存済み設定をそのまま共有 */ }}
+          onImported={(id) => {
+            const imported = getCustomProfiles().find((profile) => profile.id === id);
+            setQrImportMessage(`「${imported?.name || 'カスタマイズ'}」を取り込みました。試合前・試合中の設定が引き継がれています。`);
+            setShowCustomQr(false);
+          }}
+          onClose={() => setShowCustomQr(false)}
+        />}
+        {showLeagueHelp && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-2 sm:px-4 py-3" role="presentation" onClick={() => setShowLeagueHelp(false)}>
+            <section role="dialog" aria-modal="true" aria-labelledby="league-help-title" onClick={(event) => event.stopPropagation()}
+              className="flex w-full max-w-lg max-h-[min(92svh,850px)] flex-col overflow-hidden rounded-[22px] bg-white text-slate-900 shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between gap-2 bg-sky-600 px-4 py-3 text-white">
+                <h2 id="league-help-title" className="flex items-center gap-2 text-base sm:text-lg font-extrabold">
+                  <span className="text-xl" aria-hidden="true">❓</span> リーグ設定画面の使い方
+                </h2>
+                <button type="button" aria-label="ヘルプを閉じる" onClick={() => setShowLeagueHelp(false)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-2xl font-bold hover:bg-white/30">×</button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 text-sm leading-relaxed">
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3">
+                  <p className="font-bold text-slate-800">試合で使用するリーグを選択する画面です。</p>
+                  <p className="mt-1 text-xs text-slate-700">選択したリーグによって、アナウンス文言や試合中の設定内容が変わります。</p>
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-xs font-bold text-slate-500">おすすめ</p>
+                    <p className="mt-1 text-xs font-semibold text-rose-600">試合開始前にリーグの選択を確認してください</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3 space-y-2">
+                  <h3 className="text-sm font-extrabold text-emerald-800">⚾ リーグを選ぶ</h3>
+                  <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2">
+                    <p className="font-bold text-orange-800">⚾ ポニーリーグ</p>
+                    <p className="mt-1 text-xs text-slate-700">ポニーリーグに対応したアナウンスを使用します。</p>
+                  </div>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+                    <p className="font-bold text-blue-800">⚾ ボーイズリーグ</p>
+                    <p className="mt-1 text-xs text-slate-700">ボーイズリーグに対応したアナウンスを使用します。</p>
+                  </div>
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                    <p className="font-bold text-violet-800">⚾ リトルシニア</p>
+                    <p className="mt-1 text-xs text-slate-700">リトルシニアのアナウンスを使用し、必要に応じて画面内の詳細設定を調整します。</p>
+                  </div>
+                  <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
+                    <p className="font-bold text-teal-800">🛠 カスタマイズ</p>
+                    <p className="mt-1 text-xs text-slate-700">試合前・試合中の読み上げ文章やメモを、独自の内容に設定できます。</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                  <h3 className="font-extrabold text-amber-900">💡 設定の保存について</h3>
+                  <p className="mt-1 text-xs text-slate-700">選択したリーグは自動保存され、次回の起動時にも引き継がれます。</p>
+                  <p className="mt-1 text-xs text-slate-700">試合途中でリーグを変更すると、使用するアナウンスが変わるため、試合前に選択してください。</p>
+                </div>
+              </div>
+              <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3" style={{paddingBottom:'max(12px, env(safe-area-inset-bottom))'}}>
+                <button type="button" onClick={() => setShowLeagueHelp(false)} className="w-full rounded-xl bg-emerald-600 py-3 text-base font-extrabold text-white shadow-sm active:scale-[0.99]">OK</button>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );
