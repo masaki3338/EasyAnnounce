@@ -1,4 +1,3 @@
-import CustomInGameMemo from "./components/CustomInGameMemo";
 /**
  * DefenseScreen.tsx
  * ------------------------------------------------------------
@@ -550,7 +549,7 @@ const buildPitchAnnouncementMessages = (
 
   if (leagueMode === "custom") {
     const part = current !== total ? "inningEnd" : "inningEndNoTotal";
-    const custom = customPitchText(part, pitcher, current, total, pitchLimitSelected, inning, isTop);
+    const custom = customPitchText(part, pitcher, current, total, pitchLimitSelected, inning, isTop, myTeamName);
     if (custom !== null) return [custom];
   }
 
@@ -2379,17 +2378,16 @@ const handleStop = () => { ttsStop(); };
       relative text-left
     "
   >
-    {/* カスタマイズでは固定のタイミング文を表示しない */}
-    {leagueMode !== "custom" && <div className="flex items-center">
+    {/* 🔔 読み上げタイミング：薄い黄色の注意表示 */}
+    <div className="flex items-center">
       <div
         className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 text-xs md:text-[clamp(13px,1.9dvh,20px)] font-semibold leading-tight"
       >
         <span className="mr-2 text-lg" aria-hidden="true">⚠️</span>
         守備回終了時に🎤
       </div>
-    </div>}
+    </div>
 
-    <CustomInGameMemo item="pitchCount" parts={["inningEnd", "inningEndNoTotal"]} />
     {/* 🎤 投球数アナウンス：アイコンは1行目の左、続く行は同じ字下げ */}
     <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
       <img
@@ -3020,7 +3018,6 @@ if (typeof reEntryTarget?.index === "number") {
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
-            <CustomInGameMemo item="pitchCount" parts={["limitAdvance", "limit"]} />
             <div className="text-red-700 text-base font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
                 <p key={idx} className="whitespace-pre-wrap">{renderPitchLimitRuby(msg)}</p>
