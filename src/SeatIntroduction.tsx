@@ -87,6 +87,7 @@ const resolveBackTarget = async (): Promise<ScreenType> => {
 
 const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [customSeatTemplate, setCustomSeatTemplate] = useState<string | null>(null);
+  const [customSeatTimingNote, setCustomSeatTimingNote] = useState("");
   const [teamName, setTeamName] = useState("");       // 表示用
   const [teamReading, setTeamReading] = useState(""); // 読み上げ用
   const [positions, setPositions] = useState<{ [key: string]: PositionInfo }>({});
@@ -186,8 +187,10 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           return side === "any" || side === currentSide;
         });
         setCustomSeatTemplate(activeSegment?.text ?? null);
+        setCustomSeatTimingNote(configured?.timing?.note?.trim() || activeSegment?.timing?.note?.trim() || "");
       } else {
         setCustomSeatTemplate(null);
+        setCustomSeatTimingNote("");
       }
       if (matchInfo) {
         setLeagueMode(getLeagueMode());
@@ -456,7 +459,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
     const rows = positionRows.map(([pos, label], index) => {
       const player = positions[pos];
       const surname = `<ruby>${esc(player.lastName)}<rt>${esc(player.lastNameKana)}</rt></ruby>`;
-      const full = `${surname}、<ruby>${esc(player.firstName)}<rt>${esc(player.firstNameKana)}</rt></ruby>`;
+      const full = `${surname}<ruby>${esc(player.firstName)}<rt>${esc(player.firstNameKana)}</rt></ruby>`;
       const needsFull = !!player.lastName && dupLastNames.has(player.lastName);
       return replace(row, {
         ...base, "守備位置": esc(label), "選手名": needsFull ? full : surname,
@@ -721,8 +724,8 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
 
       {/* 本体 */}
       <main className="w-full max-w-[720px] mt-6 space-y-5">
-        {/* 注意カード（黄系） */}
-        <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
+        {/* カスタマイズ時は設定されたタイミングのメモのみ表示。空欄なら非表示。 */}
+        {(leagueMode !== "custom" || customSeatTimingNote) && <section className="rounded-2xl p-4 shadow-lg text-left bg-gradient-to-br from-amber-400/20 via-amber-300/15 to-amber-200/10 border border-amber-300/60 ring-1 ring-inset ring-amber-300/30">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <IconInfo />
@@ -730,9 +733,9 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
             <h2 className="font-semibold">読み上げタイミング</h2>
           </div>
           <p className="text-amber-50/90 text-sm leading-relaxed">
-            ピッチャーが練習球を1球投げてから
+            {leagueMode === "custom" ? customSeatTimingNote : "ピッチャーが練習球を1球投げてから"}
           </p>
-        </section>
+        </section>}
 
         {/* 🔴 アナウンス文言（赤 強め）＋ 枠内ボタン */}
         <section

@@ -64,6 +64,7 @@ import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { getAnnouncementMode } from "./lib/announcementMode";
 import { renderSeniorEndTemplate } from "./SeniorEndGameTemplates";
 import { getCustomOtherText } from "./lib/customOtherRuntime";
+import { customItemEnabled, loadCustomInGameTexts } from "./lib/customInGameTemplates";
 
 // バージョン番号を定数で管理
 type AnnouncementTimingSettings = {
@@ -503,6 +504,7 @@ const App = () => {
   const heatSpeakingRef = useRef(false);
   const heatMessage = getCustomOtherText("heat", "notice") ?? "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。";
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
+  const customOtherVisible = (id: string) => getLeagueMode() !== "custom" || customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), id);
 
   const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
   // リトルシニア専用「その他」アナウンス
@@ -2533,6 +2535,7 @@ return (
               <option value="" disabled hidden>
                 その他
               </option>
+              {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
@@ -2543,27 +2546,25 @@ return (
               )}
               {isBoys ? (
                 <>
-                  <option value="waterBreak">給水タイム</option>
+                  {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
                   <option value="intentionalWalk">申告敬遠</option>
-                  <option value="tiebreak">タイブレーク</option>
-                  <option value="end">試合終了</option>
+                  {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+                  {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
                   <option value="suspend">中断</option>
-                  <option value="suspendedGame">サスペンデッド</option>
+                  {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
                   <option value="boysmanual">連盟🎤マニュアル</option>
                 </>
               ) : (
                 <>
-                  <option value="end">試合終了</option>
-                  <option value="tiebreak">タイブレーク</option>
-                  <option value="continue">継続試合</option>
-                  <option value="heat">熱中症</option>
+                  {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+                  {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+                  {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+                  {customOtherVisible("heat") && <option value="heat">熱中症</option>}
                   {leagueMode === "custom" && <>
-                    <option value="customPause">試合中の中断・再開</option>
-                    <option value="intentionalWalk">申告敬遠</option>
-
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
                   </>}
 
-                  <option value="waterBreak">給水タイム</option>
+                  {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
                   <option value="manual">連盟🎤マニュアル</option>
                   <option value="pitchlist">投球数⚾</option>
                 </>
@@ -2924,7 +2925,8 @@ return (
       <option value="" disabled hidden>
         その他
       </option>
-      <option value="history">アナウンス履歴</option>
+      {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
                   <option value="intentionalWalk">申告敬遠</option>
@@ -2936,26 +2938,24 @@ return (
       {isBoys ? (
         <>
           <option value="intentionalWalk">申告敬遠</option>
-          <option value="waterBreak">給水タイム</option>
-          <option value="tiebreak">タイブレーク</option>
-          <option value="end">試合終了</option>
+          {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
+          {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+          {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
           <option value="suspend">試合中断</option>
-          <option value="suspendedGame">サスペンデッド</option>
+          {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
           <option value="boysmanual">連盟🎤マニュアル</option>
         </>
       ) : (
         <>
-          <option value="end">試合終了</option>
-          <option value="tiebreak">タイブレーク</option>
-          <option value="continue">継続試合</option>
-          <option value="heat">熱中症</option>
+          {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+          {customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+          {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+          {customOtherVisible("heat") && <option value="heat">熱中症</option>}
                   {leagueMode === "custom" && <>
-                    <option value="customPause">試合中の中断・再開</option>
-                    <option value="intentionalWalk">申告敬遠</option>
-
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
                   </>}
 
-          <option value="waterBreak">給水タイム</option>
+          {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
           <option value="manual">連盟🎤マニュアル</option>
           <option value="pitchlist">投球数⚾</option>
         </>
@@ -3340,6 +3340,9 @@ return (
             setPitchList(rows);
             setShowPitchListPopup(true);
 
+          } else if (value === "intentionalWalk") {
+            setIntentionalWalkTrigger((n) => n + 1);
+
           } else if (value === "waterBreak") {
             setWaterBreakRunning(false);
             setWaterBreakRemaining(waterBreakMinutes * 60);
@@ -3365,7 +3368,8 @@ return (
           その他
         </option>
 
-        <option value="history">アナウンス履歴</option>
+        {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
                   <option value="treatmentPause">試合の中断（治療）</option>
@@ -3374,24 +3378,24 @@ return (
               )}
         {isBoys ? (
           <>
-            <option value="waterBreak">給水タイム</option>
-            <option value="end">試合終了</option>
+            {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
+            {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
             <option value="suspend">中断</option>
-            <option value="suspendedGame">サスペンデッド</option>
+            {customOtherVisible("suspendedGame") && <option value="suspendedGame">サスペンデッド</option>}
             <option value="boysmanual">連盟🎤マニュアル</option> 
           </>
         ) : (
           <>
-            <option value="end">試合終了</option>
-            {leagueMode === "senior" && <option value="tiebreak">タイブレーク</option>}
-             <option value="continue">継続試合</option>
-            <option value="heat">熱中症</option>
+            {customOtherVisible("gameEnd") && <option value="end">試合終了</option>}
+            {leagueMode === "senior" && customOtherVisible("tieBreak") && <option value="tiebreak">タイブレーク</option>}
+             {customOtherVisible("suspendedGame") && <option value="continue">継続試合</option>}
+            {customOtherVisible("heat") && <option value="heat">熱中症</option>}
                   {leagueMode === "custom" && <>
-                    <option value="customPause">試合中の中断・再開</option>
+                    {customOtherVisible("injuryPause") && <option value="customPause">試合中の中断・再開</option>}
 
                   </>}
 
-            <option value="waterBreak">給水タイム</option>
+            {customOtherVisible("water") && <option value="waterBreak">給水タイム</option>}
             <option value="manual">連盟🎤マニュアル</option> 
             <option value="pitchlist">投球数⚾</option>
           </>

@@ -14,6 +14,8 @@ import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewar
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { customPitchText } from "./lib/customDefenseRuntime";
+import { customPitchPartEnabled, loadCustomInGameTexts } from "./lib/customInGameTemplates";
+import { getActiveCustomProfileId } from "./lib/customProfiles";
 
 // カスタマイズ文章内のルビのみを安全に描画する。
 // 任意のHTMLは解釈せずテキストとして扱い、タグ文字列の露出・HTML注入を防ぐ。
@@ -549,6 +551,7 @@ const buildPitchAnnouncementMessages = (
 
   if (leagueMode === "custom") {
     const part = current !== total ? "inningEnd" : "inningEndNoTotal";
+    if (!customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), part)) return [];
     const custom = customPitchText(part, pitcher, current, total, pitchLimitSelected, inning, isTop, myTeamName);
     if (custom !== null) return [custom];
   }
@@ -901,7 +904,7 @@ const addPitch = async () => {
   const warn2 = pitchLimitSelected;
 
 
-  if (!isBoys && (newTotal === warn1 || newTotal === warn2)) {
+  if (!isBoys && (newTotal === warn1 || newTotal === warn2) && (leagueMode !== "custom" || customPitchPartEnabled(loadCustomInGameTexts(getActiveCustomProfileId()),newTotal === warn2 ? "limit" : "limitAdvance"))) {
     const pitcherParts = getAnnounceNameParts(pitcher);
     const pitcherSuffix = pitcher.isFemale ? "さん" : "くん";
     const specialHead = `ピッチャー${pitcherParts.name}${pitcherSuffix}`;
