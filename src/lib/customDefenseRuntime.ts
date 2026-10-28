@@ -6,11 +6,11 @@ const esc=(s:unknown)=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 const nameRuby=(name:unknown,kana:unknown)=>{const value=String(name??'');if(!value)return '';const reading=String(kana??'');return reading?`<ruby>${esc(value)}<rt>${esc(reading)}</rt></ruby>`:esc(value);};
 export const pitcherRuby=(p:any)=>p?nameRuby(p.lastName,p.lastNameKana):'';
 export const pitcherFullRuby=(p:any)=>p?nameRuby(p.lastName,p.lastNameKana)+nameRuby(p.firstName,p.firstNameKana):'';
-export function customPitchText(part:'inningEnd'|'inningEndNoTotal'|'limit'|'limitAdvance', pitcher:any,current:number,total:number,limit:number,inning?:number,isTop?:boolean):string|null{
+export function customPitchText(part:'inningEnd'|'inningEndNoTotal'|'limit'|'limitAdvance', pitcher:any,current:number,total:number,limit:number,inning?:number,isTop?:boolean,teamName?:string):string|null{
  if(getLeagueMode()!=='custom')return null;
  const template=loadCustomInGameTexts(getActiveCustomProfileId()).pitchCount?.[part];
  if(typeof template!=='string')return null;
- return substituteTokens(template,{'投手名':pitcherRuby(pitcher),'投手名（苗字）':pitcherRuby(pitcher),'投手名（フルネーム）':pitcherFullRuby(pitcher),'敬称':pitcher?.isFemale?'さん':'くん','この回の投球数':String(current),'合計投球数':String(total),'投球上限':String(limit),'回':typeof inning==='number'?String(inning):'','表裏':typeof isTop==='boolean'?(isTop?'表':'裏'):''});
+ return substituteTokens(template,{'投手名':pitcherRuby(pitcher),'投手名（苗字）':pitcherRuby(pitcher),'投手名（フルネーム）':pitcherFullRuby(pitcher),'敬称':pitcher?.isFemale?'さん':'くん','この回の投球数':String(current),'合計投球数':String(total),'投球上限':String(limit),'チーム名':String(teamName||pitcher?.teamName||pitcher?.team?.name||''),'回':typeof inning==='number'?String(inning):'','表裏':typeof isTop==='boolean'?(isTop?'表':'裏'):''});
 }
 export function customDefenseChangeIntro(kind:'player'|'position'|'both',teamName:string):string|null{
  if(getLeagueMode()!=='custom')return null;
@@ -36,6 +36,7 @@ export function customPinchDefenseBodies(source:string,players:any[],battingOrde
     return full.length===1 ? full[0] : null;
   };
   const getName=(p:any)=> nameRuby(p?.lastName,p?.lastNameKana);
+  const getFullName=(p:any)=> nameRuby(p?.lastName,p?.lastNameKana)+nameRuby(p?.firstName,p?.firstNameKana);
   const run=(line:string):string=>{
     if(!/先ほど代(?:打|走)/.test(plain(line)) || /リエントリー|臨時代走/.test(plain(line)))return line;
     if((plain(line).match(/先ほど代(?:打|走)/g)||[]).length!==1)return line;
