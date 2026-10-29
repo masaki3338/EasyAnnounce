@@ -2208,7 +2208,7 @@ const savePinchHistoryOnConfirm = (confirmedHtml?: string) => {
 
 const saveRunnerHistoryOnConfirm = () => {
   if (!runnerAnnouncement?.length) return;
-  const displayHtml = runnerAnnouncement.filter(Boolean).map(stripRunnerMessageTag).join("<br />");
+  const displayHtml = runnerAnnouncement.filter(Boolean).map(getResolvedRunnerMessage).join("<br />");
   if (!displayHtml.trim()) return;
   void addAnnouncementHistory({
     category: runnerAnnouncement.some((x) => String(x).includes("臨時代走")) ? "臨時代走" : "代走",
@@ -2377,6 +2377,31 @@ const handleRetiredBenchClick = (p: any, actionType: "sub" | "runner" = "sub") =
 };
 
 
+// カスタマイズモード専用：保存文章に残った塁の差込項目を最終的に置換する。
+// 全角括弧の旧入力にも対応し、通常モードの固定文は処理しない。
+const resolveCustomRunnerBaseTokens = (html: string, base: string): string => {
+  // カスタマイズ専用の差込記号がある場合だけ解決する。
+  // 通常モードの固定文にはこの記号がないため表示は変わらない。
+  const japanese = base === '1塁' ? 'ファースト' : base === '2塁' ? 'セカンド' : 'サード';
+  return html.replace(/[【［\[]\s*塁\s*[（(]([^）)】\]］]*)[）)]\s*[】］\]]/g, (whole, token: string) => {
+    const key = token.replace(/\s/g, '').replace(/／/g, '/');
+    if (key === 'ファースト/セカンド/サード') return japanese;
+    if (key === '1塁/2塁/3塁') return base;
+    if (key === '1/2/3') return base.charAt(0); // 旧設定の互換性
+    return whole;
+  });
+};
+
+// モーダル・音声・確定後アナウンス・履歴で同じ文字列を使用する。
+const getResolvedRunnerMessage = (msg: string): string => {
+  const tagBase = msg.match(/^<!--runner-base:([123]塁)-->/)?.[1];
+  const plain = stripRunnerMessageTag(msg);
+  if (tagBase) return resolveCustomRunnerBaseTokens(plain, tagBase);
+  // 旧形式のメッセージにだけ既存の塁判定を適用。
+  const inferred = (['1塁', '2塁', '3塁'] as const).find(base => isRunnerMessageForBase(msg, base));
+  return inferred ? resolveCustomRunnerBaseTokens(plain, inferred) : plain;
+};
+
 const applyRunnerSelection = (player: any) => {
   if (!selectedBase) return;
 
@@ -2436,10 +2461,11 @@ const applyRunnerSelection = (player: any) => {
     ...customPlayerVars(player,'交代後選手名'),
     '交代前敬称':honorificFrom,'交代後敬称':honorificTo,
     '交代後背番号':String(player?.number??''),'チーム名':teamName,
+    '塁(1塁/2塁/3塁)':base,
     '塁(1/2/3)':base.charAt(0),
     '塁(ファースト/セカンド/サード)':base === '1塁' ? 'ファースト' : base === '2塁' ? 'セカンド' : 'サード',
   });
-  const text = customRunnerText === null ? legacyText : customRunnerText;
+  const text = customRunnerText === null ? legacyText : resolveCustomRunnerBaseTokens(customRunnerText, base);
 
   setRunnerAnnouncement(prev => {
     const updated = prev.filter(msg => !isRunnerMessageForBase(msg, base));
@@ -3495,13 +3521,13 @@ const buildCustomPinchModalHtml = (): string | null => {
   if (getLeagueMode() !== 'custom' || subModalMode === 'reentry') return null;
   const before = getPlayer(battingOrder[currentBatterIndex]?.id);
   const after = selectedSubPlayer;
-  if (!before || !after) return null;
+  // 打順データ復元中でもカスタマイズ文を固定文に戻さない。
   const vars: Record<string,string> = {
     ...customPlayerVars(before, '交代前選手名'),
-    ...customPlayerVars(after, '交代後選手名'),
-    '交代前敬称': before.isFemale ? 'さん' : 'くん',
-    '交代後敬称': after.isFemale ? 'さん' : 'くん',
-    '交代後背番号': String(after.number ?? ''),
+    ...(after ? customPlayerVars(after, '交代後選手名') : { '交代後選手名（苗字）':'', '交代後選手名（フルネーム）':'', '交代後選手名':'' }),
+    '交代前敬称': before?.isFemale ? 'さん' : 'くん',
+    '交代後敬称': after ? (after.isFemale ? 'さん' : 'くん') : '',
+    '交代後背番号': String(after?.number ?? ''),
     '打順': String(currentBatterIndex + 1),
     '回': String(inning),
     '表裏': isTop ? '表' : '裏',
@@ -4424,6 +4450,7 @@ const stopSpeech = () => { stop(); };
 
 
 useEffect(() => {
+  if (getLeagueMode() === "custom" && !hydrated) return;
   if (
     players.length > 0 &&
     battingOrder.length > 0 &&
@@ -4443,6 +4470,7 @@ useEffect(() => {
   teamName,
   checkedIds,
   announcedIds,
+  hydrated,
   leagueMode, // ← 追加
 ]);
 
@@ -6899,11 +6927,12 @@ useEffect(() => {
                                     '交代後敬称': honorificTo,
                                     '交代後背番号': String(sub.number ?? ''),
                                     'チーム名': teamName,
+                                    '塁(1塁/2塁/3塁)': base,
                                     '塁(1/2/3)': base.charAt(0),
                                     '塁(ファースト/セカンド/サード)': base === '1塁' ? 'ファースト' : base === '2塁' ? 'セカンド' : 'サード',
                                   }
                                 );
-                                const announcedText = customText === null ? text : customText;
+                                const announcedText = customText === null ? text : resolveCustomRunnerBaseTokens(customText, base);
                                 setAnnouncementHTML(announcedText);
                                 return [...updated, `${runnerMessageTag(base)}${announcedText}`];
                               });
@@ -7093,7 +7122,7 @@ useEffect(() => {
                                 return runnerAnnouncement
                                   .filter((msg) => isRunnerMessageForBase(msg, base))
                                   .map((msg, idx) => (
-                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: msg }} />
+                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: getResolvedRunnerMessage(msg) }} />
                                   ));
                               })}
                             </div>
@@ -7310,7 +7339,7 @@ useEffect(() => {
                   .filter(Boolean) as string[];
 
                 if (orderedMsgs.length > 0) {
-                  setAnnouncementHTML(orderedMsgs.map(stripRunnerMessageTag).join("<br/>"));
+                  setAnnouncementHTML(orderedMsgs.map(getResolvedRunnerMessage).join("<br/>"));
                 }
               }
 

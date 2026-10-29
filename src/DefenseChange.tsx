@@ -722,6 +722,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
     const template = parts[ev.part];
     if (typeof template !== 'string') continue;
     const vars: Record<string,string> = {
+      '打順': (() => { const n=battingOrder.findIndex(entry=>Number(entry.id)===Number(ev.to.id)); return n>=0?String(n+1):''; })(),
       '交代前・選手名': name(ev.pinch),
       '交代前・選手名（苗字）': name(ev.pinch),
       '交代前・選手名（フルネーム）': fullName(ev.pinch),
@@ -762,6 +763,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       const formerBattingOrder = r.order > 0 ? `${r.order}番` : oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '';
       const replacementVars:Record<string,string> = {
         '交代前打順':formerBattingOrder,
+        '打順': (() => { const n=battingOrder.findIndex(entry=>Number(entry.id)===Number(r.to.id)); return n>=0?String(n+1):r.order>0?String(r.order):''; })(),
         '交代前・守備位置':position[oldPos], '交代前・選手名':name(r.from),'交代前・選手名（苗字）':name(r.from),'交代前・選手名（フルネーム）':fullName(r.from),'交代前・敬称':honorific(r.from),
         '交代後・選手名':name(r.to),'交代後・選手名（苗字）':name(r.to),'交代後・選手名（フルネーム）':fullName(r.to),'交代後・敬称':honorific(r.to),
         '__toId':String(r.to.id),
@@ -775,6 +777,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       const oldBattingIndex = battingOrder.findIndex(entry => Number(entry.id)===Number(r.player.id));
       const movementVars:Record<string,string> = {
         '交代前打順':oldBattingIndex>=0 ? `${oldBattingIndex+1}番` : '',
+        '打順':oldBattingIndex>=0?String(oldBattingIndex+1):'',
         '移動前・守備位置':position[r.fromPos],'移動・選手名':name(r.player),'移動・選手名（苗字）':name(r.player),'移動・選手名（フルネーム）':fullName(r.player),
         '移動・敬称':honorific(r.player),'移動後・守備位置':position[r.toPos],
         '移動・背番号':String(r.player.number??'')
@@ -925,7 +928,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   const lineup = battingRows.length
     ? [parts.battingIntro, ...battingRows.map(v => substituteTokens(parts.battingRow || '', v))].filter(Boolean).join('\n')
     : '';
-  return [substituteTokens(intro, {'チーム名':teamName}), joined, lineup, parts.outro].filter(Boolean).join('\n');
+  return [substituteTokens(intro, {'チーム名':teamName,'守備側チーム名':teamName}), joined, lineup, parts.outro].filter(Boolean).join('\n');
 };
 
 const generateAnnouncementText = (

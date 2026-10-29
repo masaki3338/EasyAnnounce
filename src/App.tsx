@@ -5,6 +5,7 @@ import localForage from "localforage";
 import Gather from "./Gather";
 import StartGreeting from "./StartGreeting";  // 追加
 import SeatIntroduction from "./SeatIntroduction";
+import CustomPreGameRun from "./CustomPreGameRun";
 
 import { DndProvider } from 'react-dnd';
 import { TouchBackend } from 'react-dnd-touch-backend';
@@ -2221,7 +2222,20 @@ return (
         </>
       )}
 
-      {screen === "seatIntroduction" && (
+      {screen === "seatIntroduction" && leagueMode === "custom" && fromGameRef.current && (
+        <CustomPreGameRun seatTopModal onNavigate={handleSeatIntroductionNavigate} onBack={async()=>{
+          const returnState=await localForage.getItem<any>("seatIntroReturnState");
+          if(returnState?.mode==="onePersonNextHalf") {
+            const mi=(await localForage.getItem<any>("matchInfo"))||{};
+            await localForage.setItem("matchInfo",{...mi,inning:Number(returnState.inning??1),isTop:Boolean(returnState.isTop??false),isDefense:false,announcementMode:"single"});
+            await localForage.removeItem("seatIntroReturnState");
+            setScreen("onePersonAnnounce");
+          } else {
+            await handleSeatIntroductionBack();
+          }
+        }}/>
+      )}
+      {screen === "seatIntroduction" && !(leagueMode === "custom" && fromGameRef.current) && (
         <>
           <button
             className="m-4 px-4 py-2 bg-gray-200 rounded-full shadow-sm hover:bg-gray-300 transition"

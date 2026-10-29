@@ -2577,6 +2577,7 @@ useEffect(() => {
 ]);
 
 const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
+const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
   const customEndPitchDisabled = () => {
     if (getLeagueMode() !== "custom" || pitchAnnounceAction !== "inningEnd") return false;
     const part = currentPitchCount !== totalPitchCount ? "inningEnd" : "inningEndNoTotal";
@@ -2589,7 +2590,6 @@ const [showPitchAnnounceModal, setShowPitchAnnounceModal] = useState(false);
   }, [showPitchAnnounceModal, pitchAnnounceAction]);
 
 const [pitchAnnounceText, setPitchAnnounceText] = useState("");
-const [pitchAnnounceAction, setPitchAnnounceAction] = useState<"notice" | "inningEnd">("inningEnd");
 
 useEffect(() => {
   // 履歴に残す投球数は、イニング終了時の「この回の投球数」だけ。
@@ -2815,6 +2815,15 @@ const [showRunnerHelpModal, setShowRunnerHelpModal] = useState(false);
 const [isRunnerConfirmed, setIsRunnerConfirmed] = useState(false);
 const [runnerAnnouncement, setRunnerAnnouncement] = useState<string[]>([]);
 
+// 1人モードの代走文章は内部的に塁を識別し、表示時だけ管理用ラベルを除く。
+// カスタマイズ文章に「○塁ランナー」を勝手に追加しないための区切り記号。
+const RUNNER_CUSTOM_SEPARATOR = "\u2063";
+const visibleRunnerAnnouncement = (value: string): string => {
+  const marker = value.indexOf(RUNNER_CUSTOM_SEPARATOR);
+  return marker < 0 ? value : value.slice(marker + RUNNER_CUSTOM_SEPARATOR.length);
+};
+
+
 // ===== アナウンス履歴：閉じると再表示できない試合中アナウンスだけ保存 =====
 const pinchHistoryHtmlRef = useRef("");
 
@@ -2927,7 +2936,7 @@ const savePinchHistoryOnConfirm = (confirmedHtml?: string) => {
 
 const saveRunnerHistoryOnConfirm = () => {
   if (!runnerAnnouncement?.length) return;
-  const displayHtml = runnerAnnouncement.filter(Boolean).join("<br />");
+  const displayHtml = runnerAnnouncement.filter(Boolean).map(visibleRunnerAnnouncement).join("<br />");
   if (!displayHtml.trim()) return;
   void addAnnouncementHistory({
     category: runnerAnnouncement.some((x) => String(x).includes("臨時代走")) ? "臨時代走" : "代走",
@@ -3096,6 +3105,36 @@ const handleRetiredBenchClick = (p: any, actionType: "sub" | "runner" = "sub") =
 };
 
 
+// 代走・臨時代走のテンプレートを1人用画面でも同じ設定から取得する。
+// 塁差込は半角／全角括弧の双方を受け付ける。
+const buildOnePersonRunnerAnnouncement = (
+  base: string, before: any, after: any, isTemp: boolean, fallback: string
+): string => {
+  if (getLeagueMode() !== "custom") return fallback;
+  const index = base.startsWith("1") ? 0 : base.startsWith("2") ? 1 : 2;
+  const baseKana = ["ファースト", "セカンド", "サード"][index];
+  const baseNumber = ["1塁", "2塁", "3塁"][index];
+  const vars: Record<string,string> = {
+    ...customPlayerVars(before, "交代前選手名"),
+    ...customPlayerVars(after, "交代後選手名"),
+    "交代前敬称": before?.isFemale ? "さん" : "くん",
+    "交代後敬称": after?.isFemale ? "さん" : "くん",
+    "交代後背番号": String(after?.number ?? ""),
+    "チーム名": teamName,
+    "塁(ファースト/セカンド/サード)": baseKana,
+    "塁（ファースト/セカンド/サード）": baseKana,
+    "塁(1塁/2塁/3塁)": baseNumber,
+    "塁（1塁/2塁/3塁）": baseNumber,
+    "塁(1/2/3)": String(index+1),
+  };
+  const custom = customOffenseText(isTemp ? "courtesyRunner" : "pinchRunner", "main", vars);
+  if (custom === null) return fallback;
+  const resolved = custom.replace(/【塁[（(]ファースト[\/／]セカンド[\/／]サード[）)]】/g, baseKana)
+    .replace(/【塁[（(]1塁[\/／]2塁[\/／]3塁[）)]】/g, baseNumber)
+    .replace(/\n/g, "<br />");
+  return `${base}ランナー${RUNNER_CUSTOM_SEPARATOR}${resolved}`;
+};
+
 const applyRunnerSelection = (player: any) => {
   if (!selectedBase) return;
 
@@ -3139,13 +3178,7 @@ const applyRunnerSelection = (player: any) => {
         (num ? `、背番号 ${num}。` : "。"));
 
   
-  const customRunnerText = customOffenseText(isTemp ? 'courtesyRunner' : 'pinchRunner', 'main', {
-    ...(replaced ? customPlayerVars(replaced,'交代前選手名') : {}),
-    ...customPlayerVars(player,'交代後選手名'),
-    '交代前敬称':honorificFrom,'交代後敬称':honorificTo,
-    '交代後背番号':String(player?.number??''),'チーム名':teamName,
-  });
-  const text = customRunnerText === null ? legacyText : `${prefix}、${customRunnerText}`;
+  const text = buildOnePersonRunnerAnnouncement(base, replaced, player, isTemp, legacyText);
 
   setRunnerAnnouncement(prev => {
     const labels = [
@@ -7187,6 +7220,12 @@ const buildRunnerModalSpeakText = (): string =>
   buildRunnerModalSpeakParts().join("");
 
 const speakRunnerModalLikePinch = async () => {
+  if (getLeagueMode() === "custom") {
+    const html = runnerAnnouncement.map(visibleRunnerAnnouncement).filter(Boolean).join("<br />");
+    const text = htmlToTtsText(html);
+    if (text) await speak(text, SUB_MODAL_TTS_OPTIONS);
+    return;
+  }
   const parts = buildRunnerModalSpeakParts();
   if (!parts.length) return;
 
@@ -7250,6 +7289,7 @@ const buildPinchSelectedTail = (sub: any): string => {
 };
 
 const prefetchPinchSelectedPlayer = (sub: any) => {
+  if (getLeagueMode() === 'custom') return; // 選択後の完成したカスタマイズ文をuseEffectで先読み
   const tail = buildPinchSelectedTail(sub);
   if (!tail) return;
 
@@ -7258,7 +7298,35 @@ const prefetchPinchSelectedPlayer = (sub: any) => {
   });
 };
 
+// カスタマイズモード：代打モーダルの表示と音声で同じ文章を使う。
+// 通常モードとリエントリー専用表示は従来どおり。
+const buildCustomPinchModalHtml = (): string | null => {
+  if (getLeagueMode() !== 'custom' || subModalMode === 'reentry') return null;
+  const before = getPlayer(battingOrder[currentBatterIndex]?.id);
+  const after = selectedSubPlayer;
+  const vars: Record<string, string> = {
+    ...customPlayerVars(before, '交代前選手名'),
+    ...customPlayerVars(after, '交代後選手名'),
+    '交代前敬称': before ? (before.isFemale ? 'さん' : 'くん') : '',
+    '交代後敬称': after ? (after.isFemale ? 'さん' : 'くん') : '',
+    '交代後背番号': String(after?.number ?? ''),
+    '打順': String(currentBatterIndex + 1),
+    '回': String(inning),
+    '表裏': isTop ? '表' : '裏',
+    'チーム名': teamName,
+  };
+  const main = customOffenseText('pinchHitter', 'main', vars);
+  if (main === null) return null;
+  const header = isLeadingBatter ? customOffenseText('pinchHitter', 'leadoff', vars) : null;
+  return [header, main].filter(Boolean).join('<br />').replace(/\n/g, '<br />');
+};
+
 const buildPinchModalSpeakParts = (): string[] => {
+  const customHtml = buildCustomPinchModalHtml();
+  if (customHtml !== null) {
+    const text = htmlToTtsText(customHtml);
+    return text ? [text] : [];
+  }
   if (subModalMode === "reentry") {
     if (!reEntryTargetPlayer || reEntryOrder1 == null || !reEntryFromPlayer) return [];
 
@@ -7318,6 +7386,13 @@ useEffect(() => {
           if (cancelled) return;
           await prefetchTTS(part, SUB_MODAL_TTS_OPTIONS);
         }
+        return;
+      }
+
+      const customHtml = buildCustomPinchModalHtml();
+      if (customHtml !== null) {
+        const speech = htmlToTtsText(customHtml);
+        if (speech && !cancelled) await prefetchTTS(speech, SUB_MODAL_TTS_OPTIONS);
         return;
       }
 
@@ -9886,6 +9961,8 @@ useEffect(() => {
                               `.trim(),
                             }}
                           />
+                        ) : buildCustomPinchModalHtml() !== null ? (
+                          <span dangerouslySetInnerHTML={{ __html: buildCustomPinchModalHtml()! }} />
                         ) : (
                           <>
                             {isLeadingBatter && (
@@ -10668,8 +10745,9 @@ useEffect(() => {
                                     );
 
 
-                                setAnnouncementHTML(text);
-                                return [...updated, text];
+                                const output = buildOnePersonRunnerAnnouncement(base, replaced, sub, checked, text);
+                                setAnnouncementHTML(visibleRunnerAnnouncement(output));
+                                return [...updated, output];
                               });
 
                             }}
@@ -10849,7 +10927,7 @@ useEffect(() => {
                                 return runnerAnnouncement
                                   .filter((msg) => labels.some(label => msg.startsWith(label)))
                                   .map((msg, idx) => (
-                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: msg }} />
+                                    <div key={`${base}-${idx}`} dangerouslySetInnerHTML={{ __html: visibleRunnerAnnouncement(msg) }} />
                                   ));
                               })}
                             </div>
@@ -11082,7 +11160,7 @@ useEffect(() => {
                   .filter(Boolean) as string[];
 
                 if (orderedMsgs.length > 0) {
-                  setAnnouncementHTML(orderedMsgs.join("<br/>"));
+                  setAnnouncementHTML(orderedMsgs.map(visibleRunnerAnnouncement).join("<br/>"));
                 }
               }
 
