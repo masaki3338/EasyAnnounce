@@ -159,11 +159,13 @@ export default defineConfig({
         globIgnores: [
           'ort/**',
           'app-update.json',
+          // HTMLは古いprecache版を優先せず、起動時にネットワークから取得する。
+          '**/index.html',
         ],
         maximumFileSizeToCacheInBytes:
           10 * 1024 * 1024,
         // 更新情報は必ずネットワークから取得。オフラインの古いIDを返さない。
-        // オフライン用の事前保存も、tts.tsと同じ音声URLに揃える。
+        // 固定音声の事前保存URLはtts.tsのURLと揃える。
         manifestTransforms: [async (entries) => ({
           manifest: entries.map((entry) => {
             const revision = audioRevisions[entry.url.replace(/^\//, '')];
@@ -174,6 +176,19 @@ export default defineConfig({
           warnings: [],
         })],
         runtimeCaching: [
+          // PWAをホーム画面から開く場合も、最新のHTMLを最初に確認する。
+          // 通信できない場合のみ最後に正常取得したHTMLを利用する。
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' && url.origin === self.location.origin,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'easyannounce-navigation-v2',
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 8 },
+            },
+          },
           {
             urlPattern: /\/app-update\.json(?:\?|$)/,
             handler: 'NetworkOnly',
@@ -192,7 +207,9 @@ export default defineConfig({
             },
           },
         ],
-        navigateFallbackDenylist: [/[?&]__easy_updated=/],
+        // 旧HTMLを直接返すWorkboxのNavigationRouteは使用しない。
+        // 上のNetworkFirstで通常起動とホーム画面起動を一元管理する。
+        navigateFallback: null,
         clientsClaim: false,
         // 旧版に適用ボタンがなくても更新がwaitingで止まらないようにする。
         // SWの更新準備と画面の再読み込みは別。main.tsxは自動reloadしない。
