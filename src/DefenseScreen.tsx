@@ -14,7 +14,7 @@ import { speak as ttsSpeak, speakJoinedTTS, stop as ttsStop, prefetchTTS, prewar
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 import { getLeagueMode, type LeagueMode } from "./lib/leagueSettings";
 import { customPitchText } from "./lib/customDefenseRuntime";
-import { customPitchPartEnabled, loadCustomInGameTexts } from "./lib/customInGameTemplates";
+import { customPitchPartEnabled, loadCustomInGameTexts, customInGameMemoKey } from "./lib/customInGameTemplates";
 import { getActiveCustomProfileId } from "./lib/customProfiles";
 
 // カスタマイズ文章内のルビのみを安全に描画する。
@@ -302,6 +302,15 @@ useEffect(() => {
   const [announceMessages, setAnnounceMessages] = useState<string[]>([]);
   const [pitchLimitMessages, setPitchLimitMessages] = useState<string[]>([]);
   const [showPitchLimitModal, setShowPitchLimitModal] = useState(false);
+  // カスタマイズ専用: 投球数通知の種類ごとに保存されたメモを表示する（読み上げ対象外）。
+  const [pitchLimitMemoPart, setPitchLimitMemoPart] = useState<'limit' | 'limitAdvance' | null>(null);
+  const getPitchMemo = (part: 'inningEnd' | 'inningEndNoTotal' | 'limit' | 'limitAdvance') => {
+    if (leagueMode !== 'custom') return '';
+    return loadCustomInGameTexts(getActiveCustomProfileId()).pitchCount?.[customInGameMemoKey(part)]?.trim() || '';
+  };
+  const inningEndPitchMemo = getPitchMemo(currentPitchCount !== totalPitchCount ? 'inningEnd' : 'inningEndNoTotal');
+  const pitchLimitMemo = pitchLimitMemoPart ? getPitchMemo(pitchLimitMemoPart) : '';
+
 
   const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
   const [showRestoreCompleteModal, setShowRestoreCompleteModal] = useState(false);
@@ -918,6 +927,7 @@ const addPitch = async () => {
         : `${specialHead}、ただいまの投球で${newTotal}球です.`);
 
 
+    setPitchLimitMemoPart(newTotal === warn2 ? 'limit' : 'limitAdvance');
     setPitchLimitMessages([specialMsg]);
     setShowPitchLimitModal(true);
 
@@ -2381,7 +2391,8 @@ const handleStop = () => { ttsStop(); };
       relative text-left
     "
   >
-    {/* 🔔 読み上げタイミング：薄い黄色の注意表示 */}
+    {/* 🔔 通常モードのみ、既存の読み上げタイミングラベルを表示 */}
+    {leagueMode !== "custom" && (
     <div className="flex items-center">
       <div
         className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-2 py-1 text-xs md:text-[clamp(13px,1.9dvh,20px)] font-semibold leading-tight"
@@ -2390,6 +2401,13 @@ const handleStop = () => { ttsStop(); };
         守備回終了時に🎤
       </div>
     </div>
+    )}
+
+    {inningEndPitchMemo && (
+      <div className="mt-2 whitespace-pre-wrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+        ⚠️ {inningEndPitchMemo}
+      </div>
+    )}
 
     {/* 🎤 投球数アナウンス：アイコンは1行目の左、続く行は同じ字下げ */}
     <div className="mt-2 md:mt-[clamp(8px,1.4dvh,14px)] flex items-start gap-2 md:gap-[clamp(6px,1.1dvh,10px)]">
@@ -3021,6 +3039,11 @@ if (typeof reEntryTarget?.index === "number") {
               <span className="text-sm font-semibold text-red-700">アナウンス</span>
             </div>
 
+            {pitchLimitMemo && (
+              <div className="mb-3 whitespace-pre-wrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">
+                ⚠️ {pitchLimitMemo}
+              </div>
+            )}
             <div className="text-red-700 text-base font-bold space-y-2">
               {pitchLimitMessages.map((msg, idx) => (
                 <p key={idx} className="whitespace-pre-wrap">{renderPitchLimitRuby(msg)}</p>

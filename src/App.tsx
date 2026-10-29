@@ -1,3 +1,4 @@
+import CustomWeatherAnnounce from './screens/CustomWeatherAnnounce';
 import CustomInGameMemo from "./components/CustomInGameMemo";
 import React, { useState, useEffect, useRef } from "react";
 import localForage from "localforage";
@@ -504,6 +505,39 @@ const App = () => {
   const heatSpeakingRef = useRef(false);
   const heatMessage = getCustomOtherText("heat", "notice") ?? "本日は気温が高く、熱中症が心配されますので、水分をこまめにとり、体調に気を付けてください。";
   const [otherOption, setOtherOption] = useState(""); // その他選択状態
+  const [customWeatherVars,setCustomWeatherVars]=useState<Record<string,string>|null>(null);
+  const [customExtraNotice,setCustomExtraNotice]=useState<{id:string;label:string;message:string;memo:string}|null>(null);
+  const customExtraItems=()=>Object.entries(loadCustomInGameTexts(getActiveCustomProfileId())).filter(([id,v])=>id.startsWith('userOther_')&&v?.label&&v.enabled!=='false');
+  const getCustomWeatherVars=async()=>{
+    const [match,team]=await Promise.all([localForage.getItem<any>('matchInfo'),localForage.getItem<any>('team')]);
+    const own=String(team?.name||match?.teamName||'');
+    const opponent=String(match?.opponentTeam||'');
+    let top=match?.isHome?opponent:own;
+    let bottom=match?.isHome?own:opponent;
+    if(match?.announcementMode==='single'){
+      const {firstTeam,thirdTeam}=await getOnePersonTeamsFromMatchInfo();
+      const firstTop=match?.battingFirstSide==='first';
+      top=String((firstTop?firstTeam:thirdTeam)?.name||top);
+      bottom=String((firstTop?thirdTeam:firstTeam)?.name||bottom);
+    }
+    return {'先攻チーム名':top,'後攻チーム名':bottom,'大会名':String(match?.tournamentName||''),'試合番号':String(match?.matchNumber??'')};
+  };
+  const openCustomOther=async(value:string)=>{
+    if(getLeagueMode()!=='custom')return false;
+    if(value==='customRain'){
+      setCustomWeatherVars(await getCustomWeatherVars());return true;
+    }
+    if(value.startsWith('userOther_')){
+      const data=loadCustomInGameTexts(getActiveCustomProfileId())[value];
+      if(!data||data.enabled==='false'||!data.label)return false;
+      const vars=await getCustomWeatherVars();
+      const {substituteTokens}=await import('./lib/customInGameTemplates');
+      setCustomExtraNotice({id:value,label:data.label,message:substituteTokens(data.main||'',vars),memo:substituteTokens(data['memo:main']||'',vars)});
+      return true;
+    }
+    return false;
+  };
+
   const customOtherVisible = (id: string) => getLeagueMode() !== "custom" || customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), id);
 
   const [intentionalWalkTrigger, setIntentionalWalkTrigger] = useState(0);
@@ -2232,6 +2266,8 @@ return (
               value={otherOption}
               onChange={async (e) => {
                 const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
                 if (value === "history") {
                   setShowAnnouncementHistory(true);
@@ -2536,6 +2572,8 @@ return (
                 その他
               </option>
               {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
@@ -2630,6 +2668,8 @@ return (
         value={otherOption}
         onChange={async (e) => {
         const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
         if (value === "history") {
           setShowAnnouncementHistory(true);
@@ -2926,6 +2966,8 @@ return (
         その他
       </option>
       {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
@@ -3080,6 +3122,8 @@ return (
         value={otherOption}
         onChange={async (e) => {
           const value = e.target.value;
+                if (await openCustomOther(value)) {setOtherOption("");return;}
+
 
           if (value === "history") {
             setShowAnnouncementHistory(true);
@@ -3369,6 +3413,8 @@ return (
         </option>
 
         {leagueMode === "custom" && customOtherVisible("intentionalWalk") && <option value="intentionalWalk">申告敬遠</option>}
+              {leagueMode === "custom" && customOtherVisible("rainDelay") && <option value="customRain">雨天中断</option>}
+              {leagueMode === "custom" && customExtraItems().map(([id,v])=><option key={id} value={id}>{v.label}</option>)}
               <option value="history">アナウンス履歴</option>
               {leagueMode === "senior" && (
                 <>
@@ -3680,6 +3726,8 @@ return (
   <VersionInfo version={APP_VERSION} onBack={() => setScreen("operationSettings")} />
 )}
 
+{leagueMode === 'custom' && customWeatherVars && <CustomWeatherAnnounce vars={customWeatherVars} onClose={()=>setCustomWeatherVars(null)} />}
+{leagueMode === 'custom' && customExtraNotice && <div className="fixed inset-0 z-[2200] bg-black/60 flex items-center justify-center p-3" role="dialog" aria-modal="true"><div className="w-full max-w-lg rounded-2xl bg-white overflow-hidden"><div className="bg-emerald-600 text-white font-bold p-4">🎤 {customExtraNotice.label}</div><div className="p-4 space-y-3">{customExtraNotice.memo&&<div className="rounded-xl bg-amber-50 p-3 text-amber-900">⚠️ {customExtraNotice.memo}</div>}<div className="whitespace-pre-wrap font-bold leading-7 text-red-700 rounded-xl bg-red-100 p-3">{customExtraNotice.message}</div><div className="grid grid-cols-2 gap-2"><button className="rounded-xl bg-blue-600 p-3 text-white font-bold" onClick={()=>void speak(customExtraNotice.message,{progressive:true,cache:true})}>🎙 読み上げ</button><button className="rounded-xl bg-rose-600 p-3 text-white font-bold" onClick={()=>stop()}>停止</button></div><button className="w-full rounded-xl bg-emerald-600 p-3 text-white font-bold" onClick={()=>{stop();setCustomExtraNotice(null);}}>閉じる</button></div></div></div>}
 {/* カスタマイズ：中断・再開アナウンスと経過時間計測を一つのモーダルへ */}
 {leagueMode === 'custom' && showCustomPauseModal && (
   <div className="fixed inset-0 z-[2001] bg-black/60 flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-label="試合中の中断・再開">

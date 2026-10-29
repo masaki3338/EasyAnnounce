@@ -578,7 +578,9 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   if (getLeagueMode() !== "custom") return null;
   const { records, teamName, battingOrder, assignments, initialAssignments,
     teamPlayers, usedPlayerInfo, ohtaniRule, reentryIds, dhChanging } = args;
-  if (!records.length || dhChanging) return null;
+  // 通常DHの交代・守備移動も登録済みテンプレートで生成する。
+  // 大谷ルールのDH解除などは既存の特殊処理を維持する。
+  if (!records.length || (dhChanging && ohtaniRule)) return null;
   // リエントリーや代打・代走の履歴は「交代対象の選手」に限って判定する。
   // 試合の途中で誰かが代走をしただけで、その後の通常交代まで
   // カスタマイズを無効にしていた不具合を防止する。
@@ -597,8 +599,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   // 混在時に通常の選手交代だけが表示される原因となるため。
   if (substitutedRecords.some(r =>
     !r.from || !r.to ||
-    (r.type === "replace" && r.pos === "指") ||
-    reentryIds.has(Number(r.to.id))
+    (ohtaniRule && r.type === "replace" && r.pos === "指")
   )) return null;
   // 大谷ルールでも投手とDHの移動を伴わない単純な守備交代は対象とする。
   // 特別なDH交代は従来の処理を保護する。
@@ -621,6 +622,24 @@ const buildCustomRegularDefenseAnnouncement = (args: {
     return rubyPart(p.lastName,p.lastNameKana)+(same?rubyPart(p.firstName,p.firstNameKana):"");
   };
   const honorific=(p:Player)=>p.isFemale?"さん":"くん";
+  // カスタマイズモード限定：リエントリー選手のテンプレート内に、
+  // 指定位置で「リエントリーで」を1回だけ差し込む。
+  // 差込項目を使わず直接守備位置を書いた文章には手を加えない。
+  const withReentry = (template: string, isReentry: boolean): string => {
+    if (!isReentry || !template || template.includes('リエントリーで')) return template;
+    const positionToken = /【(?:交代後・守備位置|守備位置)】/;
+    // 「...が入り【守備位置】」のときは「入り」の直前に挿入。
+    if (/入り\s*【(?:交代後・守備位置|守備位置)】/.test(template)) {
+      return template.replace(/入り(\s*【(?:交代後・守備位置|守備位置)】)/, 'リエントリーで入り$1');
+    }
+    // 守備位置の差込があるときは、その直前。
+    if (positionToken.test(template)) return template.replace(positionToken, token => `リエントリーで${token}`);
+    // 守備位置なしの文章は、交代後選手名の直前。
+    const playerToken = /【交代後・選手名(?:（苗字）|（フルネーム）)?】/;
+    if (playerToken.test(template)) return template.replace(playerToken, token => `リエントリーで${token}`);
+    return template;
+  };
+
   const newPlayers:Record<string,string>[]=[];
   const positionMoves:Record<string,string>[]=[];
   const orderedChanges: Array<{kind:"new"|"move"; vars:Record<string,string>; fromPos:string; toPos:string}> = [];
@@ -714,7 +733,10 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       '交代後・守備位置': position[ev.toPos],
       '交代後・背番号': String(ev.to.number ?? '')
     };
-    specialBodies.push({text: substituteTokens(template, vars), toPos: ev.toPos});
+    // 代打・代走から別選手（リエントリーを含む）に交代するときも、
+    // 青枠と同じリエントリーIDで専用テンプレートを加工する。
+    const specialTemplate = withReentry(template, reentryIds.has(Number(ev.to.id)));
+    specialBodies.push({text: substituteTokens(specialTemplate, vars), toPos: ev.toPos});
     changedIds.add(ev.to.id);
   }
 
@@ -742,6 +764,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
         '交代前打順':formerBattingOrder,
         '交代前・守備位置':position[oldPos], '交代前・選手名':name(r.from),'交代前・選手名（苗字）':name(r.from),'交代前・選手名（フルネーム）':fullName(r.from),'交代前・敬称':honorific(r.from),
         '交代後・選手名':name(r.to),'交代後・選手名（苗字）':name(r.to),'交代後・選手名（フルネーム）':fullName(r.to),'交代後・敬称':honorific(r.to),
+        '__toId':String(r.to.id),
         '交代後・守備位置':position[newPos],'守備位置':position[newPos],'交代後・背番号':String(r.to.number??'')
       };
       newPlayers.push(replacementVars);
@@ -876,7 +899,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
     if (consumedMoves.has(idx)) continue;
     if (entry.kind === 'new') {
       const templateId = entry.fromPos === entry.toPos ? 'newPlayerSame' : 'newPlayerDifferent';
-      const text = substituteTokens(parts[templateId] ?? parts.newPlayer ?? '', entry.vars);
+      const text = substituteTokens(withReentry(parts[templateId] ?? parts.newPlayer ?? '', reentryIds.has(Number(entry.vars['__toId']))), entry.vars);
       if (text) sentences.push(text);
       sentences.push(...chainFrom(entry.toPos));
     } else {
