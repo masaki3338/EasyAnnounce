@@ -16,7 +16,7 @@ export function customDefenseChangeIntro(kind:'player'|'position'|'both',teamNam
  if(getLeagueMode()!=='custom')return null;
  const item=loadCustomInGameTexts(getActiveCustomProfileId()).defenseChange;
  const key=kind==='both'?'introBoth':kind==='position'?'introPosition':'introPlayer';
- return typeof item?.[key]==='string'?substituteTokens(item[key],{'チーム名':teamName}):null;
+ return typeof item?.[key]==='string'?substituteTokens(item[key],{'チーム名':teamName,'守備側チーム名':teamName}):null;
 }
 
 /** 代打・代走から守備入りする際の④～⑦の設定を実際の文章に反映する。
@@ -59,6 +59,7 @@ export function customPinchDefenseBodies(source:string,players:any[],battingOrde
     const previousOrder=battingOrder.findIndex(x=>Number(x?.id)===Number(lineupId));
     const output=substituteTokens(template,{
       '交代前打順':previousOrder>=0?`${previousOrder+1}番`:'',
+      '打順':previousOrder>=0?String(previousOrder+1):'',
       '交代前・選手名':from?getName(from):'',
       '交代前・選手名（苗字）':from?getName(from):'',
       '交代前・選手名（フルネーム）':from?getFullName(from):'',

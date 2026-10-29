@@ -24,7 +24,7 @@ export const PRE_GAME_CATALOG:{kind:PreGameKind;title:string;text:string;target?
 export function fromCatalog(index:number):PreGameItem{
  const c=PRE_GAME_CATALOG[index]||PRE_GAME_CATALOG[PRE_GAME_CATALOG.length-1];
  const segment=(text:string,phase?:'start'|'notice'|'end'):PreGameSegment=>({id:genId(),text,phase,condition:defaultCondition(),timing:defaultTiming()});
- return {id:genId(),title:c.title,kind:c.kind,enabled:true,target:c.target||'any',condition:{...defaultCondition(),team:c.target||'any'},timing:defaultTiming(),timerSettings:c.kind==='warmup'?{minutes:10,noticeMinutes:2}:undefined,segments:c.kind==='sheetKnock'?[segment(c.text,'start'),segment('ノック時間、残り【残り時間】分です。','notice'),segment('ノックを終了してください。','end')]:c.kind==='warmup'?[segment(c.text,'start'),segment('ウォーミングアップ、残り【残り分数】分です。','notice'),segment('ウォーミングアップを終了してください。','end')]:c.kind==='seat'?[{...segment(c.text),seatSide:'top'},{...segment(c.text),seatSide:'bottom'}]:[segment(c.text)]};
+ return {id:genId(),title:c.title,kind:c.kind,enabled:true,target:c.target||'any',condition:{...defaultCondition(),team:c.target||'any'},timing:defaultTiming(),timerSettings:c.kind==='warmup'?{minutes:10,noticeMinutes:2}:undefined,segments:c.kind==='seat'?[{...segment(c.text),seatSide:'bottom'},{...segment(c.text),seatSide:'top'}]:c.kind==='sheetKnock'?[segment(c.text,'start'),segment('ノック時間、残り【残り時間】分です。','notice'),segment('ノックを終了してください。','end')]:c.kind==='warmup'?[segment(c.text,'start'),segment('ウォーミングアップ、残り【残り分数】分です。','notice'),segment('ウォーミングアップを終了してください。','end')]:[segment(c.text)]};
 }
 export const REMOVED_PRE_GAME_TITLES = ["開始時間変更", "チーム呼び出し", "審判員紹介", "守備紹介", "控え紹介", "整列案内", "開始時刻放送", "国旗掲揚", "始球式"];
 const knockPhase=(title:string):'start'|'notice'|'end'=>title.includes('残り')?'notice':title.includes('終了')?'end':'start';
@@ -72,8 +72,21 @@ export function consolidateWarmupItems(all:PreGameItem[]):PreGameItem[]{
 }
 
 const key=(profileId:string)=>'easyannounce:custom:preGame:v1:'+profileId;
-export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed))):initialPreGameItems();}catch{return initialPreGameItems();}}
-export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(normalizeSingleTextItems(items)));}
+// シートノックの旧共通メモは「開始・準備」にのみ移行する。
+// 既に各フェーズに保存されたメモは上書きしない。
+function migrateKnockTimingNotes(items:PreGameItem[]):PreGameItem[]{
+ return items.map(item=>{
+  if(item.kind!=='sheetKnock'||!item.timing?.note) return item;
+  const legacyNote=item.timing.note;
+  return {...item,timing:{...item.timing,note:''},segments:item.segments.map((seg,index)=>
+   (seg.phase==='start'||(!seg.phase&&index===0)) && !seg.timing?.note
+    ? {...seg,timing:{...defaultTiming(),...seg.timing,note:legacyNote}}
+    : seg
+  )};
+ });
+}
+export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?migrateKnockTimingNotes(normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed)))):initialPreGameItems();}catch{return initialPreGameItems();}}
+export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(migrateKnockTimingNotes(normalizeSingleTextItems(items))));}
 
 export type PreGamePreviewPlayer={battingOrder:string;position:string;lastName:string;fullName:string;honorific:string;number:string;fieldingOrder:number};
 
@@ -166,13 +179,18 @@ export function matchesPreGameCondition(c:PreGameCondition,s:{team?:string;annou
  return c.team==='any'||c.team===s.team;
 }
 
-/** 通常項目は1文のみ。シートノックとウォーミングアップは3文を維持する。 */
+/** シート紹介は先攻・後攻の二文を維持し、それ以外の通常項目は一文。 */
 export function normalizeSingleTextItems(items:PreGameItem[]):PreGameItem[]{
- return items.map(item=>{const condition={...defaultCondition(),...item.condition,team:item.condition?.team??item.target??'any'};if(item.kind==='seat'){
-  const base=item.segments[0]??{id:genId(),text:'',condition:defaultCondition(),timing:defaultTiming()};
-  const top=item.segments.find(x=>(x as any).seatSide==='top')??{...base,id:genId(),seatSide:'top' as const};
-  const bottom=item.segments.find(x=>(x as any).seatSide==='bottom')??{...base,id:genId(),seatSide:'bottom' as const};
-  return {...item,condition,segments:[top,bottom]};
- }
- return (item.kind==='sheetKnock'||item.kind==='warmup')?{...item,condition}:{...item,condition,segments:item.segments.length?[item.segments[0]]:[{id:genId(),text:'',condition:defaultCondition(),timing:defaultTiming()}]};});
+ return items.map(item=>{
+  const condition={...defaultCondition(),...item.condition,team:item.condition?.team??item.target??'any'};
+  if(item.kind==='seat'){
+   const original=item.segments||[];
+   const fallback=original[0]||{id:genId(),text:'',condition:defaultCondition(),timing:defaultTiming()};
+   const bottom=original.find(s=>s.seatSide==='bottom')||original.find(s=>!s.seatSide)||fallback;
+   const top=original.find(s=>s.seatSide==='top')||original.find(s=>s!==bottom)||{...bottom,id:genId()};
+   return {...item,condition,segments:[{...bottom,id:bottom.id||genId(),seatSide:'bottom' as const},{...top,id:top.id && top.id!==bottom.id?top.id:genId(),seatSide:'top' as const}]};
+  }
+  if(item.kind==='sheetKnock'||item.kind==='warmup')return {...item,condition};
+  return {...item,condition,segments:item.segments.length?[item.segments[0]]:[{id:genId(),text:'',condition:defaultCondition(),timing:defaultTiming()}]};
+ });
 }

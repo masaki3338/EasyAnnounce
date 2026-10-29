@@ -8,7 +8,16 @@ export function customOffenseText(item: string, part: string, vars: Record<strin
   const settings = loadCustomInGameTexts(getActiveCustomProfileId());
   const source = settings[item]?.[part];
   if (typeof source !== 'string') return null;
-  return substituteTokens(escapeHtml(source), vars);
+  // 差込名の括弧（全角・半角）や全角スラッシュを揃えてから置換する。
+  // 保存済みの古い文章も書き換えずに読み上げ時だけ対応する。
+  const canonical = (key: string) => key.replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/／/g, '/').replace(/\s/g, '');
+  const byCanonical: Record<string,string> = {};
+  Object.entries(vars).forEach(([key,value]) => { byCanonical[canonical(key)] = value; });
+  const normalized = escapeHtml(source).replace(/【([^】]+)】/g, (full, key: string) => {
+    const value = byCanonical[canonical(key)];
+    return value === undefined ? full : value;
+  });
+  return normalized;
 }
 function escapeHtml(value:unknown):string {return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function ruby(value:unknown, kana:unknown) {const name=escapeHtml(value);const reading=escapeHtml(kana);return reading?`<ruby>${name}<rt>${reading}</rt></ruby>`:name;}
