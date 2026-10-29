@@ -5,7 +5,7 @@ import { buildDefenseChangeText, CUSTOM_IN_GAME_ITEMS, initialCustomInGameTexts,
 type Props={profileId:string; profileName?:string; onBack?:()=>void};
 const LABELS:{id:AnnounceCategory;label:string}[]=[{id:'offense',label:'攻撃画面'},{id:'defense',label:'守備画面'},{id:'other',label:'その他'}];
 const samples:Record<string,string>={
- '次の試合番号':'2','得点':'1','開始時刻':'9時00分','先攻チーム名':'東京ジュニア','後攻チーム名':'横浜ジュニア','打順':'4','守備位置':'ショート','選手名':'山田太郎','選手名（苗字）':'山田','選手名（フルネーム）':'山田太郎','敬称':'くん','背番号':'6','チーム名':'東京ジュニア',
+ '中止区分':'ノーゲーム','大会名':'秋季大会','試合番号':'1','次の試合番号':'2','得点':'1','開始時刻':'9時00分','先攻チーム名':'東京ジュニア','後攻チーム名':'横浜ジュニア','打順':'4','守備位置':'ショート','選手名':'山田太郎','選手名（苗字）':'山田','選手名（フルネーム）':'山田太郎','敬称':'くん','背番号':'6','チーム名':'東京ジュニア',
  '交代前選手名':'山田太郎','交代前選手名（苗字）':'山田','交代前選手名（フルネーム）':'山田太郎','交代前敬称':'くん','交代後選手名':'佐藤一郎','交代後選手名（苗字）':'佐藤','交代後選手名（フルネーム）':'佐藤一郎','交代後敬称':'くん','交代後背番号':'12',
  '1,2,3塁':'1塁','ファースト,セカンド,サード':'ファースト',
  '投手名':'山田','投手名（苗字）':'山田','投手名（フルネーム）':'山田太郎','この回の投球数':'16','合計投球数':'70','投球上限':'70','回':'3','表裏':'表',
@@ -27,7 +27,9 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
  const textareaRef=useRef<HTMLTextAreaElement>(null);
  useEffect(()=>{setTexts(loadCustomInGameTexts(profileId));setItemId(null);setPartId(null);setDirty(false);setSaved(false);},[profileId]);
  useEffect(()=>()=>{ttsStop();},[]);
- const item=CUSTOM_IN_GAME_ITEMS.find(x=>x.id===itemId)||null;
+ const userItems=Object.entries(texts).filter(([id,v])=>id.startsWith('userOther_')&&v?.label).map(([id,v])=>({id,label:v.label,category:'other' as AnnounceCategory,parts:[{id:'main',label:'読み上げ文章',text:'',tokens:['先攻チーム名','後攻チーム名','大会名','試合番号']}]}));
+ const allItems=[...CUSTOM_IN_GAME_ITEMS,...userItems];
+ const item=allItems.find(x=>x.id===itemId)||null;
  const part=item?.parts.find(x=>x.id===partId)||item?.parts[0]||null;
  const text=item&&part?texts[item.id]?.[part.id]??part.text:'';
  const memo=item&&part?texts[item.id]?.[customInGameMemoKey(part.id)]||'':'';
@@ -144,7 +146,8 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    {category==='other'&&<p className="mt-1 text-xs text-slate-100">OFFの項目は試合中の「その他」に表示しません。「グラウンド整備」「次の試合のお知らせ」は指定イニングのモーダルも非表示になります。</p>}
    <p className="mt-1 text-xs text-sky-100">※ 変更後は画面下の「保存」ボタンを押してください。</p>
   </div>
-  {!item?<div className="space-y-2">{CUSTOM_IN_GAME_ITEMS.filter(x=>x.category===category).map(x=><div key={x.id} className="flex w-full items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-3 py-3">
+  {category==='other'&&!item&&<button type="button" className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold" onClick={()=>{const title=window.prompt('新しいアナウンス項目名を入力してください');if(!title?.trim())return;const id=`userOther_${Date.now().toString(36)}`;setTexts(prev=>({...prev,[id]:{label:title.trim(),main:'',enabled:'true'}}));setDirty(true);setSaved(false);setItemId(id);setPartId('main');}}>＋ 追加（自由項目）</button>}
+  {!item?<div className="space-y-2">{allItems.filter(x=>x.category===category).map(x=><div key={x.id} className="flex w-full items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-3 py-3">
      {category!=='defense'&&<input type="checkbox" aria-label={`${x.label}を試合中に表示`} checked={customItemEnabled(texts,x.id)} disabled={category==='offense'&&!['startTime','score'].includes(x.id)} onChange={e=>setFlag(x.id,'enabled',e.target.checked)} className="h-6 w-6 shrink-0 accent-sky-500 disabled:opacity-60"/>}
      <button type="button" className="flex min-h-9 flex-1 items-center justify-between text-left" onClick={()=>{setItemId(x.id);setPartId(x.parts[0].id)}}><span className="font-semibold">{x.label}</span><span className="opacity-70">›</span></button>
      </div>)}</div>:
