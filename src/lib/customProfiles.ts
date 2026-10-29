@@ -1,11 +1,30 @@
+import { BUNDLED_CUSTOM_PROFILE_NAME, bundledPreGameItems, bundledInGameTexts } from './bundledCustomDefaults';
 /** カスタマイズ専用のカスタマイズ設定。既存の連盟保存キーと分離する。 */
 export type CustomProfile={id:string;name:string;createdAt:number};
 const LIST='easyannounce:custom:profiles:v1';
 const ACTIVE='easyannounce:custom:activeProfileId';
-const initial:CustomProfile={id:'gakudo-default',name:'学童野球（初期設定）',createdAt:0};
+const initial:CustomProfile={id:'gakudo-default',name:BUNDLED_CUSTOM_PROFILE_NAME,createdAt:0};
+const PRE_GAME_KEY = 'easyannounce:custom:preGame:v1:';
+const IN_GAME_KEY = 'easyannounce:custom:inGame:v1:';
+/** 保存データがない設定グループにだけ、同梱した標準文章を設定する。 */
+function seedBundledDefaults(id:string){
+ if(typeof window==='undefined')return;
+ if(localStorage.getItem(PRE_GAME_KEY+id)===null)
+  localStorage.setItem(PRE_GAME_KEY+id,JSON.stringify(bundledPreGameItems));
+ if(localStorage.getItem(IN_GAME_KEY+id)===null)
+  localStorage.setItem(IN_GAME_KEY+id,JSON.stringify(bundledInGameTexts));
+}
+/** 明示的な初期化用。既存設定を置換するので、UI側で確認を取ってから使用する。 */
+export function resetCustomProfileToBundledDefaults(id:string){
+ if(!getCustomProfiles().some(p=>p.id===id))throw new Error('設定グループが見つかりません');
+ localStorage.setItem(PRE_GAME_KEY+id,JSON.stringify(bundledPreGameItems));
+ localStorage.setItem(IN_GAME_KEY+id,JSON.stringify(bundledInGameTexts));
+}
+
 export function getCustomProfiles():CustomProfile[]{
  if(typeof window==='undefined')return [initial];
- try{const parsed=JSON.parse(localStorage.getItem(LIST)||'null');if(Array.isArray(parsed)&&parsed.length)return parsed.filter(x=>x&&typeof x.id==='string'&&typeof x.name==='string');}catch{}
+ try{const parsed=JSON.parse(localStorage.getItem(LIST)||'null');if(Array.isArray(parsed)&&parsed.length){const profiles=parsed.filter(x=>x&&typeof x.id==='string'&&typeof x.name==='string');if(profiles.some(x=>x.id===initial.id))seedBundledDefaults(initial.id);return profiles;}}catch{}
+ seedBundledDefaults(initial.id);
  return [initial];
 }
 export function getActiveCustomProfileId(){if(typeof window==='undefined')return initial.id;const p=getCustomProfiles();const id=localStorage.getItem(ACTIVE);return p.some(x=>x.id===id)?id!:p[0].id;}
@@ -13,6 +32,7 @@ export function setActiveCustomProfileId(id:string){if(getCustomProfiles().some(
 export function createCustomProfile(name:string,sourceId?:string):CustomProfile{
  const profiles=getCustomProfiles();const id=`custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
  const next={id,name:name.trim()||'新しいカスタマイズ',createdAt:Date.now()};localStorage.setItem(LIST,JSON.stringify([...profiles,next]));
+ if(!sourceId)seedBundledDefaults(id);
  if(sourceId){for(const prefix of ['easyannounce:custom:inGame:v1:','easyannounce:custom:preGame:v1:']){const raw=localStorage.getItem(prefix+sourceId);if(raw!==null)localStorage.setItem(prefix+id,raw);}}
  setActiveCustomProfileId(id);return next;
 }

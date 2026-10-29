@@ -3,6 +3,7 @@ export type AnnounceCategory = 'offense' | 'defense' | 'other';
 export type TemplatePart = { id: string; label: string; text: string; tokens: string[] };
 export type AnnounceItem = { id: string; label: string; category: AnnounceCategory; parts: TemplatePart[] };
 const p = (id:string,label:string,text:string,tokens:string[]=[]):TemplatePart=>({id,label,text,tokens});
+export const RAIN_TOKENS=['先攻チーム名','後攻チーム名','大会名','試合番号'];
 export const CUSTOM_IN_GAME_ITEMS:AnnounceItem[] = [
  {id:'startTime',label:'試合開始時刻の放送',category:'offense',parts:[p('main','読み上げ文章','この試合の 試合開始時刻は 【開始時刻】です。',['開始時刻','先攻チーム名','後攻チーム名'])]},
  {id:'batter',label:'打者紹介',category:'offense',parts:[p('leadoff','回の先頭打者','【回】回の【表裏】、【チーム名】の攻撃は、',['回','表裏','打順','守備位置','選手名（苗字）','選手名（フルネーム）','敬称','背番号','チーム名','回','表裏']),p('first','初回','【打順】番、【守備位置】、【選手名（苗字）】【敬称】。背番号【背番号】。',['打順','守備位置','選手名（苗字）','選手名（フルネーム）','敬称','背番号','チーム名','回','表裏']),p('later','2回目以降','【打順】番、【守備位置】、【選手名（苗字）】【敬称】。',['打順','守備位置','選手名（苗字）','選手名（フルネーム）','敬称','背番号','チーム名','回','表裏'])]},
@@ -33,6 +34,13 @@ export const CUSTOM_IN_GAME_ITEMS:AnnounceItem[] = [
  p('battingIntro','⑩ 打順紹介の開始文','続きまして、変更後の打順をお知らせいたします。'),
  p('battingRow','⑪ 打順紹介（選手ごと）','【打順】番、【守備位置】、【選手名（苗字）】【敬称】、背番号【背番号】。',['打順','守備位置','選手名（苗字）','選手名（フルネーム）','敬称','背番号','チーム名']),
  p('outro','⑫ 終了文','以上のように代わります。')
+ ]},
+ {id:'rainDelay',label:'雨天中断',category:'other',parts:[
+ p('start','雨天時の中断','お知らせ致します。\nご覧のような天候状態のため、一時、試合を中断致します。\nしばらくお待ちください。',RAIN_TOKENS),
+ p('continue','雨天中断の継続','お知らせ致します。\nご覧のような天候状態のため、ただいま、試合を中断しています。\n今しばらくお待ちください。',RAIN_TOKENS),
+ p('cancel','雨天中断後の中止','お知らせ致します。\nご覧のような天候状態のため、試合続行が不可能となりました。\n大会規定により、この試合は、【中止区分】と致します。',[...RAIN_TOKENS,'中止区分','回']),
+ p('maintenance','試合再開のグラウンド整備','お待たせしております。ただいまグラウンド整備を行っています。\n整備が済み次第、試合を再開致しますので、今しばらくお待ちください。',RAIN_TOKENS),
+ p('resume','試合再開','大変長らくお待たせ致しました。\nただいまより試合を再開します。',RAIN_TOKENS)
  ]},
  {id:'intentionalWalk',label:'申告敬遠',category:'other',parts:[p('main','申告敬遠の案内','申告敬遠により、打者は一塁へ進みます。',['選手名（苗字）','選手名（フルネーム）','敬称','チーム名'])]},
  {id:'gameEnd',label:'試合終了',category:'other',parts:[p('main','試合終了の案内','ただいまをもちまして、【先攻チーム名】対【後攻チーム名】の試合は終了いたしました。',['先攻チーム名','後攻チーム名','先攻得点','後攻得点','勝利チーム名','終了時刻'])]},
@@ -100,7 +108,7 @@ export function loadCustomInGameTexts(profileId:string):CustomInGameTexts {
   if(def.id==='ground'||def.id==='nextGame'){
    if(/^[1-9]$/.test(String(obj?.[def.id]?.triggerInning)))base[def.id].triggerInning=String(obj[def.id].triggerInning);
    if(['top','bottom'].includes(obj?.[def.id]?.triggerSide))base[def.id].triggerSide=obj[def.id].triggerSide;
-  }} return base;
+  }} for(const [id,value] of Object.entries(obj)){if(/^userOther_[a-z0-9_]+$/.test(id)&&value&&typeof value==='object'&&typeof (value as any).label==='string'&&typeof (value as any).main==='string')base[id]={label:(value as any).label,main:(value as any).main,enabled:(value as any).enabled==='false'?'false':'true',[customInGameMemoKey('main')]:String((value as any)[customInGameMemoKey('main')]||'')};} return base;
  }catch{return base;}
 }
 export function saveCustomInGameTexts(profileId:string,texts:CustomInGameTexts){if(typeof window!=='undefined')localStorage.setItem(storageKey(profileId),JSON.stringify(texts));}
