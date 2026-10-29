@@ -7,7 +7,7 @@ const LABELS:{id:AnnounceCategory;label:string}[]=[{id:'offense',label:'攻撃�
 const samples:Record<string,string>={
  '中止区分':'ノーゲーム','大会名':'秋季大会','試合番号':'1','次の試合番号':'2','得点':'1','開始時刻':'9時00分','先攻チーム名':'東京ジュニア','後攻チーム名':'横浜ジュニア','打順':'4','守備位置':'ショート','選手名':'山田太郎','選手名（苗字）':'山田','選手名（フルネーム）':'山田太郎','敬称':'くん','背番号':'6','チーム名':'東京ジュニア',
  '交代前選手名':'山田太郎','交代前選手名（苗字）':'山田','交代前選手名（フルネーム）':'山田太郎','交代前敬称':'くん','交代後選手名':'佐藤一郎','交代後選手名（苗字）':'佐藤','交代後選手名（フルネーム）':'佐藤一郎','交代後敬称':'くん','交代後背番号':'12',
- '1,2,3塁':'1塁','ファースト,セカンド,サード':'ファースト',
+ '1,2,3塁':'1塁','ファースト,セカンド,サード':'ファースト','塁(1塁/2塁/3塁)':'1塁','塁(1/2/3)':'1','塁(ファースト/セカンド/サード)':'ファースト',
  '投手名':'山田','投手名（苗字）':'山田','投手名（フルネーム）':'山田太郎','この回の投球数':'16','合計投球数':'70','投球上限':'70','回':'3','表裏':'表',
  '交代前・選手名（苗字）':'山田','交代前・選手名（フルネーム）':'山田太郎','交代後・選手名（苗字）':'佐藤','交代後・選手名（フルネーム）':'佐藤一郎','移動・選手名（苗字）':'鈴木','移動・選手名（フルネーム）':'鈴木次郎','移動・選手名':'鈴木','選手名（苗字）':'高橋','選手名（フルネーム）':'高橋健太','交代前打順':'4番','交代前・守備位置':'ピッチャー','交代前・選手名':'山田','交代前・敬称':'くん','交代後・選手名':'佐藤','交代後・敬称':'くん','交代後・守備位置':'ピッチャー','守備位置':'ピッチャー','交代後・背番号':'12',
  '移動前・守備位置':'ショート','移動・選手名':'鈴木次郎','移動・敬称':'くん','移動後・守備位置':'セカンド',
@@ -33,8 +33,15 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
  const part=item?.parts.find(x=>x.id===partId)||item?.parts[0]||null;
  const text=item&&part?texts[item.id]?.[part.id]??part.text:'';
  const memo=item&&part?texts[item.id]?.[customInGameMemoKey(part.id)]||'':'';
+ // 代走・臨時代走の塁名は、登録文章内の全角／半角括弧の違いも吸収してプレビューへ反映する。
+ const runnerPreviewText = (value: string) => {
+  if(item?.id !== 'pinchRunner' && item?.id !== 'courtesyRunner') return value;
+  return value
+   .replace(/【\s*塁\s*[（(]\s*ファースト\s*[/／]\s*セカンド\s*[/／]\s*サード\s*[）)]\s*】/g, 'ファースト')
+   .replace(/【\s*塁\s*[（(]\s*1塁\s*[/／]\s*2塁\s*[/／]\s*3塁\s*[）)]\s*】/g, '1塁');
+ };
  const previewMemo=useMemo(()=>substituteTokens(memo,samples),[memo]);
- const preview=useMemo(()=>substituteTokens(text, item?.id==='defenseChange' && part?.id==='newPlayerDifferent' ? {...samples,'交代後・守備位置':'センター','守備位置':'センター'} : samples),[text,item?.id,part?.id]);
+ const preview=useMemo(()=>runnerPreviewText(substituteTokens(text, item?.id==='defenseChange' && part?.id==='newPlayerDifferent' ? {...samples,'交代後・守備位置':'センター','守備位置':'センター'} : samples)),[text,item?.id,part?.id]);
  const example=useMemo(()=>{
   if(item?.id==='defenseChange'){
    // 選択した設定の働きに関係する文章だけを組み立てる。
