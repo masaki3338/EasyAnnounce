@@ -874,7 +874,7 @@ useEffect(() => {
 
 
   {/* 通常モードの後攻時はスタメン発表欄を表示しない。 */}
-  {(announcementMode === "single" || isHome === "先攻") && (
+  {(isHome === "先攻") && (
   <section className="rounded-2xl p-4 bg-white/10 border border-sky-300/50 shadow-lg space-y-3">
     <h2 className="font-bold text-lg">🎤 スタメン発表</h2>
     <p className="text-sm text-sky-100">タイマーはスタメン発表中も進みます。読み終わったら「シートノック画面へ戻る」を押してください。</p>

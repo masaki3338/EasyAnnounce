@@ -72,7 +72,7 @@ const SeniorPreGameAnnouncement: React.FC<Props> = ({ onNavigate, onBack }) => {
     // 1人アナウンスモードでは両チームを担当するため従来どおり表示する。
     ...((all || isHome) ? [
       { id: "seniorSheetKnock" as const, title: `シートノック　後攻 ${homeName}`, note: "後攻から開始・既存の時間設定を利用", icon: "⚾", role: "home" as const, enabled: true },
-      { id: "seniorStartingLineup" as const, title: "スタメン発表", note: `後攻 ${homeName} のスタメン発表`, icon: "🎤", role: "home" as const, enabled: true },
+      ...(!all ? [{ id: "seniorStartingLineup" as const, title: "スタメン発表", note: `後攻 ${homeName} のスタメン発表`, icon: "🎤", role: "home" as const, enabled: true }] : []),
     ] : []),
     ...((all || !isHome) ? [{ id: "seniorSheetKnock" as const, title: "シートノック/スタメン発表", note: `先攻 ${visitorName}／途中でスタメン発表画面を開けます（タイマー継続）`, icon: "⚾", role: "visitor" as const, enabled: true }] : []),
     { id: "seniorGroundMaintenance", title: "グラウンド整備", note: "整備依頼・終了のお礼", icon: "🧹", enabled: all || isHome },

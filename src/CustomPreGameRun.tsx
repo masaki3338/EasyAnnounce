@@ -60,6 +60,7 @@ export default function CustomPreGameRun({onNavigate,onBack,seatTopModal=false}:
  const [completed,setCompleted]=useState<Record<string,number>>({});
  const [playing,setPlaying]=useState('');
  const [detailId,setDetailId]=useState<string|null>(null);
+ const [returnToKnockId,setReturnToKnockId]=useState<string|null>(null);
  const [ready,setReady]=useState(false);
  const [profileName,setProfileName]=useState('');
  // 試合当日の入力値。アナウンス設定のテンプレートは変更しない。
@@ -335,7 +336,11 @@ export default function CustomPreGameRun({onNavigate,onBack,seatTopModal=false}:
  };
  // 1人アナウンスではチーム指定を表示フィルタに使わず、チェックONをすべて表示する。
  // 通常モードでは従来どおり選択したチームに一致する項目のみ表示する。
+ const topLineup=items.find(x=>x.kind==='lineup'&&x.target==='top'&&x.enabled&&x.announceDuringKnock);
+ const bottomLineup=items.find(x=>x.kind==='lineup'&&x.target==='bottom'&&x.enabled);
+ const knockLineupEnabled=!!topLineup;
  const filtered=items.filter(item=>
+  !(knockLineupEnabled && item.kind==='lineup' && (item.target==='top' || (match.announcementMode==='single' && item.target==='bottom'))) &&
   item.enabled && (!seatTopModal || item.kind==='seat') &&
   // シート紹介は後攻チームが守る1回表のみ試合前に表示する。
   // 先攻用（1回裏）は1回表終了後の seatTopModal 専用。
@@ -388,14 +393,14 @@ export default function CustomPreGameRun({onNavigate,onBack,seatTopModal=false}:
   {!ready&&<p>試合情報を読み込み中...</p>}
   {ready&&filtered.length===0&&<p className="rounded-xl bg-white/10 p-4">チェックされた進行項目がありません。カスタマイズ設定で表示する項目にチェックを入れて保存してください。</p>}
   {detailId ? (()=>{
-   const currentItem=filtered.find(x=>x.id===detailId);
+   const currentItem=items.find(x=>x.id===detailId && x.enabled);
    if(!currentItem)return <button onClick={()=>setDetailId(null)}>← 一覧に戻る</button>;
    const isKnock=currentItem.kind==='sheetKnock';const isWarm=currentItem.kind==='warmup';const isTriple=isKnock||isWarm;
    // チェック済みの進行項目は、項目名や旧チーム条件にかかわらず読み上げ文章も表示。
    const relatedSegments=currentItem.kind==='seat'?currentItem.segments.filter(seg=>(seg.seatSide??'bottom')===(seatTopModal?'top':'bottom')):currentItem.segments;
    const parts=isTriple?(isKnock?(['prepare','start','notice','end'] as const):(['start','notice','end'] as const)).map(phase=>({phase,segments:relatedSegments.filter(s=>(s.phase||'start')===phase)})):[];
    return <section className="space-y-4">
-    <button className="w-full rounded-xl bg-white/15 border border-white/20 p-3 text-left font-bold" onClick={()=>{stopAudio();setDetailId(null)}}>← 試合前アナウンス一覧に戻る</button>
+    <button className="w-full rounded-xl bg-white/15 border border-white/20 p-3 text-left font-bold" onClick={()=>{stopAudio();setDetailId(returnToKnockId);setReturnToKnockId(null)}}>{returnToKnockId?'← シートノック画面へ戻る':'← 試合前アナウンス一覧に戻る'}</button>
     <h2 className="text-2xl font-extrabold text-center">{currentItem.title}</h2>
     {currentItem.kind!=='sheetKnock'&&currentItem.kind!=='seat'&&currentItem.timing?.note?.trim()&&<div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-3 text-amber-950"><div className="whitespace-pre-wrap">⚠️ {currentItem.timing.note}</div></div>}
     {relatedSegments.some(seg=>seg.text.includes('【開始予定時刻】'))&&<div className="rounded-xl border border-sky-300/40 bg-slate-900/55 p-3 space-y-2">
@@ -409,6 +414,15 @@ export default function CustomPreGameRun({onNavigate,onBack,seatTopModal=false}:
     {isKnock&&renderKnockTimer(currentItem)}
     {isWarm&&renderWarmTimer(currentItem)}
     {(isTriple?parts:currentItem.kind==='seat'?relatedSegments.map(s=>({phase:s.seatSide||'bottom',segments:[s]})):[{phase:'other',segments:relatedSegments}]).map(block=><div key={block.phase} className="space-y-3">
+      {isKnock&&block.phase==='notice'&&currentItem.target==='top'&&topLineup&&<div className="rounded-2xl border border-sky-400/60 bg-slate-700/80 p-4 space-y-3">
+       <h3 className="font-extrabold">🎤 スタメン発表</h3>
+       <p className="text-sm">タイマーはスタメン発表中も進みます。読み終わったら「シートノック画面へ戻る」を押してください。</p>
+       <button type="button" className="w-full rounded-xl bg-blue-600 py-3 font-bold" onClick={()=>{stopAudio();setReturnToKnockId(currentItem.id);setDetailId(topLineup.id)}}>先攻チームのスタメン発表画面を開く</button>
+       {match.announcementMode==='single' ? (bottomLineup ?
+        <button type="button" className="w-full rounded-xl bg-blue-600 py-3 font-bold" onClick={()=>{stopAudio();setReturnToKnockId(currentItem.id);setDetailId(bottomLineup.id)}}>後攻チームのスタメン発表画面を開く</button> :
+        <div className="rounded-xl bg-amber-100 text-amber-950 py-3 text-center font-bold">後攻チームのスタメン発表は未設定です</div>) :
+        <div className="rounded-xl bg-amber-100 text-amber-950 py-3 text-center font-bold">後攻チームのスタメン発表を待つ</div>}
+      </div>}
       {currentItem.kind==='seat'&&<h3 className="rounded-xl bg-sky-900/60 px-4 py-3 font-extrabold">{(block.segments[0]?.seatSide??'bottom')==='top'?'先攻用（1回裏）':'後攻用（1回表）'}</h3>}
       {isTriple&&<h3 className="rounded-xl bg-sky-900/60 px-4 py-3 font-extrabold">{block.phase==='prepare'?'① 準備アナウンス':block.phase==='start'?(isWarm?'① 開始アナウンス':'② 開始アナウンス'):block.phase==='notice'?(isWarm?'② 残り時間アナウンス':'③ 残り時間アナウンス'):(isWarm?'③ 終了アナウンス':'④ 終了アナウンス')}</h3>}
       {block.segments.filter(seg=>seg.text.trim()!==''&&!(isWarm&&seg.phase==='notice'&&(currentItem.timerSettings?.noticeMinutes??2)===0)).map(seg=>{const html=buildSegment(currentItem,seg);const missing=[...html.matchAll(/【([^】]+)】/g)].map(x=>x[1]);return <div key={seg.id} className="rounded-xl border border-rose-400/60 bg-gradient-to-br from-rose-600/50 to-rose-400/25 p-3 space-y-3">
@@ -418,11 +432,11 @@ export default function CustomPreGameRun({onNavigate,onBack,seatTopModal=false}:
        <div className="grid grid-cols-2 gap-2"><button disabled={!!missing.length||!html.trim()} onClick={()=>void play(currentItem,seg,html)} className="rounded-xl bg-blue-600 py-3 font-bold disabled:opacity-50">🔊 読み上げ</button><button onPointerDown={stopAudio} onClick={stopAudio} className="rounded-xl bg-gray-600 py-3 font-bold">■ 停止</button></div>
       </div>})}
      </div>)}
-    <button className="w-full rounded-xl bg-white text-gray-900 py-3 font-bold" onClick={()=>{stopAudio();setDetailId(null)}}>← 一覧に戻る</button>
+    <button className="w-full rounded-xl bg-white text-gray-900 py-3 font-bold" onClick={()=>{stopAudio();setDetailId(returnToKnockId);setReturnToKnockId(null)}}>{returnToKnockId?'← シートノック画面へ戻る':'← 一覧に戻る'}</button>
    </section>;
   })() : filtered.map((item,i)=><button key={item.id} type="button" onClick={()=>{stopAudio();setDetailId(item.id)}} className="w-full rounded-2xl bg-slate-700/65 border border-white/15 p-4 flex items-center gap-3 text-left min-h-20 active:scale-[.99]">
     <span className="bg-sky-500 rounded-full w-9 h-9 shrink-0 flex items-center justify-center font-bold">{i+1}</span>
-    <span className="flex-1 min-w-0"><span className="font-bold text-base sm:text-lg block">{item.title}</span>{item.kind==='seat' ? item.segments.filter(seg=>(seg.seatSide??'bottom')==='bottom' && seg.timing?.note?.trim()).map(seg=><span key={seg.id} className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">🕒 {seg.timing.note}</span>) : item.kind==='sheetKnock' ? item.segments.filter(seg=>seg.timing?.note?.trim()).map(seg=><span key={seg.id} className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">⚠️ {seg.phase==='notice'?'残り時間':seg.phase==='end'?'終了':seg.phase==='prepare'?'準備':'開始'}：{seg.timing.note}</span>) : item.timing?.note?.trim()&&<span className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">🕒 {item.timing.note}</span>}</span>
+    <span className="flex-1 min-w-0"><span className="font-bold text-base sm:text-lg block">{knockLineupEnabled && item.kind==='sheetKnock' && item.target==='top' ? 'シートノック（先攻）/スタメン発表' : item.title}</span>{item.kind==='seat' ? item.segments.filter(seg=>(seg.seatSide??'bottom')==='bottom' && seg.timing?.note?.trim()).map(seg=><span key={seg.id} className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">🕒 {seg.timing.note}</span>) : item.kind==='sheetKnock' ? item.segments.filter(seg=>seg.timing?.note?.trim()).map(seg=><span key={seg.id} className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">⚠️ {seg.phase==='notice'?'残り時間':seg.phase==='end'?'終了':seg.phase==='prepare'?'準備':'開始'}：{seg.timing.note}</span>) : item.timing?.note?.trim()&&<span className="block mt-1 rounded-lg bg-amber-100 text-amber-950 px-2 py-1 text-sm whitespace-pre-wrap">🕒 {item.timing.note}</span>}</span>
     <span className="text-white/70 text-xl">›</span>
    </button>)}
   <button onClick={()=>{stopAudio();onBack()}} className="w-full rounded-2xl bg-white text-slate-900 py-4 font-bold">← 試合開始画面に戻る</button>
