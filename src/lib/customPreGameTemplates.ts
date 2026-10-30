@@ -3,7 +3,7 @@ export type PreGameKind='notice'|'startTime'|'call'|'warmup'|'sheetKnock'|'lineu
 export type PreGameCondition={team:'any'|'top'|'bottom'|'firstBase'|'thirdBase';announcementMode:'any'|'single'|'normal';matchNo:string;repeat:'any'|'first'|'again';requiresData:boolean};
 export type PreGameTiming={type:'manual'|'beforeStart'|'afterPrevious'|'event';minutes:number;event:string;note:string};
 export type PreGameSegment={id:string;text:string;condition:PreGameCondition;timing:PreGameTiming;phase?:'prepare'|'start'|'notice'|'end';seatSide?:'top'|'bottom';pitcherSeparate?:boolean;pitcherText?:string};
-export type PreGameItem={id:string;title:string;kind:PreGameKind;enabled:boolean;target:'any'|'top'|'bottom';condition:PreGameCondition;timing:PreGameTiming;segments:PreGameSegment[];timerSettings?:{minutes:number;noticeMinutes:number}};
+export type PreGameItem={id:string;title:string;kind:PreGameKind;enabled:boolean;target:'any'|'top'|'bottom';condition:PreGameCondition;timing:PreGameTiming;segments:PreGameSegment[];timerSettings?:{minutes:number;noticeMinutes:number};announceDuringKnock?:boolean};
 export const defaultCondition=():PreGameCondition=>({team:'any',announcementMode:'any',matchNo:'',repeat:'any',requiresData:false});
 export const defaultTiming=():PreGameTiming=>({type:'manual',minutes:0,event:'',note:''});
 const genId=()=>`item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
