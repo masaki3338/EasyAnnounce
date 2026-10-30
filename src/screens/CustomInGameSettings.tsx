@@ -1,3 +1,4 @@
+import { getCustomManualPdf, saveCustomManualPdf, removeCustomManualPdf } from '../lib/customManualPdf';
 import { speak as ttsSpeak, stop as ttsStop } from '../lib/tts';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { buildDefenseChangeText, CUSTOM_IN_GAME_ITEMS, initialCustomInGameTexts, loadCustomInGameTexts, saveCustomInGameTexts, customInGameMemoKey, substituteTokens, unknownTokens, START_TIME_TIMINGS, customItemEnabled,customPitchPartEnabled,type AnnounceCategory, type CustomInGameTexts } from '../lib/customInGameTemplates';
@@ -16,6 +17,10 @@ const samples:Record<string,string>={
 const button='rounded-xl px-3 py-2 font-semibold active:scale-[0.99] transition';
 /** 試合中の固定項目を編集する専用画面。マウントは custom 選択時のみ行うこと。 */
 export default function CustomInGameSettings({profileId,profileName,onBack}:Props){
+ const [manualName,setManualName]=useState('');
+ const [manualBusy,setManualBusy]=useState(false);
+ const [manualMessage,setManualMessage]=useState('');
+ const manualInputRef=useRef<HTMLInputElement>(null);
  const [category,setCategory]=useState<AnnounceCategory>('offense');
  const [helpOpen,setHelpOpen]=useState(false);
  const [deleteTarget,setDeleteTarget]=useState<{id:string;label:string}|null>(null);
@@ -28,6 +33,9 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
  const textareaRef=useRef<HTMLTextAreaElement>(null);
  useEffect(()=>{setTexts(loadCustomInGameTexts(profileId));setItemId(null);setPartId(null);setDirty(false);setSaved(false);setDeleteTarget(null);},[profileId]);
  useEffect(()=>()=>{ttsStop();},[]);
+ useEffect(()=>{let active=true;setManualName('');setManualMessage('');getCustomManualPdf(profileId).then(v=>{if(active)setManualName(v?.name||'')}).catch(()=>{if(active)setManualMessage('PDFの読み込みに失敗しました。')});return()=>{active=false}},[profileId]);
+ const registerManual=async(file?:File)=>{if(!file)return;setManualBusy(true);setManualMessage('');try{await saveCustomManualPdf(profileId,file);setManualName(file.name);setManualMessage('PDFをこの端末に登録しました。')}catch(e){setManualMessage(e instanceof Error?e.message:'PDFの登録に失敗しました。保存容量をご確認ください。')}finally{setManualBusy(false);if(manualInputRef.current)manualInputRef.current.value=''}};
+ const deleteManual=async()=>{setManualBusy(true);setManualMessage('');try{await removeCustomManualPdf(profileId);setManualName('');setManualMessage('登録したPDFを削除しました。')}catch{setManualMessage('PDFの削除に失敗しました。')}finally{setManualBusy(false)}};
  const userItems=Object.entries(texts).filter(([id,v])=>id.startsWith('userOther_')&&v?.label).map(([id,v])=>({id,label:v.label,category:'other' as AnnounceCategory,parts:[{id:'main',label:'読み上げ文章',text:'',tokens:['先攻チーム名','後攻チーム名','大会名','試合番号']}]}));
  const allItems=[...CUSTOM_IN_GAME_ITEMS,...userItems];
  const item=allItems.find(x=>x.id===itemId)||null;
@@ -187,6 +195,7 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    {category==='other'&&<p className="mt-1 text-xs text-slate-100">OFFの項目は試合中の「その他」に表示しません。「グラウンド整備」「次の試合のお知らせ」は指定イニングのモーダルも非表示になります。</p>}
    <p className="mt-1 text-xs text-sky-100">※ 変更後は画面下の「保存」ボタンを押してください。</p>
   </div>
+  {category==='other'&&!item&&<section className="rounded-xl border border-sky-300/40 bg-sky-950/40 p-3 space-y-2"><h2 className="font-bold">📄 アナウンスマニュアル</h2><p className="text-xs text-slate-200">PDFをこの端末に登録すると、カスタマイズモードの「連盟🎤マニュアル」から表示できます。設定グループごとに保存されます。</p><input ref={manualInputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={e=>void registerManual(e.target.files?.[0])}/><button type="button" disabled={manualBusy} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold disabled:opacity-50" onClick={()=>manualInputRef.current?.click()}>アナウンスマニュアル追加</button>{manualName&&<div className="flex items-center gap-2"><span className="min-w-0 flex-1 break-all text-sm">登録済み：{manualName}</span><button type="button" disabled={manualBusy} onClick={()=>void deleteManual()} className="rounded-lg bg-rose-700 px-3 py-2 text-sm font-bold">削除</button></div>}{manualMessage&&<p role="status" className="text-xs text-yellow-200">{manualMessage}</p>}<p className="text-xs opacity-75">※ PDFはこの端末内に保存されます。QRコードによる設定共有には含まれません。</p></section>}
   {category==='other'&&!item&&<button type="button" className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold" onClick={()=>{const title=window.prompt('新しいアナウンス項目名を入力してください');if(!title?.trim())return;const id=`userOther_${Date.now().toString(36)}`;setTexts(prev=>({...prev,[id]:{label:title.trim(),main:'',enabled:'true'}}));setDirty(true);setSaved(false);setItemId(id);setPartId('main');}}>＋ 追加（自由項目）</button>}
   {!item?<div className="space-y-2">{allItems.filter(x=>x.category===category).map(x=><div key={x.id} className="flex w-full items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-3 py-3">
      {category!=='defense'&&<input type="checkbox" aria-label={`${x.label}を試合中に表示`} checked={customItemEnabled(texts,x.id)} disabled={category==='offense'&&!['startTime','score'].includes(x.id)} onChange={e=>setFlag(x.id,'enabled',e.target.checked)} className="h-6 w-6 shrink-0 accent-sky-500 disabled:opacity-60"/>}

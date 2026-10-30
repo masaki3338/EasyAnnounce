@@ -3,6 +3,8 @@ import type { ScreenType } from "../App";
 import React, { useEffect, useRef, useState } from "react";
 import localForage from "localforage";
 import { getLeagueMode } from "../lib/leagueSettings";
+import { getActiveCustomProfileId } from "../lib/customProfiles";
+import { getCustomManualPdf } from "../lib/customManualPdf";
 
 
 type AnnouncementTimingSettings = {
@@ -107,7 +109,7 @@ const PdfManualViewer: React.FC<{
         pdfjsLib.GlobalWorkerOptions.workerSrc =
           "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-        const pdf = await pdfjsLib.getDocument(`/${file}`).promise;
+        const pdf = await pdfjsLib.getDocument(file.startsWith("blob:") ? file : `/${file}`).promise;
         if (cancelled) return;
 
         const root = containerRef.current;
@@ -204,6 +206,11 @@ const PdfManualViewer: React.FC<{
 
 export default function OperationSettings({ onNavigate }: Props) {
   const [showManual, setShowManual] = useState(false);
+  const [customManualUrl, setCustomManualUrl] = useState<string | null>(null);
+  const [customManualName, setCustomManualName] = useState("");
+  const [manualError, setManualError] = useState("");
+  const customManualUrlRef = useRef<string | null>(null);
+  useEffect(() => () => { if (customManualUrlRef.current) URL.revokeObjectURL(customManualUrlRef.current); }, []);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [timingSettings, setTimingSettings] =
     useState<AnnouncementTimingSettings>(DEFAULT_ANNOUNCEMENT_TIMING_SETTINGS);
@@ -240,20 +247,38 @@ export default function OperationSettings({ onNavigate }: Props) {
   };
 
   const leagueMode = getLeagueMode();
-  const manualFile =
+  const defaultManualFile =
     leagueMode === "senior"
       ? "Senior-manual.pdf"
       : leagueMode === "boys"
         ? "Boysmanual.pdf"
         : "manual.pdf";
+  const manualFile = leagueMode === "custom" ? (customManualUrl || "") : defaultManualFile;
   const manualTitle =
     leagueMode === "senior"
       ? "リトルシニア 連盟アナウンスマニュアル"
       : leagueMode === "boys"
         ? "ボーイズリーグ 連盟アナウンスマニュアル"
-        : "ポニーリーグ 連盟アナウンスマニュアル";
+        : leagueMode === "custom" ? "カスタマイズ アナウンスマニュアル" : "ポニーリーグ 連盟アナウンスマニュアル";
 
-  const openManual = () => {
+  const openManual = async () => {
+    if (getLeagueMode() === "custom") {
+      try {
+        const pdf = await getCustomManualPdf(getActiveCustomProfileId());
+        if (!pdf) {
+          setManualError("アナウンスマニュアルが登録されていません。試合中アナウンス設定の「その他」からPDFを登録してください。");
+          return;
+        }
+        const url = URL.createObjectURL(pdf.blob);
+        if (customManualUrlRef.current) URL.revokeObjectURL(customManualUrlRef.current);
+        customManualUrlRef.current = url;
+        setCustomManualUrl(url);
+        setCustomManualName(pdf.name);
+      } catch {
+        setManualError("登録済みPDFを読み込めませんでした。端末の保存領域をご確認ください。");
+        return;
+      }
+    }
     setShowManual(true);
   };
 
@@ -457,7 +482,7 @@ export default function OperationSettings({ onNavigate }: Props) {
           icon={<span className="text-2xl">📘</span>}
           title="連盟アナウンスマニュアル"
           desc="PDFを表示"
-          onClick={openManual}
+          onClick={() => { void openManual(); }}
         />
 
         <TileButton
@@ -692,6 +717,15 @@ export default function OperationSettings({ onNavigate }: Props) {
         </div>
       )}
 
+      {manualError && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-4">
+          <div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-white p-5 text-slate-900 shadow-xl">
+            <h2 className="text-lg font-bold">アナウンスマニュアル</h2>
+            <p className="mt-3 whitespace-pre-wrap text-sm">{manualError}</p>
+            <button type="button" onClick={() => setManualError("")} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">OK</button>
+          </div>
+        </div>
+      )}
       {showManual && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm">
           <div
@@ -727,7 +761,7 @@ export default function OperationSettings({ onNavigate }: Props) {
                       {manualTitle}
                     </div>
                     <div className="text-xs sm:text-sm text-white/65 mt-1 break-all">
-                      {manualFile}
+                      {leagueMode === "custom" ? customManualName : manualFile}
                     </div>
                   </div>
 
