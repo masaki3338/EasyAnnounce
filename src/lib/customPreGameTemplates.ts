@@ -2,7 +2,7 @@
 export type PreGameKind='notice'|'startTime'|'call'|'warmup'|'sheetKnock'|'lineup'|'umpires'|'defense'|'bench'|'ground'|'gather'|'greeting'|'nationalFlag'|'firstPitch'|'seat'|'custom';
 export type PreGameCondition={team:'any'|'top'|'bottom'|'firstBase'|'thirdBase';announcementMode:'any'|'single'|'normal';matchNo:string;repeat:'any'|'first'|'again';requiresData:boolean};
 export type PreGameTiming={type:'manual'|'beforeStart'|'afterPrevious'|'event';minutes:number;event:string;note:string};
-export type PreGameSegment={id:string;text:string;condition:PreGameCondition;timing:PreGameTiming;phase?:'start'|'notice'|'end';seatSide?:'top'|'bottom'};
+export type PreGameSegment={id:string;text:string;condition:PreGameCondition;timing:PreGameTiming;phase?:'prepare'|'start'|'notice'|'end';seatSide?:'top'|'bottom';pitcherSeparate?:boolean;pitcherText?:string};
 export type PreGameItem={id:string;title:string;kind:PreGameKind;enabled:boolean;target:'any'|'top'|'bottom';condition:PreGameCondition;timing:PreGameTiming;segments:PreGameSegment[];timerSettings?:{minutes:number;noticeMinutes:number}};
 export const defaultCondition=():PreGameCondition=>({team:'any',announcementMode:'any',matchNo:'',repeat:'any',requiresData:false});
 export const defaultTiming=():PreGameTiming=>({type:'manual',minutes:0,event:'',note:''});
@@ -23,15 +23,25 @@ export const PRE_GAME_CATALOG:{kind:PreGameKind;title:string;text:string;target?
 ];
 export function fromCatalog(index:number):PreGameItem{
  const c=PRE_GAME_CATALOG[index]||PRE_GAME_CATALOG[PRE_GAME_CATALOG.length-1];
- const segment=(text:string,phase?:'start'|'notice'|'end'):PreGameSegment=>({id:genId(),text,phase,condition:defaultCondition(),timing:defaultTiming()});
- return {id:genId(),title:c.title,kind:c.kind,enabled:true,target:c.target||'any',condition:{...defaultCondition(),team:c.target||'any'},timing:defaultTiming(),timerSettings:c.kind==='warmup'?{minutes:10,noticeMinutes:2}:undefined,segments:c.kind==='seat'?[{...segment(c.text),seatSide:'bottom'},{...segment(c.text),seatSide:'top'}]:c.kind==='sheetKnock'?[segment(c.text,'start'),segment('ノック時間、残り【残り時間】分です。','notice'),segment('ノックを終了してください。','end')]:c.kind==='warmup'?[segment(c.text,'start'),segment('ウォーミングアップ、残り【残り分数】分です。','notice'),segment('ウォーミングアップを終了してください。','end')]:[segment(c.text)]};
+ const segment=(text:string,phase?:'prepare'|'start'|'notice'|'end'):PreGameSegment=>({id:genId(),text,phase,condition:defaultCondition(),timing:defaultTiming()});
+ return {id:genId(),title:c.title,kind:c.kind,enabled:true,target:c.target||'any',condition:{...defaultCondition(),team:c.target||'any'},timing:defaultTiming(),timerSettings:c.kind==='warmup'?{minutes:10,noticeMinutes:2}:undefined,segments:c.kind==='seat'?[{...segment(c.text),seatSide:'bottom'},{...segment(c.text),seatSide:'top'}]:c.kind==='sheetKnock'?[segment('','prepare'),segment(c.text,'start'),segment('ノック時間、残り【残り時間】分です。','notice'),segment('ノックを終了してください。','end')]:c.kind==='warmup'?[segment(c.text,'start'),segment('ウォーミングアップ、残り【残り分数】分です。','notice'),segment('ウォーミングアップを終了してください。','end')]:[segment(c.text)]};
 }
 export const REMOVED_PRE_GAME_TITLES = ["開始時間変更", "チーム呼び出し", "審判員紹介", "守備紹介", "控え紹介", "整列案内", "開始時刻放送", "国旗掲揚", "始球式"];
-const knockPhase=(title:string):'start'|'notice'|'end'=>title.includes('残り')?'notice':title.includes('終了')?'end':'start';
+const knockPhase=(title:string):'prepare'|'start'|'notice'|'end'=>title.includes('残り')?'notice':title.includes('終了')?'end':'start';
 export const initialPreGameItems=()=>{
  const all=PRE_GAME_CATALOG.slice(0,-1).map((_,i)=>fromCatalog(i));
- return consolidateWarmupItems(consolidateKnockItems(all));
+ return ensureKnockPrepare(consolidateWarmupItems(consolidateKnockItems(all)));
 };
+// 従来の「開始・準備」は「開始」に引き継ぎ、「準備」を独立した保存欄として追加。
+// 読み込み時のみ補完し、既存の文章やメモを消さない。
+function ensureKnockPrepare(items:PreGameItem[]):PreGameItem[]{
+ return items.map(item=>{
+  if(item.kind!=='sheetKnock'||item.segments.some(seg=>seg.phase==='prepare'))return item;
+  const base=item.segments.find(seg=>seg.phase==='start')||item.segments[0];
+  const prepare:PreGameSegment={id:genId(),text:'',phase:'prepare',condition:{...defaultCondition(),...(base?.condition||{})},timing:defaultTiming()};
+  return {...item,segments:[prepare,...item.segments]};
+ });
+}
 // 旧保存データのシートノック三分割を一画面に統合。旧文言は維持する。
 export function consolidateKnockItems(all:PreGameItem[]):PreGameItem[]{
  const withoutRemoved=all.filter(x=>!REMOVED_PRE_GAME_TITLES.includes(x.title));
@@ -45,7 +55,7 @@ export function consolidateKnockItems(all:PreGameItem[]):PreGameItem[]{
   const group=withoutRemoved.filter(x=>x.kind==='sheetKnock'&&x.target===team);
   const segments=group.flatMap(x=>x.segments.map(y=>({...y,id:y.id,phase:y.phase||knockPhase(x.title)} as PreGameSegment & {phase:string})));
   const startItem=group.find(x=>x.segments.some(s=>(s.phase||knockPhase(x.title))==='start'))||item;
-  segments.sort((a,b)=>({start:0,notice:1,end:2}[a.phase]-{start:0,notice:1,end:2}[b.phase]));
+  segments.sort((a,b)=>({prepare:0,start:1,notice:2,end:3}[a.phase]-{prepare:0,start:1,notice:2,end:3}[b.phase]));
   output.push({...item, title: startItem.title || (team==='top'?'シートノック（先攻）':team==='bottom'?'シートノック（後攻）':'シートノック'), segments});
  }
  return output;
@@ -85,8 +95,8 @@ function migrateKnockTimingNotes(items:PreGameItem[]):PreGameItem[]{
   )};
  });
 }
-export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?migrateKnockTimingNotes(normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed)))):initialPreGameItems();}catch{return initialPreGameItems();}}
-export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(migrateKnockTimingNotes(normalizeSingleTextItems(items))));}
+export function loadPreGameItems(profileId:string):PreGameItem[]{if(typeof window==='undefined')return initialPreGameItems();try{const raw=localStorage.getItem(key(profileId));if(!raw)return initialPreGameItems();const parsed=JSON.parse(raw);return Array.isArray(parsed)?ensureKnockPrepare(migrateKnockTimingNotes(normalizeSingleTextItems(consolidateWarmupItems(consolidateKnockItems(parsed))))):initialPreGameItems();}catch{return initialPreGameItems();}}
+export function savePreGameItems(profileId:string,items:PreGameItem[]){localStorage.setItem(key(profileId),JSON.stringify(ensureKnockPrepare(migrateKnockTimingNotes(normalizeSingleTextItems(items)))));}
 
 export type PreGamePreviewPlayer={battingOrder:string;position:string;lastName:string;fullName:string;honorific:string;number:string;fieldingOrder:number};
 
@@ -145,7 +155,7 @@ export function renderPreGamePreview(item:PreGameItem, segment:PreGameSegment, v
    const playerLine=firstLine.slice(firstStarterTokenPos);
    const out:string[]=[];
    if(intro.trim()) out.push(replaceTokensByMap(intro.trim(),basePreviewMap(values)));
-   for(const p of starterList)out.push(replaceTokensByMap(playerLine.trim(),playerPreviewMap(p,values)));
+   for(const p of starterList)out.push(replaceTokensByMap(item.kind==='seat' && segment.pitcherSeparate && p.position==='ピッチャー' ? (segment.pitcherText || playerLine).trim() : playerLine.trim(),playerPreviewMap(p,values)));
    for(const line of lines.slice(1))out.push(replaceTokensByMap(line,basePreviewMap(values)));
    return out.join('\n');
   }
@@ -163,7 +173,7 @@ export function renderPreGamePreview(item:PreGameItem, segment:PreGameSegment, v
   }
   if(hasAny(trimmed, starterTokens)){
    for(const p of starterList){
-    out.push(replaceTokensByMap(trimmed, playerPreviewMap(p, values)));
+    out.push(replaceTokensByMap(item.kind==='seat' && segment.pitcherSeparate && p.position==='ピッチャー' ? (segment.pitcherText || trimmed) : trimmed, playerPreviewMap(p, values)));
    }
    continue;
   }
