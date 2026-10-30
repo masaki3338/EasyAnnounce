@@ -127,9 +127,13 @@ async function importFile(file:File):Promise<string>{
 }
 export default function CustomProfileQR({profileId,onImported,onClose,onBeforeExport}:{profileId:string;onImported:(id:string)=>void;onClose:()=>void;onBeforeExport:()=>void}){
  const [mode,setMode]=useState<'show'|'scan'|'file'>('show');
+ const [importedName,setImportedName]=useState<string|null>(null);
  const [codes,setCodes]=useState<string[]>([]);
  const [qrPage,setQrPage]=useState(0);
  const [received,setReceived]=useState<Record<number,string>>({});
+ const receivedRef=useRef<Record<number,string>>({});
+ const [autoPlay,setAutoPlay]=useState(true);
+ const [qrImages,setQrImages]=useState<string[]>([]);
  const scanGroupRef=useRef<{id:string;total:number}|null>(null);
  const [profiles,setProfiles]=useState<CustomProfile[]>(getCustomProfiles);
  const [selectedId,setSelectedId]=useState(()=>getActiveCustomProfileId());
@@ -217,7 +221,7 @@ export default function CustomProfileQR({profileId,onImported,onClose,onBeforeEx
  const scanRef=useRef<(text:string)=>void>(()=>{});
  useEffect(()=>{if(mode!=='show')return;
   let cancelled=false;
-  setCodes([]);setQrPage(0);setQrUrl('');setStatus('');
+  setCodes([]);setQrPage(0);setQrUrl('');setQrImages([]);setStatus('');
   try {
    onBeforeExport();
    const raw=exportCustomProfile(selectedId);
@@ -225,8 +229,24 @@ export default function CustomProfileQR({profileId,onImported,onClose,onBeforeEx
   }catch(e){setStatus(String((e as Error).message||e))}
   return ()=>{cancelled=true};
  },[mode,selectedId]);
- useEffect(()=>{const value=codes[qrPage];if(!value){setQrUrl('');return;}setQrUrl('');void QRCode.toDataURL(value,{width:640,margin:3,errorCorrectionLevel:'L'}).then(setQrUrl).catch(e=>setStatus('QR生成失敗：'+String(e.message||e)))},[codes,qrPage]);
- const applyImport=(raw:string)=>{const p=importCustomProfile(raw);refreshProfiles();setSelectedId(p.id);setStatus('読み込み完了: '+p.name);onImported(p.id);};
+ // 全ページを事前生成し、切替時に空白や生成待ちが発生しないようにする。
+ useEffect(()=>{
+  let cancelled=false;
+  setQrImages([]);
+  if(!codes.length)return;
+  void Promise.all(codes.map(value=>QRCode.toDataURL(value,{width:640,margin:3,errorCorrectionLevel:'L'})))
+   .then(images=>{if(!cancelled)setQrImages(images)})
+   .catch(e=>{if(!cancelled)setStatus('QR生成失敗：'+String(e.message||e))});
+  return ()=>{cancelled=true};
+ },[codes]);
+ useEffect(()=>{setQrUrl(qrImages[qrPage]||'')},[qrImages,qrPage]);
+ // 受信側のカメラが追従できるよう、1.5秒ごとに巡回する。
+ useEffect(()=>{
+  if(mode!=='show'||!autoPlay||codes.length<2||qrImages.length!==codes.length)return;
+  const timer=window.setInterval(()=>setQrPage(page=>(page+1)%codes.length),1500);
+  return ()=>window.clearInterval(timer);
+ },[mode,autoPlay,codes.length,qrImages.length]);
+ const applyImport=(raw:string)=>{const p=importCustomProfile(raw);refreshProfiles();setSelectedId(p.id);setStatus('読み込み完了: '+p.name);setImportedName(p.name);onImported(p.id);};
  const consume=async(text:string)=>{
   try {
    if(text.startsWith(QR_PREFIX)){applyImport(await decode(text));return;}
@@ -238,12 +258,12 @@ export default function CustomProfileQR({profileId,onImported,onClose,onBeforeEx
     const current=scanGroupRef.current;
     if(current&&(current.id!==id||current.total!==total))throw new Error('別の設定のQRです。読み取りをリセットしてください');
     scanGroupRef.current={id,total};
-    const next={...received,[n]:chunk};setReceived(next);
+    const next={...receivedRef.current,[n]:chunk};receivedRef.current=next;setReceived(next);
     if(Object.keys(next).length<total){setStatus(`分割QR：${Object.keys(next).length}/${total}枚を読み取りました`);return;}
     const all=Array.from({length:total},(_,i)=>next[i+1]).join('');
     if(hashCode(all)!==id)throw new Error('QRのデータ整合性が一致しません。読み直してください');
     applyImport(unpack(new TextDecoder().decode(await gunzip(fromB64(all)))));
-    scanGroupRef.current=null;setReceived({});return;
+    scanGroupRef.current=null;receivedRef.current={};setReceived({});return;
    }
    throw new Error('カスタマイズ設定のQRコードではありません');
   }catch(e){setStatus('復元エラー: '+String((e as Error).message||e))}
@@ -332,8 +352,9 @@ export default function CustomProfileQR({profileId,onImported,onClose,onBeforeEx
   finally{URL.revokeObjectURL(url);}
  };
  return <div className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-3"><section className="w-full max-w-md max-h-[95dvh] overflow-y-auto rounded-2xl bg-slate-800 border border-white/25 p-4 text-white space-y-3"><div className="flex justify-between items-center"><h2 className="font-extrabold text-lg">カスタマイズ設定の共有</h2><button className="rounded-lg bg-white/20 px-3 py-2" onClick={onClose}>✕ 閉じる</button></div><div className="rounded-xl border border-white/20 bg-slate-700/70 p-3 space-y-3"><label className="block text-sm font-bold">カスタマイズ設定グループ<select className="mt-1 w-full rounded-xl bg-slate-800 border border-white/20 p-3 text-white" value={selectedId} onChange={e=>selectProfile(e.target.value)}>{profiles.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><div className="flex gap-2"><input aria-label="新しく登録するカスタマイズ名" placeholder="新しく登録する設定名" className="min-w-0 flex-1 rounded-lg bg-white p-2 text-slate-900" value={newName} onChange={e=>setNewName(e.target.value)}/><button type="button" onClick={registerProfile} className="rounded-lg bg-blue-600 px-3 py-2 font-bold">登録</button></div><div className="grid grid-cols-2 gap-2"><button type="button" onClick={renameProfile} className="rounded-lg bg-slate-600 p-2 font-bold">名前を変更</button><button type="button" onClick={removeProfile} disabled={profiles.length<=1} className="rounded-lg bg-red-700 p-2 font-bold disabled:opacity-40 disabled:cursor-not-allowed">選択中の設定を削除</button></div><p className="text-xs text-slate-200">現在選択中のグループは自動保存されます。「登録」は、その時点の試合前・試合中の設定を保存します。同じ名前がある場合は上書き確認を表示します。QRから読み込んだ設定も新しいグループとして保存します。</p></div><div className="grid grid-cols-3 gap-2 text-sm"><button className={'rounded-xl p-2 '+(mode==='show'?'bg-blue-600':'bg-slate-600')} onClick={()=>setMode('show')}>QRを表示</button><button className={'rounded-xl p-2 '+(mode==='scan'?'bg-blue-600':'bg-slate-600')} onClick={()=>setMode('scan')}>QRを読込</button><button className={'rounded-xl p-2 '+(mode==='file'?'bg-blue-600':'bg-slate-600')} onClick={()=>setMode('file')}>ファイル共有</button></div>
- {mode==='show'?<><p className="text-sm">選択中のカスタマイズ設定を初期設定との差分でQR化します。容量を超えた場合は自動で分割します。</p>{qrUrl&&<img alt={`設定共有QRコード ${qrPage+1}/${codes.length}`} src={qrUrl} className="mx-auto w-full max-w-[540px] rounded-xl bg-white p-2"/>}<p className="text-center text-sm">{codes.length?`QRコード ${qrPage+1} / ${codes.length} 枚`:status?'':'圧縮してQRを作成中…'}</p>{codes.length>1&&<div className="grid grid-cols-2 gap-2"><button type="button" disabled={qrPage===0} onClick={()=>setQrPage(x=>x-1)} className="rounded-lg bg-slate-600 p-3 font-bold disabled:opacity-40">◀ 前のQR</button><button type="button" disabled={qrPage===codes.length-1} onClick={()=>setQrPage(x=>x+1)} className="rounded-lg bg-blue-600 p-3 font-bold disabled:opacity-40">次のQR ▶</button></div>}</>:mode==='scan'?<><p className="text-sm">相手端末のQRを読み取ります。分割QRはすべて読み取ると自動で復元します（順番は自由）。</p><video ref={videoRef} muted playsInline className="w-full rounded-xl bg-black aspect-[4/3] object-cover"/><label className="block text-center rounded-xl bg-blue-600 px-4 py-3 font-bold cursor-pointer">🖼️ 画像からQRを読み取る<input type="file" accept="image/*" onChange={readQrImage} className="hidden"/></label><button type="button" onClick={()=>{scanGroupRef.current=null;setReceived({});setStatus('分割QRの読み取り状況をリセットしました')}} className="w-full rounded-xl bg-slate-600 p-2 text-sm">分割QRを最初から読み直す</button></>:<><p className="text-sm">通信不要。選手登録用JSONとは別の .eac ファイルで設定を共有します。</p><button type="button" onClick={()=>void saveEac()} className="w-full rounded-xl bg-blue-600 p-4 font-bold">⬇ 設定を.eacファイルに保存</button><label className="block text-center rounded-xl bg-emerald-600 p-4 font-bold cursor-pointer">⬆ .eacファイルを読み込む<input type="file" accept=".eac,application/octet-stream" onChange={readEac} className="hidden"/></label><p className="text-xs text-slate-200">読み込み時は新しい設定グループを作成します。既存グループは上書きしません。</p></>}
+ {mode==='show'?<><p className="text-sm">選択中のカスタマイズ設定を初期設定との差分でQR化します。容量を超えた場合は自動で分割します。</p>{qrUrl&&<img alt={`設定共有QRコード ${qrPage+1}/${codes.length}`} src={qrUrl} className="mx-auto w-full max-w-[540px] rounded-xl bg-white p-2"/>}<p className="text-center text-sm">{codes.length?`QRコード ${qrPage+1} / ${codes.length} 枚`:status?'':'圧縮してQRを作成中…'}</p>{codes.length>1&&<div className="flex items-center justify-between gap-2 rounded-lg bg-slate-700 p-2"><span className="text-sm">自動切替（1.5秒ごと）</span><button type="button" onClick={()=>setAutoPlay(v=>!v)} className="rounded-lg bg-blue-600 px-4 py-2 font-bold">{autoPlay?'一時停止':'自動再生'}</button></div>}{codes.length>1&&<div className="grid grid-cols-2 gap-2"><button type="button" disabled={qrPage===0} onClick={()=>setQrPage(x=>x-1)} className="rounded-lg bg-slate-600 p-3 font-bold disabled:opacity-40">◀ 前のQR</button><button type="button" disabled={qrPage===codes.length-1} onClick={()=>setQrPage(x=>x+1)} className="rounded-lg bg-blue-600 p-3 font-bold disabled:opacity-40">次のQR ▶</button></div>}</>:mode==='scan'?<><p className="text-sm">相手端末の自動切替QRにカメラをかざし続けてください。順不同で自動収集し、全部そろうと復元します。</p><p className="text-sm font-bold text-emerald-300">{scanGroupRef.current?`読み取り進捗：${Object.keys(received).length} / ${scanGroupRef.current.total} 枚`:'QRの読み取りを待っています…'}</p><video ref={videoRef} muted playsInline className="w-full rounded-xl bg-black aspect-[4/3] object-cover"/><label className="block text-center rounded-xl bg-blue-600 px-4 py-3 font-bold cursor-pointer">🖼️ 画像からQRを読み取る<input type="file" accept="image/*" onChange={readQrImage} className="hidden"/></label><button type="button" onClick={()=>{scanGroupRef.current=null;receivedRef.current={};setReceived({});setStatus('分割QRの読み取り状況をリセットしました')}} className="w-full rounded-xl bg-slate-600 p-2 text-sm">分割QRを最初から読み直す</button></>:<><p className="text-sm">通信不要。選手登録用JSONとは別の .eac ファイルで設定を共有します。</p><button type="button" onClick={()=>void saveEac()} className="w-full rounded-xl bg-blue-600 p-4 font-bold">⬇ 設定を.eacファイルに保存</button><label className="block text-center rounded-xl bg-emerald-600 p-4 font-bold cursor-pointer">⬆ .eacファイルを読み込む<input type="file" accept=".eac,application/octet-stream" onChange={readEac} className="hidden"/></label><p className="text-xs text-slate-200">読み込み時は新しい設定グループを作成します。既存グループは上書きしません。</p></>}
  {status&&<p role="status" className="text-sm text-yellow-200 break-words">{status}</p>}</section>
+ {importedName!==null&&<div className="fixed inset-0 z-[320] flex items-center justify-center bg-black/75 p-4" role="presentation"><section role="dialog" aria-modal="true" aria-labelledby="custom-import-complete-title" className="w-full max-w-sm rounded-2xl bg-white p-6 text-center text-slate-800 shadow-2xl"><div className="mb-3 text-4xl text-emerald-600" aria-hidden="true">✓</div><h3 id="custom-import-complete-title" className="text-lg font-extrabold">読み込み完了</h3><p className="my-5 break-words text-base">「{importedName}」の読み込みが完了しました</p><button type="button" autoFocus onClick={()=>setImportedName(null)} className="w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white">OK</button></section></div>}
  {dialog&&<div className="fixed inset-0 z-[310] flex items-center justify-center bg-black/75 p-4" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setDialog(null)}}>
   <section role="dialog" aria-modal="true" aria-labelledby="custom-profile-dialog-title" className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-slate-800 shadow-2xl">
    <div className={'flex items-center gap-3 px-5 py-4 text-white '+(dialog.kind==='delete'?'bg-rose-600':'bg-blue-600')}>

@@ -11,7 +11,7 @@ const samples:Record<string,string>={
  '投手名':'山田','投手名（苗字）':'山田','投手名（フルネーム）':'山田太郎','この回の投球数':'16','合計投球数':'70','投球上限':'70','回':'3','表裏':'表',
  '交代前・選手名（苗字）':'山田','交代前・選手名（フルネーム）':'山田太郎','交代後・選手名（苗字）':'佐藤','交代後・選手名（フルネーム）':'佐藤一郎','移動・選手名（苗字）':'鈴木','移動・選手名（フルネーム）':'鈴木次郎','移動・選手名':'鈴木','選手名（苗字）':'高橋','選手名（フルネーム）':'高橋健太','交代前打順':'4番','交代前・守備位置':'ピッチャー','交代前・選手名':'山田','交代前・敬称':'くん','交代後・選手名':'佐藤','交代後・敬称':'くん','交代後・守備位置':'ピッチャー','守備位置':'ピッチャー','交代後・背番号':'12',
  '移動前・守備位置':'ショート','移動・選手名':'鈴木次郎','移動・敬称':'くん','移動後・守備位置':'セカンド',
- '中断時間':'3','先攻得点':'3','後攻得点':'4','勝利チーム名':'横浜ジュニア','給水時間':'3','アウト数':'無死','走者情報':'一塁・二塁'
+ '中断時間':'3','先攻得点':'3','後攻得点':'4','勝利チーム名':'横浜ジュニア','給水時間':'3','アウト数':'無死','走者情報':'一塁・二塁','打者の一人前の選手':'山田','打者の一人前の選手敬称':'くん','打者の一人前の選手背番号':'6','打者の二人前の選手':'山田','打者の二人前の選手敬称':'くん','打者の二人前の選手背番号':'6','打者の三人前の選手':'山田','打者の三人前の選手敬称':'くん','打者の三人前の選手背番号':'6'
 };
 const button='rounded-xl px-3 py-2 font-semibold active:scale-[0.99] transition';
 /** 試合中の固定項目を編集する専用画面。マウントは custom 選択時のみ行うこと。 */
@@ -41,7 +41,24 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    .replace(/【\s*塁\s*[（(]\s*1塁\s*[/／]\s*2塁\s*[/／]\s*3塁\s*[）)]\s*】/g, '1塁');
  };
  const previewMemo=useMemo(()=>substituteTokens(memo,samples),[memo]);
- const preview=useMemo(()=>runnerPreviewText(substituteTokens(text, item?.id==='defenseChange' && part?.id==='newPlayerDifferent' ? {...samples,'交代後・守備位置':'センター','守備位置':'センター'} : samples)),[text,item?.id,part?.id]);
+ const preview=useMemo(()=>{
+  const previewValues = { ...samples };
+  // 試合終了の本番処理と同様に、チェックONなら得点の大きい方を先にする。
+  // チーム名の差込順は変えず、得点の差込値のみ入れ替える。
+  if (item?.id === 'gameEnd' && texts.gameEnd?.higherScoreFirst === 'true') {
+    const top = Number(samples['先攻得点']);
+    const bottom = Number(samples['後攻得点']);
+    if (Number.isFinite(top) && Number.isFinite(bottom) && top < bottom) {
+      previewValues['先攻得点'] = String(bottom);
+      previewValues['後攻得点'] = String(top);
+    }
+  }
+  if (item?.id === 'defenseChange' && part?.id === 'newPlayerDifferent') {
+    previewValues['交代後・守備位置'] = 'センター';
+    previewValues['守備位置'] = 'センター';
+  }
+  return runnerPreviewText(substituteTokens(text, previewValues));
+ },[text,item?.id,part?.id,texts.gameEnd?.higherScoreFirst]);
  const example=useMemo(()=>{
   if(item?.id==='defenseChange'){
    // 選択した設定の働きに関係する文章だけを組み立てる。
@@ -66,10 +83,10 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    }
    const connectorExample=selectedId==='last';
    const middleExample=selectedId==='middle';
-   const simpleExample=['battingIntro','battingRow','outro'].includes(selectedId);
+   const simpleExample=['battingIntro','battingRowNew','battingRowExisting','outro'].includes(selectedId);
    const includePlayer=connectorExample||simpleExample||style!=='position';
    const includePosition=connectorExample||(style!=='player' && selectedId!=='newPlayerDifferent' && !simpleExample);
-   const battingSample={...samples,'打順':'4','守備位置':'ピッチャー','選手名':'佐藤一郎','敬称':'くん','背番号':'12'};
+   const battingSample={...samples,'打順':'4','守備位置':'ピッチャー','選手名':'佐藤一郎','敬称':'くん','背番号':'12','__battingKind':selectedId==='battingRowNew'?'new':'existing'};
    // ④/⑤ は各場面の文章を、他の設定済みの接続文・打順文と組み合わせて通し表示。
    const isNewPlayerPart=part?.id==='newPlayerSame'||part?.id==='newPlayerDifferent';
    const isPinchPart=!!part?.id&&['pinchHitStay','pinchHitReplace','pinchRunStay','pinchRunReplace'].includes(part.id);
@@ -162,10 +179,11 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    <button className={button+' bg-white/15'} onClick={()=>{setItemId(null);setPartId(null);stop()}}>← {LABELS.find(x=>x.id===category)?.label}に戻る</button>
    <h2 className="text-lg font-bold">{item.label}</h2>
    {item.id==='pitchCount'&&<div className="space-y-2 rounded-xl border border-sky-300/30 bg-sky-950/30 p-3"><p className="font-bold">表示する投球数の放送</p>{item.parts.map(p=><label key={p.id} className="flex items-center gap-3 rounded-lg bg-white/10 px-3 py-2"><input type="checkbox" className="h-5 w-5 accent-sky-500" checked={customPitchPartEnabled(texts,p.id)} onChange={e=>setFlag('pitchCount',`enabled:${p.id}`,e.target.checked)}/><span>{p.label}</span></label>)}</div>}
-   {(item.id==='ground'||item.id==='nextGame')&&<div className="space-y-3 rounded-xl border border-sky-300/30 bg-sky-950/30 p-3"><h3 className="font-bold">モーダルを表示するイニング</h3><div className="grid grid-cols-2 gap-3"><label className="space-y-1"><span className="text-sm">回</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerInning||(item.id==='ground'?'5':'4')} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerInning',e.target.value)}>{Array.from({length:9},(_,i)=>String(i+1)).map(n=><option key={n} value={n}>{n}回</option>)}</select></label><label className="space-y-1"><span className="text-sm">表／裏</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerSide||'bottom'} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerSide',e.target.value)}><option value="top">表</option><option value="bottom">裏</option></select></label></div><p className="text-xs opacity-75">指定した回の終了時に表示するための設定です。</p></div>}
+   {item.id==='nextGame'&&<div className="space-y-3 rounded-xl border border-sky-300/30 bg-sky-950/30 p-3"><h3 className="font-bold">モーダルを表示するイニング</h3><div className="grid grid-cols-2 gap-3"><label className="space-y-1"><span className="text-sm">回</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerInning||(item.id==='ground'?'5':'4')} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerInning',e.target.value)}>{Array.from({length:9},(_,i)=>String(i+1)).map(n=><option key={n} value={n}>{n}回</option>)}</select></label><label className="space-y-1"><span className="text-sm">表／裏</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerSide||'bottom'} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerSide',e.target.value)}><option value="top">表</option><option value="bottom">裏</option></select></label></div><p className="text-xs opacity-75">指定した回の終了時に表示するための設定です。</p></div>}
 
    {item.id==='intentionalWalk'&&<p className="text-xs opacity-75">この項目は試合中の「その他」メニューの一番上に表示されます。</p>}
    {item.id!=='startTime'&&item.id!=='suspendedGame'&&item.id!=='heat'&&<div className="space-y-2">{item.parts.map(p=><button key={p.id} onClick={()=>setPartId(p.id)} className={'w-full rounded-xl border px-3 py-3 text-left text-sm '+(part?.id===p.id?'border-blue-300 bg-blue-600/40':'border-white/20 bg-white/10')}>{p.label}</button>)}</div>}
+   {item.id==='gameEnd'&&<label className="flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 p-3"><input type="checkbox" className="h-5 w-5 accent-sky-500" checked={texts.gameEnd?.higherScoreFirst==='true'} onChange={e=>setFlag('gameEnd','higherScoreFirst',e.target.checked)}/><span>得点が多い方を先にする</span></label>}
    {item.id==='score'&&<label className="block space-y-2"><span className="font-semibold">無得点時の読み上げ</span><select className="w-full rounded-xl bg-white p-3 text-gray-900" value={texts.score?.noScoreEnabled||'false'} onChange={e=>{setTexts(prev=>({...prev,score:{...prev.score,noScoreEnabled:e.target.value}}));setDirty(true);setSaved(false)}}><option value="false">読み上げなし</option><option value="true">読み上げあり</option></select><p className="text-xs opacity-75">読み上げなしの場合、無得点時の文章は保存されますが、実際の放送では表示しません。</p></label>}
    {item.id==='startTime'&&<label className="block space-y-2"><span className="font-semibold">表示タイミング</span><select className="w-full rounded-xl bg-white p-3 text-gray-900" value={texts.startTime?.timing||'afterFirstPitch'} onChange={e=>{setTexts(prev=>({...prev,startTime:{...prev.startTime,timing:e.target.value}}));setDirty(true);setSaved(false)}}>{START_TIME_TIMINGS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>}
    <label className="block space-y-2"><span className="font-semibold">読み上げ文章</span><textarea ref={textareaRef} value={text} onChange={e=>setText(e.target.value)} rows={5} className="w-full rounded-xl bg-white p-3 text-base text-gray-900" spellCheck={false}/></label>
