@@ -18,6 +18,7 @@ const button='rounded-xl px-3 py-2 font-semibold active:scale-[0.99] transition'
 export default function CustomInGameSettings({profileId,profileName,onBack}:Props){
  const [category,setCategory]=useState<AnnounceCategory>('offense');
  const [helpOpen,setHelpOpen]=useState(false);
+ const [deleteTarget,setDeleteTarget]=useState<{id:string;label:string}|null>(null);
  const [itemId,setItemId]=useState<string|null>(null);
  const [partId,setPartId]=useState<string|null>(null);
  const [texts,setTexts]=useState<CustomInGameTexts>(()=>loadCustomInGameTexts(profileId));
@@ -25,7 +26,7 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
  const [saved,setSaved]=useState(false);
  const [speechError,setSpeechError]=useState('');
  const textareaRef=useRef<HTMLTextAreaElement>(null);
- useEffect(()=>{setTexts(loadCustomInGameTexts(profileId));setItemId(null);setPartId(null);setDirty(false);setSaved(false);},[profileId]);
+ useEffect(()=>{setTexts(loadCustomInGameTexts(profileId));setItemId(null);setPartId(null);setDirty(false);setSaved(false);setDeleteTarget(null);},[profileId]);
  useEffect(()=>()=>{ttsStop();},[]);
  const userItems=Object.entries(texts).filter(([id,v])=>id.startsWith('userOther_')&&v?.label).map(([id,v])=>({id,label:v.label,category:'other' as AnnounceCategory,parts:[{id:'main',label:'読み上げ文章',text:'',tokens:['先攻チーム名','後攻チーム名','大会名','試合番号']}]}));
  const allItems=[...CUSTOM_IN_GAME_ITEMS,...userItems];
@@ -138,6 +139,12 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
   setText(text.slice(0,start)+`【${token}】`+text.slice(end));
   requestAnimationFrame(()=>{area?.focus();area?.setSelectionRange(start+token.length+2,start+token.length+2)});
  };
+ const deleteUserItem=(id:string)=>{
+  if(!id.startsWith('userOther_'))return;
+  setTexts(prev=>{const next={...prev};delete next[id];return next;});
+  if(itemId===id){setItemId(null);setPartId(null);stop();}
+  setDirty(true);setSaved(false);
+ };
  const save=()=>{try{saveCustomInGameTexts(profileId,texts);setDirty(false);setSaved(true)}catch{setSpeechError('保存に失敗しました。ブラウザの保存領域をご確認ください。')}};
  const stop=()=>{ttsStop()};
  const speak=async()=>{setSpeechError('');if(bad.length){setSpeechError('未対応の差し込み項目があります。文章を確認してください。');return;}
@@ -150,8 +157,8 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
    <div role="dialog" aria-modal="true" aria-labelledby="ingame-help-title" className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white text-slate-800 shadow-2xl">
     <div className="flex shrink-0 items-center justify-between gap-3 bg-blue-700 px-4 py-4 text-white"><h2 id="ingame-help-title" className="text-base sm:text-lg font-extrabold">❓ 試合中アナウンス設定の使い方</h2><button type="button" aria-label="ヘルプを閉じる" onClick={()=>setHelpOpen(false)} className="h-9 w-9 shrink-0 rounded-full bg-white/20 text-xl font-bold">×</button></div>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-sm leading-relaxed">
-     <section className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2"><h3 className="font-extrabold text-blue-800">① 設定したい画面を選ぶ</h3><p>上部の「攻撃画面」「守備画面」「その他」から選び、一覧のアナウンス項目をタップします。</p><p className="text-xs text-slate-700">チェックを外した項目は、カスタマイズモードの試合中画面に表示されません。チェック変更後は画面下の「保存」ボタンを押してください。攻撃画面で切り替えられるのは「試合開始時刻の放送」「得点入力」の2項目です。「申告敬遠」は「その他」の先頭で切り替えられます。</p></section>
-     <section className="rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-2"><h3 className="font-extrabold text-sky-800">② 攻撃画面の設定</h3><p>代打・代走・得点など、攻撃中に使うアナウンスの文章を編集します。項目によって複数の場面別の文章がある場合は、編集したい種類を選択してください。</p><p className="text-xs text-slate-700">「試合開始時刻の放送」をOFFにすると開始時刻のモーダルは表示しません。「得点入力」をOFFにすると得点の放送モーダルを省略しますが、得点の記録と試合の進行は継続します。その他の攻撃項目は常にチェックON（変更不可）です。</p></section>
+     <section className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2"><h3 className="font-extrabold text-blue-800">① 設定したい画面を選ぶ</h3><p>上部の「攻撃画面」「守備画面」「その他」から選び、一覧のアナウンス項目をタップします。</p><p className="text-xs text-slate-700">チェックを外した項目は、カスタマイズモードの試合中画面に表示されません。チェック変更後は画面下の「保存」ボタンを押してください。攻撃画面で切り替えられるのは「試合開始時刻」「得点」の2項目です。「申告敬遠」は「その他」の先頭で切り替えられます。</p></section>
+     <section className="rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-2"><h3 className="font-extrabold text-sky-800">② 攻撃画面の設定</h3><p>代打・代走・得点など、攻撃中に使うアナウンスの文章を編集します。項目によって複数の場面別の文章がある場合は、編集したい種類を選択してください。</p><p className="text-xs text-slate-700">「試合開始時刻」をOFFにすると開始時刻のモーダルは表示しません。「得点」をOFFにすると得点の放送モーダルを省略しますが、得点の記録と試合の進行は継続します。その他の攻撃項目は常にチェックON（変更不可）です。</p></section>
      <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2"><h3 className="font-extrabold text-emerald-800">③ 守備画面の設定</h3><p>守備交代・投球数などの文章を編集します。守備交代では選手の交代、守備位置の移動、打順紹介、リエントリーなど、状況別の文章を切り替えて設定できます。</p><p className="text-xs text-slate-700">「投球数の放送」は4種類（守備回終了時・合計あり／なし、事前お知らせ、到達時）を個別にON/OFFできます。チェックOFFの放送・通知モーダルは表示されません。守備交代など、その他の守備項目は常に利用できます。</p></section>
      <section className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2"><h3 className="font-extrabold text-violet-800">④ その他の設定</h3><p>攻撃・守備以外で使うアナウンスを編集します。チェックOFFの項目は試合中の「その他」に表示しません。「グラウンド整備」「次の試合のお知らせ」をOFFにした場合は、指定イニングの自動モーダルも表示しません。ONの場合は各項目で表示する回（1〜9回）と表／裏を指定できます。</p></section>
      <section className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2"><h3 className="font-extrabold text-amber-800">⑤ 差し込み項目の使い方</h3><p>文章の挿入したい位置をタップし、「＋選手名（苗字）」「＋守備位置」「＋背番号」などのボタンを押します。試合中は登録した選手や試合の情報に自動で置き換わります。</p><div className="rounded-lg border border-amber-100 bg-white p-2 text-xs">例：【守備位置】の【選手名（苗字）】【敬称】が入ります。</div><p className="text-xs text-slate-700">差し込み項目はアナウンスの種類ごとに使用できるものが異なります。利用できない項目を入力すると警告が表示されます。</p></section>
@@ -162,10 +169,20 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
     <div className="shrink-0 border-t border-slate-200 bg-white p-3"><button type="button" onClick={()=>setHelpOpen(false)} className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-extrabold text-white active:scale-[.99]">OK</button></div>
    </div>
   </div>}
+  {deleteTarget&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" role="presentation" onClick={()=>setDeleteTarget(null)}>
+   <div role="alertdialog" aria-modal="true" aria-labelledby="delete-custom-item-title" aria-describedby="delete-custom-item-description" className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl" onClick={e=>e.stopPropagation()}>
+    <h2 id="delete-custom-item-title" className="text-lg font-extrabold">追加項目の削除</h2>
+    <p id="delete-custom-item-description" className="mt-3 whitespace-pre-wrap text-sm leading-6">{`「${deleteTarget.label}」を削除しますか？\n保存すると削除が確定します。`}</p>
+    <div className="mt-5 grid grid-cols-2 gap-3">
+     <button type="button" autoFocus onClick={()=>setDeleteTarget(null)} className="rounded-xl border border-slate-300 bg-slate-100 px-3 py-3 font-bold text-slate-800">キャンセル</button>
+     <button type="button" onClick={()=>{deleteUserItem(deleteTarget.id);setDeleteTarget(null)}} className="rounded-xl bg-rose-600 px-3 py-3 font-bold text-white">削除する</button>
+    </div>
+   </div>
+  </div>}
   <div className="grid grid-cols-3 gap-2">{LABELS.map(c=><button key={c.id} onClick={()=>{setCategory(c.id);setItemId(null);setPartId(null);stop()}} className={button+' text-sm '+(category===c.id?'bg-blue-600':'bg-white/15')}>{c.label}</button>)}</div>
   <div className="rounded-xl border border-sky-300/40 bg-sky-950/40 px-3 py-3 text-sm leading-6" role="note">
    <p className="font-bold text-sky-100">☑ チェックOFFの項目は試合中に表示しません</p>
-   {category==='offense'&&<p className="mt-1 text-xs text-slate-100">「試合開始時刻の放送」「得点入力」のみ切替可能です。その他の攻撃項目は常にON（変更不可）。得点入力をOFFにしても、得点の記録・試合進行は続きます。</p>}
+   {category==='offense'&&<p className="mt-1 text-xs text-slate-100">「試合開始時刻」「得点」のみ切替可能です。その他の攻撃項目は常にON（変更不可）。得点をOFFにしても、得点の記録・試合進行は続きます。</p>}
    {category==='defense'&&<p className="mt-1 text-xs text-slate-100">「投球数の放送」を開くと、回終了時（合計あり／なし）・事前お知らせ・到達時を個別に切り替えられます。OFFの放送モーダルは表示しません。</p>}
    {category==='other'&&<p className="mt-1 text-xs text-slate-100">OFFの項目は試合中の「その他」に表示しません。「グラウンド整備」「次の試合のお知らせ」は指定イニングのモーダルも非表示になります。</p>}
    <p className="mt-1 text-xs text-sky-100">※ 変更後は画面下の「保存」ボタンを押してください。</p>
@@ -174,10 +191,11 @@ export default function CustomInGameSettings({profileId,profileName,onBack}:Prop
   {!item?<div className="space-y-2">{allItems.filter(x=>x.category===category).map(x=><div key={x.id} className="flex w-full items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-3 py-3">
      {category!=='defense'&&<input type="checkbox" aria-label={`${x.label}を試合中に表示`} checked={customItemEnabled(texts,x.id)} disabled={category==='offense'&&!['startTime','score'].includes(x.id)} onChange={e=>setFlag(x.id,'enabled',e.target.checked)} className="h-6 w-6 shrink-0 accent-sky-500 disabled:opacity-60"/>}
      <button type="button" className="flex min-h-9 flex-1 items-center justify-between text-left" onClick={()=>{setItemId(x.id);setPartId(x.parts[0].id)}}><span className="font-semibold">{x.label}</span><span className="opacity-70">›</span></button>
+     {x.id.startsWith('userOther_')&&<button type="button" aria-label={`${x.label}を削除`} onClick={()=>setDeleteTarget({id:x.id,label:x.label})} className="shrink-0 rounded-lg bg-rose-700 px-3 py-2 text-sm font-bold text-white active:scale-95">削除</button>}
      </div>)}</div>:
   <div className="space-y-4">
    <button className={button+' bg-white/15'} onClick={()=>{setItemId(null);setPartId(null);stop()}}>← {LABELS.find(x=>x.id===category)?.label}に戻る</button>
-   <h2 className="text-lg font-bold">{item.label}</h2>
+   <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">{item.label}</h2>{item.id.startsWith('userOther_')&&<button type="button" onClick={()=>setDeleteTarget({id:item.id,label:item.label})} className="shrink-0 rounded-lg bg-rose-700 px-3 py-2 text-sm font-bold">削除</button>}</div>
    {item.id==='pitchCount'&&<div className="space-y-2 rounded-xl border border-sky-300/30 bg-sky-950/30 p-3"><p className="font-bold">表示する投球数の放送</p>{item.parts.map(p=><label key={p.id} className="flex items-center gap-3 rounded-lg bg-white/10 px-3 py-2"><input type="checkbox" className="h-5 w-5 accent-sky-500" checked={customPitchPartEnabled(texts,p.id)} onChange={e=>setFlag('pitchCount',`enabled:${p.id}`,e.target.checked)}/><span>{p.label}</span></label>)}</div>}
    {item.id==='nextGame'&&<div className="space-y-3 rounded-xl border border-sky-300/30 bg-sky-950/30 p-3"><h3 className="font-bold">モーダルを表示するイニング</h3><div className="grid grid-cols-2 gap-3"><label className="space-y-1"><span className="text-sm">回</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerInning||(item.id==='ground'?'5':'4')} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerInning',e.target.value)}>{Array.from({length:9},(_,i)=>String(i+1)).map(n=><option key={n} value={n}>{n}回</option>)}</select></label><label className="space-y-1"><span className="text-sm">表／裏</span><select className="w-full rounded-xl bg-white p-3 text-slate-900" value={texts[item.id]?.triggerSide||'bottom'} onChange={e=>setTiming(item.id as 'ground'|'nextGame','triggerSide',e.target.value)}><option value="top">表</option><option value="bottom">裏</option></select></label></div><p className="text-xs opacity-75">指定した回の終了時に表示するための設定です。</p></div>}
 
