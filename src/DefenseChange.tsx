@@ -722,7 +722,18 @@ const buildCustomRegularDefenseAnnouncement = (args: {
     const template = parts[ev.part];
     if (typeof template !== 'string') continue;
     const vars: Record<string,string> = {
-      '打順': (() => { const n=battingOrder.findIndex(entry=>Number(entry.id)===Number(ev.to.id)); return n>=0?String(n+1):''; })(),
+      '打順': (() => {
+        // 代打・代走の交代枠は元選手の打順を引き継ぐ。
+        // リエントリー時は交代後選手のIDが battingOrder にまだ存在しない場合がある。
+        const ids = [ev.to.id, ev.pinchId, ev.originalId].map(Number);
+        const n = battingOrder.findIndex(entry => ids.includes(Number(entry.id)));
+        if (n >= 0) return String(n + 1);
+        const record = records.find(r => r.order > 0 && (
+          r.type === 'shift' ? ids.includes(Number(r.player.id)) :
+          ids.includes(Number(r.from.id)) || ids.includes(Number(r.to.id))
+        ));
+        return record ? String(record.order) : '';
+      })(),
       '交代前・選手名': name(ev.pinch),
       '交代前・選手名（苗字）': name(ev.pinch),
       '交代前・選手名（フルネーム）': fullName(ev.pinch),
@@ -810,7 +821,8 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       '選手名（苗字）':name(target),
       '選手名（フルネーム）':fullName(target),
       '敬称':honorific(target),
-      '背番号':String(target.number ?? '')
+      '背番号':String(target.number ?? ''),
+      '__battingKind':r.type === 'shift' ? 'existing' : 'new'
     });
   }
   // カスタマイズ専用：代打・代走が直前の守備交代画面で既に守備に就いていた場合、
@@ -844,7 +856,8 @@ const buildCustomRegularDefenseAnnouncement = (args: {
       '選手名（苗字）': name(ev.pinch),
       '選手名（フルネーム）': fullName(ev.pinch),
       '敬称': honorific(ev.pinch),
-      '背番号': String(ev.pinch.number ?? '')
+      '背番号': String(ev.pinch.number ?? ''),
+      '__battingKind':'new'
     });
   }
   const battingRows = [...rowsByOrder.entries()]
@@ -926,7 +939,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   const hasMove = positionMoves.length > 0 || records.some(r => r.type === 'mixed');
   const intro = parts[hasNew && hasMove ? 'introBoth' : hasNew ? 'introPlayer' : 'introPosition'] || '';
   const lineup = battingRows.length
-    ? [parts.battingIntro, ...battingRows.map(v => substituteTokens(parts.battingRow || '', v))].filter(Boolean).join('\n')
+    ? [parts.battingIntro, ...battingRows.map(v => substituteTokens(v.__battingKind === 'new' ? (parts.battingRowNew ?? parts.battingRow ?? '') : (parts.battingRowExisting ?? parts.battingRow ?? ''), v))].filter(Boolean).join('\n')
     : '';
   return [substituteTokens(intro, {'チーム名':teamName,'守備側チーム名':teamName}), joined, lineup, parts.outro].filter(Boolean).join('\n');
 };
@@ -8662,7 +8675,7 @@ if (customRegularText) {
 const formatCustomPinchOnlyBattingRows = (source: string): string => {
   if (getLeagueMode() !== "custom" || !source) return source;
   const parts = loadCustomInGameTexts(getActiveCustomProfileId())?.defenseChange;
-  if (!parts || !parts.battingRow) return source;
+  if (!parts || !(parts.battingRowNew || parts.battingRowExisting || parts.battingRow)) return source;
   const positions = new Set([
     "ピッチャー", "キャッチャー", "ファースト", "セカンド", "サード",
     "ショート", "レフト", "センター", "ライト", "指名打者"
@@ -8685,7 +8698,9 @@ const formatCustomPinchOnlyBattingRows = (source: string): string => {
       return !!last && (visibleName.includes(last + first) || visibleName.includes(last));
     }) ?? teamPlayers.find(p => Number(p.id) === Number(battingOrder[order - 1]?.id));
     if (!player) return segment;
-    return substituteTokens(parts.battingRow, {
+    const isNewPlayer = changes.some(r => r.type !== 'shift' && Number(r.order) === order) ||
+      !initialAssignments || !Object.values(initialAssignments).some(id => Number(id) === Number(player.id));
+    return substituteTokens(isNewPlayer ? (parts.battingRowNew ?? parts.battingRow ?? '') : (parts.battingRowExisting ?? parts.battingRow ?? ''), {
       '打順': String(order),
       '守備位置': match[2],
       '選手名': lastRuby(player),

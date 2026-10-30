@@ -1,3 +1,4 @@
+import CustomInGameMemo from "./components/CustomInGameMemo";
 /**
  * OnePersonAnnounceScreen.tsx
  * ------------------------------------------------------------
@@ -819,7 +820,7 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     endedInning: number,
     endedIsTop: boolean
   ) =>
-    leagueMode === "custom" ? customTimedItemDue(loadCustomInGameTexts(getActiveCustomProfileId()),"ground",endedInning,endedIsTop?"top":"bottom") :
+    leagueMode === "custom" ? (customItemEnabled(loadCustomInGameTexts(getActiveCustomProfileId()), "ground") && !endedIsTop && announcementTimingSettings.groundMaintenanceInning !== null && endedInning === announcementTimingSettings.groundMaintenanceInning) :
     leagueMode !== "boys" &&
     !endedIsTop &&
     announcementTimingSettings.groundMaintenanceInning !== null &&
@@ -927,6 +928,9 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     );
   };
 
+  // Reactの状態更新が反映される前でも、同一イニングの予約を確実に取得する。
+  const pendingNextGameForTabsRef = useRef(false);
+
   const openCombinedAuxModalIfNeeded = async (
     endedInning: number,
     endedIsTop: boolean
@@ -934,13 +938,14 @@ const getOnePersonDefenseSide = (targetIsTop: boolean) =>
     const tabs: CombinedAuxTab[] = [];
     if (isConfiguredCoolingTime(endedInning, endedIsTop)) tabs.push("cooling");
     if (isConfiguredGroundMaintenance(endedInning, endedIsTop)) tabs.push("ground");
-    if (pendingMemberExchange) tabs.push("member");
+    if (pendingMemberExchange || pendingNextGameForTabsRef.current) tabs.push("member");
 
     if (tabs.length < 2) return false;
 
     if (tabs.includes("member")) {
       setMemberExchangeText(await buildMemberExchangeAnnouncement());
       setPendingMemberExchange(false);
+      pendingNextGameForTabsRef.current = false;
     }
     if (tabs.includes("ground")) {
       setPendingGroundPopup(false);
@@ -2850,7 +2855,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!showMemberExchangeModal || !memberExchangeText.trim()) return;
-  void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+  void addAnnouncementHistory({ category: leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
 }, [showMemberExchangeModal, memberExchangeText]);
 
 useEffect(() => {
@@ -2910,7 +2915,7 @@ useEffect(() => {
     })();
   }
   if (combinedAuxTabs.includes("member") && memberExchangeText.trim()) {
-    void addAnnouncementHistory({ category: "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
+    void addAnnouncementHistory({ category: leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換", displayText: memberExchangeText, speechText: memberExchangeText, inningLabel: getEndedHistoryInningLabel() });
   }
   if (combinedAuxTabs.includes("cooling")) {
     const text = combinedCoolingNotice || `ただいまから${combinedCoolingMinutes}分間のクーリングタイムを取ります。`;
@@ -7502,15 +7507,7 @@ const continueAfterPitchAnnouncement = async () => {
   // ✅ 3回裏の表示順：
   // 得点 → 投球数 → 次の試合アナウンス
   if (pendingMemberExchange) {
-    const mi = await localForage.getItem<any>("matchInfo");
-    const currentGame = Number(mi?.matchNumber) || 1;
-    const nextGame = currentGame + 1;
-
-    const txt =
-      `本日の第${nextGame}試合の両チームは、4回終了後、メンバー交換を行います。\n` +
-      `両チームのキャプテンと全てのベンチ入り指導者は、ボール3個とメンバー表とピッチングレコードを持って本部席付近にお集まりください。\n` +
-      `ベンチ入りのスコアラー、審判員、球場責任者、EasyScore担当、公式記録員、アナウンスもお集まりください。\n` +
-      `メンバーチェックと道具チェックはシートノックの間に行います。`;
+    const txt = await buildMemberExchangeAnnouncement();
 
     setMemberExchangeText(txt);
     setPendingMemberExchange(false);
@@ -8750,10 +8747,13 @@ useEffect(() => {
             </div>
         </div>
 
-        {isLeadingBatter && (
+        {isLeadingBatter && (leagueMode !== "custom" || customAnnouncementMemo('batter', 'leadoff')) && (
           <div className="flex items-center text-blue-600 font-bold mb-0">
-            <div className="bg-yellow-100 text-yellow-800 bord最初er-l-4 border-yellw-500 px-4 py-2 text-sm font-semibold text-left">
-              <span className="mr-2 text-lg">⚠️</span>回の最初のバッター紹介は、キャッチャー2塁送球後 
+            <div className="bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm font-semibold text-left">
+              <span className="mr-2 text-lg">⚠️</span>
+              {leagueMode === "custom"
+                ? customAnnouncementMemo('batter', 'leadoff')
+                : '回の最初のバッター紹介は、キャッチャー2塁送球後'}
             </div>
           </div>
         )}
@@ -8897,12 +8897,16 @@ useEffect(() => {
               const isThirdBottom =
                 Number(inning) === 3 && isTop === false;
 
+              // 次の試合のお知らせは設定した回・表裏の終了時のみ予約する。
+              setPendingMemberExchange(false);
+              pendingNextGameForTabsRef.current = false;
               if (leagueMode === "custom" ? customTimedItemDue(loadCustomInGameTexts(getActiveCustomProfileId()),"nextGame",currentInning,currentHalf) : (leagueMode !== "boys" && isThirdBottom)) {
                 const mi = await localForage.getItem<any>("matchInfo");
                 const noNextGame =
                   mi?.noNextGame === true || mi?.noNextGame === "true";
                 if (!noNextGame) {
                   setPendingMemberExchange(true);
+                  pendingNextGameForTabsRef.current = true;
                 }
               }
 
@@ -11214,7 +11218,7 @@ useEffect(() => {
                           ? "クーリングタイム"
                           : tab === "ground"
                           ? "グラウンド整備"
-                          : "次の試合";
+                          : leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換";
                       return (
                         <button
                           key={tab}
@@ -11391,6 +11395,7 @@ useEffect(() => {
                           <span>{announcementTimingSettings.groundMaintenanceInning ?? 5}回裏終了後🎤</span>
                         </div>
                         <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                          <CustomInGameMemo item="ground" part="start" />
                           <p className="text-red-700 font-bold whitespace-pre-wrap">{getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"}</p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
@@ -11411,6 +11416,7 @@ useEffect(() => {
                           <span>整備終了後🎤</span>
                         </div>
                         <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                          <CustomInGameMemo item="ground" part="end" />
                           <p className="text-red-700 font-bold whitespace-pre-wrap">{getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。"}</p>
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
@@ -11430,6 +11436,7 @@ useEffect(() => {
 
                   {activeCombinedAuxTab === "member" && (
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="nextGame" part="main" />
                       <p className="whitespace-pre-wrap text-red-700 font-bold">
                         {memberExchangeText}
                       </p>
@@ -11546,6 +11553,7 @@ useEffect(() => {
 
                     {/* アナウンス文言エリア（薄い赤） */}
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="ground" part="start" />
                       <div className="flex items-start gap-2">
                         <p className="text-red-700 font-bold">
                           {getCustomOtherText("ground", "start") ?? "両チームはグランド整備をお願いします。"}
@@ -11585,6 +11593,7 @@ useEffect(() => {
 
                     {/* アナウンス文言エリア（薄い赤） */}
                     <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
+                      <CustomInGameMemo item="ground" part="end" />
                       <div className="flex items-start gap-2">
                         <p className="text-red-700 font-bold">
                           {getCustomOtherText("ground", "end") ?? "グランド整備、ありがとうございました。"}
@@ -11843,13 +11852,14 @@ useEffect(() => {
               >
                 {/* ヘッダー */}
                 <div className="sticky top-0 z-10 px-4 py-3 bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md">
-                  <h2 className="text-lg font-extrabold text-center">メンバー交換（案内）</h2>
+                  <h2 className="text-lg font-extrabold text-center">{leagueMode === "custom" ? "次の試合のお知らせ" : "メンバー交換（案内）"}</h2>
                 </div>
 
                 {/* 本文 */}
                 <div className="px-4 py-4 space-y-3 overflow-y-auto">
                   <div className="rounded-2xl border border-red-500 bg-red-200 p-4 shadow-sm">
 
+                    <CustomInGameMemo item="nextGame" part="main" />
                     <p className="whitespace-pre-wrap text-red-700 font-bold">
                       {memberExchangeText}
                     </p>

@@ -87,6 +87,7 @@ const resolveBackTarget = async (): Promise<ScreenType> => {
 
 const SeatIntroduction: React.FC<Props> = ({ onNavigate, onBack }) => {
   const [customSeatTemplate, setCustomSeatTemplate] = useState<string | null>(null);
+  const [customPitcherText, setCustomPitcherText] = useState<string | null>(null);
   const [customSeatTimingNote, setCustomSeatTimingNote] = useState("");
   const [teamName, setTeamName] = useState("");       // 表示用
   const [teamReading, setTeamReading] = useState(""); // 読み上げ用
@@ -187,9 +188,11 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
           return side === "any" || side === currentSide;
         });
         setCustomSeatTemplate(activeSegment?.text ?? null);
-        setCustomSeatTimingNote(configured?.timing?.note?.trim() || activeSegment?.timing?.note?.trim() || "");
+         setCustomPitcherText(activeSegment?.pitcherSeparate ? (activeSegment.pitcherText || null) : null);
+        setCustomSeatTimingNote(activeSegment?.timing?.note?.trim() ?? configured?.timing?.note?.trim() ?? "");
       } else {
         setCustomSeatTemplate(null);
+         setCustomPitcherText(null);
         setCustomSeatTimingNote("");
       }
       if (matchInfo) {
@@ -461,7 +464,7 @@ const assignments: Record<string, number | null> = latest ?? starting ?? {};
       const surname = `<ruby>${esc(player.lastName)}<rt>${esc(player.lastNameKana)}</rt></ruby>`;
       const full = `${surname}<ruby>${esc(player.firstName)}<rt>${esc(player.firstNameKana)}</rt></ruby>`;
       const needsFull = !!player.lastName && dupLastNames.has(player.lastName);
-      return replace(row, {
+      return replace(pos === "投" && customPitcherText !== null ? customPitcherText : row, {
         ...base, "守備位置": esc(label), "選手名": needsFull ? full : surname,
         "選手名（苗字）": surname, "選手名（フルネーム）": full,
         "選手敬称": esc(player.honorific), "打順": String(index + 1), "背番号": "",

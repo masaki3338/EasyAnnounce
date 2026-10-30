@@ -358,7 +358,8 @@ const App = () => {
   const [showMenuHelpModal, setShowMenuHelpModal] = useState(false);
 
   const [endGameAnnouncement, setEndGameAnnouncement] = useState("");       // 表示用
-  const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState(""); // 読み上げ用
+  const [endGameAnnouncementSpeak, setEndGameAnnouncementSpeak] = useState("");
+  const [customGameEndPart, setCustomGameEndPart] = useState<"main" | "draw">("main"); // 読み上げ用
   // カスタマイズのその他アナウンス。試合終了画面はApp内で共通管理。
   const getCustomGameEndAnnouncement = async (endedAt: Date): Promise<string | null> => {
     if (getLeagueMode() !== 'custom') return null;
@@ -382,26 +383,65 @@ const App = () => {
       bottomName = String((firstIsTop ? thirdTeam : firstTeam)?.name || bottomName);
     }
     const time = `${endedAt.getHours()}時${String(endedAt.getMinutes()).padStart(2,'0')}分`;
-    return getCustomOtherText('gameEnd', 'main', {
-      '先攻チーム名':topName,'後攻チーム名':bottomName,'先攻得点':String(top),
-      '後攻得点':String(bottom),'勝利チーム名':top===bottom?'':top>bottom?topName:bottomName,
+    const endSettings = loadCustomInGameTexts(getActiveCustomProfileId()).gameEnd;
+    setCustomGameEndPart(top === bottom ? "draw" : "main");
+    const higherFirst = endSettings?.higherScoreFirst === 'true' && top !== bottom;
+    const scoreTop = higherFirst ? Math.max(top,bottom) : top;
+    const scoreBottom = higherFirst ? Math.min(top,bottom) : bottom;
+    return getCustomOtherText('gameEnd', top === bottom ? 'draw' : 'main', {
+      '先攻チーム名':topName,'後攻チーム名':bottomName,'先攻得点':String(scoreTop),
+      '後攻得点':String(scoreBottom),'勝利チーム名':top===bottom?'':top>bottom?topName:bottomName,
       '終了時刻':time,
     });
   };
   const getCustomTiebreakAnnouncement = async (): Promise<string | null> => {
     if (getLeagueMode() !== 'custom') return null;
-    const [match, cfg] = await Promise.all([
-      localForage.getItem<any>('matchInfo'),
-      localForage.getItem<{outs?:string;bases?:string}>('tiebreakConfig'),
+    const [match,cfg,team,order,lastIndex] = await Promise.all([
+      localForage.getItem<any>('matchInfo'),localForage.getItem<{outs?:string;bases?:string}>('tiebreakConfig'),
+      localForage.getItem<any>('team'),localForage.getItem<any[]>('battingOrder'),localForage.getItem<number>('lastBatterIndex')
     ]);
-    const now = Math.max(1, Number(match?.inning)||1);
-    const previous = Math.max(0,now-1);
-    return getCustomOtherText('tieBreak','main',{
-      '回（現在）':String(now),'回（前の回）':String(previous),'回':String(now),
-      'アウト数':String(cfg?.outs||'ワンナウト'),'走者情報':String(cfg?.bases||'2,3塁'),
-    });
+    const now=Math.max(1,Number(match?.inning)||1);
+    const bases=String(cfg?.bases||'2,3塁').replace(/[，、]/g,',');
+    const active=bases==='満塁'?[1,2,3]:bases.replace(/塁/g,'').split(',').map(Number);
+    // 現在攻撃中のチーム名を、表裏と先攻・後攻の登録情報から取得する。
+    const ownName = String(team?.name || match?.teamName || '自チーム');
+    const opponentName = String(match?.opponentTeam || '対戦チーム');
+    const isHome = Boolean(match?.isHome);
+    let topTeamName = isHome ? opponentName : ownName;
+    let bottomTeamName = isHome ? ownName : opponentName;
+    if (match?.announcementMode === 'single') {
+      const {firstTeam, thirdTeam} = await getOnePersonTeamsFromMatchInfo();
+      const firstIsTop = match?.battingFirstSide === 'first';
+      topTeamName = String((firstIsTop ? firstTeam : thirdTeam)?.name || topTeamName);
+      bottomTeamName = String((firstIsTop ? thirdTeam : firstTeam)?.name || bottomTeamName);
+    }
+    const battingTeamName = match?.isTop === false ? bottomTeamName : topTeamName;
+    const safe=(v:unknown)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const vars:Record<string,string>={'回（現在）':String(now),'回（前の回）':String(Math.max(0,now-1)),
+      '回':String(now),'アウト数':String(cfg?.outs||'ワンナウト'),'走者情報':String(cfg?.bases||'2,3塁'),
+      'チーム名':safe(battingTeamName)};
+    const lineup=Array.isArray(order)?order:[];
+    const players=Array.isArray(team?.players)?team.players:[];
+    const idx=Number.isInteger(lastIndex)?Number(lastIndex):0;
+    for(const [n,label] of [[1,'一人前'],[2,'二人前'],[3,'三人前']] as const){
+      const entry=lineup.length?lineup[((idx-n)%lineup.length+lineup.length)%lineup.length]:null;
+      const id=typeof entry==='number'?entry:entry?.id;
+      const player=players.find((p:any)=>String(p?.id)===String(id));
+      vars[`打者の${label}の選手`]=player?`<ruby>${safe(player.lastName)}<rt>${safe(player.lastNameKana||'')}</rt></ruby>`:'（選手未登録）';
+      vars[`打者の${label}の選手敬称`]=player?.isFemale?'さん':'くん';
+      vars[`打者の${label}の選手背番号`]=String(player?.number??'');
+    }
+    const {substituteTokens}=await import('./lib/customInGameTemplates');
+    let source=loadCustomInGameTexts(getActiveCustomProfileId()).tieBreak?.main;
+    if(typeof source!=='string')return null;
+    // 該当塁がない場合、ランナー紹介の句全体を削除する。
+    for(const [base,label] of [[3,'三人前'],[2,'二人前'],[1,'一人前']] as const){
+      if(active.includes(base))continue;
+      const re=new RegExp(`(?:[123３２１一二三]塁ランナー)[^、\\n。]*?【打者の${label}の選手】[^、\\n。]*(?:[、，]\\s*|(?=[。\\n]|$))`,'g');
+      source=source.replace(re,'');
+    }
+    return substituteTokens(source,vars);
   };
-
 
   // ✅ 試合終了時刻：
   // 「〇時〇分です」を1本で生成するとイントネーションが不自然になりやすいため、
@@ -1149,7 +1189,7 @@ useEffect(() => {
   // タイブレークは設定内容で文言が変わるため、表示された瞬間に現在文を先読み。
   useEffect(() => {
     if (!showTiebreakPopup || !tiebreakMessage.trim()) return;
-    prefetchTextFast(tiebreakMessage.replace(/入ります。/g, "はいります。"));
+    prefetchTextFast(tiebreakMessage.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, (_m,_name,kana)=>kana).replace(/<[^>]*>/g, "").replace(/入ります。/g, "はいります。"));
   }, [showTiebreakPopup, tiebreakMessage]);
 
   // 熱中症は固定文だが、モーダル表示時にも最優先でキャッシュ確認する。
@@ -2227,11 +2267,19 @@ return (
           const returnState=await localForage.getItem<any>("seatIntroReturnState");
           if(returnState?.mode==="onePersonNextHalf") {
             const mi=(await localForage.getItem<any>("matchInfo"))||{};
-            await localForage.setItem("matchInfo",{...mi,inning:Number(returnState.inning??1),isTop:Boolean(returnState.isTop??false),isDefense:false,announcementMode:"single"});
+            await localForage.setItem("matchInfo",{...mi,inning:Number(returnState.inning??1),isTop:Boolean(returnState.isTop??false),isDefense:true,announcementMode:"single"});
             await localForage.removeItem("seatIntroReturnState");
             setScreen("onePersonAnnounce");
           } else {
-            await handleSeatIntroductionBack();
+            // カスタマイズモード：先攻チームの1回表終了後のシート紹介は、
+            // モーダルを閉じたら攻撃画面へ戻らず、1回裏の守備画面へ進む。
+            const mi=(await localForage.getItem<any>("matchInfo"))||{};
+            await localForage.setItem("matchInfo",{...mi,inning:1,isTop:false,isDefense:true});
+            if (await isSingleAnnouncementMode()) {
+              setScreen("onePersonAnnounce");
+            } else {
+              openDefenseScreenWithSnapshot();
+            }
           }
         }}/>
       )}
@@ -3857,7 +3905,7 @@ return (
             </div>
 
             {/* 文言（改行保持） */}
-            <CustomInGameMemo item="gameEnd" part="main" />
+            <CustomInGameMemo item="gameEnd" part={customGameEndPart} />
             <div className="text-left text-red-700 font-bold whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto pr-2">
               {endGameAnnouncement}
             </div>
@@ -4107,7 +4155,7 @@ return (
             {/* 文言（改行保持） */}
             <CustomInGameMemo item="tieBreak" part="main" />
             <p className="text-red-700 font-bold whitespace-pre-wrap leading-relaxed">
-              {tiebreakMessage}
+              <span dangerouslySetInnerHTML={{__html: tiebreakMessage}} />
             </p>
 
             {/* 読み上げ／停止（横いっぱい・等幅、改行なしテキスト） */}
@@ -4115,7 +4163,7 @@ return (
               <button
                 onClick={async () => {
                   await speak(
-                    tiebreakMessage.replace(/入ります。/g, "はいります。"),
+                    tiebreakMessage.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/g, (_m,_name,kana)=>kana).replace(/<[^>]*>/g, "").replace(/入ります。/g, "はいります。"),
                     { progressive: true, cache: true }
                   );
                 }}
