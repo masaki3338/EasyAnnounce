@@ -17,6 +17,7 @@ import { speak, speakJoinedTTS, stop, prefetchTTS, prewarmTTS } from "./lib/tts"
 import AnnouncementHistoryModal from "./components/AnnouncementHistoryModal";
 import { addAnnouncementHistory } from "./lib/announcementHistory";
 
+import { getCustomManualPdf } from "./lib/customManualPdf";
 import ManualViewer from "./ManualViewer"; // ← 追加
 const manualPdfURL = "/manual.pdf#zoom=page-fit"; // ページ全体にフィット
 const boysmanualPdfURL = "/Boysmanual.pdf#view=FitH"; // ページ全体にフィット
@@ -694,8 +695,21 @@ const App = () => {
   const [showManualPopup, setShowManualPopup] = useState(false);
   // 開く瞬間に保存済みリーグを確認し、PDFを確定する（画面stateの更新遅れを回避）。
   const [manualFileUrl, setManualFileUrl] = useState("/manual.pdf");
-  const openLeagueManual = () => {
+  const customManualUrlRef = useRef<string|null>(null);
+  const [manualNotice,setManualNotice] = useState('');
+  const openLeagueManual = async () => {
     const activeLeague = getLeagueMode();
+    if(activeLeague === 'custom'){
+      try {
+        const pdf=await getCustomManualPdf(getActiveCustomProfileId());
+        if(!pdf){setManualNotice('アナウンスマニュアルが登録されていません。試合中アナウンス設定の「その他」からPDFを登録してください。');return;}
+        if(customManualUrlRef.current)URL.revokeObjectURL(customManualUrlRef.current);
+        customManualUrlRef.current=URL.createObjectURL(pdf.blob);
+        setManualFileUrl(customManualUrlRef.current);
+        setShowManualPopup(true);
+      }catch{setManualNotice('登録済みPDFを開けませんでした。保存領域をご確認ください。');}
+      return;
+    }
     setManualFileUrl(activeLeague === "senior" ? "/Senior-manual.pdf" : "/manual.pdf");
     setShowManualPopup(true);
   };
@@ -1701,7 +1715,7 @@ const handleBoysOnlyMenu = async (value: string) => {
     return true;
   }
   if (value === "boysmanual") {
-    setShowBoysManualPopup(true);
+    if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
   }
   return false;
 };
@@ -2624,7 +2638,7 @@ return (
                   setShowSuspendedGamePopup(true);
 
                 } else if (value === "boysmanual") {
-                  setShowBoysManualPopup(true);
+                  if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
                 }
 
                 setOtherOption("");
@@ -3018,7 +3032,7 @@ return (
           setShowSuspendedGamePopup(true);
 
         } else if (value === "boysmanual") {
-          setShowBoysManualPopup(true);
+          if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
         }
 
         setOtherOption("");
@@ -3464,7 +3478,7 @@ return (
             setShowSuspendedGamePopup(true);
 
           } else if (value === "boysmanual") {
-            setShowBoysManualPopup(true);
+            if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true);
           }
 
           setOtherOption("");
@@ -3723,7 +3737,7 @@ return (
     </button>
     <OperationSettings
       onNavigate={setScreen}
-      onOpenManual={() => { if (getLeagueMode() === "boys") setShowBoysManualPopup(true); else openLeagueManual(); }} // リーグ別マニュアル
+      onOpenManual={() => { if (getLeagueMode() === "boys") if (getLeagueMode() === "custom") void openLeagueManual(); else setShowBoysManualPopup(true); else void openLeagueManual(); }} // リーグ別マニュアル
     />
         </>
 )}
@@ -4942,6 +4956,7 @@ return (
   </div>
 )}
 
+{manualNotice && <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/70 p-4"><div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-white p-5 text-slate-900 shadow-xl"><h2 className="text-lg font-bold">アナウンスマニュアル</h2><p className="mt-3 whitespace-pre-wrap text-sm">{manualNotice}</p><button type="button" className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={()=>setManualNotice('')}>OK</button></div></div>}
 {/* ✅ マニュアル（ボーイズリーグ）表示画面モーダル */}
 {showBoysManualPopup && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
