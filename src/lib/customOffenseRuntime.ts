@@ -24,7 +24,7 @@ function ruby(value:unknown, kana:unknown) {const name=escapeHtml(value);const r
 export function customPlayerVars(player:any,prefix='選手名'):Record<string,string> {
   const last=ruby(player?.lastName,player?.lastNameKana);
   const first=ruby(player?.firstName,player?.firstNameKana);
-  return { [`${prefix}（苗字）`]:last,[`${prefix}（フルネーム）`]:last+(first?'、'+first:''),[prefix]:last };
+  return { [`${prefix}（苗字）`]:last,[`${prefix}（フルネーム）`]:last+first,[prefix]:last };
 }
 export function customBatterHtml(args:{player:any;index:number;position:string;inning:number;isTop:boolean;isLeading:boolean;isChecked:boolean;teamName:string}):string|null {
   const {player,index,position,inning,isTop,isLeading,isChecked,teamName}=args;
