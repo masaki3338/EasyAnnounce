@@ -7,6 +7,7 @@ import { DEFAULT_SENIOR_END_TEMPLATES, getSeniorEndTemplates, saveSeniorEndTempl
 import type { ScreenType } from "../App";
 import { getLeagueLabel, getLeagueMode, setLeagueMode, type LeagueMode } from "../lib/leagueSettings";
 import CustomProfileQR from "./CustomProfileQR";
+import { resetPitchLimitForLeague } from "../lib/pitchLimitDefaults";
 import { getActiveCustomProfileId, getCustomProfiles } from "../lib/customProfiles";
 
 type Props = {
@@ -101,8 +102,10 @@ export default function LeagueSettings({ onNavigate }: Props) {
   }, []);
 
   const handleSelect = (next: LeagueMode) => {
+    if (getLeagueMode() === next) return; // 同じリーグの再選択では手動設定を維持
     setMode(next);
     setLeagueMode(next);
+    void resetPitchLimitForLeague(next);
   };
 
   return (

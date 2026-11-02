@@ -86,7 +86,7 @@ const historyData: HistoryItem[] = [
     ],
   },
   {
-    date: "2026.10.26",
+    date: "2026.11.02",
     version: "Version 1.07",
     details: [
       `・リトルシニア対応
