@@ -1,3 +1,4 @@
+import { getDefaultPitchLimit } from "./lib/pitchLimitDefaults";
 import CustomInGameMemo from "./components/CustomInGameMemo";
 /**
  * OnePersonAnnounceScreen.tsx
@@ -1182,7 +1183,7 @@ useEffect(() => {
   // 🔸 リエントリー用 state
   const [showReEntryModal, setShowReEntryModal] = useState(false);
   const [leagueMode, setLeagueMode] = useState<"pony" | "boys">(getLeagueMode());
-  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(getDefaultPitchLimit(getLeagueMode()).selected);
 
   useEffect(() => {
     const loadPitchLimit = async () => {
@@ -1194,7 +1195,7 @@ useEffect(() => {
           ? savedSelected
           : typeof legacy === "number"
           ? legacy
-          : 75;
+          : getDefaultPitchLimit(getLeagueMode()).selected;
 
       setPitchLimitSelected(next);
     };

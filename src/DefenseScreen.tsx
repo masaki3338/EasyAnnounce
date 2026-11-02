@@ -1,3 +1,4 @@
+import { getDefaultPitchLimit } from "./lib/pitchLimitDefaults";
 /**
  * DefenseScreen.tsx
  * ------------------------------------------------------------
@@ -146,7 +147,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
 
   const [inning, setInning] = useState(1);
   const [isTop, setIsTop] = useState(true);
-  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(75);
+  const [pitchLimitSelected, setPitchLimitSelected] = useState<number>(getDefaultPitchLimit(getLeagueMode()).selected);
   const [showTotalPitchModal, setShowTotalPitchModal] = useState(false);
   const [totalPitchInput, setTotalPitchInput] = useState<string>(""); // 入力中の文字列
 
@@ -224,7 +225,7 @@ const DefenseScreen: React.FC<DefenseScreenProps> = ({
           ? savedSelected
           : typeof legacy === "number"
           ? legacy
-          : 75;
+          : getDefaultPitchLimit(getLeagueMode()).selected;
 
       setPitchLimitSelected(next);
     };

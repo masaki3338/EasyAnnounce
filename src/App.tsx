@@ -1460,7 +1460,7 @@ useEffect(() => {
         localStorage.getItem("tts:matcha:voice") ||
         localStorage.getItem("tts:matchaVoice") ||
         "taniho";
-      const speed = localStorage.getItem("tts:speedScale") || "1";
+      const speed = localStorage.getItem("tts:speedScale") || "1.1";
 
       const key = `full-v2::${voice}::${speed}::${fullStartGreeting}`;
       if (startGreetingPrefetchKeyRef.current === key) {

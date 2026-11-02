@@ -563,6 +563,23 @@ const recentHead = (reason?: string) => {
 
 /** カスタマイズ専用・通常の選手交代をテンプレート化する。
  * DH・代打/代走からの守備入り・リエントリーは既存処理を保護する。 */
+// カスタマイズの交代アナウンスだけを整形する。
+// 最後の「入ります」を残し、途中は「入り、」でつなぐ。
+// ruby タグを維持しつつ、テンプレート由来の空行を除去する。
+const normalizeCustomDefenseAnnouncement = (source: string): string => {
+  if (getLeagueMode() !== "custom" || !source) return source;
+  const normalized = source
+    .replace(/(?:[ \t]*(?:\r?\n|<br\s*\/?>)[ \t]*){2,}/gi, "\n")
+    .replace(/^[ \t]*(?:\r?\n)+|(?:\r?\n)[ \t]*$/g, "");
+  const matches = [...normalized.matchAll(/入ります/g)];
+  if (matches.length <= 1) return normalized;
+  let occurrence = 0;
+  return normalized.replace(/入ります[。．]?/g, (match) => {
+    occurrence += 1;
+    return occurrence < matches.length ? "入り、" : match;
+  });
+};
+
 const buildCustomRegularDefenseAnnouncement = (args: {
   records: ChangeRecord[];
   teamName: string;
@@ -941,7 +958,7 @@ const buildCustomRegularDefenseAnnouncement = (args: {
   const lineup = battingRows.length
     ? [parts.battingIntro, ...battingRows.map(v => substituteTokens(v.__battingKind === 'new' ? (parts.battingRowNew ?? parts.battingRow ?? '') : (parts.battingRowExisting ?? parts.battingRow ?? ''), v))].filter(Boolean).join('\n')
     : '';
-  return [substituteTokens(intro, {'チーム名':teamName,'守備側チーム名':teamName}), joined, lineup, parts.outro].filter(Boolean).join('\n');
+  return normalizeCustomDefenseAnnouncement([substituteTokens(intro, {'チーム名':teamName,'守備側チーム名':teamName}), joined, lineup, parts.outro].filter(Boolean).join('\n'));
 };
 
 const generateAnnouncementText = (
@@ -8664,8 +8681,8 @@ const customRegularText = buildCustomRegularDefenseAnnouncement({
 if (customRegularText) {
   const customSpeak = buildDefenseAnnouncementSpeakText(customRegularText);
   return {
-    displayText: [ensureCustomBattingBoundaries(customRegularText), pitcherCountAnnouncement].filter(Boolean).join("<br />"),
-    speakText: [ensureCustomBattingBoundaries(customRegularText), pitcherCountAnnouncement].filter(Boolean).join(" "),
+    displayText: [normalizeCustomDefenseAnnouncement(ensureCustomBattingBoundaries(customRegularText)), pitcherCountAnnouncement].filter(Boolean).join("<br />"),
+    speakText: [normalizeCustomDefenseAnnouncement(ensureCustomBattingBoundaries(customRegularText)), pitcherCountAnnouncement].filter(Boolean).join(" "),
   };
 }
 
@@ -8713,11 +8730,11 @@ const formatCustomPinchOnlyBattingRows = (source: string): string => {
   }).join('');
 };
 
-const displayText = [ensureCustomBattingBoundaries(formatCustomPinchOnlyBattingRows(replaceCustomIntro(customPinchDefenseBodies(normalizedBaseDisplayText,teamPlayers,battingOrder)))), pitcherCountAnnouncement]
+const displayText = [normalizeCustomDefenseAnnouncement(ensureCustomBattingBoundaries(formatCustomPinchOnlyBattingRows(replaceCustomIntro(customPinchDefenseBodies(normalizedBaseDisplayText,teamPlayers,battingOrder))))), pitcherCountAnnouncement]
   .filter(Boolean)
   .join("<br />");
 
-const speakText = [ensureCustomBattingBoundaries(formatCustomPinchOnlyBattingRows(replaceCustomIntro(customPinchDefenseBodies(normalizedBaseSpeakText,teamPlayers,battingOrder)))), pitcherCountAnnouncement]
+const speakText = [normalizeCustomDefenseAnnouncement(ensureCustomBattingBoundaries(formatCustomPinchOnlyBattingRows(replaceCustomIntro(customPinchDefenseBodies(normalizedBaseSpeakText,teamPlayers,battingOrder))))), pitcherCountAnnouncement]
   .filter(Boolean)
   .join(" ");
 
